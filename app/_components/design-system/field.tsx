@@ -1,4 +1,8 @@
-import type { InputHTMLAttributes, SelectHTMLAttributes } from "react";
+import type {
+  InputHTMLAttributes,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from "react";
 import { cn } from "@/app/_utils/cn";
 
 interface FieldProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -33,6 +37,31 @@ export function SelectField({
       <select className="input" {...props}>
         {children}
       </select>
+    </label>
+  );
+}
+
+export function TextareaField({
+  label,
+  error,
+  className,
+  id,
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  label: string;
+  error?: string;
+}) {
+  const inputId = id ?? props.name;
+  return (
+    <label className="field" htmlFor={inputId}>
+      <span className="field-label">{label}</span>
+      <textarea
+        id={inputId}
+        className={cn("input textarea", className)}
+        aria-invalid={Boolean(error)}
+        {...props}
+      />
+      {error ? <span className="field-error">{error}</span> : null}
     </label>
   );
 }

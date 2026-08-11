@@ -121,6 +121,9 @@ export async function mockBackend(page: Page) {
       return json(route, {
         items: [{ object: smartObject, display: objectDisplay(variant) }],
         objects: [smartObject],
+        actions: [
+          { template_id: smartObject.template_id, actions: ["pickup", "transfer"] },
+        ],
       });
     }
     if (
@@ -134,6 +137,18 @@ export async function mockBackend(page: Page) {
       path === "/api/backend/ebus/action-logs"
     ) {
       return json(route, { action_logs: [actionLog] });
+    }
+    if (
+      request.method() === "POST" &&
+      path === "/api/backend/ebus/prepare"
+    ) {
+      return json(route, { nonce: 2, challenge: "AQIDBA" });
+    }
+    if (
+      request.method() === "POST" &&
+      path === "/api/backend/ebus/execute"
+    ) {
+      return json(route, { action_id: "action-e2e-2", steps: [] });
     }
     if (
       ["PATCH", "DELETE"].includes(request.method()) &&
@@ -156,12 +171,14 @@ export async function mockViewerApi(
 ) {
   let signedIn = authenticated;
   let wallet = { ...viewerWallet };
+  let authenticationMethod = "email";
 
   if (authenticated) await setSessionCookie(page);
   await mockBackend(page);
 
-  const authenticate = async (activated = true) => {
+  const authenticate = async (activated = true, method = "email") => {
     signedIn = true;
+    authenticationMethod = method;
     wallet = { ...viewerWallet, activated };
     await setSessionCookie(page);
     return wallet;
@@ -170,7 +187,7 @@ export async function mockViewerApi(
   await page.route("**/api/session", (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     return signedIn
-      ? json(route, { authenticated: true, wallet })
+      ? json(route, { authenticated: true, authenticationMethod, wallet })
       : json(route, { authenticated: false }, 401);
   });
 
@@ -210,7 +227,7 @@ export async function mockViewerApi(
     }),
   );
   await page.route("**/api/session/eoa/connect", async (route) => {
-    const nextWallet = await authenticate();
+    const nextWallet = await authenticate(true, "eoa");
     return json(route, { authenticated: true, wallet: nextWallet });
   });
 
@@ -223,7 +240,7 @@ export async function mockViewerApi(
     }),
   );
   await page.route("**/api/session/passkey/login/verify", async (route) => {
-    const nextWallet = await authenticate();
+    const nextWallet = await authenticate(true, "passkey");
     return json(route, { authenticated: true, wallet: nextWallet });
   });
 
@@ -267,7 +284,9 @@ export async function installPasskeyProvider(page: Page) {
           response: {
             clientDataJSON: Uint8Array.from([5, 6, 7]).buffer,
             authenticatorData: Uint8Array.from([8, 9, 10]).buffer,
-            signature: Uint8Array.from([11, 12, 13]).buffer,
+            signature: Uint8Array.from([
+              0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02,
+            ]).buffer,
             userHandle: null,
           },
         }),

@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       wallet: toViewerWallet(login.wallet),
     });
     response.headers.set("Cache-Control", "private, no-store");
-    if (!establishSession(response, login, tenant)) {
+    if (!establishSession(response, login, tenant, "eoa")) {
       return NextResponse.json(
         { message: "This wallet belongs to another organization." },
         { status: 403 },

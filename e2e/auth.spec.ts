@@ -3,6 +3,7 @@ import {
   installEoaProvider,
   installPasskeyProvider,
   mockViewerApi,
+  smartObject,
 } from "./support";
 
 test("email login opens the wallet inventory", async ({ page }) => {
@@ -77,6 +78,38 @@ test("passkey assertion opens the wallet", async ({ page }) => {
   await expect(
     page.getByText("Sample Membership", { exact: true }),
   ).toBeVisible();
+});
+
+test("passkey login signs an inventory action challenge", async ({ page }) => {
+  await installPasskeyProvider(page);
+  await mockViewerApi(page);
+  await page.goto("/login");
+
+  await page.getByRole("tab", { name: "Passkey" }).click();
+  await page.getByRole("button", { name: "Sign in with passkey" }).click();
+  await expect(page).toHaveURL(/\/inventory$/);
+  await page.goto(`/inventory/${smartObject.id}`);
+
+  const execution = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api/backend/ebus/execute",
+  );
+  await page.getByRole("button", { name: "Run Pick up" }).click();
+  const body = (await execution).postDataJSON();
+
+  expect(body).toMatchObject({
+    action: { pickup: { id: smartObject.id } },
+    nonce: 2,
+    auth: {
+      type: "webauthn",
+      challenge: "AQIDBA",
+      credential_id: "credential-e2e-1",
+    },
+  });
+  expect(body.auth.signature_r).toMatch(/^0x0+1$/);
+  expect(body.auth.signature_s).toMatch(/^0x0+2$/);
+  await expect(page.getByText("Action submitted. ID: action-e2e-2")).toBeVisible();
 });
 
 test("password recovery and reset complete without account disclosure", async ({

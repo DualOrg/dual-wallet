@@ -20,4 +20,12 @@ describe("validateProxyPath", () => {
     expect(validateProxyPath("GET", ["pwallet"]).allowed).toBe(false);
     expect(validateProxyPath("GET", ["..", "objects"]).allowed).toBe(false);
   });
+
+  it("allows only the action mutation routes used by the Viewer", () => {
+    expect(validateProxyPath("POST", ["ebus", "prepare"]).allowed).toBe(true);
+    expect(validateProxyPath("POST", ["ebus", "execute"]).allowed).toBe(true);
+    expect(validateProxyPath("POST", ["ebus", "action-logs"]).allowed).toBe(
+      false,
+    );
+  });
 });

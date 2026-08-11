@@ -28,7 +28,11 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json(
-    { authenticated: true, wallet },
+    {
+      authenticated: true,
+      authenticationMethod: session.record.authenticationMethod,
+      wallet,
+    },
     { headers: { "Cache-Control": "private, no-store" } },
   );
 }

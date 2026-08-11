@@ -5,13 +5,7 @@ import { Check, Share2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/app/_components/design-system/button";
 
-export function ShareObjectButton({
-  objectId,
-  name,
-}: {
-  objectId: string;
-  name: string;
-}) {
+export function ShareObjectButton({ objectId }: { objectId: string }) {
   const t = useTranslations("object");
   const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
 
@@ -20,11 +14,10 @@ export function ShareObjectButton({
       `/objects/${encodeURIComponent(objectId)}`,
       window.location.origin,
     ).toString();
-    const data = { title: name, text: t("shareDescription", { name }), url };
 
     if (typeof navigator.share === "function") {
       try {
-        await navigator.share(data);
+        await navigator.share({ url });
         return;
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError")

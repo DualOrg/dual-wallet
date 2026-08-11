@@ -32,12 +32,27 @@ export function useInventory(search: string, owner?: string) {
           sortBy: "when_modified",
           include: ["display"],
           displayVariant: "card",
+          actions: true,
         });
+        const actions = new Map(
+          result.actions?.map((item) => [item.templateId, item.actions]),
+        );
         return {
           items:
             result.items?.map((item) =>
-              toInventoryObject(item.object, item.display),
-            ) ?? result.objects.map((object) => toInventoryObject(object)),
+              toInventoryObject(
+                item.object,
+                item.display,
+                actions.get(item.object.templateId),
+              ),
+            ) ??
+            result.objects.map((object) =>
+              toInventoryObject(
+                object,
+                undefined,
+                actions.get(object.templateId),
+              ),
+            ),
           next: result.next,
         };
       } catch (error) {
@@ -59,11 +74,25 @@ export function useInventoryObject(objectId: string) {
           limit: 1,
           include: ["display"],
           displayVariant: "detail",
+          actions: true,
         });
+        const actions = new Map(
+          result.actions?.map((entry) => [entry.templateId, entry.actions]),
+        );
         const item = result.items?.[0];
-        if (item) return toInventoryObject(item.object, item.display);
+        if (item)
+          return toInventoryObject(
+            item.object,
+            item.display,
+            actions.get(item.object.templateId),
+          );
         const object = result.objects[0];
-        if (object) return toInventoryObject(object);
+        if (object)
+          return toInventoryObject(
+            object,
+            undefined,
+            actions.get(object.templateId),
+          );
         throw new Error("This object could not be loaded.");
       } catch (error) {
         throw await usefulError(error, "This object could not be loaded.");
@@ -83,7 +112,7 @@ export function useActivity(search: string, status: string, walletId?: string) {
           autocomplete: search || undefined,
           status: status || undefined,
           walletId,
-          limit: 30,
+          limit: 25,
           next: pageParam,
           order: "desc",
           sortBy: "when_created",

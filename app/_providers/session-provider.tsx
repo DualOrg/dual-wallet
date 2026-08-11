@@ -2,16 +2,19 @@
 
 import { createContext, useContext, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { AuthenticationMethod } from "@/app/_domain/session";
 import type { ViewerWallet } from "@/app/_domain/wallet";
 import { requestJson } from "@/app/_utils/client-api";
 
 interface SessionPayload {
   authenticated: boolean;
+  authenticationMethod: AuthenticationMethod;
   wallet: ViewerWallet;
 }
 
 interface SessionValue {
   wallet: ViewerWallet | null;
+  authenticationMethod: AuthenticationMethod | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   refresh: () => Promise<ViewerWallet | null>;
@@ -40,6 +43,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<SessionValue>(
     () => ({
       wallet: query.data?.wallet ?? null,
+      authenticationMethod: query.data?.authenticationMethod ?? null,
       isLoading: query.isLoading,
       isAuthenticated: Boolean(query.data?.authenticated),
       refresh: async () => {

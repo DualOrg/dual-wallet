@@ -32,6 +32,7 @@ export interface ObjectPresentation {
 }
 
 export interface InventoryObject extends ObjectDetail {
+  actions: string[];
   raw: SmartObject;
 }
 
@@ -60,6 +61,7 @@ function safeAssetUrl(value?: string) {
 export function toInventoryObject(
   value: SmartObject,
   display?: ObjectDisplay,
+  actions: string[] = [],
 ): InventoryObject {
   return {
     ...toObjectDetail(
@@ -67,6 +69,7 @@ export function toInventoryObject(
       value.assets?.find((asset) => asset.type?.startsWith("image/"))?.url,
       display,
     ),
+    actions,
     raw: value,
   };
 }

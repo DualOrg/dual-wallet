@@ -8,6 +8,7 @@ import type { TenantContext } from "@/api/tenant";
 import { tenantFromRequest } from "@/api/tenant";
 import { ResponseError } from "@/api/web-sdk/runtime";
 import { getWalletsApi } from "@/api/web-sdk-client";
+import type { AuthenticationMethod } from "@/app/_domain/session";
 import { toViewerWallet, type ViewerWallet } from "@/app/_domain/wallet";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -20,6 +21,7 @@ interface StoredSession {
   sessionExpiresAt: number;
   tenant: TenantContext;
   wallet: ViewerWallet;
+  authenticationMethod: AuthenticationMethod;
 }
 
 interface SessionHandle {
@@ -64,7 +66,11 @@ function jwtExpiry(token: string, fallbackMs: number) {
   }
 }
 
-function createRecord(login: LoginOut, tenant: TenantContext): StoredSession {
+function createRecord(
+  login: LoginOut,
+  tenant: TenantContext,
+  authenticationMethod: AuthenticationMethod,
+): StoredSession {
   return {
     accessToken: login.accessToken,
     refreshToken: login.refreshToken,
@@ -72,6 +78,7 @@ function createRecord(login: LoginOut, tenant: TenantContext): StoredSession {
     sessionExpiresAt: jwtExpiry(login.refreshToken, THIRTY_DAYS_MS),
     tenant,
     wallet: toViewerWallet(login.wallet),
+    authenticationMethod,
   };
 }
 
@@ -99,6 +106,7 @@ export function establishSession(
   response: NextResponse,
   login: LoginOut,
   tenant: TenantContext,
+  authenticationMethod: AuthenticationMethod,
 ) {
   try {
     const payload = login.accessToken.split(".")[1];
@@ -114,7 +122,10 @@ export function establishSession(
     return false;
   }
   const credential = randomBytes(32).toString("base64url");
-  sessions.set(keyFor(credential), createRecord(login, tenant));
+  sessions.set(
+    keyFor(credential),
+    createRecord(login, tenant, authenticationMethod),
+  );
   setCookie(response, credential);
   return true;
 }

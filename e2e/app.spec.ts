@@ -21,10 +21,23 @@ test("inventory opens a complete object detail", async ({ page }) => {
   await expect(page.getByText("founder", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "Share" })).toBeVisible();
   await expect(
+    page.getByRole("heading", { name: "Available actions", level: 2 }),
+  ).toBeVisible();
+  await expect(
     page
       .frameLocator('iframe[title="Sample Membership"]')
       .getByText("Rendered face: Sample Membership"),
   ).toBeVisible();
+});
+
+test("inventory executes an action returned by the object template", async ({
+  page,
+}) => {
+  await page.goto(`/inventory/${smartObject.id}`);
+
+  await page.getByRole("button", { name: "Run Pick up" }).click();
+
+  await expect(page.getByText("Action submitted. ID: action-e2e-2")).toBeVisible();
 });
 
 test("a public object link opens without a Viewer session", async ({

@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       wallet: toViewerWallet(login.wallet),
     });
     response.headers.set("Cache-Control", "private, no-store");
-    if (!establishSession(response, login, tenant)) {
+    if (!establishSession(response, login, tenant, "email")) {
       return NextResponse.json(
         { message: "This account belongs to another organization." },
         { status: 403 },

@@ -42,6 +42,14 @@ export function validateProxyPath(
     return { allowed: true };
   }
   if (
+    method === "POST" &&
+    path.length === 2 &&
+    path[0] === "ebus" &&
+    ["prepare", "execute"].includes(path[1])
+  ) {
+    return { allowed: true };
+  }
+  if (
     ["GET", "PATCH", "DELETE"].includes(method) &&
     path.length === 2 &&
     path[0] === "wallets" &&

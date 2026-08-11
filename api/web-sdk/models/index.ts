@@ -132,6 +132,8 @@ export * from './PasskeyUser';
 export * from './Permission';
 export * from './Permit';
 export * from './Pickup';
+export * from './PrepareExecuteOut';
+export * from './PrepareExecuteRequest';
 export * from './Proof';
 export * from './ProviderType';
 export * from './PublicAccess';

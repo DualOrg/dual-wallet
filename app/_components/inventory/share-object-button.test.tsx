@@ -4,12 +4,11 @@ import { ShareObjectButton } from "@/app/_components/inventory/share-object-butt
 jest.mock("next-intl", () => ({
   useTranslations:
     () =>
-    (key: string, values?: { name?: string }): string => {
+    (key: string): string => {
       const messages: Record<string, string> = {
         share: "Share",
         shared: "Copied",
         shareFailedShort: "Copy failed",
-        shareDescription: `View ${values?.name} in Dual Viewer.`,
         sharedStatus: "The public object link was copied to your clipboard.",
         shareFailed: "The public object link could not be shared or copied.",
       };
@@ -25,13 +24,11 @@ describe("ShareObjectButton", () => {
       value: share,
     });
 
-    render(<ShareObjectButton objectId="object-123" name="Membership" />);
+    render(<ShareObjectButton objectId="object-123" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
 
     await waitFor(() =>
       expect(share).toHaveBeenCalledWith({
-        title: "Membership",
-        text: "View Membership in Dual Viewer.",
         url: "http://localhost/objects/object-123",
       }),
     );
@@ -48,7 +45,7 @@ describe("ShareObjectButton", () => {
       value: { writeText },
     });
 
-    render(<ShareObjectButton objectId="object-123" name="Membership" />);
+    render(<ShareObjectButton objectId="object-123" />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
 
     await waitFor(() =>

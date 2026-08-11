@@ -6,6 +6,7 @@ import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { EmptyState } from "@/app/_components/design-system/empty-state";
 import { ObjectDetail } from "@/app/_components/inventory/object-detail";
+import { ObjectActions } from "@/app/_components/inventory/object-actions";
 import { ShareObjectButton } from "@/app/_components/inventory/share-object-button";
 import { useInventoryObject } from "@/app/_hooks/data";
 
@@ -50,8 +51,9 @@ export default function ObjectPage() {
       </Link>
       <ObjectDetail
         item={item}
-        action={<ShareObjectButton objectId={item.id} name={item.name} />}
+        action={<ShareObjectButton objectId={item.id} />}
       />
+      <ObjectActions item={item} />
     </>
   );
 }
