@@ -1,0 +1,50 @@
+{
+  "name": "smarttoken-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint app api e2e i18n proxy.ts next.config.ts playwright.config.ts scripts --max-warnings=0",
+    "format": "prettier --write app api e2e i18n messages docs README.md proxy.ts next.config.ts playwright.config.ts scripts",
+    "test": "jest",
+    "check": "npm run typecheck && npm run lint && npm test -- --runInBand",
+    "sdk:sync": "node scripts/sync-web-sdk.mjs",
+    "test:e2e:install": "playwright install chromium",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.101.4",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.468.0",
+    "next": "16.2.11",
+    "next-intl": "^4.13.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2",
+    "@tailwindcss/postcss": "4.3.3",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.19.0",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.2.11",
+    "jest": "^30.4.2",
+    "jest-environment-jsdom": "^30.4.1",
+    "prettier": "^3.9.0",
+    "tailwindcss": "4.3.3",
+    "ts-jest": "^29.4.6",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,23 @@
+import { validateProxyPath } from "@/api/proxy-policy";
+
+describe("validateProxyPath", () => {
+  it("allows only Viewer read models and current-wallet settings", () => {
+    expect(validateProxyPath("GET", ["objects"]).allowed).toBe(true);
+    expect(validateProxyPath("GET", ["objects", "object-1"]).allowed).toBe(
+      true,
+    );
+    expect(validateProxyPath("GET", ["ebus", "action-logs"]).allowed).toBe(
+      true,
+    );
+    expect(validateProxyPath("PATCH", ["wallets", "me"]).allowed).toBe(true);
+  });
+
+  it("keeps credential and private endpoints out of the generic proxy", () => {
+    expect(validateProxyPath("POST", ["auth", "login"]).allowed).toBe(false);
+    expect(
+      validateProxyPath("POST", ["wallets", "connect", "eoa"]).allowed,
+    ).toBe(false);
+    expect(validateProxyPath("GET", ["pwallet"]).allowed).toBe(false);
+    expect(validateProxyPath("GET", ["..", "objects"]).allowed).toBe(false);
+  });
+});

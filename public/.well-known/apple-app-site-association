@@ -1,0 +1,33 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "WA2R22UJPX.network.dual.wallet.clip",
+          "WA2R22UJPX.network.dual.wallet"
+        ],
+        "components": [
+          {
+            "/": "/redeem*",
+            "comment": "Redemption deep links — opens full app if installed"
+          },
+          {
+            "/": "/voucher/*",
+            "comment": "Voucher detail deep links"
+          }
+        ]
+      }
+    ]
+  },
+  "appclips": {
+    "apps": [
+      "WA2R22UJPX.network.dual.wallet.clip"
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "WA2R22UJPX.network.dual.wallet",
+      "WA2R22UJPX.network.dual.wallet.clip"
+    ]
+  }
+}

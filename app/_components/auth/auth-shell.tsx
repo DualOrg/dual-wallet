@@ -1,0 +1,30 @@
+"use client";
+
+import { ShieldCheck } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { Brand } from "@/app/_components/design-system/brand";
+
+export function AuthShell({ children }: { children: React.ReactNode }) {
+  const t = useTranslations("auth");
+  return (
+    <main className="auth-layout">
+      <section className="auth-story">
+        <Brand inverse />
+        <div className="auth-copy">
+          <p className="auth-kicker">{t("eyebrow")}</p>
+          <h2 className="auth-headline">{t("headline")}</h2>
+          <p className="auth-supporting">{t("supporting")}</p>
+          <div className="auth-points">
+            <span className="auth-point">{t("secure")}</span>
+            <span className="auth-point">{t("verified")}</span>
+            <span className="auth-point">{t("portable")}</span>
+          </div>
+        </div>
+        <ShieldCheck size={30} color="#72d9e7" aria-hidden />
+      </section>
+      <section className="auth-panel">
+        <div className="auth-card">{children}</div>
+      </section>
+    </main>
+  );
+}

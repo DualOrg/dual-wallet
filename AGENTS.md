@@ -1,0 +1,417 @@
+# Repository Guidelines
+
+- Repo: https://github.com/vlabsio/viewer
+- The Viewer is the end-user SmartToken application. It authenticates a wallet
+  account and gives that user access to their inventory, object details,
+  activity, and account settings.
+- This repository is a greenfield implementation. The existing files are
+  disposable and may be deleted before establishing the new scaffold.
+- Build the application as a strict TypeScript, React 19, Next.js App Router
+  application. 
+- Canonical boundaries:
+  - HTTP contract and endpoint semantics: sibling `../api-v3` repository,
+    especially `api.yaml`, `routes/`, and `schemas/`.
+  - Generated TypeScript client: sibling `../web-sdk` repository. It is
+    generated from `api-v3` and is the transport/type boundary used by Viewer.
+  - Visual language, colors, typography, spacing, and component treatment:
+    sibling `../console-app` repository.
+  - SmartToken backend and on-chain behavior: sibling `../smarttoken`
+    repository. The API and chain remain authoritative for state and ownership.
+- Keep three meanings distinct throughout the code:
+  - a SmartToken `Wallet` is the authenticated API account;
+  - an EOA wallet connection is one authentication/signing method;
+  - the Viewer session is the app's server-managed authenticated session.
+
+## Target Product Scope and Routes
+
+- Email/password is the default and first-visible authentication method. EOA
+  and passkey are supported alternatives, not prerequisites for opening the
+  app.
+- Unauthorized routes:
+  - `/login`: email/password first, with explicit EOA and passkey alternatives.
+  - `/register`: email account registration by default, plus EOA connect and
+    passkey registration entry points.
+  - `/verify`: wallet/account verification using the delivered code.
+  - `/forgot-password`: request a password reset.
+  - `/reset-password`: consume the reset token and set a new password.
+- Authorized routes:
+  - `/inventory`: the current wallet's SmartToken objects, with loading, empty,
+    error, pagination, filtering, and responsive card/list states.
+  - `/inventory/[objectId]`: object metadata, assets, status, available faces or
+    actions, and user-relevant provenance without exposing raw transport data.
+  - `/activity`: the current wallet's `action-logs`, newest first, cursor
+    paginated, with useful status/action/date filters and detail disclosure.
+  - `/settings`: current wallet profile and account settings, authentication
+    information that the API actually exposes, logout, and carefully confirmed
+    destructive actions when implemented.
+- `/` redirects to `/inventory` for an authenticated session and `/login`
+  otherwise. Authentication pages redirect authenticated users to inventory.
+- The Viewer is an end-user surface. Do not copy console administration,
+  organization management, operational dashboards, or role-management screens
+  from `console-app`.
+- Do not invent API capabilities. If a requested setting, auth-method mutation,
+  object action, or recovery step is absent from `api-v3`, document the gap and
+  fix the contract/backend rather than simulating success in the UI.
+
+## Target Project Structure
+
+- Next.js App Router source: `app/`
+  - Unauthorized account routes: `app/(unauthorized)/`
+  - Authenticated Viewer routes: `app/(authorized)/`
+  - Inventory feature: `app/(authorized)/inventory/`
+  - Activity feature: `app/(authorized)/activity/`
+  - Settings feature: `app/(authorized)/settings/`
+  - Stable generated-DTO adapters: `app/_adapters/`
+  - Domain models, errors, and view states: `app/_domain/`
+  - Deployment/API configuration: `app/_config/`
+  - Shared components, hooks, providers, types, and utilities:
+    `app/_components/`, `app/_hooks/`, `app/_providers/`, `app/_types/`, and
+    `app/_utils/`
+  - Viewer-owned design tokens and primitives:
+    `app/_components/design-system/`
+  - Dedicated session/auth BFF routes: `app/api/session/`
+  - Authenticated, allowlisted backend proxy: `app/api/backend/[...path]/`
+- Server/BFF support: `api/`
+  - Opaque cookie session, access-token cache, refresh rotation, and logout:
+    `api/server-session.ts`
+  - Explicit backend proxy allow/deny policy: `api/proxy-policy.ts`
+  - Generated SDK client construction and backend error normalization:
+    `api/web-sdk-client.ts` and `api/backend-error.ts`
+  - App-local synchronized generated client: `api/web-sdk/`
+- Request routing, locale selection, and route guards: `proxy.ts`.
+- User-visible copy and localization: `messages/` and `i18n/`.
+- Unit/component tests are colocated as `*.test.ts` or `*.test.tsx`; browser
+  tests live in `e2e/`.
+- SDK synchronization, field-coverage, translation, and validation automation:
+  `scripts/`.
+- Architecture, security, field ownership, and deployment notes: `docs/`.
+- Static assets, fonts, and association files: `public/`.
+
+## Greenfield Build Rules
+
+- Delete the current `src/`, `webpack.config.js`, `dist/`, direct API wrappers,
+  browser-token session implementation, and static deployment path when
+  establishing the scaffold.
+- Start from the target structure and current contracts. Do not port browser
+  storage formats, old endpoint names, or implementation helpers merely
+  because they exist in the current folder.
+- The app must not expose API tokens to browser JavaScript. Do not introduce
+  `localStorage` keys such as `access_token`, `refresh_token`, or
+  `viewer_session`.
+- The current `api-v3` email login operation is `POST /auth/login`
+  (`loginWallet` in the generated SDK); do not implement the obsolete
+  `/wallets/login` integration.
+- Copy an existing asset only when it is still an explicit product requirement.
+  Review `public/.well-known/` association files independently before keeping
+  them.
+- A Next.js BFF requires a server deployment. Do not recreate the old static
+  GCS bundle.
+
+## Build, Test, and Development Commands
+
+- Runtime: Node.js `20.9.0` or newer. Align the production image with the
+  current reference app runtime when scaffolding the application.
+- Package manager: npm. Use `npm` and preserve the reviewed
+  `package-lock.json`; do not substitute Bun, Yarn, or pnpm.
+- Install exact dependencies: `npm ci`.
+- The greenfield baseline must expose these scripts:
+  - Start development: `npm run dev`
+  - Build production output: `npm run build`
+  - Serve a production build: `npm run start`
+  - Type-check: `npm run typecheck`
+  - Lint with zero warnings: `npm run lint`
+  - Format configured source: `npm run format`
+  - Run Jest: `npm test`
+  - Run the complete application gate: `npm run check`
+  - Synchronize the generated SDK: `npm run sdk:sync`
+  - Install Playwright Chromium: `npm run test:e2e:install`
+  - Run browser tests: `npm run test:e2e`
+- Add missing baseline scripts as part of the Next.js scaffold before relying
+  on them in CI. Do not weaken a check merely to make a greenfield build pass.
+- Build, push, and deploy targets are state-changing. Never run `deploy.sh`,
+  publish an image, update a bucket, or deploy Cloud Run without explicit user
+  confirmation.
+
+## Coding Style and Conventions
+
+- Language: strict TypeScript with React 19 and the Next.js App Router.
+- Use the `@/` path alias for repository-root imports when it improves clarity.
+- Prefer precise types and narrow unions. Avoid `any`, unchecked casts, and
+  duplicate local versions of generated SDK types.
+- Keep generated transport DTOs at the boundary. Convert them into stable
+  Viewer domain/view models in `app/_adapters/`; do not let OpenAPI naming and
+  optionality spread through presentation components.
+- Respect Server Component and Client Component boundaries. Add `"use client"`
+  only for browser state, event handlers, wallet connectors, WebAuthn, or other
+  browser APIs.
+- Never import server session code, upstream origins, refresh credentials, or
+  SDK instances containing bearer tokens into client bundles.
+- Use React Query for client-owned remote state. Centralize query keys and
+  invalidate the smallest correct set after profile or future object mutations.
+- Keep protocol values explicit about units and serialization. Use `bigint` or
+  Viem-safe values for chain amounts and never use JavaScript floating point for
+  token arithmetic.
+- Prefer existing design-system primitives for buttons, fields, cards, modals,
+  status badges, skeletons, empty states, pagination, and errors.
+- User-visible copy belongs in translation catalogs and is accessed through
+  `next-intl`; do not scatter hard-coded UI strings through components.
+- Use brief comments for non-obvious security, WebAuthn, signing, unit,
+  pagination, or protocol invariants. Avoid comments that restate the code.
+- Keep focused changes focused. Do not combine feature work with unrelated
+  dependency upgrades or broad cosmetic refactors.
+
+## Component Design and React Rules
+
+- Give every component one clear responsibility. Route/page components compose
+  features; hooks own remote workflows; adapters own DTO conversion; focused
+  components own reusable rendering and interaction.
+- Separate container behavior from presentation when it clarifies state
+  ownership, testing, or reuse. Presentational components receive explicit,
+  typed props and do not rediscover auth or wallet state from unrelated globals.
+- Keep state close to its owner. Introduce context only for genuinely shared
+  state such as session, theme, or connector state.
+- Components and hooks must be pure and idempotent during render. Never mutate
+  props, cached query data, context, or module-level objects.
+- Follow the Rules of Hooks without exception: call hooks only at the top level
+  of React components or focused `use*` hooks, never conditionally or from event
+  callbacks.
+- Effects synchronize with external systems. Do not use effects for values that
+  can be derived during render or for logic that belongs in a user event.
+  Complete dependencies and clean up subscriptions, timers, and in-flight work.
+- Use immutable and functional state updates where appropriate. Use stable
+  semantic keys for lists; cursor pages and action logs must not use array
+  indexes as identity.
+- Model loading, empty, error, expired-session, unsupported-browser, cancelled
+  wallet prompt, and success states explicitly at feature boundaries.
+- Add focused tests when changing component responsibilities, auth state,
+  effects, context, conditional rendering, or accessibility behavior.
+
+## Console-App Design Alignment
+
+- `../console-app` is the visual authority, particularly:
+  - `app/_components/design-system/tokens/`
+  - `app/globals.css`
+  - its shared form, auth-shell, navigation, card, status, and feedback
+    primitives.
+- Copy or adapt reviewed design tokens into Viewer-owned files; do not import
+  sibling repository source at runtime. Viewer builds must be reproducible from
+  this repository and lockfile alone.
+- Preserve the semantic token layering used by Console App. Product components
+  consume semantic surface/content/stroke/action/status tokens, not raw palette
+  values or one-off hex colors.
+- The current brand primary is teal (`#159DB8`), with Satoshi typography and
+  Console App's light/dark surface system. These values belong in tokens, never
+  repeated across feature components.
+- Auth pages should follow Console App's auth shell and field treatment while
+  simplifying operator-oriented density for an end-user audience.
+- Inventory is mobile-first and visual. Maintain useful desktop density without
+  making phone users navigate an admin table.
+- Support light and dark themes only through semantic variables. Verify focus,
+  hover, disabled, error, and status contrast in both themes.
+- Maintain semantic HTML, visible labels, keyboard access, focus restoration,
+  sufficient contrast, reduced-motion behavior, and useful loading/error/empty
+  states. Do not rely on color alone for action-log status.
+
+## Generated SDK and API Contract
+
+- `../api-v3/api.yaml` is the canonical HTTP contract. `../web-sdk` is its
+  generated TypeScript representation. Backend implementation details do not
+  override the reviewed contract silently.
+- Never manually edit files under `api/web-sdk/` or in the sibling generated
+  `../web-sdk` repository as part of Viewer feature work.
+- `npm run sdk:sync` must copy the reviewed sibling SDK into `api/web-sdk/`,
+  normalize only deterministic integration concerns, and record the source
+  commit. Do not hand-copy individual generated models or API methods.
+- After a canonical API change:
+  1. Validate and bundle the OpenAPI document in `../api-v3`.
+  2. Regenerate and review `../web-sdk`.
+  3. Run `npm run sdk:sync` in Viewer.
+  4. Update Viewer adapters, field dispositions, and use sites.
+  5. Run `npm run check`, `npm run build`, and relevant browser tests.
+- Important current generated operations:
+  - wallet account: `registerWallet`, `loginWallet`, `getWallet`,
+    `updateWallet`, and `deleteWallet`;
+  - verification/recovery: `requestVerificationCode`, `verifyWallet`,
+    `resetPassword`, `setNewPassword`, and `requestOTPCode` where the product
+    flow explicitly needs OTP;
+  - EOA: `getAuthChallenge` followed by `connectEoa`;
+  - passkey: `passkeyRegisterOptions`, `passkeyRegisterVerify`,
+    `passkeyLoginOptions`, and `passkeyLoginVerify`;
+  - inventory: `listObjects` and `getObjectById`;
+  - activity: `listActionLogs`.
+- Keep generated method inputs and JSON field names authoritative. Do not
+  compensate for a contract mismatch with guessed aliases or duplicate
+  hand-written `fetch` wrappers.
+- Generated dates, decimal strings, nullable fields, and unions are normalized
+  once in adapters. Preserve the original values when display conversion could
+  lose precision or meaning.
+- Cursor pagination uses the API's `next` token. Never treat it as an offset,
+  synthesize page numbers that imply random access, or drop it during filters.
+
+## Authentication and Account Workflows
+
+- Email/password is the default tab, route focus, and keyboard order on login
+  and registration. Remembering another method may be a user preference, but it
+  must not make email unavailable or silently trigger a wallet prompt.
+- Email registration uses `registerWallet`; login uses `loginWallet`. Keep
+  registration, verification, and authenticated-session success as distinct
+  states even if the API returns a session during registration.
+- Verification uses `requestVerificationCode` and `verifyWallet`. Preserve the
+  email/phone identifier and organization context deliberately; never infer a
+  successful verification from navigation alone.
+- Forgot-password uses `resetPassword` to request recovery and
+  `setNewPassword` to consume the delivered token. Do not reveal whether an
+  account exists, log recovery tokens, or place tokens in analytics.
+- EOA flow:
+  1. Request a fresh, single-use challenge immediately before signing.
+  2. Ask the connected wallet to sign the exact challenge with
+     `personal_sign` through the reviewed connector.
+  3. Send the challenge/signature to `connectEoa` through the dedicated session
+     BFF route.
+  4. Never request, receive, persist, or transmit the EOA private key.
+- Passkey registration and login must use the option objects issued by
+  `api-v3`, convert base64url/binary fields at one reviewed browser boundary,
+  call `navigator.credentials.create` or `navigator.credentials.get`, and send
+  the resulting credential to the matching verify operation.
+- Treat WebAuthn cancellation, unsupported browsers, invalid RP/origin,
+  expired challenges, and duplicate credentials as distinct user-recoverable
+  outcomes where the API provides that distinction.
+- Do not reuse a challenge, cache one for later, replace server-issued WebAuthn
+  options, or implement custom signature verification in the browser.
+- Account settings display `getWallet` data and submit only supported
+  `WalletUpdate` fields. Destructive deletion requires a clear consequence
+  explanation, typed/explicit confirmation, and session cleanup on success.
+
+## Session and BFF Security Invariants
+
+- Browser JavaScript must never read access or refresh tokens. Do not use
+  `localStorage`, `sessionStorage`, IndexedDB, readable cookies, URLs, or React
+  state for API credentials.
+- The browser stores one host-only, HttpOnly, SameSite=Strict opaque session
+  cookie. Production uses the `__Host-` prefix and `Secure`.
+- Access and refresh JWTs remain in the Next.js server process, keyed by a hash
+  of the opaque session credential. Never serialize them into props, RSC
+  payloads, logs, errors, or client query caches.
+- Preserve single-flight refresh and refresh-token rotation. A rotated refresh
+  token replaces the old token atomically; concurrent requests must not race
+  the session into logout or reuse.
+- Login, registration, verification, recovery, EOA, passkey, refresh, and
+  logout use dedicated `app/api/session/*` routes. The generic backend proxy
+  must deny `/auth/*`, `/wallets/connect/*`, empty paths, traversal segments,
+  and private `/p*` endpoints.
+- Proxied mutations validate the exact configured `Origin`. Keep explicit
+  method, path, body-size, request-header, and response-header allowlists.
+- Authenticated responses are `private, no-store`. A terminal upstream 401
+  clears the Viewer session; transient API errors do not silently destroy it.
+- UI route guards are usability controls, not authorization. The API must
+  authorize every wallet, object, action-log, and settings request.
+- Preserve strict CSP and security headers. WalletConnect and asset origins
+  must be narrow, documented additions rather than broad wildcards.
+
+## Inventory, Objects, Activity, and Settings
+
+- Inventory loads objects accessible to the authenticated wallet with
+  `listObjects`. Use the current wallet/account data and canonical API filters;
+  do not use organization-wide console queries as a substitute.
+- Normalize SmartObject metadata, assets, faces, actions, ownership, hashes,
+  timestamps, and chain data into a stable `InventoryItem`/`ObjectDetail`
+  domain model. Preserve unknown/custom fields without presenting them as
+  trusted UI.
+- Object metadata, asset URLs, SVG/HTML-like content, and action labels are
+  untrusted remote data. Escape text, validate URL schemes, restrict image
+  origins, and sandbox any future rich renderer. Never use unchecked
+  `dangerouslySetInnerHTML`.
+- Activity calls `listActionLogs` with the current wallet ID and/or signer as
+  defined by the canonical ownership model. Keep the wallet filter across
+  cursor pages and filter changes; never expose an organization-wide operator
+  feed in Viewer.
+- Activity maps status, action name/alias, affected objects, transaction hash,
+  timestamps, and fee strings into a user-readable model. Preserve exact fee
+  strings and label units; do not imply finality beyond the API status.
+- Inventory/object query keys and activity query keys must include every
+  filter, wallet identity, and cursor that changes their result.
+- Settings invalidates the current-wallet query after successful updates and
+  rehydrates the session's safe wallet summary. It never edits cached generated
+  DTOs in place.
+- Use request IDs from normalized backend errors in support/debug details, but
+  do not show tokens, signatures, raw auth bodies, or sensitive upstream data.
+
+## Environment Variables
+
+- Create an untracked `.env.local`; never commit environment files or real
+  credentials.
+- Server-only:
+  - `API_URL`: upstream `api-v3` origin.
+  - `VIEWER_BASE_DOMAIN`: parent Viewer domain. The left-most tenant subdomain
+    is resolved by the server-owned map in `api/tenant.ts` to the organization
+    ObjectID injected by the BFF into account operations.
+- Public build-time values only when browser code genuinely needs them:
+  - `NEXT_PUBLIC_APP_URL`
+  - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`
+  - reviewed public chain ID, RPC, and explorer values if EOA UX needs them.
+- Tenant hosts use `<tenant-label>.<VIEWER_BASE_DOMAIN>`. Missing or unmapped
+  labels use the documented `*` organization mapping. Origin validation
+  compares the exact incoming tenant host; do not accept sibling subdomains for
+  mutations. Do not introduce a browser-visible upstream API URL when the BFF
+  can keep requests same-origin.
+- Never put secrets, API keys, session credentials, refresh tokens, private
+  RPC credentials, or signer material in `NEXT_PUBLIC_*` values.
+- Do not copy undocumented API URLs, organization IDs, WalletConnect project
+  IDs, chain endpoints, or contract addresses from the old files. The explicit
+  organization map in `api/tenant.ts` is the versioned deployment manifest;
+  document every addition or change.
+
+## Testing
+
+- Unit/component tests use Jest and Testing Library; E2E tests use Playwright
+  Chromium. Prefer role/label queries and test keyboard/focus behavior.
+- During development, run the smallest relevant test first, then `npm run
+  check`. Run `npm run build` for routes, server/client boundaries, environment,
+  SDK synchronization, security headers, or deployment changes.
+- Run E2E tests for login, registration, verification, password recovery,
+  logout, session refresh, route protection, EOA/passkey browser ceremonies,
+  inventory pagination, object details, activity filtering, settings, and
+  accessibility-critical flows.
+- Mock APIs, wallet connectors, WebAuthn credentials, timers, and query clients
+  deterministically. Tests must not call live APIs, send real verification
+  messages, open real wallets, access real passkeys, or submit chain writes.
+- Add regression coverage for token non-exposure, cookie flags, origin checks,
+  proxy deny rules, refresh rotation, challenge expiry/replay, cancelled wallet
+  prompts, passkey encoding, current-wallet filtering, cursor preservation,
+  unsafe asset URLs, and terminal 401 cleanup.
+- Test loading, empty, error, partial-data, stale-session, and pagination states
+  in addition to the happy path.
+
+## Documentation and Delivery
+
+- `README.md` is the repository overview; `docs/README.md` is the documentation
+  index. Establish both as part of the greenfield scaffold.
+- Document the greenfield Next.js architecture and its current deployment.
+- Update relevant documentation in the same change when modifying:
+  - auth method flows, cookies, refresh, or proxy policy;
+  - route ownership or the Viewer navigation model;
+  - generated SDK synchronization or field dispositions;
+  - inventory ownership/filter semantics or activity visibility;
+  - design-token provenance and theme behavior; or
+  - environment and deployment requirements.
+- Keep browser UI state, server session state, wallet connector state, API
+  indexed state, and on-chain state explicitly distinct.
+- Do not document planned or aspirational behavior as if it is already shipped.
+- Never commit tokens, passwords, recovery links, verification codes, wallet
+  signatures, passkey assertions, personal data, production credentials,
+  `.env*`, build output, Playwright reports, or local test artifacts.
+- Do not push commits, publish packages/images, deploy Viewer, change cloud
+  resources, or alter production configuration without explicit confirmation.
+
+## Greenfield Implementation Order
+
+1. Establish the Next.js/App Router scaffold, quality scripts, same-origin BFF,
+   secure session model, SDK synchronization, and Console App-derived tokens.
+2. Complete email registration/login, verification, password recovery, refresh,
+   logout, and route protection end to end.
+3. Add EOA and passkey alternatives with deterministic unit and browser tests.
+4. Build the authenticated shell, inventory list, and object detail adapters.
+5. Add wallet-scoped activity and settings with correct invalidation and
+   destructive-action handling.
+6. Complete accessibility, responsive states, field coverage, documentation,
+   production build verification, and deployment runbook before release.
