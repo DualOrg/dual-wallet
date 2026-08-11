@@ -1,0 +1,43 @@
+{
+  "api": "https://api.dual.network",
+  "viewer": "https://wallet.dual.network",
+  "organization": {
+    "id": "000000000000000000000001",
+    "name": "Digital Vouchers",
+    "fqdn": "digi-voucher"
+  },
+  "recipient": "0xd1AEb264fd240879da9e0c344c0b0DF5BF3AbbF5",
+  "created_at": "2026-08-11",
+  "resources": [
+    {
+      "key": "product_passport",
+      "face_id": "6a7b2300a7cd3da77bd5dc43",
+      "template_id": "6a7b2355a7cd3da77bd5dc46",
+      "object_id": "6a7b237fa7cd3da77bd5dc49",
+      "mint_action_id": "6a7b237fa7cd3da77bd5dc4a",
+      "transfer_action_id": "6a7b23cfa7cd3da77bd5dc58",
+      "viewer_url": "https://wallet.dual.network/objects/6a7b237fa7cd3da77bd5dc49",
+      "short_url": "https://wallet.dual.network/o/6a7b237fa7cd3da77bd5dc49"
+    },
+    {
+      "key": "battery_passport",
+      "face_id": "6a7b2300a7cd3da77bd5dc44",
+      "template_id": "6a7b2355a7cd3da77bd5dc47",
+      "object_id": "6a7b23a8a7cd3da77bd5dc4e",
+      "mint_action_id": "6a7b23a8a7cd3da77bd5dc4f",
+      "transfer_action_id": "6a7b23cfa7cd3da77bd5dc5d",
+      "viewer_url": "https://wallet.dual.network/objects/6a7b23a8a7cd3da77bd5dc4e",
+      "short_url": "https://wallet.dual.network/o/6a7b23a8a7cd3da77bd5dc4e"
+    },
+    {
+      "key": "magic_card",
+      "face_id": "6a7b2300a7cd3da77bd5dc45",
+      "template_id": "6a7b2356a7cd3da77bd5dc48",
+      "object_id": "6a7b23a8a7cd3da77bd5dc53",
+      "mint_action_id": "6a7b23a8a7cd3da77bd5dc54",
+      "transfer_action_id": "6a7b23cfa7cd3da77bd5dc62",
+      "viewer_url": "https://wallet.dual.network/objects/6a7b23a8a7cd3da77bd5dc53",
+      "short_url": "https://wallet.dual.network/o/6a7b23a8a7cd3da77bd5dc53"
+    }
+  ]
+}

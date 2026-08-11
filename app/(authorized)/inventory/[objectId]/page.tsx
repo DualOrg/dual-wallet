@@ -22,10 +22,7 @@ export default function ObjectPage() {
           <ArrowLeft size={17} />
           {t("back")}
         </Link>
-        <div className="detail-hero">
-          <div className="card skeleton" />
-          <div className="card skeleton" />
-        </div>
+        <div className="card skeleton wallet-object-loading" />
       </>
     );
   if (query.isError)
@@ -51,9 +48,11 @@ export default function ObjectPage() {
       </Link>
       <ObjectDetail
         item={item}
-        action={<ShareObjectButton objectId={item.id} />}
+        action={<ShareObjectButton objectId={item.id} menuItem />}
+        actions={
+          item.actions.length ? <ObjectActions item={item} /> : undefined
+        }
       />
-      <ObjectActions item={item} />
     </>
   );
 }

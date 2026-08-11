@@ -1,0 +1,40 @@
+{
+  "name": "Viewer Demo - NovaCell B24 Battery Passport",
+  "object": {
+    "metadata": {
+      "name": "NovaCell B24",
+      "description": "A circular battery passport with provenance and lifecycle indicators.",
+      "category": "battery-passport",
+      "edition": 1
+    },
+    "custom": {
+      "manufacturer": "NovaCell Energy",
+      "chemistry": "NMC 811",
+      "battery_id": "NC-B24-DE-000184",
+      "capacity_kwh": 84,
+      "cycle_count": 12,
+      "state_of_health": 99,
+      "production_site": "Dresden, Germany",
+      "recycling_status": "CIRCULAR READY"
+    }
+  },
+  "factory": {"max_supply": 500, "minted_count": 0},
+  "actions": [
+    {"name": "mint", "access": {"type": "private"}},
+    {"name": "transfer", "access": {"type": "public"}},
+    {"name": "update", "access": {"type": "public"}}
+  ],
+  "public_access": {
+    "custom": [
+      "manufacturer",
+      "chemistry",
+      "battery_id",
+      "capacity_kwh",
+      "cycle_count",
+      "state_of_health",
+      "production_site",
+      "recycling_status"
+    ]
+  },
+  "face_id": "6a7b2300a7cd3da77bd5dc44"
+}

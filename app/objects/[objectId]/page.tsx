@@ -4,7 +4,9 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { cache } from "react";
 import { Brand } from "@/app/_components/design-system/brand";
+import { ThemeToggle } from "@/app/_components/design-system/theme-toggle";
 import { ObjectDetail } from "@/app/_components/inventory/object-detail";
+import { ShareObjectButton } from "@/app/_components/inventory/share-object-button";
 import { toPublicObject } from "@/app/_domain/inventory";
 import { getObjectsApi } from "@/api/web-sdk-client";
 import { ResponseError } from "@/api/web-sdk/runtime";
@@ -15,7 +17,7 @@ const getPublicObject = cache(async (objectId: string) => {
       id: objectId,
       limit: 1,
       include: ["display"],
-      displayVariant: "detail",
+      displayVariant: "card",
     },
     { cache: "no-store" },
   );
@@ -83,13 +85,18 @@ export default async function PublicObjectPage({
         <Link href="/" aria-label="Dual Viewer home">
           <Brand />
         </Link>
-        <Link href="/" className="button button-secondary">
-          {t("openViewer")}
-        </Link>
+        <div className="public-object-header-actions">
+          <ThemeToggle />
+          <Link href="/" className="button button-secondary">
+            {t("openViewer")}
+          </Link>
+        </div>
       </header>
       <div className="public-object-content">
-        <p className="public-object-label">{t("publicLabel")}</p>
-        <ObjectDetail item={item} />
+        <ObjectDetail
+          item={item}
+          action={<ShareObjectButton objectId={item.id} menuItem />}
+        />
       </div>
     </main>
   );

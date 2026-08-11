@@ -95,6 +95,7 @@ test("passkey login signs an inventory action challenge", async ({ page }) => {
       request.method() === "POST" &&
       new URL(request.url()).pathname === "/api/backend/ebus/execute",
   );
+  await page.getByRole("button", { name: "Show object actions" }).click();
   await page.getByRole("button", { name: "Run Pick up" }).click();
   const body = (await execution).postDataJSON();
 

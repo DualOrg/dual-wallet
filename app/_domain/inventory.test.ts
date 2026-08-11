@@ -66,6 +66,8 @@ describe("inventory adapters", () => {
     } as unknown as ActionLog;
 
     expect(toActivityEntry(value).status).toBe("completed");
+    expect(toActivityEntry(value).detail).not.toHaveProperty("signature");
+    expect(toActivityEntry(value).detail).not.toHaveProperty("auth");
     expect(shortId(value.hash, 4)).toBe("0x12…cdef");
   });
 
@@ -92,7 +94,7 @@ describe("inventory adapters", () => {
 
     expect(toInventoryObject(value, display).display).toMatchObject({
       kind: "document",
-      url: "/api/public/objects/object-123/display/card?revision=one",
+      url: "/api/public/objects/object-123/display/card?revision=one&content=content",
     });
     expect(
       toInventoryObject(value, {
@@ -100,5 +102,36 @@ describe("inventory adapters", () => {
         href: "/public/objects/another-object/display/card",
       }).display,
     ).toBeUndefined();
+  });
+
+  it("changes the display URL when object content changes", () => {
+    const value = {
+      id: "object-123",
+      metadata: { name: "Membership" },
+      owner: "0x123",
+      templateId: "template-1",
+      version: 2,
+      stateHash: "state",
+      contentHash: "content-one",
+      whenCreated: new Date("2026-01-01T00:00:00Z"),
+      whenModified: new Date("2026-02-01T00:00:00Z"),
+    } as SmartObject;
+    const display = {
+      faceId: "face-1",
+      variant: "card",
+      mediaType: "image/svg+xml",
+      href: "/public/objects/object-123/display/card",
+      revision: "face-one",
+      interactive: false,
+    } as ObjectDisplay;
+
+    const before = toInventoryObject(value, display).display?.url;
+    const after = toInventoryObject(
+      { ...value, contentHash: "content-two" },
+      display,
+    ).display?.url;
+
+    expect(after).not.toBe(before);
+    expect(after).toContain("content=content-two");
   });
 });

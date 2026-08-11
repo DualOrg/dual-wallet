@@ -1,0 +1,44 @@
+{
+  "name": "Viewer Demo - Aetherwing Sentinel Card",
+  "object": {
+    "metadata": {
+      "name": "Aetherwing Sentinel",
+      "description": "A mythic sky guardian from the Arcana Archive collection.",
+      "category": "collectible-card",
+      "edition": 1
+    },
+    "custom": {
+      "card_type": "Celestial Guardian",
+      "mana_cost": 7,
+      "rarity": "MYTHIC",
+      "ability_name": "Radiant Aegis",
+      "ability": "When Aetherwing Sentinel enters play, shield every allied creature until your next turn.",
+      "attack": 8,
+      "defense": 9,
+      "set_name": "Echoes of the Aether",
+      "card_number": "001/250",
+      "artist": "Mira Solenne"
+    }
+  },
+  "factory": {"max_supply": 250, "minted_count": 0},
+  "actions": [
+    {"name": "mint", "access": {"type": "private"}},
+    {"name": "transfer", "access": {"type": "public"}},
+    {"name": "update", "access": {"type": "public"}}
+  ],
+  "public_access": {
+    "custom": [
+      "card_type",
+      "mana_cost",
+      "rarity",
+      "ability_name",
+      "ability",
+      "attack",
+      "defense",
+      "set_name",
+      "card_number",
+      "artist"
+    ]
+  },
+  "face_id": "6a7b2300a7cd3da77bd5dc45"
+}

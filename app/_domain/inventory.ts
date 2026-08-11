@@ -45,6 +45,36 @@ export interface ActivityEntry {
   affectedCount: number;
   totalFee: string;
   createdAt: Date;
+  detail: ActivityDetail;
+}
+
+export interface ActivityDetail {
+  id: string;
+  batchId?: string;
+  name: string;
+  alias?: string;
+  params: Omit<ActionLog["params"], "permitSecret">;
+  messageHash: string;
+  signer: string;
+  delegatedSigner?: string;
+  hash: string;
+  affectedObjects: ActionLog["affectedObjects"];
+  baseFee: string;
+  baseFeeWei: string;
+  dynamicFee: string;
+  dynamicFeeWei: string;
+  additionalFee?: string;
+  additionalFeeWei?: string;
+  tokenPrice: string;
+  totalFee: string;
+  totalFeeWei: string;
+  nonce: number;
+  permit?: ActionLog["permit"];
+  access?: ActionLog["access"];
+  authenticationType?: NonNullable<ActionLog["auth"]>["type"];
+  version: number;
+  whenModified: Date;
+  whenCreated: Date;
 }
 
 function safeAssetUrl(value?: string) {
@@ -95,7 +125,7 @@ function toObjectDetail(
     modifiedAt: value.whenModified,
     custom: value.custom,
     system: value.system,
-    display: toObjectPresentation(value.id, display),
+    display: toObjectPresentation(value.id, value.contentHash, display),
   };
 }
 
@@ -108,6 +138,7 @@ export function toPublicObject(
 
 function toObjectPresentation(
   objectId: string,
+  contentRevision: string,
   value?: ObjectDisplay,
 ): ObjectPresentation | undefined {
   if (!value) return undefined;
@@ -121,7 +152,7 @@ function toObjectPresentation(
   ) {
     return {
       kind: "document",
-      url: `/api${value.href}?revision=${encodeURIComponent(value.revision)}`,
+      url: `/api${value.href}?revision=${encodeURIComponent(value.revision)}&content=${encodeURIComponent(contentRevision)}`,
       mediaType: value.mediaType,
       aspectRatio,
       interactive: value.interactive,
@@ -149,6 +180,8 @@ export function toActivityEntry(value: ActionLog): ActivityEntry {
   const status = ["pending", "failed"].includes(value.status)
     ? value.status
     : "completed";
+  const params = { ...value.params };
+  delete params.permitSecret;
   return {
     id: value.id,
     name: value.alias || value.name,
@@ -158,6 +191,34 @@ export function toActivityEntry(value: ActionLog): ActivityEntry {
     affectedCount: value.affectedObjects.length,
     totalFee: value.totalFee,
     createdAt: value.whenCreated,
+    detail: {
+      id: value.id,
+      batchId: value.batchId,
+      name: value.name,
+      alias: value.alias,
+      params,
+      messageHash: value.messageHash,
+      signer: value.signer,
+      delegatedSigner: value.delegatedSigner,
+      hash: value.hash,
+      affectedObjects: value.affectedObjects,
+      baseFee: value.baseFee,
+      baseFeeWei: value.baseFeeWei,
+      dynamicFee: value.dynamicFee,
+      dynamicFeeWei: value.dynamicFeeWei,
+      additionalFee: value.additionalFee,
+      additionalFeeWei: value.additionalFeeWei,
+      tokenPrice: value.tokenPrice,
+      totalFee: value.totalFee,
+      totalFeeWei: value.totalFeeWei,
+      nonce: value.nonce,
+      permit: value.permit,
+      access: value.access,
+      authenticationType: value.auth?.type,
+      version: value.version,
+      whenModified: value.whenModified,
+      whenCreated: value.whenCreated,
+    },
   };
 }
 

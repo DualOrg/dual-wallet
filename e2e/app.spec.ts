@@ -18,15 +18,26 @@ test("inventory opens a complete object detail", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Sample Membership", level: 1 }),
   ).toBeVisible();
-  await expect(page.getByText("founder", { exact: false })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Share" })).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Available actions", level: 2 }),
-  ).toBeVisible();
   await expect(
     page
       .frameLocator('iframe[title="Sample Membership"]')
       .getByText("Rendered face: Sample Membership"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Object details" }),
+  ).toHaveCount(0);
+
+  await page.getByRole("button", { name: "More pass options" }).click();
+  await expect(page.getByRole("menuitem", { name: "Share" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Show details" }).click();
+  const details = page.getByRole("dialog");
+  await expect(details.getByText("founder", { exact: false })).toBeVisible();
+  await expect(details.getByText("0xstatehash", { exact: true })).toBeVisible();
+  await details.getByRole("button", { name: "Close pass details" }).click();
+
+  await page.getByRole("button", { name: "Show object actions" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Available actions", level: 2 }),
   ).toBeVisible();
 });
 
@@ -35,28 +46,46 @@ test("inventory executes an action returned by the object template", async ({
 }) => {
   await page.goto(`/inventory/${smartObject.id}`);
 
+  await page.getByRole("button", { name: "Show object actions" }).click();
   await page.getByRole("button", { name: "Run Pick up" }).click();
 
-  await expect(page.getByText("Action submitted. ID: action-e2e-2")).toBeVisible();
+  await expect(
+    page.getByText("Action submitted. ID: action-e2e-2"),
+  ).toBeVisible();
 });
 
 test("a public object link opens without a Viewer session", async ({
   page,
 }) => {
   await page.context().clearCookies();
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.addInitScript(() => localStorage.removeItem("viewer-theme"));
   await page.goto(`/objects/${smartObject.id}`);
 
+  await expect(page.locator("html")).not.toHaveClass(/dark/);
   await expect(
     page.getByRole("heading", { name: "Sample Membership", level: 1 }),
   ).toBeVisible();
-  await expect(page.getByText("Public smart object")).toBeVisible();
+  await expect(page.getByText("Public smart object")).toHaveCount(0);
   await expect(
     page
       .frameLocator('iframe[title="Sample Membership"]')
       .getByText("Rendered face: Sample Membership"),
   ).toBeVisible();
-  await expect(page.getByText("founder", { exact: false })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Show object actions" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "More pass options" }).click();
+  await expect(page.getByRole("menuitem", { name: "Share" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Show details" }).click();
+  const details = page.getByRole("dialog");
+  await expect(details.getByText("founder", { exact: false })).toBeVisible();
+  await expect(details.getByText("0xstatehash", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/objects/${smartObject.id}$`));
+
+  await details.getByRole("button", { name: "Close pass details" }).click();
+  await page.getByRole("button", { name: "Change color theme" }).click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
 });
 
 test("a short public link redirects to the canonical preview", async ({
@@ -96,6 +125,23 @@ test("activity shows the wallet action timeline", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("completed", { exact: true })).toBeVisible();
   await expect(page.getByText("0.003 DUAL", { exact: true })).toBeVisible();
+
+  await page
+    .getByRole("button", { name: "Open details for Mint membership" })
+    .click();
+  const details = page.getByRole("dialog");
+  await expect(details).toBeVisible();
+  await expect(
+    details.getByText("0xmessagehash", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    details.getByText("state-change-e2e-1", { exact: true }),
+  ).toBeVisible();
+  await expect(details.getByText("0xsignature", { exact: true })).toHaveCount(
+    0,
+  );
+  await details.getByRole("button", { name: "Close activity details" }).click();
+  await expect(details).toHaveCount(0);
 });
 
 test("settings update the profile", async ({ page }) => {

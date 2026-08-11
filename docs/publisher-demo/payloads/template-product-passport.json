@@ -1,0 +1,42 @@
+{
+  "name": "Viewer Demo - Aurelia S7 Product Passport",
+  "object": {
+    "metadata": {
+      "name": "Aurelia S7 Chronograph",
+      "description": "A publicly verifiable digital product passport for a precision chronograph.",
+      "category": "digital-product-passport",
+      "edition": 1
+    },
+    "custom": {
+      "manufacturer": "Aurelia Instruments",
+      "model": "S7 Chronograph",
+      "serial_number": "AUR-S7-2026-0001",
+      "manufacturing_date": "2026-06-18",
+      "origin": "La Chaux-de-Fonds, Switzerland",
+      "material": "Recycled steel and sapphire crystal",
+      "carbon_kg": 18.4,
+      "warranty_until": "2031-06-18",
+      "status": "AUTHENTIC"
+    }
+  },
+  "factory": {"max_supply": 1000, "minted_count": 0},
+  "actions": [
+    {"name": "mint", "access": {"type": "private"}},
+    {"name": "transfer", "access": {"type": "public"}},
+    {"name": "update", "access": {"type": "public"}}
+  ],
+  "public_access": {
+    "custom": [
+      "manufacturer",
+      "model",
+      "serial_number",
+      "manufacturing_date",
+      "origin",
+      "material",
+      "carbon_kg",
+      "warranty_until",
+      "status"
+    ]
+  },
+  "face_id": "6a7b2300a7cd3da77bd5dc43"
+}

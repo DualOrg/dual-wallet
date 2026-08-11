@@ -35,12 +35,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const saved = localStorage.getItem("viewer-theme");
-    const next =
-      saved === "dark" || saved === "light"
-        ? saved
-        : window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light";
+    const next = saved === "dark" || saved === "light" ? saved : "light";
     document.documentElement.classList.toggle("dark", next === "dark");
     window.dispatchEvent(new Event(themeEvent));
   }, []);

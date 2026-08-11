@@ -12,8 +12,9 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/app/_components/design-system/button";
 import { EmptyState } from "@/app/_components/design-system/empty-state";
 import { PageHeader } from "@/app/_components/design-system/page-header";
+import { ActivityDetailModal } from "@/app/_components/activity/activity-detail-modal";
 import { StatusBadge } from "@/app/_components/activity/status-badge";
-import { shortId } from "@/app/_domain/inventory";
+import { shortId, type ActivityEntry } from "@/app/_domain/inventory";
 import { useActivity } from "@/app/_hooks/data";
 import { useSession } from "@/app/_providers/session-provider";
 
@@ -30,6 +31,7 @@ export default function ActivityPage() {
   const { wallet } = useSession();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  const [selected, setSelected] = useState<ActivityEntry | null>(null);
   const query = useActivity(useDeferredValue(search), status, wallet?.id);
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
   return (
@@ -93,7 +95,14 @@ export default function ActivityPage() {
         <>
           <div className="card activity-list">
             {items.map((item) => (
-              <article className="activity-item" key={item.id}>
+              <button
+                type="button"
+                className="activity-item"
+                key={item.id}
+                aria-haspopup="dialog"
+                aria-label={t("openDetails", { name: item.name })}
+                onClick={() => setSelected(item)}
+              >
                 <span className="activity-symbol">
                   <Boxes size={20} />
                 </span>
@@ -114,7 +123,7 @@ export default function ActivityPage() {
                   {t("fee")}
                   <strong>{item.totalFee || common("notAvailable")}</strong>
                 </div>
-              </article>
+              </button>
             ))}
           </div>
           {query.hasNextPage ? (
@@ -133,6 +142,7 @@ export default function ActivityPage() {
           ) : null}
         </>
       )}
+      <ActivityDetailModal entry={selected} onClose={() => setSelected(null)} />
     </>
   );
 }
