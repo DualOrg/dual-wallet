@@ -1570,13 +1570,23 @@ button {
   .share-control .button {
     width: 100%;
   }
-  .public-object-header,
+  .public-object-header {
+    padding-right: 0;
+    padding-left: 0;
+  }
+  .public-object-header.has-object-menu .public-object-header-actions {
+    padding-right: 46px;
+  }
   .public-object-content {
     padding-right: 18px;
     padding-left: 18px;
   }
   .public-object-page .wallet-pass-top-controls {
     top: 24px;
+  }
+  .public-object-page .wallet-pass-more {
+    width: 42px;
+    height: 42px;
   }
 }
 

@@ -151,6 +151,7 @@ test("inventory executes an action returned by the object template", async ({
 test("a public object link opens without a Viewer session", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.context().clearCookies();
   await page.emulateMedia({ colorScheme: "dark" });
   await page.addInitScript(() => localStorage.removeItem("viewer-theme"));
@@ -184,10 +185,12 @@ test("a public object link opens without a Viewer session", async ({
   expect(openViewerBox).not.toBeNull();
   expect(publicMenuBox).not.toBeNull();
   expect(publicCardBox).not.toBeNull();
+  expect(publicThemeBox!.width).toBe(publicMenuBox!.width);
+  expect(publicThemeBox!.height).toBe(publicMenuBox!.height);
   expect(Math.abs(publicThemeBox!.y - publicMenuBox!.y)).toBeLessThanOrEqual(1);
   expect(Math.abs(openViewerBox!.x - publicCardBox!.x)).toBeLessThanOrEqual(1);
   expect(
-    Math.abs(publicThemeBox!.x + publicThemeBox!.width + 10 - publicMenuBox!.x),
+    Math.abs(publicThemeBox!.x + publicThemeBox!.width + 4 - publicMenuBox!.x),
   ).toBeLessThanOrEqual(1);
   expect(
     Math.abs(
