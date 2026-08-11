@@ -27,9 +27,9 @@ describe("ObjectCard", () => {
   it("marks a metadata image for contained logo sizing", () => {
     render(<ObjectCard item={item} />);
 
-    expect(
-      screen.getByRole("link", { name: "Open DUAL" }).className,
-    ).toContain("is-metadata");
+    expect(screen.getByRole("link", { name: "Open DUAL" }).className).toContain(
+      "is-metadata",
+    );
   });
 
   it("leaves an assigned face in the full display treatment", () => {
@@ -51,5 +51,20 @@ describe("ObjectCard", () => {
     const link = screen.getByRole("link", { name: "Open DUAL" });
     expect(link.className).toContain("has-display");
     expect(link.className).not.toContain("is-metadata");
+  });
+
+  it("shows an actions indicator only for executable object actions", () => {
+    const { rerender } = render(
+      <ObjectCard item={{ ...item, actions: ["update", "transfer"] }} />,
+    );
+
+    expect(
+      screen.getByRole("img", { name: "2 actions available" }),
+    ).toBeTruthy();
+
+    rerender(<ObjectCard item={{ ...item, actions: ["mint"] }} />);
+    expect(
+      screen.queryByRole("img", { name: /actions? available/ }),
+    ).toBeNull();
   });
 });

@@ -120,10 +120,13 @@ test("inventory switches between grid and list views", async ({ page }) => {
   ).toBeVisible();
 
   const inventory = page.locator(".inventory-grid");
+  const actionsIndicator = page.locator(".object-card-action-indicator");
   await expect(inventory).toHaveClass(/is-grid/);
+  await expect(actionsIndicator).toBeVisible();
 
   await page.getByRole("button", { name: "List" }).click();
   await expect(inventory).toHaveClass(/is-list/);
+  await expect(actionsIndicator).toBeVisible();
 
   await page.reload();
   await expect(page.locator(".inventory-grid")).toHaveClass(/is-list/);
@@ -157,6 +160,42 @@ test("a public object link opens without a Viewer session", async ({
   await expect(
     page.getByRole("heading", { name: "Sample Membership", level: 1 }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Dual Viewer home" }),
+  ).toHaveCount(0);
+  const publicHeader = page.locator(".public-object-header");
+  await expect(
+    publicHeader.getByRole("button", { name: "Change color theme" }),
+  ).toBeVisible();
+  await expect(
+    publicHeader.getByRole("link", { name: "Open Viewer" }),
+  ).toBeVisible();
+  const publicThemeBox = await publicHeader
+    .getByRole("button", { name: "Change color theme" })
+    .boundingBox();
+  const openViewerBox = await publicHeader
+    .getByRole("link", { name: "Open Viewer" })
+    .boundingBox();
+  const publicMenuBox = await page
+    .getByRole("button", { name: "More pass options" })
+    .boundingBox();
+  const publicCardBox = await page.locator(".wallet-pass-shell").boundingBox();
+  expect(publicThemeBox).not.toBeNull();
+  expect(openViewerBox).not.toBeNull();
+  expect(publicMenuBox).not.toBeNull();
+  expect(publicCardBox).not.toBeNull();
+  expect(Math.abs(publicThemeBox!.y - publicMenuBox!.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(openViewerBox!.x - publicCardBox!.x)).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(publicThemeBox!.x + publicThemeBox!.width + 10 - publicMenuBox!.x),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(
+      publicMenuBox!.x +
+        publicMenuBox!.width -
+        (publicCardBox!.x + publicCardBox!.width),
+    ),
+  ).toBeLessThanOrEqual(1);
   await expect(page.getByText("Public smart object")).toHaveCount(0);
   await expect(
     page

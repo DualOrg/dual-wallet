@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { cache } from "react";
-import { Brand } from "@/app/_components/design-system/brand";
 import { ThemeToggle } from "@/app/_components/design-system/theme-toggle";
 import { ObjectDetail } from "@/app/_components/inventory/object-detail";
 import { ShareObjectButton } from "@/app/_components/inventory/share-object-button";
@@ -81,15 +80,12 @@ export default async function PublicObjectPage({
 
   return (
     <main className="public-object-page">
-      <header className="public-object-header">
-        <Link href="/" aria-label="Dual Viewer home">
-          <Brand />
-        </Link>
+      <header className="public-object-header has-object-menu">
         <div className="public-object-header-actions">
-          <ThemeToggle />
           <Link href="/" className="button button-secondary">
             {t("openViewer")}
           </Link>
+          <ThemeToggle />
         </div>
       </header>
       <div className="public-object-content">
