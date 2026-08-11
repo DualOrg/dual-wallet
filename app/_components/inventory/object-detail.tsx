@@ -154,6 +154,9 @@ export function ObjectDetail({
   const passAspectRatio = item.display?.aspectRatio
     ? item.display.aspectRatio.replace("/", " / ")
     : "4 / 3";
+  const hasHtmlDisplay =
+    item.display?.kind === "document" &&
+    item.display.mediaType.toLowerCase().startsWith("text/html");
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -221,8 +224,8 @@ export function ObjectDetail({
         </div>
         <div className="card wallet-pass-shell">
           <div
-            className="wallet-pass-stage"
-            style={{ aspectRatio: passAspectRatio }}
+            className={`wallet-pass-stage${hasHtmlDisplay ? " is-html-display" : ""}`}
+            style={hasHtmlDisplay ? undefined : { aspectRatio: passAspectRatio }}
           >
             {item.display ? (
               <ObjectVisual

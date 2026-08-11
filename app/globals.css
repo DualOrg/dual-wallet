@@ -910,29 +910,34 @@ button {
 .wallet-object-view {
   display: grid;
   width: 100%;
+  grid-template-columns: minmax(0, 1fr);
   justify-items: center;
 }
 .wallet-object-loading {
-  width: min(620px, 100%);
+  width: 100%;
+  max-width: 620px;
   aspect-ratio: 4 / 3;
   margin: 0 auto;
 }
 .wallet-pass-shell {
-  width: min(620px, 100%);
+  width: 100%;
+  max-width: 620px;
   overflow: visible;
   border-radius: 28px;
   padding: 12px;
 }
 .wallet-pass-top-controls {
   display: flex;
-  width: min(620px, 100%);
+  width: 100%;
+  max-width: 620px;
   justify-content: flex-end;
   margin-bottom: 10px;
   padding: 0 2px;
 }
 .wallet-pass-controls {
   display: flex;
-  width: min(620px, 100%);
+  width: 100%;
+  max-width: 620px;
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
@@ -947,6 +952,9 @@ button {
   border-radius: 22px;
   background: linear-gradient(145deg, var(--brand-soft), var(--surface-subtle));
   box-shadow: var(--shadow);
+}
+.wallet-pass-stage.is-html-display {
+  height: clamp(460px, 84vw, 520px);
 }
 .wallet-pass-stage .object-image {
   width: 100%;
@@ -1531,6 +1539,9 @@ button {
   }
   .wallet-pass-stage {
     border-radius: 17px;
+  }
+  .wallet-pass-stage.is-html-display {
+    height: 580px;
   }
   .wallet-pass-more,
   .wallet-pass-actions-button {

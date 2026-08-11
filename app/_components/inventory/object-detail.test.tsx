@@ -136,6 +136,31 @@ describe("ObjectDetail", () => {
       screen.queryByRole("heading", { level: 2, name: "Aurelia S7" }),
     ).toBeNull();
     expect(screen.queryByText("A product passport")).toBeNull();
+    expect(document.querySelector(".wallet-pass-stage")?.classList).not.toContain(
+      "is-html-display",
+    );
+  });
+
+  it("gives an HTML face enough height to display its interactive content", () => {
+    render(
+      <ObjectDetail
+        item={{
+          ...item,
+          display: {
+            kind: "document",
+            url: "/api/public/objects/object-123/display/card",
+            mediaType: "text/html; charset=utf-8",
+            aspectRatio: "16/10",
+            interactive: true,
+            revision: "face-2",
+          },
+        }}
+      />,
+    );
+
+    const stage = document.querySelector<HTMLElement>(".wallet-pass-stage");
+    expect(stage?.classList).toContain("is-html-display");
+    expect(stage?.style.aspectRatio).toBe("");
   });
 
   it("opens template actions from the lower pass button", () => {
