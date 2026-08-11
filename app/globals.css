@@ -613,6 +613,12 @@ button {
   height: 100%;
   object-fit: cover;
 }
+.object-display-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
 .object-image-placeholder {
   color: color-mix(in srgb, var(--brand) 70%, var(--ink));
 }

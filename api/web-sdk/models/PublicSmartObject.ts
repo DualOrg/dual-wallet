@@ -127,7 +127,7 @@ export interface PublicSmartObject {
      */
     integrityHash: string;
     /**
-     * 
+     * Previous object integrity hash.
      * @type {string}
      * @memberof PublicSmartObject
      */

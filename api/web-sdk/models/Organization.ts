@@ -62,6 +62,12 @@ export interface Organization {
      */
     fqdn: string;
     /**
+     * Unique identifier for the organization's owner
+     * @type {string}
+     * @memberof Organization
+     */
+    ownerId?: string;
+    /**
      * Human-readable name of the organization
      * @type {string}
      * @memberof Organization
@@ -136,6 +142,7 @@ export function OrganizationFromJSONTyped(json: any, ignoreDiscriminator: boolea
         
         'id': json['id'],
         'fqdn': json['fqdn'],
+        'ownerId': json['owner_id'] == null ? undefined : json['owner_id'],
         'name': json['name'],
         'image': json['image'] == null ? undefined : AssetFromJSON(json['image']),
         'members': json['members'] == null ? undefined : ((json['members'] as Array<any>).map(MemberFromJSON)),
@@ -160,6 +167,7 @@ export function OrganizationToJSONTyped(value?: Organization | null, ignoreDiscr
         
         'id': value['id'],
         'fqdn': value['fqdn'],
+        'owner_id': value['ownerId'],
         'name': value['name'],
         'image': AssetToJSON(value['image']),
         'members': value['members'] == null ? undefined : ((value['members'] as Array<any>).map(MemberToJSON)),

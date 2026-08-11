@@ -10,16 +10,26 @@ import { getObjectsApi } from "@/api/web-sdk-client";
 import { ResponseError } from "@/api/web-sdk/runtime";
 
 const getPublicObject = cache(async (objectId: string) => {
-  const value = await getObjectsApi().getObjectByIdPublic(
-    { objectId },
+  const result = await getObjectsApi().listObjectsPublic(
+    {
+      id: objectId,
+      limit: 1,
+      include: ["display"],
+      displayVariant: "detail",
+    },
     { cache: "no-store" },
   );
-  return toPublicObject(value);
+  const item = result.items?.[0];
+  if (item) return toPublicObject(item.object, item.display);
+  const object = result.objects[0];
+  return object ? toPublicObject(object) : undefined;
 });
 
 async function loadPublicObject(objectId: string) {
   try {
-    return await getPublicObject(objectId);
+    const item = await getPublicObject(objectId);
+    if (!item) notFound();
+    return item;
   } catch (error) {
     if (error instanceof ResponseError && error.response.status === 404) {
       notFound();

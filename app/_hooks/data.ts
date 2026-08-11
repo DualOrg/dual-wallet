@@ -30,9 +30,14 @@ export function useInventory(search: string, owner?: string) {
           next: pageParam,
           order: "desc",
           sortBy: "when_modified",
+          include: ["display"],
+          displayVariant: "card",
         });
         return {
-          items: result.objects.map(toInventoryObject),
+          items:
+            result.items?.map((item) =>
+              toInventoryObject(item.object, item.display),
+            ) ?? result.objects.map((object) => toInventoryObject(object)),
           next: result.next,
         };
       } catch (error) {
@@ -49,9 +54,17 @@ export function useInventoryObject(objectId: string) {
     enabled: Boolean(objectId),
     queryFn: async () => {
       try {
-        return toInventoryObject(
-          await getObjectsApi().getObjectById({ objectId }),
-        );
+        const result = await getObjectsApi().listObjects({
+          id: objectId,
+          limit: 1,
+          include: ["display"],
+          displayVariant: "detail",
+        });
+        const item = result.items?.[0];
+        if (item) return toInventoryObject(item.object, item.display);
+        const object = result.objects[0];
+        if (object) return toInventoryObject(object);
+        throw new Error("This object could not be loaded.");
       } catch (error) {
         throw await usefulError(error, "This object could not be loaded.");
       }

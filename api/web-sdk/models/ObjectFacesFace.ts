@@ -33,15 +33,17 @@ export interface ObjectFacesFace {
      */
     url?: string;
     /**
-     * Additional data associated with the face
+     * Legacy v1 field. Use the resolved items[].display descriptor.
      * @type {object}
      * @memberof ObjectFacesFace
+     * @deprecated
      */
     config?: object;
     /**
-     * The content of the face
+     * Legacy v1 field retained for schema compatibility; it is no longer returned.
      * @type {string}
      * @memberof ObjectFacesFace
+     * @deprecated
      */
     content?: string;
 }

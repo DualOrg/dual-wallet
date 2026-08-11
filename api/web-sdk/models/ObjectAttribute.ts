@@ -14,6 +14,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { AttributeContentType } from './AttributeContentType';
+import {
+    AttributeContentTypeFromJSON,
+    AttributeContentTypeFromJSONTyped,
+    AttributeContentTypeToJSON,
+    AttributeContentTypeToJSONTyped,
+} from './AttributeContentType';
+
 /**
  * 
  * @export
@@ -45,13 +53,19 @@ export interface ObjectAttribute {
      */
     value: any | null;
     /**
-     * 
+     * Optional category used to group or classify the attribute.
      * @type {string}
      * @memberof ObjectAttribute
      */
-    contentType?: string;
+    category?: string;
     /**
-     * SHA-256 of the RFC 8785 canonical attribute value envelope.
+     * Optional format of the attribute value.
+     * @type {AttributeContentType}
+     * @memberof ObjectAttribute
+     */
+    contentType?: AttributeContentType;
+    /**
+     * SHA-256 of the RFC 8785 canonical category, content type, and value envelope.
      * @type {string}
      * @memberof ObjectAttribute
      */
@@ -81,6 +95,8 @@ export interface ObjectAttribute {
      */
     whenModified: Date;
 }
+
+
 
 /**
  * Check if a given object implements the ObjectAttribute interface.
@@ -112,7 +128,8 @@ export function ObjectAttributeFromJSONTyped(json: any, ignoreDiscriminator: boo
         'objectId': json['object_id'],
         'key': json['key'],
         'value': json['value'],
-        'contentType': json['content_type'] == null ? undefined : json['content_type'],
+        'category': json['category'] == null ? undefined : json['category'],
+        'contentType': json['content_type'] == null ? undefined : AttributeContentTypeFromJSON(json['content_type']),
         'valueHash': json['value_hash'],
         'actionId': json['action_id'],
         'objectNonce': json['object_nonce'],
@@ -136,7 +153,8 @@ export function ObjectAttributeToJSONTyped(value?: ObjectAttribute | null, ignor
         'object_id': value['objectId'],
         'key': value['key'],
         'value': value['value'],
-        'content_type': value['contentType'],
+        'category': value['category'],
+        'content_type': AttributeContentTypeToJSON(value['contentType']),
         'value_hash': value['valueHash'],
         'action_id': value['actionId'],
         'object_nonce': value['objectNonce'],

@@ -10,7 +10,11 @@ export function ObjectCard({ item }: { item: InventoryObject }) {
       href={`/inventory/${encodeURIComponent(item.id)}`}
       aria-label={`Open ${item.name}`}
     >
-      <ObjectVisual url={item.imageUrl} name={item.name} />
+      <ObjectVisual
+        url={item.imageUrl}
+        display={item.display}
+        name={item.name}
+      />
       <div className="object-body">
         <p className="object-category">
           {item.category || "Smart object"}

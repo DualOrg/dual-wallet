@@ -1,4 +1,5 @@
 import type { ActionLog } from "@/api/web-sdk/models/ActionLog";
+import type { ObjectDisplay } from "@/api/web-sdk/models/ObjectDisplay";
 import type { PublicSmartObject } from "@/api/web-sdk/models/PublicSmartObject";
 import type { SmartObject } from "@/api/web-sdk/models/SmartObject";
 import {
@@ -66,5 +67,38 @@ describe("inventory adapters", () => {
 
     expect(toActivityEntry(value).status).toBe("completed");
     expect(shortId(value.hash, 4)).toBe("0x12…cdef");
+  });
+
+  it("accepts only the object's fixed display route", () => {
+    const value = {
+      id: "object-123",
+      metadata: { name: "Membership" },
+      owner: "0x123",
+      templateId: "template-1",
+      version: 2,
+      stateHash: "state",
+      contentHash: "content",
+      whenCreated: new Date("2026-01-01T00:00:00Z"),
+      whenModified: new Date("2026-02-01T00:00:00Z"),
+    } as SmartObject;
+    const display = {
+      faceId: "face-1",
+      variant: "card",
+      mediaType: "text/html",
+      href: "/public/objects/object-123/display/card",
+      revision: "one",
+      interactive: false,
+    } as ObjectDisplay;
+
+    expect(toInventoryObject(value, display).display).toMatchObject({
+      kind: "document",
+      url: "/api/public/objects/object-123/display/card?revision=one",
+    });
+    expect(
+      toInventoryObject(value, {
+        ...display,
+        href: "/public/objects/another-object/display/card",
+      }).display,
+    ).toBeUndefined();
   });
 });

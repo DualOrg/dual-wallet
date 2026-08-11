@@ -28,6 +28,13 @@ import {
     ObjectActionsToJSON,
     ObjectActionsToJSONTyped,
 } from './ObjectActions';
+import type { ObjectView } from './ObjectView';
+import {
+    ObjectViewFromJSON,
+    ObjectViewFromJSONTyped,
+    ObjectViewToJSON,
+    ObjectViewToJSONTyped,
+} from './ObjectView';
 import type { SmartObject } from './SmartObject';
 import {
     SmartObjectFromJSON,
@@ -43,15 +50,23 @@ import {
  */
 export interface ListSmartObjectsOut {
     /**
-     * Array of objects.
+     * Object data paired with resolved display descriptors when include=display.
+     * @type {Array<ObjectView>}
+     * @memberof ListSmartObjectsOut
+     */
+    items?: Array<ObjectView>;
+    /**
+     * Legacy v1 object array retained during migration to items.
      * @type {Array<SmartObject>}
      * @memberof ListSmartObjectsOut
+     * @deprecated
      */
     objects: Array<SmartObject>;
     /**
-     * Array of object faces.
+     * Legacy v1 face projection. Use include=display and items[].display.
      * @type {Array<ObjectFaces>}
      * @memberof ListSmartObjectsOut
+     * @deprecated
      */
     faces?: Array<ObjectFaces>;
     /**
@@ -86,6 +101,7 @@ export function ListSmartObjectsOutFromJSONTyped(json: any, ignoreDiscriminator:
     }
     return {
         
+        'items': json['items'] == null ? undefined : ((json['items'] as Array<any>).map(ObjectViewFromJSON)),
         'objects': ((json['objects'] as Array<any>).map(SmartObjectFromJSON)),
         'faces': json['faces'] == null ? undefined : ((json['faces'] as Array<any>).map(ObjectFacesFromJSON)),
         'actions': json['actions'] == null ? undefined : ((json['actions'] as Array<any>).map(ObjectActionsFromJSON)),
@@ -104,6 +120,7 @@ export function ListSmartObjectsOutToJSONTyped(value?: ListSmartObjectsOut | nul
 
     return {
         
+        'items': value['items'] == null ? undefined : ((value['items'] as Array<any>).map(ObjectViewToJSON)),
         'objects': ((value['objects'] as Array<any>).map(SmartObjectToJSON)),
         'faces': value['faces'] == null ? undefined : ((value['faces'] as Array<any>).map(ObjectFacesToJSON)),
         'actions': value['actions'] == null ? undefined : ((value['actions'] as Array<any>).map(ObjectActionsToJSON)),

@@ -20,6 +20,11 @@ test("inventory opens a complete object detail", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("founder", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "Share" })).toBeVisible();
+  await expect(
+    page
+      .frameLocator('iframe[title="Sample Membership"]')
+      .getByText("Rendered face: Sample Membership"),
+  ).toBeVisible();
 });
 
 test("a public object link opens without a Viewer session", async ({
@@ -33,7 +38,9 @@ test("a public object link opens without a Viewer session", async ({
   ).toBeVisible();
   await expect(page.getByText("Public smart object")).toBeVisible();
   await expect(
-    page.getByRole("img", { name: "Sample Membership" }),
+    page
+      .frameLocator('iframe[title="Sample Membership"]')
+      .getByText("Rendered face: Sample Membership"),
   ).toBeVisible();
   await expect(page.getByText("founder", { exact: false })).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/objects/${smartObject.id}$`));

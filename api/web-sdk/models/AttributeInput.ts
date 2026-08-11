@@ -14,6 +14,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { AttributeContentType } from './AttributeContentType';
+import {
+    AttributeContentTypeFromJSON,
+    AttributeContentTypeFromJSONTyped,
+    AttributeContentTypeToJSON,
+    AttributeContentTypeToJSONTyped,
+} from './AttributeContentType';
+
 /**
  * 
  * @export
@@ -33,12 +41,20 @@ export interface AttributeInput {
      */
     value: any | null;
     /**
-     * Optional media type describing the value.
+     * Optional category used to group or classify the attribute.
      * @type {string}
      * @memberof AttributeInput
      */
-    contentType?: string;
+    category?: string;
+    /**
+     * Optional format of the attribute value.
+     * @type {AttributeContentType}
+     * @memberof AttributeInput
+     */
+    contentType?: AttributeContentType;
 }
+
+
 
 /**
  * Check if a given object implements the AttributeInput interface.
@@ -61,7 +77,8 @@ export function AttributeInputFromJSONTyped(json: any, ignoreDiscriminator: bool
         
         'key': json['key'],
         'value': json['value'],
-        'contentType': json['content_type'] == null ? undefined : json['content_type'],
+        'category': json['category'] == null ? undefined : json['category'],
+        'contentType': json['content_type'] == null ? undefined : AttributeContentTypeFromJSON(json['content_type']),
     };
 }
 
@@ -78,7 +95,8 @@ export function AttributeInputToJSONTyped(value?: AttributeInput | null, ignoreD
         
         'key': value['key'],
         'value': value['value'],
-        'content_type': value['contentType'],
+        'category': value['category'],
+        'content_type': AttributeContentTypeToJSON(value['contentType']),
     };
 }
 

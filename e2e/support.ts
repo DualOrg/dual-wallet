@@ -75,6 +75,17 @@ export const actionLog = {
   when_modified: "2026-02-15T09:31:00.000Z",
 };
 
+function objectDisplay(variant: "card" | "detail") {
+  return {
+    face_id: "507f1f77bcf86cd799439013",
+    variant,
+    media_type: "text/html",
+    href: `/public/objects/${smartObject.id}/display/${variant}`,
+    revision: `face-e2e-${variant}`,
+    interactive: false,
+  };
+}
+
 function json(route: Route, body: unknown, status = 200) {
   return route.fulfill({
     status,
@@ -99,10 +110,18 @@ async function setSessionCookie(page: Page) {
 export async function mockBackend(page: Page) {
   await page.route("**/api/backend/**", async (route) => {
     const request = route.request();
-    const path = new URL(request.url()).pathname;
+    const url = new URL(request.url());
+    const path = url.pathname;
 
     if (request.method() === "GET" && path === "/api/backend/objects") {
-      return json(route, { objects: [smartObject] });
+      const variant =
+        url.searchParams.get("display_variant") === "detail"
+          ? "detail"
+          : "card";
+      return json(route, {
+        items: [{ object: smartObject, display: objectDisplay(variant) }],
+        objects: [smartObject],
+      });
     }
     if (
       request.method() === "GET" &&

@@ -35,7 +35,12 @@ export function ObjectDetail({
     <>
       <section className="detail-hero">
         <div className="card detail-media">
-          <ObjectVisual url={item.imageUrl} name={item.name} eager />
+          <ObjectVisual
+            url={item.imageUrl}
+            display={item.display}
+            name={item.name}
+            eager
+          />
         </div>
         <div className="detail-copy">
           <div className="detail-heading-row">

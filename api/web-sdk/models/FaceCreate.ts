@@ -14,6 +14,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { FaceView } from './FaceView';
+import {
+    FaceViewFromJSON,
+    FaceViewFromJSONTyped,
+    FaceViewToJSON,
+    FaceViewToJSONTyped,
+} from './FaceView';
 import type { Asset } from './Asset';
 import {
     AssetFromJSON,
@@ -35,23 +42,43 @@ export interface FaceCreate {
      */
     name: string;
     /**
-     * URL of the face, typically pointing to an image or resource.
+     * Renderer used for inline view content.
+     * @type {FaceCreateRendererEnum}
+     * @memberof FaceCreate
+     */
+    renderer?: FaceCreateRendererEnum;
+    /**
+     * Renderer-specific configuration available while rendering all views.
+     * @type {{ [key: string]: any; }}
+     * @memberof FaceCreate
+     */
+    rendererConfig?: { [key: string]: any; };
+    /**
+     * Variant-specific authoring definitions for this face.
+     * @type {Array<FaceView>}
+     * @memberof FaceCreate
+     */
+    views?: Array<FaceView>;
+    /**
+     * Legacy v1 default-view URL. Use views[].url instead.
      * @type {string}
      * @memberof FaceCreate
+     * @deprecated
      */
     url?: string;
     /**
-     * Go html/template source used to render public objects. Placeholders use
-     * dot notation, for example {{.owner}} or {{.metadata.name}}.
+     * Legacy v1 default-view source. Use views[].content instead.
      * 
      * @type {string}
      * @memberof FaceCreate
+     * @deprecated
      */
     content?: string;
     /**
-     * Optional configuration data for customizing the face.
+     * Legacy v1 renderer configuration. Use renderer_config instead.
      * @type {{ [key: string]: any; }}
      * @memberof FaceCreate
+     * @deprecated
      */
     config?: { [key: string]: any; };
     /**
@@ -61,6 +88,16 @@ export interface FaceCreate {
      */
     assets?: Array<Asset>;
 }
+
+
+/**
+ * @export
+ */
+export const FaceCreateRendererEnum = {
+    GoTemplate: 'go-template'
+} as const;
+export type FaceCreateRendererEnum = typeof FaceCreateRendererEnum[keyof typeof FaceCreateRendererEnum];
+
 
 /**
  * Check if a given object implements the FaceCreate interface.
@@ -81,6 +118,9 @@ export function FaceCreateFromJSONTyped(json: any, ignoreDiscriminator: boolean)
     return {
         
         'name': json['name'],
+        'renderer': json['renderer'] == null ? undefined : json['renderer'],
+        'rendererConfig': json['renderer_config'] == null ? undefined : json['renderer_config'],
+        'views': json['views'] == null ? undefined : ((json['views'] as Array<any>).map(FaceViewFromJSON)),
         'url': json['url'] == null ? undefined : json['url'],
         'content': json['content'] == null ? undefined : json['content'],
         'config': json['config'] == null ? undefined : json['config'],
@@ -100,6 +140,9 @@ export function FaceCreateToJSONTyped(value?: FaceCreate | null, ignoreDiscrimin
     return {
         
         'name': value['name'],
+        'renderer': value['renderer'],
+        'renderer_config': value['rendererConfig'],
+        'views': value['views'] == null ? undefined : ((value['views'] as Array<any>).map(FaceViewToJSON)),
         'url': value['url'],
         'content': value['content'],
         'config': value['config'],

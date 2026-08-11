@@ -1,4 +1,5 @@
 import type { ActionLog } from "@/api/web-sdk/models/ActionLog";
+import type { ObjectDisplay } from "@/api/web-sdk/models/ObjectDisplay";
 import type { PublicSmartObject } from "@/api/web-sdk/models/PublicSmartObject";
 import type { SmartObject } from "@/api/web-sdk/models/SmartObject";
 
@@ -18,6 +19,16 @@ export interface ObjectDetail {
   modifiedAt: Date;
   custom?: object;
   system?: object;
+  display?: ObjectPresentation;
+}
+
+export interface ObjectPresentation {
+  kind: "document" | "image";
+  url: string;
+  mediaType: string;
+  aspectRatio?: string;
+  interactive: boolean;
+  revision: string;
 }
 
 export interface InventoryObject extends ObjectDetail {
@@ -46,11 +57,15 @@ function safeAssetUrl(value?: string) {
   }
 }
 
-export function toInventoryObject(value: SmartObject): InventoryObject {
+export function toInventoryObject(
+  value: SmartObject,
+  display?: ObjectDisplay,
+): InventoryObject {
   return {
     ...toObjectDetail(
       value,
       value.assets?.find((asset) => asset.type?.startsWith("image/"))?.url,
+      display,
     ),
     raw: value,
   };
@@ -59,6 +74,7 @@ export function toInventoryObject(value: SmartObject): InventoryObject {
 function toObjectDetail(
   value: SmartObject | PublicSmartObject,
   fallbackImageUrl?: string,
+  display?: ObjectDisplay,
 ): ObjectDetail {
   return {
     id: value.id,
@@ -76,11 +92,54 @@ function toObjectDetail(
     modifiedAt: value.whenModified,
     custom: value.custom,
     system: value.system,
+    display: toObjectPresentation(value.id, display),
   };
 }
 
-export function toPublicObject(value: PublicSmartObject): ObjectDetail {
-  return toObjectDetail(value);
+export function toPublicObject(
+  value: PublicSmartObject,
+  display?: ObjectDisplay,
+): ObjectDetail {
+  return toObjectDetail(value, undefined, display);
+}
+
+function toObjectPresentation(
+  objectId: string,
+  value?: ObjectDisplay,
+): ObjectPresentation | undefined {
+  if (!value) return undefined;
+  const aspectRatio = /^[1-9][0-9]*\/[1-9][0-9]*$/.test(value.aspectRatio ?? "")
+    ? value.aspectRatio
+    : undefined;
+  const expectedPath = `/public/objects/${objectId}/display/${value.variant}`;
+  if (
+    value.href === expectedPath &&
+    ["text/html", "image/svg+xml"].includes(value.mediaType)
+  ) {
+    return {
+      kind: "document",
+      url: `/api${value.href}?revision=${encodeURIComponent(value.revision)}`,
+      mediaType: value.mediaType,
+      aspectRatio,
+      interactive: value.interactive,
+      revision: value.revision,
+    };
+  }
+  const imageUrl = safeAssetUrl(value.href);
+  if (
+    imageUrl?.startsWith("https://") &&
+    value.mediaType.startsWith("image/")
+  ) {
+    return {
+      kind: "image",
+      url: imageUrl,
+      mediaType: value.mediaType,
+      aspectRatio,
+      interactive: false,
+      revision: value.revision,
+    };
+  }
+  return undefined;
 }
 
 export function toActivityEntry(value: ActionLog): ActivityEntry {

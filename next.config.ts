@@ -38,7 +38,7 @@ const nextConfig: NextConfig = {
               "img-src 'self' data: blob: https:",
               "font-src 'self' data:",
               "connect-src 'self' https: wss:",
-              "frame-src https:",
+              "frame-src 'self' https:",
               "worker-src 'self' blob:",
               ...(isDevelopment ? [] : ["upgrade-insecure-requests"]),
             ].join("; "),

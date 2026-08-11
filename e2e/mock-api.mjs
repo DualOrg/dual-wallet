@@ -34,7 +34,19 @@ function respond(response, status, body) {
   response.end(JSON.stringify(body));
 }
 
+function display(variant) {
+  return {
+    face_id: "507f1f77bcf86cd799439013",
+    variant,
+    media_type: "text/html",
+    href: `/public/objects/${publicObjectId}/display/${variant}`,
+    revision: `face-e2e-${variant}`,
+    interactive: false,
+  };
+}
+
 const server = createServer((request, response) => {
+  const url = new URL(request.url ?? "/", "http://127.0.0.1");
   if (request.method === "GET" && request.url === "/health") {
     return respond(response, 200, { ok: true });
   }
@@ -44,6 +56,30 @@ const server = createServer((request, response) => {
     request.url === `/public/objects/${publicObjectId}`
   ) {
     return respond(response, 200, publicObject);
+  }
+
+  if (request.method === "GET" && url.pathname === "/public/objects") {
+    const objectId = url.searchParams.get("id");
+    const variant = url.searchParams.get("display_variant") ?? "card";
+    const found = objectId === publicObjectId;
+    return respond(response, 200, {
+      items: found ? [{ object: publicObject, display: display(variant) }] : [],
+      objects: found ? [publicObject] : [],
+    });
+  }
+
+  if (
+    request.method === "GET" &&
+    url.pathname.startsWith(`/public/objects/${publicObjectId}/display/`)
+  ) {
+    response.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8",
+      ETag: '"face-e2e"',
+    });
+    response.end(
+      "<!doctype html><html><body><strong>Rendered face: Sample Membership</strong></body></html>",
+    );
+    return;
   }
 
   if (request.method === "POST" && request.url === "/auth/password") {

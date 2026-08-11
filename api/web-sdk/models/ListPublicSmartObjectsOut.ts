@@ -35,6 +35,13 @@ import {
     ObjectActionsToJSON,
     ObjectActionsToJSONTyped,
 } from './ObjectActions';
+import type { PublicObjectView } from './PublicObjectView';
+import {
+    PublicObjectViewFromJSON,
+    PublicObjectViewFromJSONTyped,
+    PublicObjectViewToJSON,
+    PublicObjectViewToJSONTyped,
+} from './PublicObjectView';
 
 /**
  * 
@@ -43,15 +50,23 @@ import {
  */
 export interface ListPublicSmartObjectsOut {
     /**
-     * Array of objects.
+     * Public object data paired with resolved display descriptors when include=display.
+     * @type {Array<PublicObjectView>}
+     * @memberof ListPublicSmartObjectsOut
+     */
+    items?: Array<PublicObjectView>;
+    /**
+     * Legacy v1 object array retained during migration to items.
      * @type {Array<PublicSmartObject>}
      * @memberof ListPublicSmartObjectsOut
+     * @deprecated
      */
     objects: Array<PublicSmartObject>;
     /**
-     * Array of object faces.
+     * Legacy v1 face projection. Use include=display and items[].display.
      * @type {Array<ObjectFaces>}
      * @memberof ListPublicSmartObjectsOut
+     * @deprecated
      */
     faces?: Array<ObjectFaces>;
     /**
@@ -86,6 +101,7 @@ export function ListPublicSmartObjectsOutFromJSONTyped(json: any, ignoreDiscrimi
     }
     return {
         
+        'items': json['items'] == null ? undefined : ((json['items'] as Array<any>).map(PublicObjectViewFromJSON)),
         'objects': ((json['objects'] as Array<any>).map(PublicSmartObjectFromJSON)),
         'faces': json['faces'] == null ? undefined : ((json['faces'] as Array<any>).map(ObjectFacesFromJSON)),
         'actions': json['actions'] == null ? undefined : ((json['actions'] as Array<any>).map(ObjectActionsFromJSON)),
@@ -104,6 +120,7 @@ export function ListPublicSmartObjectsOutToJSONTyped(value?: ListPublicSmartObje
 
     return {
         
+        'items': value['items'] == null ? undefined : ((value['items'] as Array<any>).map(PublicObjectViewToJSON)),
         'objects': ((value['objects'] as Array<any>).map(PublicSmartObjectToJSON)),
         'faces': value['faces'] == null ? undefined : ((value['faces'] as Array<any>).map(ObjectFacesToJSON)),
         'actions': value['actions'] == null ? undefined : ((value['actions'] as Array<any>).map(ObjectActionsToJSON)),
