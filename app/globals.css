@@ -901,6 +901,22 @@ button {
   border-radius: 28px;
   padding: 12px;
 }
+.wallet-pass-top-controls {
+  display: flex;
+  width: min(620px, 100%);
+  justify-content: flex-end;
+  margin-bottom: 10px;
+  padding: 0 2px;
+}
+.wallet-pass-controls {
+  display: flex;
+  width: min(620px, 100%);
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 0 2px;
+}
 .wallet-pass-stage {
   position: relative;
   overflow: hidden;
@@ -993,10 +1009,8 @@ button {
   white-space: nowrap;
 }
 .wallet-pass-menu {
-  position: absolute;
+  position: relative;
   z-index: 5;
-  top: 14px;
-  right: 14px;
 }
 .wallet-pass-more,
 .wallet-pass-actions-button,
@@ -1025,12 +1039,16 @@ button {
   outline-offset: 2px;
 }
 .wallet-pass-actions-button {
-  position: absolute;
-  z-index: 4;
-  right: 14px;
-  bottom: 14px;
+  display: inline-flex;
+  width: auto;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
   color: white;
   background: color-mix(in srgb, var(--brand-strong) 88%, transparent);
+  padding: 0 15px;
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 .wallet-pass-actions-button:hover {
   background: var(--brand-strong);
@@ -1039,6 +1057,7 @@ button {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
+  bottom: auto;
   width: 190px;
   overflow: hidden;
   border: 1px solid var(--border);
@@ -1092,18 +1111,25 @@ button {
   backdrop-filter: blur(7px);
 }
 .object-pass-modal {
+  display: flex;
   width: min(840px, 100%);
+  flex-direction: column;
   max-height: min(860px, calc(100vh - 48px));
+  max-height: min(860px, calc(100dvh - 48px));
   overflow: hidden;
   box-shadow: 0 28px 80px color-mix(in srgb, var(--ink) 25%, transparent);
 }
 .object-pass-modal-header {
   display: flex;
+  flex: 0 0 auto;
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
   border-bottom: 1px solid var(--border);
   padding: 24px 26px 20px;
+}
+.object-pass-modal-header > div:first-child {
+  min-width: 0;
 }
 .object-pass-modal-header .page-eyebrow {
   margin: 0;
@@ -1111,18 +1137,23 @@ button {
 .object-pass-modal-header h2 {
   margin: 5px 0 0;
   font-size: 1.35rem;
+  overflow-wrap: anywhere;
 }
 .object-pass-modal-actions {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 10px;
 }
 .object-pass-modal-body {
   display: grid;
+  min-height: 0;
+  flex: 1 1 auto;
   gap: 24px;
-  max-height: calc(min(860px, 100vh - 48px) - 105px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 24px 26px 30px;
+  -webkit-overflow-scrolling: touch;
 }
 .object-detail-section {
   min-width: 0;
@@ -1390,6 +1421,33 @@ button {
     grid-column: 2;
     text-align: left;
   }
+  .object-pass-modal-backdrop {
+    align-items: end;
+    padding: max(8px, env(safe-area-inset-top)) 0 0;
+  }
+  .object-pass-modal {
+    width: 100%;
+    max-height: calc(100vh - 8px);
+    max-height: calc(100dvh - max(8px, env(safe-area-inset-top)));
+    border-radius: 22px 22px 0 0;
+  }
+  .object-pass-modal-header {
+    gap: 12px;
+    padding: 17px 16px 14px;
+  }
+  .object-pass-modal-header h2 {
+    margin-top: 4px;
+    font-size: 1.1rem;
+    line-height: 1.25;
+  }
+  .activity-modal-title-row {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .object-pass-modal-body {
+    gap: 20px;
+    padding: 18px 16px calc(22px + env(safe-area-inset-bottom));
+  }
 }
 
 @media (max-width: 520px) {
@@ -1439,8 +1497,16 @@ button {
   }
   .wallet-pass-more,
   .wallet-pass-actions-button {
-    width: 38px;
     height: 38px;
+  }
+  .wallet-pass-more {
+    width: 38px;
+  }
+  .wallet-pass-controls {
+    margin-top: 10px;
+  }
+  .wallet-pass-top-controls {
+    margin-bottom: 8px;
   }
   .wallet-standard-face {
     grid-template-columns: minmax(74px, 0.37fr) minmax(0, 1fr);
@@ -1460,22 +1526,6 @@ button {
     padding: 4px 7px;
     font-size: 0.6rem;
   }
-  .object-pass-modal-backdrop {
-    align-items: end;
-    padding: 0;
-  }
-  .object-pass-modal {
-    max-height: 94vh;
-    border-radius: 22px 22px 0 0;
-  }
-  .object-pass-modal-header,
-  .object-pass-modal-body {
-    padding-right: 18px;
-    padding-left: 18px;
-  }
-  .object-pass-modal-body {
-    max-height: calc(94vh - 105px);
-  }
   .object-detail-row {
     grid-template-columns: 1fr;
     gap: 5px;
@@ -1487,6 +1537,25 @@ button {
   .public-object-content {
     padding-right: 18px;
     padding-left: 18px;
+  }
+}
+
+@media (max-height: 640px) {
+  .object-pass-modal-backdrop {
+    padding-top: 8px;
+    padding-bottom: 0;
+  }
+  .object-pass-modal {
+    max-height: calc(100vh - 8px);
+    max-height: calc(100dvh - 8px);
+  }
+  .object-pass-modal-header {
+    padding-top: 14px;
+    padding-bottom: 12px;
+  }
+  .object-pass-modal-body {
+    padding-top: 16px;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
   }
 }
 

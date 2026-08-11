@@ -1,5 +1,15 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { mockViewerApi, smartObject } from "./support";
+
+async function expectModalWithinViewport(
+  dialog: Locator,
+  viewportHeight: number,
+) {
+  const box = await dialog.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewportHeight + 1);
+}
 
 test.beforeEach(async ({ page }) => {
   await mockViewerApi(page, { authenticated: true });
@@ -26,6 +36,14 @@ test("inventory opens a complete object detail", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Object details" }),
   ).toHaveCount(0);
+  await expect(page.locator(".wallet-pass-stage button")).toHaveCount(0);
+  const moreButtonBox = await page
+    .getByRole("button", { name: "More pass options" })
+    .boundingBox();
+  const passBox = await page.locator(".wallet-pass-stage").boundingBox();
+  expect(moreButtonBox).not.toBeNull();
+  expect(passBox).not.toBeNull();
+  expect(moreButtonBox!.y + moreButtonBox!.height).toBeLessThan(passBox!.y);
 
   await page.getByRole("button", { name: "More pass options" }).click();
   await expect(page.getByRole("menuitem", { name: "Share" })).toBeVisible();
@@ -35,10 +53,62 @@ test("inventory opens a complete object detail", async ({ page }) => {
   await expect(details.getByText("0xstatehash", { exact: true })).toBeVisible();
   await details.getByRole("button", { name: "Close pass details" }).click();
 
-  await page.getByRole("button", { name: "Show object actions" }).click();
+  const actionsButton = page.getByRole("button", {
+    name: "Show object actions",
+  });
+  const actionsButtonBox = await actionsButton.boundingBox();
+  expect(actionsButtonBox).not.toBeNull();
+  expect(actionsButtonBox!.y).toBeGreaterThan(passBox!.y + passBox!.height);
+  expect(
+    Math.abs(
+      actionsButtonBox!.x +
+        actionsButtonBox!.width -
+        (moreButtonBox!.x + moreButtonBox!.width),
+    ),
+  ).toBeLessThanOrEqual(1);
+
+  await actionsButton.click();
   await expect(
     page.getByRole("heading", { name: "Available actions", level: 2 }),
   ).toBeVisible();
+});
+
+test("detail modals fit and scroll inside a mobile viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 664 });
+  await page.goto(`/inventory/${smartObject.id}`);
+
+  await page.getByRole("button", { name: "More pass options" }).click();
+  await page.getByRole("menuitem", { name: "Show details" }).click();
+
+  const objectDialog = page.getByRole("dialog");
+  await expect(objectDialog).toBeVisible();
+  await expect(
+    objectDialog.getByRole("button", { name: "Close pass details" }),
+  ).toBeInViewport();
+  await expectModalWithinViewport(objectDialog, 664);
+  await objectDialog.locator(".object-pass-modal-body").evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(
+    objectDialog.getByRole("button", { name: "Close pass details" }),
+  ).toBeInViewport();
+
+  await objectDialog
+    .getByRole("button", { name: "Close pass details" })
+    .click();
+  await page.goto("/activity");
+  await page
+    .getByRole("button", { name: "Open details for Mint membership" })
+    .click();
+
+  const activityDialog = page.getByRole("dialog");
+  await expect(activityDialog).toBeVisible();
+  await expectModalWithinViewport(activityDialog, 664);
+  await expect(
+    activityDialog.getByRole("button", { name: "Close activity details" }),
+  ).toBeInViewport();
 });
 
 test("inventory switches between grid and list views", async ({ page }) => {

@@ -108,6 +108,13 @@ async function setSessionCookie(page: Page) {
 }
 
 export async function mockBackend(page: Page) {
+  await page.route("**/api/public/objects/*/display/*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: `<div>Rendered face: ${smartObject.metadata.name}</div>`,
+    }),
+  );
   await page.route("**/api/backend/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());

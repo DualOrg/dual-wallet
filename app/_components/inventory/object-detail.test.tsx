@@ -79,6 +79,16 @@ describe("ObjectDetail", () => {
     ).toBeTruthy();
     expect(screen.getByText("A product passport")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Metadata" })).toBeNull();
+    expect(
+      document
+        .querySelector(".wallet-pass-stage")
+        ?.contains(screen.getByRole("button", { name: "More pass options" })),
+    ).toBe(false);
+    expect(
+      document
+        .querySelector(".wallet-pass-top-controls")
+        ?.contains(screen.getByRole("button", { name: "More pass options" })),
+    ).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "More pass options" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Show details" }));
@@ -130,6 +140,12 @@ describe("ObjectDetail", () => {
 
   it("opens template actions from the lower pass button", () => {
     render(<ObjectDetail item={item} actions={<div>Action controls</div>} />);
+
+    expect(
+      document
+        .querySelector(".wallet-pass-stage")
+        ?.contains(screen.getByRole("button", { name: "Show object actions" })),
+    ).toBe(false);
 
     fireEvent.click(
       screen.getByRole("button", { name: "Show object actions" }),

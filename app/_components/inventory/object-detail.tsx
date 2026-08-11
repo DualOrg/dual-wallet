@@ -191,6 +191,34 @@ export function ObjectDetail({
     <>
       <section className="wallet-object-view">
         <h1 className="sr-only">{item.name}</h1>
+        <div className="wallet-pass-top-controls">
+          <div className="wallet-pass-menu" ref={menu}>
+            <button
+              ref={moreButton}
+              type="button"
+              className="wallet-pass-more"
+              aria-label={t("moreOptions")}
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <MoreHorizontal size={23} aria-hidden />
+            </button>
+            {menuOpen ? (
+              <div className="wallet-pass-menu-popover" role="menu">
+                <button type="button" role="menuitem" onClick={showDetails}>
+                  <Info size={18} aria-hidden />
+                  {t("showDetails")}
+                </button>
+                {action ? (
+                  <div className="wallet-pass-menu-action" role="none">
+                    {action}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
         <div className="card wallet-pass-shell">
           <div
             className="wallet-pass-stage"
@@ -206,45 +234,22 @@ export function ObjectDetail({
             ) : (
               <StandardObjectFace item={item} />
             )}
-            <div className="wallet-pass-menu" ref={menu}>
-              <button
-                ref={moreButton}
-                type="button"
-                className="wallet-pass-more"
-                aria-label={t("moreOptions")}
-                aria-expanded={menuOpen}
-                aria-haspopup="menu"
-                onClick={() => setMenuOpen((open) => !open)}
-              >
-                <MoreHorizontal size={23} aria-hidden />
-              </button>
-              {menuOpen ? (
-                <div className="wallet-pass-menu-popover" role="menu">
-                  <button type="button" role="menuitem" onClick={showDetails}>
-                    <Info size={18} aria-hidden />
-                    {t("showDetails")}
-                  </button>
-                  {action ? (
-                    <div className="wallet-pass-menu-action" role="none">
-                      {action}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            {actions ? (
-              <button
-                ref={actionButton}
-                type="button"
-                className="wallet-pass-actions-button"
-                aria-label={t("showActions")}
-                onClick={() => setModalView("actions")}
-              >
-                <Zap size={19} aria-hidden />
-              </button>
-            ) : null}
           </div>
         </div>
+        {actions ? (
+          <div className="wallet-pass-controls">
+            <button
+              ref={actionButton}
+              type="button"
+              className="wallet-pass-actions-button"
+              aria-label={t("showActions")}
+              onClick={() => setModalView("actions")}
+            >
+              <Zap size={18} aria-hidden />
+              <span>{t("actions")}</span>
+            </button>
+          </div>
+        ) : null}
       </section>
 
       {modalView ? (

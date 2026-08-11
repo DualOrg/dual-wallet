@@ -18,7 +18,7 @@ const definitions = {
   pickup: [],
   redeem: [{ name: "templateId", kind: "text" }],
   update: [
-    { name: "data", kind: "json" },
+    { name: "custom", kind: "json" },
     { name: "secret", kind: "text" },
   ],
   claim_ownership: [],
@@ -131,14 +131,16 @@ export function buildInventoryAction(
       return {
         redeem: { id: objectId, templateId: text(input, "templateId") },
       };
-    case "update":
+    case "update": {
+      const custom = jsonObject(input, "custom");
       return {
         update: {
           id: objectId,
-          data: jsonObject(input, "data"),
+          data: custom ? { custom } : undefined,
           secret: text(input, "secret"),
         },
       };
+    }
     case "claim_ownership":
       return { claimOwnership: { id: objectId } };
     case "connect":

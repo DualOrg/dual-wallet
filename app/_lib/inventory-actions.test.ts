@@ -18,6 +18,19 @@ describe("inventory actions", () => {
     });
   });
 
+  it("wraps update input as custom object data", () => {
+    const action = buildInventoryAction("update", "6a311a0666b5491bf3bb0a99", {
+      custom: '{"status": "active"}',
+    });
+
+    expect(JSON.parse(JSON.stringify(action))).toEqual({
+      update: {
+        id: "6a311a0666b5491bf3bb0a99",
+        data: { custom: { status: "active" } },
+      },
+    });
+  });
+
   it("normalizes delete-attribute keys for the generated SDK", () => {
     expect(
       buildInventoryAction("delete_attributes", "object-1", {
