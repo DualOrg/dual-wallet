@@ -122,7 +122,10 @@ export async function mockBackend(page: Page) {
         items: [{ object: smartObject, display: objectDisplay(variant) }],
         objects: [smartObject],
         actions: [
-          { template_id: smartObject.template_id, actions: ["pickup", "transfer"] },
+          {
+            template_id: smartObject.template_id,
+            actions: ["pickup", "transfer"],
+          },
         ],
       });
     }
@@ -138,16 +141,10 @@ export async function mockBackend(page: Page) {
     ) {
       return json(route, { action_logs: [actionLog] });
     }
-    if (
-      request.method() === "POST" &&
-      path === "/api/backend/ebus/prepare"
-    ) {
+    if (request.method() === "POST" && path === "/api/backend/ebus/prepare") {
       return json(route, { nonce: 2, challenge: "AQIDBA" });
     }
-    if (
-      request.method() === "POST" &&
-      path === "/api/backend/ebus/execute"
-    ) {
+    if (request.method() === "POST" && path === "/api/backend/ebus/execute") {
       return json(route, { action_id: "action-e2e-2", steps: [] });
     }
     if (
@@ -243,6 +240,27 @@ export async function mockViewerApi(
     const nextWallet = await authenticate(true, "passkey");
     return json(route, { authenticated: true, wallet: nextWallet });
   });
+  await page.route("**/api/session/passkey/register/options", (route) =>
+    json(route, {
+      challenge: "AQIDBA",
+      rp: { id: "demo.localhost", name: "Dual Viewer" },
+      user: {
+        id: "BQYHCA",
+        name: "demo.localhost",
+        displayName: "Dual Viewer",
+      },
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+      authenticatorSelection: {
+        userVerification: "required",
+        residentKey: "required",
+      },
+      timeout: 60_000,
+    }),
+  );
+  await page.route("**/api/session/passkey/register/verify", async (route) => {
+    const nextWallet = await authenticate(true, "passkey");
+    return json(route, { authenticated: true, wallet: nextWallet });
+  });
 
   await page.route("**/api/session/logout", async (route) => {
     signedIn = false;
@@ -277,6 +295,16 @@ export async function installPasskeyProvider(page: Page) {
     Object.defineProperty(navigator, "credentials", {
       configurable: true,
       value: {
+        create: async () => ({
+          id: "credential-e2e-registered",
+          rawId: Uint8Array.from([1, 2, 3, 4]).buffer,
+          type: "public-key",
+          response: {
+            clientDataJSON: Uint8Array.from([5, 6, 7]).buffer,
+            attestationObject: Uint8Array.from([8, 9, 10]).buffer,
+            getTransports: () => ["internal"],
+          },
+        }),
         get: async () => ({
           id: "credential-e2e-1",
           rawId: Uint8Array.from([1, 2, 3, 4]).buffer,

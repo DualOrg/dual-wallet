@@ -7,9 +7,7 @@ import { StatusBadge } from "@/app/_components/activity/status-badge";
 import type { ActivityEntry } from "@/app/_domain/inventory";
 
 function JsonData({ value }: { value: object }) {
-  return (
-    <pre className="activity-detail-json">{JSON.stringify(value, null, 2)}</pre>
-  );
+  return <pre className="json-view">{JSON.stringify(value, null, 2)}</pre>;
 }
 
 function DetailField({
@@ -21,9 +19,9 @@ function DetailField({
 }) {
   if (value === undefined || value === "") return null;
   return (
-    <div className="activity-detail-field">
+    <div className="object-detail-row">
       <dt>{label}</dt>
-      <dd className="mono">{value}</dd>
+      <dd>{value}</dd>
     </div>
   );
 }
@@ -66,18 +64,18 @@ export function ActivityDetailModal({
 
   return (
     <div
-      className="activity-modal-backdrop"
+      className="object-pass-modal-backdrop"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
       <section
-        className="card activity-modal"
+        className="card object-pass-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="activity-detail-title"
       >
-        <header className="activity-modal-header">
+        <header className="object-pass-modal-header">
           <div>
             <p className="page-eyebrow">{t("eyebrow")}</p>
             <div className="activity-modal-title-row">
@@ -88,7 +86,7 @@ export function ActivityDetailModal({
           <button
             ref={closeButton}
             type="button"
-            className="activity-modal-close"
+            className="object-pass-modal-close"
             aria-label={t("close")}
             onClick={onClose}
           >
@@ -96,10 +94,10 @@ export function ActivityDetailModal({
           </button>
         </header>
 
-        <div className="activity-modal-body">
-          <section className="activity-detail-section">
+        <div className="object-pass-modal-body">
+          <section className="object-detail-section">
             <h3>{t("action")}</h3>
-            <dl className="activity-detail-grid">
+            <dl className="object-detail-list">
               <DetailField label={t("id")} value={detail.id} />
               <DetailField label={t("batchId")} value={detail.batchId} />
               <DetailField label={t("name")} value={detail.name} />
@@ -125,9 +123,9 @@ export function ActivityDetailModal({
             </dl>
           </section>
 
-          <section className="activity-detail-section">
+          <section className="object-detail-section">
             <h3>{t("integrity")}</h3>
-            <dl className="activity-detail-grid activity-detail-grid-wide">
+            <dl className="object-detail-list">
               <DetailField label={t("hash")} value={detail.hash} />
               <DetailField
                 label={t("messageHash")}
@@ -141,9 +139,9 @@ export function ActivityDetailModal({
             </dl>
           </section>
 
-          <section className="activity-detail-section">
+          <section className="object-detail-section">
             <h3>{t("fees")}</h3>
-            <dl className="activity-detail-grid">
+            <dl className="object-detail-list">
               <DetailField label={t("baseFee")} value={detail.baseFee} />
               <DetailField label={t("baseFeeWei")} value={detail.baseFeeWei} />
               <DetailField label={t("dynamicFee")} value={detail.dynamicFee} />
@@ -168,19 +166,19 @@ export function ActivityDetailModal({
             </dl>
           </section>
 
-          <section className="activity-detail-section">
+          <section className="object-detail-section">
             <h3>{t("parameters")}</h3>
             <JsonData value={detail.params} />
           </section>
 
-          <section className="activity-detail-section">
+          <section className="object-detail-section">
             <h3>
               {t("affectedObjects", { count: detail.affectedObjects.length })}
             </h3>
             <div className="activity-affected-list">
               {detail.affectedObjects.map((object) => (
                 <dl
-                  className="activity-detail-grid"
+                  className="object-detail-list activity-affected-object"
                   key={`${object.id}-${object.stateChangeId}`}
                 >
                   <DetailField label={t("objectId")} value={object.id} />
@@ -218,13 +216,13 @@ export function ActivityDetailModal({
           </section>
 
           {detail.permit ? (
-            <section className="activity-detail-section">
+            <section className="object-detail-section">
               <h3>{t("permit")}</h3>
               <JsonData value={detail.permit} />
             </section>
           ) : null}
           {detail.access ? (
-            <section className="activity-detail-section">
+            <section className="object-detail-section">
               <h3>{t("access")}</h3>
               <JsonData value={detail.access} />
             </section>

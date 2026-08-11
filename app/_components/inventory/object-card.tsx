@@ -6,7 +6,7 @@ import { ObjectVisual } from "@/app/_components/inventory/object-visual";
 export function ObjectCard({ item }: { item: InventoryObject }) {
   return (
     <Link
-      className="card object-card"
+      className={`card object-card ${item.display ? "has-display" : "is-metadata"}`}
       href={`/inventory/${encodeURIComponent(item.id)}`}
       aria-label={`Open ${item.name}`}
     >

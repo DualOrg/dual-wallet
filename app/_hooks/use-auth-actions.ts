@@ -108,6 +108,7 @@ export function useAuthActions() {
       run("passkey", async () => {
         const options = await requestJson<PasskeyLoginOptionsOut>(
           "/api/session/passkey/login/options",
+          { method: "POST" },
         );
         const credential = await getPasskey(options);
         return requestJson<AuthResult>("/api/session/passkey/login/verify", {

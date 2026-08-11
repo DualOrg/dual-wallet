@@ -41,6 +41,27 @@ test("inventory opens a complete object detail", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("inventory switches between grid and list views", async ({ page }) => {
+  await page.goto("/inventory");
+  await page.evaluate(() => localStorage.removeItem("viewer-inventory-view"));
+  await page.reload();
+  await expect(
+    page.getByText("Sample Membership", { exact: true }),
+  ).toBeVisible();
+
+  const inventory = page.locator(".inventory-grid");
+  await expect(inventory).toHaveClass(/is-grid/);
+
+  await page.getByRole("button", { name: "List" }).click();
+  await expect(inventory).toHaveClass(/is-list/);
+
+  await page.reload();
+  await expect(page.locator(".inventory-grid")).toHaveClass(/is-list/);
+
+  await page.getByRole("button", { name: "Grid" }).click();
+  await expect(page.locator(".inventory-grid")).toHaveClass(/is-grid/);
+});
+
 test("inventory executes an action returned by the object template", async ({
   page,
 }) => {

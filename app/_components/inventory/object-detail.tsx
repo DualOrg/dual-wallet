@@ -15,124 +15,70 @@ function displayKey(value: string) {
   return words ? words[0].toUpperCase() + words.slice(1) : value;
 }
 
-function isStructured(value: unknown): value is object {
-  return typeof value === "object" && value !== null;
-}
-
 function safeJson(value: unknown) {
   try {
-    return JSON.stringify(value, null, 2);
+    return JSON.stringify(value, null, 2) ?? String(value);
   } catch {
     return String(value);
   }
 }
 
-function StructuredValue({
-  value,
-  depth = 0,
-}: {
-  value: unknown;
-  depth?: number;
-}) {
-  const t = useTranslations("object");
-  if (value === null) {
-    return <span className="object-pass-value-muted">{t("nullValue")}</span>;
-  }
-  if (typeof value === "boolean") {
-    return (
-      <span className={`object-pass-value-boolean is-${String(value)}`}>
-        {String(value)}
-      </span>
-    );
-  }
-  if (!isStructured(value)) {
-    const rendered = String(value);
-    return rendered ? (
-      <span>{rendered}</span>
-    ) : (
-      <span className="object-pass-value-muted">{t("emptyValue")}</span>
-    );
-  }
-
-  if (depth >= 5) {
-    return <pre className="object-pass-value-json">{safeJson(value)}</pre>;
-  }
-  const array = Array.isArray(value);
-  const entries = array
-    ? value.map((entry, index) => [String(index + 1), entry] as const)
-    : Object.entries(value);
-  if (!entries.length) {
-    return <span className="object-pass-value-muted">{t("emptyValue")}</span>;
-  }
-
-  return (
-    <details className="object-pass-nested">
-      <summary>
-        {t(array ? "dataItems" : "dataFields", { count: entries.length })}
-      </summary>
-      <dl>
-        {entries.map(([key, entry]) => (
-          <div key={key}>
-            <dt>
-              {array
-                ? t("itemNumber", { number: Number(key) })
-                : displayKey(key)}
-            </dt>
-            <dd>
-              <StructuredValue value={entry} depth={depth + 1} />
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </details>
-  );
+function detailValue(value: unknown) {
+  return typeof value === "string" ? value : safeJson(value);
 }
 
 function DataSection({
   title,
   values,
   empty,
-  technical = false,
 }: {
   title: string;
   values: Array<[string, unknown]>;
   empty?: string;
-  technical?: boolean;
 }) {
-  const t = useTranslations("object");
   return (
-    <details className="object-pass-detail-section" open>
-      <summary>
-        <span role="heading" aria-level={3}>
-          {title}
-        </span>
-        <span>{t("dataFields", { count: values.length })}</span>
-      </summary>
+    <section className="object-detail-section">
+      <h3>{title}</h3>
       {values.length ? (
-        <dl
-          className={`object-pass-detail-data${technical ? " is-technical" : ""}`}
-        >
-          {values.map(([label, value]) => (
-            <div
-              className={
-                isStructured(value) ||
-                (typeof value === "string" && value.length > 56)
-                  ? "is-wide"
-                  : undefined
-              }
-              key={label}
-            >
-              <dt>{label}</dt>
-              <dd>
-                <StructuredValue value={value} />
-              </dd>
-            </div>
-          ))}
+        <dl className="object-detail-list">
+          {values.map(([label, value]) => {
+            const rendered = detailValue(value);
+            return (
+              <div className="object-detail-row" key={label}>
+                <dt>{label}</dt>
+                <dd title={rendered}>{rendered}</dd>
+              </div>
+            );
+          })}
         </dl>
       ) : empty ? (
-        <p className="object-pass-detail-empty">{empty}</p>
+        <p className="object-detail-empty">{empty}</p>
       ) : null}
-    </details>
+    </section>
+  );
+}
+
+function CustomJsonSection({
+  title,
+  value,
+  empty,
+}: {
+  title: string;
+  value?: object;
+  empty: string;
+}) {
+  const hasData = value && Object.keys(value).length > 0;
+  return (
+    <section className="object-detail-section">
+      <h3>{title}</h3>
+      {hasData ? (
+        <pre className="json-view" aria-label={title}>
+          {safeJson(value)}
+        </pre>
+      ) : (
+        <p className="object-detail-empty">{empty}</p>
+      )}
+    </section>
   );
 }
 
@@ -202,9 +148,6 @@ export function ObjectDetail({
     [t("contentHash"), item.contentHash],
     [t("templateId"), item.templateId],
   ];
-  const custom = Object.entries(item.custom ?? {}).map(
-    ([key, value]) => [displayKey(key), value] as [string, unknown],
-  );
   const system = Object.entries(item.system ?? {}).map(
     ([key, value]) => [displayKey(key), value] as [string, unknown],
   );
@@ -340,9 +283,9 @@ export function ObjectDetail({
               {modalView === "details" ? (
                 <>
                   <DataSection title={t("metadata")} values={metadata} />
-                  <DataSection
+                  <CustomJsonSection
                     title={t("customData")}
-                    values={custom}
+                    value={item.custom}
                     empty={t("noCustomData")}
                   />
                   {system.length ? (
@@ -351,7 +294,6 @@ export function ObjectDetail({
                   <DataSection
                     title={t("objectInformation")}
                     values={objectInformation}
-                    technical
                   />
                 </>
               ) : (

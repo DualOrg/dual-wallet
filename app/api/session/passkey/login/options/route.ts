@@ -4,7 +4,7 @@ import { apiErrorResponse, tenantRequired } from "@/api/request";
 import { tenantFromRequest } from "@/api/tenant";
 import { getWalletsApi } from "@/api/web-sdk-client";
 
-export async function POST(request: NextRequest) {
+async function loginOptions(request: NextRequest) {
   if (!tenantFromRequest(request)) return tenantRequired();
   try {
     const options = await getWalletsApi().passkeyLoginOptions(
@@ -21,3 +21,9 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// POST mirrors api-v3. GET remains supported for direct navigation and for
+// cached Viewer clients that previously requested this BFF route without an
+// explicit method.
+export const GET = loginOptions;
+export const POST = loginOptions;

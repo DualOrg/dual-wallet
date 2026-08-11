@@ -12,7 +12,7 @@ jest.mock("next-intl", () => ({
   useLocale: () => "en",
   useTranslations:
     () =>
-    (key: string, values?: { count?: number; number?: number }): string =>
+    (key: string): string =>
       ({
         notAvailable: "Not available",
         details: "Object details",
@@ -34,11 +34,6 @@ jest.mock("next-intl", () => ({
         objectInformation: "Object information",
         actions: "Object actions",
         showActions: "Show object actions",
-        dataFields: `${values?.count ?? 0} fields`,
-        dataItems: `${values?.count ?? 0} items`,
-        itemNumber: `Item ${values?.number ?? 0}`,
-        emptyValue: "Empty",
-        nullValue: "Null",
         category: "Category",
         edition: "Edition",
         owner: "Owner",
@@ -97,18 +92,8 @@ describe("ObjectDetail", () => {
     expect(
       within(dialog).getByRole("heading", { name: "Custom data" }),
     ).toBeTruthy();
-    expect(within(dialog).getByText("Manufacturer")).toBeTruthy();
-    expect(within(dialog).getByText("Aurelia Instruments")).toBeTruthy();
-    const compliance = within(dialog).getByText("Compliance").closest("div");
-    expect(compliance).toBeTruthy();
-    fireEvent.click(within(compliance!).getByText("2 fields"));
-    const certifications = within(compliance!)
-      .getByText("Certifications")
-      .closest("div");
-    expect(certifications).toBeTruthy();
-    fireEvent.click(within(certifications!).getByText("2 items"));
-    expect(within(certifications!).getByText("ISO 9001")).toBeTruthy();
-    expect(within(compliance!).getByText("true")).toBeTruthy();
+    const custom = within(dialog).getByLabelText("Custom data");
+    expect(custom.textContent).toBe(JSON.stringify(item.custom, null, 2));
     expect(
       within(dialog).getByRole("heading", { name: "System data" }),
     ).toBeTruthy();
