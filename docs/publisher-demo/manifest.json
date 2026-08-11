@@ -38,6 +38,20 @@
       "transfer_action_id": "6a7b23cfa7cd3da77bd5dc62",
       "viewer_url": "https://wallet.dual.network/objects/6a7b23a8a7cd3da77bd5dc53",
       "short_url": "https://wallet.dual.network/o/6a7b23a8a7cd3da77bd5dc53"
+    },
+    {
+      "key": "interactive_product_passport",
+      "face_id": "6a7b5893e4c541acd669e130",
+      "template_id": "6a7b58b7e4c541acd669e131",
+      "object_id": "6a7b58e0e4c541acd669e132",
+      "mint_action_id": "6a7b58e0e4c541acd669e133",
+      "set_attributes_action_id": "6a7b5906e4c541acd669e137",
+      "delete_attributes_action_id": "6a7b5954e4c541acd669e145",
+      "restore_attribute_action_id": "6a7b5954e4c541acd669e148",
+      "viewer_url": "https://wallet.dual.network/objects/6a7b58e0e4c541acd669e132",
+      "short_url": "https://wallet.dual.network/o/6a7b58e0e4c541acd669e132",
+      "public_attributes_url": "https://api.dual.network/public/objects/6a7b58e0e4c541acd669e132/attributes"
     }
-  ]
+  ],
+  "pending_definitions": []
 }

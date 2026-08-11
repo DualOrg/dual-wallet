@@ -65,7 +65,13 @@ export interface ObjectAttribute {
      */
     contentType?: AttributeContentType;
     /**
-     * SHA-256 of the RFC 8785 canonical category, content type, and value envelope.
+     * Whether this attribute is included in the public object projection and face render context.
+     * @type {boolean}
+     * @memberof ObjectAttribute
+     */
+    _public: boolean;
+    /**
+     * SHA-256 of the RFC 8785 canonical category, content type, public visibility, and value envelope.
      * @type {string}
      * @memberof ObjectAttribute
      */
@@ -106,6 +112,7 @@ export function instanceOfObjectAttribute(value: object): value is ObjectAttribu
     if ((!('objectId' in value) && !('object_id' in value)) || (value['objectId'] === undefined && value['object_id'] === undefined)) return false;
     if (!('key' in value) || value['key'] === undefined) return false;
     if (!('value' in value) || value['value'] === undefined) return false;
+    if ((!('_public' in value) && !('public' in value)) || (value['_public'] === undefined && value['public'] === undefined)) return false;
     if ((!('valueHash' in value) && !('value_hash' in value)) || (value['valueHash'] === undefined && value['value_hash'] === undefined)) return false;
     if ((!('actionId' in value) && !('action_id' in value)) || (value['actionId'] === undefined && value['action_id'] === undefined)) return false;
     if ((!('objectNonce' in value) && !('object_nonce' in value)) || (value['objectNonce'] === undefined && value['object_nonce'] === undefined)) return false;
@@ -130,6 +137,7 @@ export function ObjectAttributeFromJSONTyped(json: any, ignoreDiscriminator: boo
         'value': json['value'],
         'category': json['category'] == null ? undefined : json['category'],
         'contentType': json['content_type'] == null ? undefined : AttributeContentTypeFromJSON(json['content_type']),
+        '_public': json['public'],
         'valueHash': json['value_hash'],
         'actionId': json['action_id'],
         'objectNonce': json['object_nonce'],
@@ -155,6 +163,7 @@ export function ObjectAttributeToJSONTyped(value?: ObjectAttribute | null, ignor
         'value': value['value'],
         'category': value['category'],
         'content_type': AttributeContentTypeToJSON(value['contentType']),
+        'public': value['_public'],
         'value_hash': value['valueHash'],
         'action_id': value['actionId'],
         'object_nonce': value['objectNonce'],

@@ -23,61 +23,53 @@ import {
 } from './AttributeContentType';
 
 /**
- * 
+ * An owner-managed object attribute explicitly exposed to public consumers.
  * @export
- * @interface AttributeInput
+ * @interface PublicObjectAttribute
  */
-export interface AttributeInput {
+export interface PublicObjectAttribute {
     /**
-     * Case-insensitive attribute key. The service trims and lowercases it.
+     * Normalized, case-insensitive attribute key.
      * @type {string}
-     * @memberof AttributeInput
+     * @memberof PublicObjectAttribute
      */
     key: string;
     /**
-     *
+     * 
      * @type {any}
-     * @memberof AttributeInput
+     * @memberof PublicObjectAttribute
      */
     value: any | null;
     /**
      * Optional category used to group or classify the attribute.
      * @type {string}
-     * @memberof AttributeInput
+     * @memberof PublicObjectAttribute
      */
     category?: string;
     /**
      * Optional format of the attribute value.
      * @type {AttributeContentType}
-     * @memberof AttributeInput
+     * @memberof PublicObjectAttribute
      */
     contentType?: AttributeContentType;
-    /**
-     * Whether this attribute may be returned by public object endpoints and
-     * exposed to public face rendering. Omitted attributes remain private.
-     *
-     * @type {boolean}
-     * @memberof AttributeInput
-     */
-    _public?: boolean;
 }
 
 
 
 /**
- * Check if a given object implements the AttributeInput interface.
+ * Check if a given object implements the PublicObjectAttribute interface.
  */
-export function instanceOfAttributeInput(value: object): value is AttributeInput {
+export function instanceOfPublicObjectAttribute(value: object): value is PublicObjectAttribute {
     if (!('key' in value) || value['key'] === undefined) return false;
     if (!('value' in value) || value['value'] === undefined) return false;
     return true;
 }
 
-export function AttributeInputFromJSON(json: any): AttributeInput {
-    return AttributeInputFromJSONTyped(json, false);
+export function PublicObjectAttributeFromJSON(json: any): PublicObjectAttribute {
+    return PublicObjectAttributeFromJSONTyped(json, false);
 }
 
-export function AttributeInputFromJSONTyped(json: any, ignoreDiscriminator: boolean): AttributeInput {
+export function PublicObjectAttributeFromJSONTyped(json: any, ignoreDiscriminator: boolean): PublicObjectAttribute {
     if (json == null) {
         return json;
     }
@@ -87,15 +79,14 @@ export function AttributeInputFromJSONTyped(json: any, ignoreDiscriminator: bool
         'value': json['value'],
         'category': json['category'] == null ? undefined : json['category'],
         'contentType': json['content_type'] == null ? undefined : AttributeContentTypeFromJSON(json['content_type']),
-        '_public': json['public'] == null ? undefined : json['public'],
     };
 }
 
-export function AttributeInputToJSON(json: any): AttributeInput {
-    return AttributeInputToJSONTyped(json, false);
+export function PublicObjectAttributeToJSON(json: any): PublicObjectAttribute {
+    return PublicObjectAttributeToJSONTyped(json, false);
 }
 
-export function AttributeInputToJSONTyped(value?: AttributeInput | null, ignoreDiscriminator: boolean = false): any {
+export function PublicObjectAttributeToJSONTyped(value?: PublicObjectAttribute | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -106,6 +97,6 @@ export function AttributeInputToJSONTyped(value?: AttributeInput | null, ignoreD
         'value': value['value'],
         'category': value['category'],
         'content_type': AttributeContentTypeToJSON(value['contentType']),
-        'public': value['_public'],
     };
 }
+

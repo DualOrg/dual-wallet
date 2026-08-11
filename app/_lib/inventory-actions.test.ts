@@ -3,6 +3,7 @@ import {
   buildInventoryAction,
   isInventoryActionName,
 } from "@/app/_lib/inventory-actions";
+import { ActionsRequestToJSON } from "@/api/web-sdk/models/ActionsRequest";
 
 describe("inventory actions", () => {
   it("builds an object action from an inventory action name", () => {
@@ -42,6 +43,35 @@ describe("inventory actions", () => {
         id: "object-1",
         keys: new Set(["profile.name"]),
         expectedObjectNonce: 7,
+      },
+    });
+  });
+
+  it("serializes the public attribute flag using the API wire name", () => {
+    const action = buildInventoryAction("set_attributes", "object-1", {
+      attributes: JSON.stringify([
+        {
+          key: "serial_number",
+          value: "CIR-001",
+          category: "identity",
+          content_type: "text",
+          public: true,
+        },
+      ]),
+    });
+
+    expect(JSON.parse(JSON.stringify(ActionsRequestToJSON(action)))).toEqual({
+      set_attributes: {
+        id: "object-1",
+        attributes: [
+          {
+            key: "serial_number",
+            value: "CIR-001",
+            category: "identity",
+            content_type: "text",
+            public: true,
+          },
+        ],
       },
     });
   });

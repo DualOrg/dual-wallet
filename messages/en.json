@@ -207,7 +207,7 @@
       "nonce": "Optional nonce",
       "recipient": "Optional recipient address",
       "deadline": "",
-      "attributes": "[{\"key\": \"profile.name\", \"value\": \"DUAL\", \"contentType\": \"text\"}]",
+      "attributes": "[{\"key\": \"profile.name\", \"value\": \"DUAL\", \"category\": \"identity\", \"content_type\": \"text\", \"public\": true}]",
       "keys": "[\"profile.name\"]",
       "expectedObjectNonce": "Optional current object nonce"
     },

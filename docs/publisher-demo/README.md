@@ -4,7 +4,7 @@ This folder records the production demo created for the Viewer object-view flow.
 
 ## Result
 
-The `Digital Vouchers` organization (`000000000000000000000001`) owns three new faces and templates. One object was minted from each template and transferred to:
+The `Digital Vouchers` organization (`000000000000000000000001`) owns four demo faces and templates. One object was minted from each template and transferred to:
 
 `0xd1AEb264fd240879da9e0c344c0b0DF5BF3AbbF5`
 
@@ -13,6 +13,7 @@ The `Digital Vouchers` organization (`000000000000000000000001`) owns three new 
 | Product passport | `6a7b2300a7cd3da77bd5dc43` | `6a7b2355a7cd3da77bd5dc46` | `6a7b237fa7cd3da77bd5dc49` | [Aurelia S7 Chronograph](https://wallet.dual.network/objects/6a7b237fa7cd3da77bd5dc49) |
 | Battery passport | `6a7b2300a7cd3da77bd5dc44` | `6a7b2355a7cd3da77bd5dc47` | `6a7b23a8a7cd3da77bd5dc4e` | [NovaCell B24](https://wallet.dual.network/objects/6a7b23a8a7cd3da77bd5dc4e)           |
 | Collectible card | `6a7b2300a7cd3da77bd5dc45` | `6a7b2356a7cd3da77bd5dc48` | `6a7b23a8a7cd3da77bd5dc53` | [Aetherwing Sentinel](https://wallet.dual.network/objects/6a7b23a8a7cd3da77bd5dc53)    |
+| Interactive DPP  | `6a7b5893e4c541acd669e130` | `6a7b58b7e4c541acd669e131` | `6a7b58e0e4c541acd669e132` | [Cirrus One Travel Case](https://wallet.dual.network/objects/6a7b58e0e4c541acd669e132) |
 
 The complete identifiers, mint actions, transfer actions, canonical links, and short links are in [`manifest.json`](./manifest.json).
 
@@ -26,7 +27,8 @@ The complete identifiers, mint actions, transfer actions, canonical links, and s
 - Owned inventory passes show a separate lower-corner action button when the inventory projection returns template actions; anonymous public passes do not expose action controls.
 - Each face also has independently renderable `detail` and `share` variants.
 - Each template enables `mint`, `transfer`, and `update`. `mint` is private to the publisher; owner mutations are public actions subject to object ownership.
-- `set_attributes` is intentionally not part of this demo.
+- The three deployed v1 examples intentionally do not use `set_attributes`.
+- The interactive passport demonstrates owner-managed public/private attributes and a three-category HTML face.
 
 ## Custom-data update and face rerender
 
@@ -57,8 +59,45 @@ The files under [`payloads/`](./payloads/) are the exact token-free face and tem
 - `template-product-passport.json`
 - `template-battery-passport.json`
 - `template-magic-card.json`
+- `face-interactive-product-passport.json`
+- `template-interactive-product-passport.json`
+- `set-attributes-interactive-product-passport.json`
+- `delete-attributes-interactive-product-passport.json`
 
 The template payloads contain the face IDs from this organization. Recreating them in another organization requires replacing `face_id` with the IDs returned by that organization's face creation calls. Names are unique per organization, so these create calls are not idempotent.
+
+## Interactive attribute passport
+
+The interactive passport is an HTML face with three in-card controls: **Identity**, **Sustainability**, and **Lifecycle**. It uses CSS radio controls rather than JavaScript, so it remains compatible with the Viewer's sandboxed face iframe and the renderer's script-free content security policy. The face has `interactive: true`, allowing those controls to receive pointer and keyboard input.
+
+Its template enables `set_attributes` and `delete_attributes` in addition to mint and transfer. The template action is discoverable from inventory, but the backend's object-mutation authorization still requires the current object owner. A public action declaration does not permit a non-owner to mutate attributes.
+
+Each attribute has an independent visibility flag:
+
+```json
+{
+  "key": "serial_number",
+  "value": "CIR-ONE-2026-0042",
+  "category": "identity",
+  "content_type": "text",
+  "public": true
+}
+```
+
+Omitting `public`, or setting it to `false`, keeps the attribute owner-only. The lightweight public object and inventory projections never embed standalone attributes. Anonymous consumers page through `GET /public/objects/{objectId}/attributes` with `limit`, `next`, and optional `category`; only `public: true` attributes are returned. The Go face renderer loads that same safe projection internally so the HTML face can use `.attributes` without making the object response unbounded. Existing attributes written before this field was introduced remain private.
+
+The sample includes `internal_batch_reference` with `public: false` as a verification case. It appears in the authenticated attribute response but not in the paginated public endpoint or rendered face.
+
+The canonical API request is in `set-attributes-interactive-product-passport.json`. The Viewer action form accepts the same snake-case field names. After a set or delete action, the object integrity revision changes and Viewer refetches the rendered display, so the category panels reflect the latest public attributes on refresh.
+
+The production interactive demo uses face `6a7b5893e4c541acd669e130`, template `6a7b58b7e4c541acd669e131`, and object `6a7b58e0e4c541acd669e132`. Its creation and verification sequence was:
+
+1. Create `face-interactive-product-passport.json`.
+2. Replace `REPLACE_WITH_FACE_ID` in `template-interactive-product-passport.json` and create the template.
+3. Mint one object from the returned template ID.
+4. Replace `REPLACE_WITH_OBJECT_ID` and execute `set-attributes-interactive-product-passport.json` as the owner.
+5. Transfer the object to the Viewer wallet if the recipient should manage its attributes.
+6. Verify the authenticated attribute list contains all eleven attributes, the paginated public attribute endpoint contains only the ten public attributes, and the public object itself contains no `attributes` field.
 
 ## Reproduction sequence
 

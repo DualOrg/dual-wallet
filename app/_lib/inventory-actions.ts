@@ -1,4 +1,5 @@
 import type { ActionsRequest } from "@/api/web-sdk/models/ActionsRequest";
+import type { AttributeInput } from "@/api/web-sdk/models/AttributeInput";
 
 export type ActionFieldKind = "text" | "number" | "json" | "datetime";
 
@@ -107,6 +108,40 @@ function jsonObject(input: ActionInput, field: string) {
   return value as Record<string, unknown>;
 }
 
+function attributeInputs(value: unknown): AttributeInput[] {
+  if (!Array.isArray(value)) throw new ActionInputError("attributes", "json");
+
+  return value.map((attribute) => {
+    if (!attribute || typeof attribute !== "object" || Array.isArray(attribute))
+      throw new ActionInputError("attributes", "json");
+
+    const record = attribute as Record<string, unknown>;
+    if (typeof record.key !== "string" || !("value" in record))
+      throw new ActionInputError("attributes", "json");
+
+    const publicValue = record.public ?? record._public;
+    if (publicValue !== undefined && typeof publicValue !== "boolean")
+      throw new ActionInputError("attributes", "json");
+
+    const contentType = record.contentType ?? record.content_type;
+    if (
+      contentType !== undefined &&
+      contentType !== "text" &&
+      contentType !== "json"
+    )
+      throw new ActionInputError("attributes", "json");
+
+    const normalized: Record<string, unknown> = {
+      ...record,
+      contentType,
+      _public: publicValue,
+    };
+    delete normalized.public;
+    delete normalized.content_type;
+    return normalized as unknown as AttributeInput;
+  });
+}
+
 export function buildInventoryAction(
   name: InventoryActionName,
   objectId: string,
@@ -166,9 +201,7 @@ export function buildInventoryAction(
       };
     }
     case "set_attributes": {
-      const attributes = json(input, "attributes", true);
-      if (!Array.isArray(attributes))
-        throw new ActionInputError("attributes", "json");
+      const attributes = attributeInputs(json(input, "attributes", true));
       return {
         setAttributes: {
           id: objectId,

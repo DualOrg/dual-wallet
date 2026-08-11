@@ -25,6 +25,11 @@ import {
     ListObjectAttributesOutToJSON,
 } from '../models/ListObjectAttributesOut';
 import {
+    type ListPublicObjectAttributesOut,
+    ListPublicObjectAttributesOutFromJSON,
+    ListPublicObjectAttributesOutToJSON,
+} from '../models/ListPublicObjectAttributesOut';
+import {
     type ListPublicSmartObjectsOut,
     ListPublicSmartObjectsOutFromJSON,
     ListPublicSmartObjectsOutToJSON,
@@ -108,6 +113,13 @@ export interface GetObjectStatsRequest {
 
 export interface ListObjectAttributesRequest {
     objectId: string;
+}
+
+export interface ListObjectAttributesPublicRequest {
+    objectId: string;
+    limit?: number;
+    next?: string;
+    category?: string;
 }
 
 export interface ListObjectsRequest {
@@ -583,6 +595,65 @@ export class ObjectsApi extends runtime.BaseAPI {
      */
     async listObjectAttributes(requestParameters: ListObjectAttributesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListObjectAttributesOut> {
         const response = await this.listObjectAttributesRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for listObjectAttributesPublic without sending the request
+     */
+    async listObjectAttributesPublicRequestOpts(requestParameters: ListObjectAttributesPublicRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['objectId'] == null) {
+            throw new runtime.RequiredError(
+                'objectId',
+                'Required parameter "objectId" was null or undefined when calling listObjectAttributesPublic().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['limit'] != null) {
+            queryParameters['limit'] = requestParameters['limit'];
+        }
+
+        if (requestParameters['next'] != null) {
+            queryParameters['next'] = requestParameters['next'];
+        }
+
+        if (requestParameters['category'] != null) {
+            queryParameters['category'] = requestParameters['category'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/public/objects/{objectId}/attributes`;
+        urlPath = urlPath.replace('{objectId}', encodeURIComponent(String(requestParameters['objectId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Retrieve a cursor-paginated projection of attributes explicitly marked public by the object\'s owner. Private attributes and attribute integrity metadata are never included.
+     * List public object attributes
+     */
+    async listObjectAttributesPublicRaw(requestParameters: ListObjectAttributesPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListPublicObjectAttributesOut>> {
+        const requestOptions = await this.listObjectAttributesPublicRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => ListPublicObjectAttributesOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Retrieve a cursor-paginated projection of attributes explicitly marked public by the object\'s owner. Private attributes and attribute integrity metadata are never included.
+     * List public object attributes
+     */
+    async listObjectAttributesPublic(requestParameters: ListObjectAttributesPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListPublicObjectAttributesOut> {
+        const response = await this.listObjectAttributesPublicRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
