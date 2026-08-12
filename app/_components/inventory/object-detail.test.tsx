@@ -185,14 +185,17 @@ describe("ObjectDetail", () => {
     expect(stage?.style.aspectRatio).toBe("16 / 10");
   });
 
-  it("opens template actions from the lower pass button", () => {
+  it("opens template actions from the top-left lightning button", () => {
     render(<ObjectDetail item={item} actions={<div>Action controls</div>} />);
 
     expect(
       document
-        .querySelector(".wallet-pass-stage")
+        .querySelector(".wallet-pass-top-controls")
         ?.contains(screen.getByRole("button", { name: "Show object actions" })),
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Show object actions" }).textContent,
+    ).toBe("");
 
     fireEvent.click(
       screen.getByRole("button", { name: "Show object actions" }),
