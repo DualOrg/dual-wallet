@@ -1,5 +1,10 @@
 # Repository Guidelines
 
+For changes that originate in api-v3 or affect generated SDK contracts, read
+`../docs/codebase-change-flow.md` before editing Viewer. Refresh
+`api/web-sdk/**` only through `npm run sdk:sync`; never hand-edit it as the
+source of an API change.
+
 - Repo: https://github.com/vlabsio/viewer
 - The Viewer is the end-user SmartToken application. It authenticates a wallet
   account and gives that user access to their inventory, object details,
@@ -309,6 +314,11 @@
   must be narrow, documented additions rather than broad wildcards.
 
 ## Inventory, Objects, Activity, and Settings
+
+Before changing external display selection, iframe behavior, bridge
+capabilities, FaceView configuration, or external-face deployment inputs, read
+`docs/external-face-integration.md` and the canonical protocol/security
+documents it links. Keep that guide synchronized with the code and tests.
 
 - Inventory loads objects accessible to the authenticated wallet with
   `listObjects`. Use the current wallet/account data and canonical API filters;

@@ -64,6 +64,9 @@ request a standard native action flow. Viewer retains the object binding,
 confirmation, email/passkey/EOA signing, and execution; the iframe never
 receives signatures, cookies, JWTs, or an arbitrary API proxy. The builder
 guide, DPP child, and protocol live in the sibling `external-faces` project.
+Viewer-specific rendering, capability grants, file ownership, verification,
+and release impact are documented in
+[External-face integration](./docs/external-face-integration.md).
 
 Bridge internals are modular: `app/_lib/external-face-bridge/core/` owns the
 channel and trust boundary, while `capabilities/` owns named object, attribute,
