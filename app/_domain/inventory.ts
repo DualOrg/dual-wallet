@@ -23,7 +23,7 @@ export interface ObjectDetail {
 }
 
 export interface ObjectPresentation {
-  kind: "document" | "image";
+  kind: "document" | "external-document" | "image";
   url: string;
   mediaType: string;
   aspectRatio?: string;
@@ -160,6 +160,16 @@ function toObjectPresentation(
     };
   }
   const imageUrl = safeAssetUrl(value.href);
+  if (imageUrl?.startsWith("https://") && value.mediaType === "text/html") {
+    return {
+      kind: "external-document",
+      url: imageUrl,
+      mediaType: value.mediaType,
+      aspectRatio,
+      interactive: value.interactive,
+      revision: value.revision,
+    };
+  }
   if (
     imageUrl?.startsWith("https://") &&
     value.mediaType.startsWith("image/")

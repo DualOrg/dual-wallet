@@ -155,8 +155,7 @@ export function ObjectDetail({
     ? item.display.aspectRatio.replace("/", " / ")
     : "4 / 3";
   const hasHtmlDisplay =
-    item.display?.kind === "document" &&
-    item.display.mediaType.toLowerCase().startsWith("text/html");
+    item.display?.mediaType.toLowerCase().startsWith("text/html") ?? false;
 
   useEffect(() => {
     if (!menuOpen) return;

@@ -194,6 +194,30 @@ curl --fail --silent --show-error \
 
 The legacy `/public/objects/{objectId}/render` route should resolve to the detail variant during the v1 migration. New consumers should use `/display/{variant}`.
 
+## URL-backed interactive faces
+
+A face view can point at a dedicated HTTPS application instead of containing an inline Go template:
+
+```json
+{
+  "name": "Dedicated DPP application",
+  "renderer": "go-template",
+  "views": [
+    {
+      "variant": "card",
+      "media_type": "text/html",
+      "url": "https://passport.example/viewer",
+      "aspect_ratio": "16/10",
+      "interactive": true
+    }
+  ]
+}
+```
+
+The backend resolves the URL per object while preserving its existing query parameters. It adds `object_id=<object ID>` and `variant=<card|detail|share>`, and Viewer loads that resolved URL directly in a sandboxed iframe. The remote page may run JavaScript, submit forms, and use its own origin for storage and backend calls. It cannot read the Viewer session, receive a Viewer JWT or referrer, open popups, navigate the parent, or access the parent DOM. The remote server must allow framing by `https://wallet.dual.network` through its `Content-Security-Policy: frame-ancestors` policy and must not send a conflicting `X-Frame-Options` header.
+
+Set `interactive: true` when the user should interact with the iframe. With `interactive: false`, the remote application can render and run but Viewer disables pointer input. Use a dedicated authorization-code or application-session flow when the remote application needs authenticated API access; never place a wallet access or refresh JWT in the URL.
+
 ## Credential hygiene
 
 Unset shell credentials after the run and rotate any token that was pasted into a chat, terminal history, or issue:

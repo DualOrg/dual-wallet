@@ -14,6 +14,9 @@ const DOCUMENT_POLICY = [
   "form-action 'none'",
 ].join("; ");
 
+const EXTERNAL_DOCUMENT_SANDBOX =
+  "allow-forms allow-same-origin allow-scripts";
+
 function sandboxedDocument(source: string) {
   return `<meta http-equiv="Content-Security-Policy" content="${DOCUMENT_POLICY}">${source}`;
 }
@@ -89,7 +92,17 @@ export function ObjectVisual({
           : undefined
       }
     >
-      {document ? (
+      {display?.kind === "external-document" ? (
+        <iframe
+          className="object-display-frame"
+          src={display.url}
+          title={name}
+          sandbox={EXTERNAL_DOCUMENT_SANDBOX}
+          referrerPolicy="no-referrer"
+          loading={eager ? "eager" : "lazy"}
+          style={{ pointerEvents: display.interactive ? "auto" : "none" }}
+        />
+      ) : document ? (
         <iframe
           className="object-display-frame"
           srcDoc={document}

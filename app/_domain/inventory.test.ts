@@ -134,4 +134,41 @@ describe("inventory adapters", () => {
     expect(after).not.toBe(before);
     expect(after).toContain("content=content-two");
   });
+
+  it("accepts an HTTPS HTML face URL as an external document", () => {
+    const value = {
+      id: "object-123",
+      metadata: { name: "Remote passport" },
+      owner: "0x123",
+      templateId: "template-1",
+      version: 1,
+      stateHash: "state",
+      contentHash: "content",
+      whenCreated: new Date("2026-01-01T00:00:00Z"),
+      whenModified: new Date("2026-02-01T00:00:00Z"),
+    } as SmartObject;
+    const display = {
+      faceId: "face-1",
+      variant: "card",
+      mediaType: "text/html",
+      href: "https://passport.example/viewer?object_id=object-123&theme=dark&variant=card",
+      revision: "one",
+      interactive: true,
+    } as ObjectDisplay;
+
+    expect(toInventoryObject(value, display).display).toEqual({
+      kind: "external-document",
+      url: "https://passport.example/viewer?object_id=object-123&theme=dark&variant=card",
+      mediaType: "text/html",
+      aspectRatio: undefined,
+      interactive: true,
+      revision: "one",
+    });
+    expect(
+      toInventoryObject(value, {
+        ...display,
+        href: "javascript:alert(1)",
+      }).display,
+    ).toBeUndefined();
+  });
 });
