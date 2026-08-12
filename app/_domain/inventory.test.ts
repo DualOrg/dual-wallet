@@ -154,6 +154,7 @@ describe("inventory adapters", () => {
       href: "https://passport.example/viewer?object_id=object-123&theme=dark&variant=card",
       revision: "one",
       interactive: true,
+      config: { metadata: { name: "dpp" }, settings: { screen: "home" } },
     } as ObjectDisplay;
 
     expect(toInventoryObject(value, display).display).toEqual({
@@ -163,6 +164,10 @@ describe("inventory adapters", () => {
       aspectRatio: undefined,
       interactive: true,
       revision: "one",
+      config: {
+        metadata: { name: "dpp" },
+        settings: { screen: "home" },
+      },
     });
     expect(
       toInventoryObject(value, {
@@ -170,5 +175,14 @@ describe("inventory adapters", () => {
         href: "javascript:alert(1)",
       }).display,
     ).toBeUndefined();
+    expect(
+      toInventoryObject(value, {
+        ...display,
+        href: "http://localhost:4100/bridge/test-host/",
+      }).display,
+    ).toMatchObject({
+      kind: "external-document",
+      url: "http://localhost:4100/bridge/test-host/",
+    });
   });
 });

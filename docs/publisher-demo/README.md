@@ -4,7 +4,7 @@ This folder records the production demo created for the Viewer object-view flow.
 
 ## Result
 
-The `Digital Vouchers` organization (`000000000000000000000001`) owns four demo faces and templates. One object was minted from each template and transferred to:
+The `Digital Vouchers` organization (`000000000000000000000001`) owns five demo faces and templates. Objects were minted from the first four templates and transferred to:
 
 `0xd1AEb264fd240879da9e0c344c0b0DF5BF3AbbF5`
 
@@ -14,6 +14,8 @@ The `Digital Vouchers` organization (`000000000000000000000001`) owns four demo 
 | Battery passport | `6a7b2300a7cd3da77bd5dc44` | `6a7b2355a7cd3da77bd5dc47` | `6a7b23a8a7cd3da77bd5dc4e` | [NovaCell B24](https://wallet.dual.network/objects/6a7b23a8a7cd3da77bd5dc4e)           |
 | Collectible card | `6a7b2300a7cd3da77bd5dc45` | `6a7b2356a7cd3da77bd5dc48` | `6a7b23a8a7cd3da77bd5dc53` | [Aetherwing Sentinel](https://wallet.dual.network/objects/6a7b23a8a7cd3da77bd5dc53)    |
 | Interactive DPP  | `6a7b5893e4c541acd669e130` | `6a7b58b7e4c541acd669e131` | `6a7b58e0e4c541acd669e132` | [Cirrus One Travel Case](https://wallet.dual.network/objects/6a7b58e0e4c541acd669e132) |
+
+The URL-backed BKVS DPP face `6a7c0b5b2d715b526f859e0d` is assigned to template `6a7c0b5c2d715b526f859e0e`. It loads [BKVS DPP v0.4.1](https://storage.googleapis.com/bkvs-test/dpp/v0.4.1/index.html). Object `6a7c0cff44f9df7689e3745b` was minted and transferred to the Viewer wallet; open it in the [public Viewer](https://wallet.dual.network/objects/6a7c0cff44f9df7689e3745b).
 
 The complete identifiers, mint actions, transfer actions, canonical links, and short links are in [`manifest.json`](./manifest.json).
 
@@ -61,6 +63,8 @@ The files under [`payloads/`](./payloads/) are the exact token-free face and tem
 - `template-magic-card.json`
 - `face-interactive-product-passport.json`
 - `template-interactive-product-passport.json`
+- `face-url-dpp-v0.4.1.json`
+- `template-url-dpp-v0.4.1.json`
 - `set-attributes-interactive-product-passport.json`
 - `delete-attributes-interactive-product-passport.json`
 
@@ -214,9 +218,11 @@ A face view can point at a dedicated HTTPS application instead of containing an 
 }
 ```
 
-The backend resolves the URL per object while preserving its existing query parameters. It adds `object_id=<object ID>` and `variant=<card|detail|share>`, and Viewer loads that resolved URL directly in a sandboxed iframe. The remote page may run JavaScript, submit forms, and use its own origin for storage and backend calls. It cannot read the Viewer session, receive a Viewer JWT or referrer, open popups, navigate the parent, or access the parent DOM. The remote server must allow framing by `https://wallet.dual.network` through its `Content-Security-Policy: frame-ancestors` policy and must not send a conflicting `X-Frame-Options` header.
+The backend resolves the URL per object while preserving its existing query parameters. It adds `object_id=<object ID>` and `variant=<card|detail|share>`, and Viewer loads that resolved URL directly in a sandboxed iframe using the view's declared `aspect_ratio` in inventory and full object views. The remote page may run JavaScript, submit forms, and use its own origin for storage and backend calls. It cannot read the Viewer session, receive a Viewer JWT or referrer, open popups, navigate the parent, or access the parent DOM. The remote server must allow framing by `https://wallet.dual.network` through its `Content-Security-Policy: frame-ancestors` policy and must not send a conflicting `X-Frame-Options` header.
 
 Set `interactive: true` when the user should interact with the iframe. With `interactive: false`, the remote application can render and run but Viewer disables pointer input. Use a dedicated authorization-code or application-session flow when the remote application needs authenticated API access; never place a wallet access or refresh JWT in the URL.
+
+URL-backed faces are presentation integrations, not a way to inherit the Viewer session. Rich DPP, Trading, or NFT products should open as registered dedicated applications with their own BFF. The authentication choices and optional narrow parent bridge are defined in [Dedicated application architecture](../dedicated-applications.md).
 
 ## Credential hygiene
 

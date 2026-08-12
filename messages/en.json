@@ -162,6 +162,7 @@
     "completed": "Action submitted. ID: {id}",
     "executionFailed": "The action could not be completed.",
     "sessionExpired": "Your sign-in method is unavailable. Please sign in again.",
+    "externalRequest": "The displayed application requested this action. Review every field before you authorize it.",
     "names": {
       "burn": "Burn",
       "transfer": "Transfer",

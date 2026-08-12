@@ -136,9 +136,9 @@ describe("ObjectDetail", () => {
       screen.queryByRole("heading", { level: 2, name: "Aurelia S7" }),
     ).toBeNull();
     expect(screen.queryByText("A product passport")).toBeNull();
-    expect(document.querySelector(".wallet-pass-stage")?.classList).not.toContain(
-      "is-html-display",
-    );
+    expect(
+      document.querySelector(".wallet-pass-stage")?.classList,
+    ).not.toContain("is-html-display");
   });
 
   it("gives an HTML face enough height to display its interactive content", () => {
@@ -161,6 +161,28 @@ describe("ObjectDetail", () => {
     const stage = document.querySelector<HTMLElement>(".wallet-pass-stage");
     expect(stage?.classList).toContain("is-html-display");
     expect(stage?.style.aspectRatio).toBe("");
+  });
+
+  it("respects the declared aspect ratio of an external HTML face", () => {
+    render(
+      <ObjectDetail
+        item={{
+          ...item,
+          display: {
+            kind: "external-document",
+            url: "https://passport.example/viewer?object_id=object-123",
+            mediaType: "text/html",
+            aspectRatio: "16/10",
+            interactive: true,
+            revision: "face-3",
+          },
+        }}
+      />,
+    );
+
+    const stage = document.querySelector<HTMLElement>(".wallet-pass-stage");
+    expect(stage?.classList).not.toContain("is-html-display");
+    expect(stage?.style.aspectRatio).toBe("16 / 10");
   });
 
   it("opens template actions from the lower pass button", () => {

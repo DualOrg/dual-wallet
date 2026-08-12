@@ -35,7 +35,7 @@ export interface AttributeInput {
      */
     key: string;
     /**
-     *
+     * 
      * @type {any}
      * @memberof AttributeInput
      */
@@ -55,7 +55,7 @@ export interface AttributeInput {
     /**
      * Whether this attribute may be returned by public object endpoints and
      * exposed to public face rendering. Omitted attributes remain private.
-     *
+     * 
      * @type {boolean}
      * @memberof AttributeInput
      */
@@ -109,3 +109,4 @@ export function AttributeInputToJSONTyped(value?: AttributeInput | null, ignoreD
         'public': value['_public'],
     };
 }
+

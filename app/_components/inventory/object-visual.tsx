@@ -4,6 +4,12 @@ import Image from "next/image";
 import { Box } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ObjectPresentation } from "@/app/_domain/inventory";
+import {
+  externalFaceBridgeApplication,
+  startAuthenticatedExternalFaceBridge,
+  type AuthenticatedExternalFaceContext,
+  type ExternalFaceBridgeHandlers,
+} from "@/app/_lib/external-face-bridge";
 
 const DOCUMENT_POLICY = [
   "default-src 'none'",
@@ -14,8 +20,7 @@ const DOCUMENT_POLICY = [
   "form-action 'none'",
 ].join("; ");
 
-const EXTERNAL_DOCUMENT_SANDBOX =
-  "allow-forms allow-same-origin allow-scripts";
+const EXTERNAL_DOCUMENT_SANDBOX = "allow-forms allow-same-origin allow-scripts";
 
 function sandboxedDocument(source: string) {
   return `<meta http-equiv="Content-Security-Policy" content="${DOCUMENT_POLICY}">${source}`;
@@ -26,15 +31,48 @@ export function ObjectVisual({
   display,
   name,
   eager = false,
+  bridgeContext,
+  bridgeHandlers,
+  allowInteraction = true,
 }: {
   url?: string;
   display?: ObjectPresentation;
   name: string;
   eager?: boolean;
+  bridgeContext?: AuthenticatedExternalFaceContext;
+  bridgeHandlers?: ExternalFaceBridgeHandlers;
+  allowInteraction?: boolean;
 }) {
   const container = useRef<HTMLDivElement>(null);
+  const externalFrame = useRef<HTMLIFrameElement>(null);
+  const bridgeHost =
+    useRef<ReturnType<typeof startAuthenticatedExternalFaceBridge>>(undefined);
   const [document, setDocument] = useState<string>();
   const imageUrl = display?.kind === "image" ? display.url : url;
+  const externalDocumentUrl = (() => {
+    if (
+      display?.kind !== "external-document" ||
+      !bridgeContext ||
+      !externalFaceBridgeApplication(display.url)
+    ) {
+      return display?.kind === "external-document" ? display.url : undefined;
+    }
+    const value = new URL(display.url);
+    value.searchParams.set("dual_bridge", "1");
+    return value.toString();
+  })();
+
+  useEffect(() => {
+    if (bridgeContext) bridgeHost.current?.updateContext(bridgeContext);
+  }, [bridgeContext]);
+
+  useEffect(
+    () => () => {
+      bridgeHost.current?.close();
+      bridgeHost.current = undefined;
+    },
+    [display?.url],
+  );
 
   useEffect(() => {
     if (display?.kind !== "document") return;
@@ -94,13 +132,29 @@ export function ObjectVisual({
     >
       {display?.kind === "external-document" ? (
         <iframe
+          ref={externalFrame}
           className="object-display-frame"
-          src={display.url}
+          src={externalDocumentUrl}
           title={name}
           sandbox={EXTERNAL_DOCUMENT_SANDBOX}
           referrerPolicy="no-referrer"
           loading={eager ? "eager" : "lazy"}
-          style={{ pointerEvents: display.interactive ? "auto" : "none" }}
+          style={{
+            pointerEvents:
+              display.interactive && allowInteraction ? "auto" : "none",
+          }}
+          onLoad={() => {
+            bridgeHost.current?.close();
+            bridgeHost.current =
+              bridgeContext && externalFrame.current
+                ? startAuthenticatedExternalFaceBridge({
+                    frame: externalFrame.current,
+                    displayUrl: externalDocumentUrl || display.url,
+                    context: bridgeContext,
+                    handlers: bridgeHandlers,
+                  })
+                : undefined;
+          }}
         />
       ) : document ? (
         <iframe

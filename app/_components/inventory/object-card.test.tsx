@@ -3,7 +3,23 @@ import { ObjectCard } from "@/app/_components/inventory/object-card";
 import type { InventoryObject } from "@/app/_domain/inventory";
 
 jest.mock("@/app/_components/inventory/object-visual", () => ({
-  ObjectVisual: ({ name }: { name: string }) => <div>{name} visual</div>,
+  ObjectVisual: ({
+    name,
+    bridgeContext,
+    allowInteraction,
+  }: {
+    name: string;
+    bridgeContext?: unknown;
+    allowInteraction?: boolean;
+  }) => (
+    <div
+      data-testid="object-visual"
+      data-bridge={bridgeContext ? "enabled" : "disabled"}
+      data-interaction={allowInteraction === false ? "disabled" : "enabled"}
+    >
+      {name} visual
+    </div>
+  ),
 }));
 
 const item: InventoryObject = {
@@ -51,6 +67,17 @@ describe("ObjectCard", () => {
     const link = screen.getByRole("link", { name: "Open DUAL" });
     expect(link.className).toContain("has-display");
     expect(link.className).not.toContain("is-metadata");
+    expect(screen.getByTestId("object-visual").dataset.interaction).toBe(
+      "disabled",
+    );
+  });
+
+  it("passes object data to the face bridge only when explicitly enabled", () => {
+    const { rerender } = render(<ObjectCard item={item} />);
+    expect(screen.getByTestId("object-visual").dataset.bridge).toBe("disabled");
+
+    rerender(<ObjectCard item={item} bridgeEnabled />);
+    expect(screen.getByTestId("object-visual").dataset.bridge).toBe("enabled");
   });
 
   it("shows an actions indicator only for executable object actions", () => {

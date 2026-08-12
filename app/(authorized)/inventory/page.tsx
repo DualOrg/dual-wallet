@@ -50,7 +50,7 @@ function setInventoryView(view: InventoryView) {
 export default function InventoryPage() {
   const t = useTranslations("inventory");
   const common = useTranslations("common");
-  const { wallet } = useSession();
+  const { wallet, isAuthenticated } = useSession();
   const [search, setSearch] = useState("");
   const view = useSyncExternalStore(
     subscribeToInventoryView,
@@ -133,7 +133,11 @@ export default function InventoryPage() {
         <>
           <div className={`inventory-grid is-${view}`}>
             {items.map((item) => (
-              <ObjectCard item={item} key={item.id} />
+              <ObjectCard
+                item={item}
+                key={item.id}
+                bridgeEnabled={isAuthenticated}
+              />
             ))}
           </div>
           {query.hasNextPage ? (

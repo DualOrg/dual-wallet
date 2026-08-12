@@ -1,6 +1,7 @@
 import {
   ActionInputError,
   buildInventoryAction,
+  bridgeActionInput,
   isInventoryActionName,
 } from "@/app/_lib/inventory-actions";
 import { ActionsRequestToJSON } from "@/api/web-sdk/models/ActionsRequest";
@@ -86,5 +87,22 @@ describe("inventory actions", () => {
     expect(isInventoryActionName("pickup")).toBe(true);
     expect(isInventoryActionName("mint")).toBe(false);
     expect(isInventoryActionName("bridgeNFT")).toBe(false);
+  });
+
+  it("normalizes untrusted bridge defaults for the Viewer action form", () => {
+    expect(
+      bridgeActionInput("set_attributes", {
+        attributes: [{ key: "profile.name", value: "DUAL", public: true }],
+        expectedObjectNonce: 7,
+      }),
+    ).toEqual({
+      attributes: JSON.stringify([
+        { key: "profile.name", value: "DUAL", public: true },
+      ]),
+      expectedObjectNonce: "7",
+    });
+    expect(() => bridgeActionInput("update", { id: "another-object" })).toThrow(
+      "id:json",
+    );
   });
 });

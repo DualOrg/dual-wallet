@@ -29,6 +29,7 @@ export interface ObjectPresentation {
   aspectRatio?: string;
   interactive: boolean;
   revision: string;
+  config?: object;
 }
 
 export interface InventoryObject extends ObjectDetail {
@@ -82,7 +83,15 @@ function safeAssetUrl(value?: string) {
   if (value.startsWith("/")) return value;
   try {
     const url = new URL(value);
-    return url.protocol === "https:" ? url.toString() : undefined;
+    if (url.protocol === "https:") return url.toString();
+    if (
+      process.env.NODE_ENV !== "production" &&
+      url.protocol === "http:" &&
+      ["localhost", "127.0.0.1"].includes(url.hostname)
+    ) {
+      return url.toString();
+    }
+    return undefined;
   } catch {
     return undefined;
   }
@@ -157,10 +166,17 @@ function toObjectPresentation(
       aspectRatio,
       interactive: value.interactive,
       revision: value.revision,
+      config: value.config,
     };
   }
   const imageUrl = safeAssetUrl(value.href);
-  if (imageUrl?.startsWith("https://") && value.mediaType === "text/html") {
+  if (
+    imageUrl &&
+    (imageUrl.startsWith("https://") ||
+      (process.env.NODE_ENV !== "production" &&
+        imageUrl.startsWith("http://"))) &&
+    value.mediaType === "text/html"
+  ) {
     return {
       kind: "external-document",
       url: imageUrl,
@@ -168,6 +184,7 @@ function toObjectPresentation(
       aspectRatio,
       interactive: value.interactive,
       revision: value.revision,
+      config: value.config,
     };
   }
   if (
@@ -181,6 +198,7 @@ function toObjectPresentation(
       aspectRatio,
       interactive: false,
       revision: value.revision,
+      config: value.config,
     };
   }
   return undefined;

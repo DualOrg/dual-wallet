@@ -8,6 +8,7 @@
   },
   "recipient": "0xd1AEb264fd240879da9e0c344c0b0DF5BF3AbbF5",
   "created_at": "2026-08-11",
+  "updated_at": "2026-08-12",
   "resources": [
     {
       "key": "product_passport",
@@ -51,6 +52,17 @@
       "viewer_url": "https://wallet.dual.network/objects/6a7b58e0e4c541acd669e132",
       "short_url": "https://wallet.dual.network/o/6a7b58e0e4c541acd669e132",
       "public_attributes_url": "https://api.dual.network/public/objects/6a7b58e0e4c541acd669e132/attributes"
+    },
+    {
+      "key": "bkvs_dpp_v0_4_1_url",
+      "face_id": "6a7c0b5b2d715b526f859e0d",
+      "template_id": "6a7c0b5c2d715b526f859e0e",
+      "object_id": "6a7c0cff44f9df7689e3745b",
+      "mint_action_id": "6a7c0cff44f9df7689e3745c",
+      "transfer_action_id": "6a7c0d2944f9df7689e37460",
+      "application_url": "https://storage.googleapis.com/bkvs-test/dpp/v0.4.1/index.html",
+      "viewer_url": "https://wallet.dual.network/objects/6a7c0cff44f9df7689e3745b",
+      "short_url": "https://wallet.dual.network/o/6a7c0cff44f9df7689e3745b"
     }
   ],
   "pending_definitions": []

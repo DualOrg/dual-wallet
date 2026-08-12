@@ -73,7 +73,7 @@ export function useInventoryObject(objectId: string) {
           id: objectId,
           limit: 1,
           include: ["display"],
-          displayVariant: "card",
+          displayVariant: "detail",
           actions: true,
         });
         const actions = new Map(

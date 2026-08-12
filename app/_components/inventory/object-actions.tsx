@@ -6,12 +6,10 @@ import { Play, ShieldCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Alert } from "@/app/_components/design-system/alert";
 import { Button } from "@/app/_components/design-system/button";
-import {
-  Field,
-  TextareaField,
-} from "@/app/_components/design-system/field";
+import { Field, TextareaField } from "@/app/_components/design-system/field";
 import type { InventoryObject } from "@/app/_domain/inventory";
 import { shortId } from "@/app/_domain/inventory";
+import type { ExternalFaceActionRequest } from "@/app/_lib/external-face-bridge";
 import { executeInventoryAction } from "@/app/_lib/action-executor";
 import {
   ActionInputError,
@@ -23,19 +21,30 @@ import {
 } from "@/app/_lib/inventory-actions";
 import { useSession } from "@/app/_providers/session-provider";
 
-export function ObjectActions({ item }: { item: InventoryObject }) {
+export function ObjectActions({
+  item,
+  requestedAction,
+  onRequestedActionCompleted,
+}: {
+  item: InventoryObject;
+  requestedAction?: ExternalFaceActionRequest;
+  onRequestedActionCompleted?: (actionId: string) => void;
+}) {
   const t = useTranslations("actions");
   const session = useSession();
   const queryClient = useQueryClient();
   const actions = useMemo(
-    () =>
-      Array.from(new Set(item.actions)).filter(isInventoryActionName),
+    () => Array.from(new Set(item.actions)).filter(isInventoryActionName),
     [item.actions],
   );
+  const initialRequest =
+    requestedAction && actions.includes(requestedAction.name)
+      ? requestedAction
+      : undefined;
   const [selected, setSelected] = useState<InventoryActionName | null>(
-    actions[0] ?? null,
+    initialRequest?.name ?? actions[0] ?? null,
   );
-  const [input, setInput] = useState<ActionInput>({});
+  const [input, setInput] = useState<ActionInput>(initialRequest?.input ?? {});
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completedId, setCompletedId] = useState<string | null>(null);
@@ -73,6 +82,7 @@ export function ObjectActions({ item }: { item: InventoryObject }) {
         queryClient.invalidateQueries({ queryKey: ["inventory-object"] }),
         queryClient.invalidateQueries({ queryKey: ["activity"] }),
       ]);
+      onRequestedActionCompleted?.(result.actionId);
     } catch (caught) {
       if (caught instanceof ActionInputError) {
         setError(
@@ -107,6 +117,10 @@ export function ObjectActions({ item }: { item: InventoryObject }) {
             type="button"
             variant={selected === name ? "primary" : "secondary"}
             aria-pressed={selected === name}
+            disabled={
+              pending ||
+              Boolean(requestedAction && requestedAction.name !== name)
+            }
             onClick={() => choose(name)}
           >
             {t(`names.${name}`)}
@@ -114,6 +128,7 @@ export function ObjectActions({ item }: { item: InventoryObject }) {
         ))}
       </div>
       <form className="object-action-form" onSubmit={execute}>
+        {requestedAction ? <Alert>{t("externalRequest")}</Alert> : null}
         {fields.length ? (
           <div className="form-grid">
             {fields.map((field) =>
@@ -125,7 +140,7 @@ export function ObjectActions({ item }: { item: InventoryObject }) {
                   required={field.required}
                   rows={5}
                   value={input[field.name] ?? ""}
-                  placeholder={t(`placeholders.${field.name}`)}
+                  placeholder={String(t.raw(`placeholders.${field.name}`))}
                   onChange={(event) =>
                     setInput((current) => ({
                       ...current,
@@ -138,15 +153,13 @@ export function ObjectActions({ item }: { item: InventoryObject }) {
                   key={field.name}
                   name={field.name}
                   type={
-                    field.kind === "datetime"
-                      ? "datetime-local"
-                      : field.kind
+                    field.kind === "datetime" ? "datetime-local" : field.kind
                   }
                   step={field.kind === "number" ? "any" : undefined}
                   label={fieldLabel(field.name)}
                   required={field.required}
                   value={input[field.name] ?? ""}
-                  placeholder={t(`placeholders.${field.name}`)}
+                  placeholder={String(t.raw(`placeholders.${field.name}`))}
                   onChange={(event) =>
                     setInput((current) => ({
                       ...current,

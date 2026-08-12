@@ -31,6 +31,15 @@ npm run dev
 
 Open [http://demo.localhost:3000](http://demo.localhost:3000) or [http://localhost:3000](http://localhost:3000). Both currently resolve to the wildcard organization.
 
+Registered external-face bridge origins are an explicit build-time allowlist:
+
+```text
+NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS=https://faces.dual.network
+NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS=dual.dpp@1=https://faces.dual.network/dpp/v1/
+```
+
+Development also allows `http://localhost:4100` and `http://127.0.0.1:4100`. Viewer initializes the bridge only from authenticated inventory/object components; anonymous public cards receive no Viewer bridge or session data.
+
 ## User flows
 
 - Email/password registration and login (default method)
@@ -40,9 +49,27 @@ Open [http://demo.localhost:3000](http://demo.localhost:3000) or [http://localho
 - Forgot/reset password
 - Wallet inventory, object details and paginated action logs
 - Public object previews and share links using the API's filtered public projection
+- External face `card` views in inventory/public pages and `detail` views on authenticated object pages
 - Profile/language updates and account deletion
 
 Operator and admin surfaces are intentionally outside this app shell and can be added as a separate role-gated area later.
+
+Advanced DPP, Trading, and NFT workflows are also separate applications rather than Viewer forks. They share API, domain, session, action-execution, object-view, and UI packages while keeping independent origins and server-held sessions. See [Dedicated application architecture](./docs/dedicated-applications.md) for the trust model and authenticated backend design.
+
+The native external-face bridge is authenticated-only and bound to an approved
+application ID, semantic major, exact origin, and URL path. It exposes a
+normalized current object, invalidation, health, and Viewer-native details.
+Trusted detail faces may also read the bound object's minimized attributes and
+request a standard native action flow. Viewer retains the object binding,
+confirmation, email/passkey/EOA signing, and execution; the iframe never
+receives signatures, cookies, JWTs, or an arbitrary API proxy. The builder
+guide, DPP child, and protocol live in the sibling `external-faces` project.
+
+Bridge internals are modular: `app/_lib/external-face-bridge/core/` owns the
+channel and trust boundary, while `capabilities/` owns named object, attribute,
+action, and Viewer-UI operations. New backend integrations add a reviewed
+capability plus a Viewer-side adapter; they do not add generic HTTP access to
+the iframe.
 
 ## API and session boundary
 
@@ -95,12 +122,22 @@ make viewer-prod
 ```
 
 The defaults are `API_URL=https://api.dual.network`,
-`VIEWER_BASE_DOMAIN=wallet.dual.network` and
-`NEXT_PUBLIC_APP_URL=https://wallet.dual.network`. Override any value on the
-command line when required, for example:
+`VIEWER_BASE_DOMAIN=wallet.dual.network`,
+`NEXT_PUBLIC_APP_URL=https://wallet.dual.network`, and
+`NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS=https://faces.dual.network`.
+`NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS` binds each application ID and
+major version to an exact URL path prefix; the production default is
+`dual.dpp@1=https://faces.dual.network/dpp/v1/`.
+The bridge never transfers Viewer credentials. Public pages do not initialize
+it; authenticated detail faces may receive the bound object's minimized
+attributes and request a native standard action, which Viewer refetches,
+confirms, signs, and executes outside the iframe.
+The bridge allowlist is passed into the Docker build because Next.js embeds
+public variables into the browser bundle. Override any value on the command
+line when required, for example:
 
 ```bash
-make viewer-prod API_URL=https://api.example.com VIEWER_BASE_DOMAIN=viewer.example.com NEXT_PUBLIC_APP_URL=https://viewer.example.com
+make viewer-prod API_URL=https://api.example.com VIEWER_BASE_DOMAIN=viewer.example.com NEXT_PUBLIC_APP_URL=https://viewer.example.com NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS=https://faces.example.com NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS=dual.dpp@1=https://faces.example.com/dpp/v1/
 ```
 
 Deployment is capped at one Cloud Run instance while sessions use the current

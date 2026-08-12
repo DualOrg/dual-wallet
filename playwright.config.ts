@@ -18,6 +18,11 @@ export default defineConfig({
   },
   webServer: [
     {
+      command: "npm --prefix ../external-faces run serve",
+      url: "http://localhost:4100/bridge/test-host/",
+      reuseExistingServer: !process.env.CI,
+    },
+    {
       command: "node e2e/mock-api.mjs",
       url: "http://127.0.0.1:4010/health",
       reuseExistingServer: !process.env.CI,
@@ -31,6 +36,9 @@ export default defineConfig({
         API_URL: "http://127.0.0.1:4010",
         VIEWER_BASE_DOMAIN: "wallet.dual.network",
         NEXT_PUBLIC_APP_URL: "http://demo.localhost:3000",
+        NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS: "https://faces.dual.network",
+        NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS:
+          "dual.dpp@1=https://faces.dual.network/dpp/v1/",
       },
     },
   ],

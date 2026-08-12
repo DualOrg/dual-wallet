@@ -9,6 +9,8 @@ IMAGE ?= eu.gcr.io/$(PROJECT_ID)/$(SERVICE):latest
 API_URL ?= https://api.dual.network
 VIEWER_BASE_DOMAIN ?= wallet.dual.network
 NEXT_PUBLIC_APP_URL ?= https://wallet.dual.network
+NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS ?= https://faces.dual.network
+NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS ?= dual.dpp@1=https://faces.dual.network/dpp/v1/
 
 .PHONY: help install dev build check test sdk-sync deploy-config-check image-build image-push deploy deploy-dev deploy-prod viewer viewer-dev viewer-prod
 
@@ -53,12 +55,16 @@ deploy-config-check:
 	@test -n "$(API_URL)" || (echo "API_URL is required" >&2; exit 1)
 	@test -n "$(VIEWER_BASE_DOMAIN)" || (echo "VIEWER_BASE_DOMAIN is required" >&2; exit 1)
 	@test -n "$(NEXT_PUBLIC_APP_URL)" || (echo "NEXT_PUBLIC_APP_URL is required" >&2; exit 1)
+	@test -n "$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS)" || (echo "NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS is required" >&2; exit 1)
+	@test -n "$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS)" || (echo "NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS is required" >&2; exit 1)
 
 image-build: deploy-config-check
 	docker build \
 		--network host \
 		--platform linux/amd64 \
 		--build-arg NEXT_PUBLIC_APP_URL="$(NEXT_PUBLIC_APP_URL)" \
+		--build-arg NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS="$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS)" \
+		--build-arg NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS="$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS)" \
 		-t "$(IMAGE)" \
 		.
 
@@ -72,7 +78,7 @@ deploy: deploy-config-check
 		--image "$(IMAGE)" \
 		--allow-unauthenticated \
 		--max-instances 1 \
-		--update-env-vars "API_URL=$(API_URL),VIEWER_BASE_DOMAIN=$(VIEWER_BASE_DOMAIN),NEXT_PUBLIC_APP_URL=$(NEXT_PUBLIC_APP_URL)"
+		--update-env-vars "^|^API_URL=$(API_URL)|VIEWER_BASE_DOMAIN=$(VIEWER_BASE_DOMAIN)|NEXT_PUBLIC_APP_URL=$(NEXT_PUBLIC_APP_URL)|NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS=$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS)|NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS=$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS)"
 
 deploy-dev: ENV=dev
 deploy-dev: deploy

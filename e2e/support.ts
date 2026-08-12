@@ -75,6 +75,23 @@ export const actionLog = {
   when_modified: "2026-02-15T09:31:00.000Z",
 };
 
+const bridgeAttributes = [
+  {
+    id: "attribute-e2e-1",
+    object_id: smartObject.id,
+    key: "service.status",
+    value: "active",
+    category: "service",
+    content_type: "text",
+    public: true,
+    value_hash: "attribute-value-hash",
+    action_id: "attribute-action-id",
+    object_nonce: 2,
+    when_created: "2026-02-01T00:00:00.000Z",
+    when_modified: "2026-02-12T12:30:00.000Z",
+  },
+];
+
 function objectDisplay(variant: "card" | "detail") {
   return {
     face_id: "507f1f77bcf86cd799439013",
@@ -144,6 +161,12 @@ export async function mockBackend(page: Page) {
     }
     if (
       request.method() === "GET" &&
+      path === `/api/backend/objects/${smartObject.id}/attributes`
+    ) {
+      return json(route, { attributes: bridgeAttributes });
+    }
+    if (
+      request.method() === "GET" &&
       path === "/api/backend/ebus/action-logs"
     ) {
       return json(route, { action_logs: [actionLog] });
@@ -167,6 +190,34 @@ export async function mockBackend(page: Page) {
       500,
     );
   });
+}
+
+export async function mockExternalBridgeDisplay(page: Page) {
+  await page.route("**/api/backend/objects?**", (route) =>
+    json(route, {
+      items: [
+        {
+          object: smartObject,
+          display: {
+            face_id: "external-face-e2e",
+            variant: "detail",
+            media_type: "text/html",
+            href: "http://localhost:4100/bridge/test-host/",
+            aspect_ratio: "4/3",
+            revision: "external-face-e2e-v1",
+            interactive: true,
+          },
+        },
+      ],
+      objects: [smartObject],
+      actions: [
+        {
+          template_id: smartObject.template_id,
+          actions: ["update"],
+        },
+      ],
+    }),
+  );
 }
 
 export async function mockViewerApi(

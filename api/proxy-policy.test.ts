@@ -6,6 +6,9 @@ describe("validateProxyPath", () => {
     expect(validateProxyPath("GET", ["objects", "object-1"]).allowed).toBe(
       true,
     );
+    expect(
+      validateProxyPath("GET", ["objects", "object-1", "attributes"]).allowed,
+    ).toBe(true);
     expect(validateProxyPath("GET", ["ebus", "action-logs"]).allowed).toBe(
       true,
     );

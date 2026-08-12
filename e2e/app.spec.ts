@@ -1,5 +1,9 @@
 import { expect, test, type Locator } from "@playwright/test";
-import { mockViewerApi, smartObject } from "./support";
+import {
+  mockExternalBridgeDisplay,
+  mockViewerApi,
+  smartObject,
+} from "./support";
 
 async function expectModalWithinViewport(
   dialog: Locator,
@@ -146,6 +150,54 @@ test("inventory executes an action returned by the object template", async ({
   await expect(
     page.getByText("Action submitted. ID: action-e2e-2"),
   ).toBeVisible();
+});
+
+test("an authenticated external face reads attributes and requests a Viewer-owned action", async ({
+  page,
+}) => {
+  await mockExternalBridgeDisplay(page);
+  await page.goto(`/inventory/${smartObject.id}`);
+
+  const face = page.frameLocator('iframe[title="Sample Membership"]');
+  await expect(face.getByText("Bridge ready", { exact: true })).toBeVisible();
+  await expect(face.getByText("Sample Membership (detail)")).toBeVisible();
+
+  await face.getByRole("button", { name: "Read attributes" }).click();
+  await expect(face.getByText('"key":"service.status"')).toBeVisible();
+  await expect(face.getByText('"value":"active"')).toBeVisible();
+
+  await face.getByRole("button", { name: "Request update action" }).click();
+  const actionDialog = page.getByRole("dialog");
+  await expect(actionDialog).toBeVisible();
+  await expect(
+    actionDialog.getByText(
+      "The displayed application requested this action. Review every field before you authorize it.",
+    ),
+  ).toBeVisible();
+  await expect(actionDialog.getByLabel("Custom data (JSON)")).toHaveValue(
+    '{"bridge_test":true}',
+  );
+
+  const executeRequest = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api/backend/ebus/execute",
+  );
+  await actionDialog.getByRole("button", { name: "Run Update" }).click();
+  const actionBody = (await executeRequest).postDataJSON();
+  expect(actionBody.action.update).toMatchObject({
+    id: smartObject.id,
+    data: { custom: { bridge_test: true } },
+  });
+  await expect(face.getByText('"status":"completed"')).toBeVisible();
+  await expect(face.getByText('"action_id":"action-e2e-2"')).toBeVisible();
+
+  await face.getByRole("button", { name: "Request update action" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Close pass details" })
+    .click();
+  await expect(face.getByText("user_cancelled:")).toBeVisible();
 });
 
 test("a public object link opens without a Viewer session", async ({

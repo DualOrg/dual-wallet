@@ -7,7 +7,7 @@
 - This repository is a greenfield implementation. The existing files are
   disposable and may be deleted before establishing the new scaffold.
 - Build the application as a strict TypeScript, React 19, Next.js App Router
-  application. 
+  application.
 - Canonical boundaries:
   - HTTP contract and endpoint semantics: sibling `../api-v3` repository,
     especially `api.yaml`, `routes/`, and `schemas/`.
@@ -321,6 +321,32 @@
   untrusted remote data. Escape text, validate URL schemes, restrict image
   origins, and sandbox any future rich renderer. Never use unchecked
   `dangerouslySetInnerHTML`.
+- A bridge-enabled external face is identified by application ID + semantic
+  major + exact origin + URL path prefix. Origin allowlisting alone is not
+  sufficient. Verify the child's ready identity before sending context and
+  close the channel on mismatch, navigation, timeout, or unmount.
+- Keep the external-face bridge host modular: `core/` owns application binding,
+  context, protocol validation, errors, and channel transport;
+  `capabilities/` owns named operations and injected handlers. A new backend
+  integration adds a capability module without teaching transport about the
+  use case.
+- Public object pages never initialize the authenticated bridge. Inventory
+  cards receive no private-attribute or action-request handler. Only an
+  authenticated detail route may grant `object.attributes.read` or
+  `object.action.request` to an explicitly configured application path.
+- `object.attributes.read` accepts no object ID and maps only to the bound
+  object's authenticated attribute GET through the BFF. Return the minimized
+  attribute projection; never expose hashes used for write preconditions,
+  action IDs, wallet/session fields, or raw upstream errors unless the bridge
+  contract explicitly requires them.
+- An external action request is untrusted intent, not authorization. Accept
+  only a supported action name and known form-default fields, reject child
+  object/signer/organization/endpoint values, refetch the object's fresh action
+  list, and require the existing Viewer-native confirmation and
+  email/passkey/EOA execution flow. Allow one pending request per face.
+- Never send JWTs, cookies, passkey assertions, challenges, EOA signatures,
+  permit secrets, or raw action payloads to an iframe. Do not add generic
+  fetch/proxy bridge operations.
 - Activity calls `listActionLogs` with the current wallet ID and/or signer as
   defined by the canonical ownership model. Keep the wallet filter across
   cursor pages and filter changes; never expose an organization-wide operator
@@ -348,6 +374,10 @@
 - Public build-time values only when browser code genuinely needs them:
   - `NEXT_PUBLIC_APP_URL`
   - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`
+  - `NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS`: exact trusted iframe origins.
+  - `NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS`: comma-separated
+    `application.id@major=https://origin/path/` bindings used to verify both
+    the iframe URL and its bridge-ready identity before initialization.
   - reviewed public chain ID, RPC, and explorer values if EOA UX needs them.
 - Tenant hosts use `<tenant-label>.<VIEWER_BASE_DOMAIN>`. Missing or unmapped
   labels use the documented `*` organization mapping. Origin validation
@@ -366,7 +396,7 @@
 - Unit/component tests use Jest and Testing Library; E2E tests use Playwright
   Chromium. Prefer role/label queries and test keyboard/focus behavior.
 - During development, run the smallest relevant test first, then `npm run
-  check`. Run `npm run build` for routes, server/client boundaries, environment,
+check`. Run `npm run build` for routes, server/client boundaries, environment,
   SDK synchronization, security headers, or deployment changes.
 - Run E2E tests for login, registration, verification, password recovery,
   logout, session refresh, route protection, EOA/passkey browser ceremonies,
@@ -379,6 +409,10 @@
   proxy deny rules, refresh rotation, challenge expiry/replay, cancelled wallet
   prompts, passkey encoding, current-wallet filtering, cursor preservation,
   unsafe asset URLs, and terminal 401 cleanup.
+- External-face changes additionally require application/path/major mismatch,
+  unknown envelope fields, duplicate request IDs, message limits, rate limits,
+  capability denial, object-ID injection, action cancellation, and real
+  cross-origin iframe integration coverage with mocked APIs.
 - Test loading, empty, error, partial-data, stale-session, and pagination states
   in addition to the happy path.
 

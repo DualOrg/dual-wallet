@@ -1310,7 +1310,7 @@ button {
 }
 .public-object-header-actions {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
 }
 .public-object-header.has-object-menu .public-object-header-actions {

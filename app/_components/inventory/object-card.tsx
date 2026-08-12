@@ -4,8 +4,15 @@ import type { InventoryObject } from "@/app/_domain/inventory";
 import { shortId } from "@/app/_domain/inventory";
 import { ObjectVisual } from "@/app/_components/inventory/object-visual";
 import { isInventoryActionName } from "@/app/_lib/inventory-actions";
+import { toAuthenticatedExternalFaceContext } from "@/app/_lib/external-face-bridge";
 
-export function ObjectCard({ item }: { item: InventoryObject }) {
+export function ObjectCard({
+  item,
+  bridgeEnabled = false,
+}: {
+  item: InventoryObject;
+  bridgeEnabled?: boolean;
+}) {
   const actionCount = item.actions.filter(isInventoryActionName).length;
   const actionLabel = `${actionCount} ${actionCount === 1 ? "action" : "actions"} available`;
   return (
@@ -18,6 +25,12 @@ export function ObjectCard({ item }: { item: InventoryObject }) {
         url={item.imageUrl}
         display={item.display}
         name={item.name}
+        allowInteraction={false}
+        bridgeContext={
+          bridgeEnabled
+            ? toAuthenticatedExternalFaceContext(item, item.actions)
+            : undefined
+        }
       />
       <div className="object-body">
         <div className="object-card-meta">

@@ -68,6 +68,55 @@ export function actionFields(
   return definitions[name];
 }
 
+function record(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Treat bridge-provided values as untrusted form defaults. The normal action
+ * builder remains the authority when the user submits the Viewer-owned form.
+ */
+export function bridgeActionInput(
+  name: InventoryActionName,
+  value: unknown,
+): ActionInput {
+  if (value === undefined) return {};
+  if (!record(value)) throw new ActionInputError("input", "json");
+
+  const fields = new Map(
+    actionFields(name).map((field) => [field.name, field]),
+  );
+  const result: ActionInput = {};
+  for (const [key, raw] of Object.entries(value)) {
+    const field = fields.get(key);
+    if (!field) throw new ActionInputError(key, "json");
+    if (raw === undefined || raw === null) continue;
+
+    if (field.kind === "json") {
+      if (typeof raw === "string") {
+        result[key] = raw;
+      } else {
+        try {
+          result[key] = JSON.stringify(raw);
+        } catch {
+          throw new ActionInputError(key, "json");
+        }
+      }
+      continue;
+    }
+    if (field.kind === "number") {
+      if (typeof raw !== "string" && typeof raw !== "number") {
+        throw new ActionInputError(key, "number");
+      }
+      result[key] = String(raw);
+      continue;
+    }
+    if (typeof raw !== "string") throw new ActionInputError(key, "json");
+    result[key] = raw;
+  }
+  return result;
+}
+
 function text(input: ActionInput, field: string, required = false) {
   const value = input[field]?.trim();
   if (required && !value) throw new ActionInputError(field, "required");

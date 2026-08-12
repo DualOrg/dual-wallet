@@ -1,7 +1,14 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import type { ReactElement, ReactNode } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { Info, MoreHorizontal, X, Zap } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { ObjectVisual } from "@/app/_components/inventory/object-visual";
@@ -9,6 +16,16 @@ import {
   shortId,
   type ObjectDetail as ObjectDetailModel,
 } from "@/app/_domain/inventory";
+import {
+  ExternalFaceBridgeError,
+  toAuthenticatedExternalFaceContext,
+  type ExternalFaceActionRequest,
+  type ExternalFaceActionResult,
+} from "@/app/_lib/external-face-bridge";
+import {
+  readExternalFaceAttributes,
+  verifyExternalFaceAction,
+} from "@/app/_lib/external-face-data";
 
 function displayKey(value: string) {
   const words = value.replaceAll("_", " ").trim();
@@ -105,14 +122,23 @@ function StandardObjectFace({ item }: { item: ObjectDetailModel }) {
   );
 }
 
+interface ObjectActionSlotContext {
+  requestedAction?: ExternalFaceActionRequest;
+  onRequestedActionCompleted?: (actionId: string) => void;
+}
+
 export function ObjectDetail({
   item,
   action,
   actions,
+  bridgeEnabled = false,
+  bridgeActions = [],
 }: {
   item: ObjectDetailModel;
   action?: ReactNode;
   actions?: ReactNode;
+  bridgeEnabled?: boolean;
+  bridgeActions?: string[];
 }) {
   const locale = useLocale();
   const t = useTranslations("object");
@@ -125,6 +151,16 @@ export function ObjectDetail({
   const moreButton = useRef<HTMLButtonElement>(null);
   const actionButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
+  const actionInProgress = useRef(false);
+  const [pendingBridgeAction, setPendingBridgeAction] = useState<
+    | {
+        resolve: (result: ExternalFaceActionResult) => void;
+        reject: (error: Error) => void;
+      }
+    | undefined
+  >(undefined);
+  const [requestedAction, setRequestedAction] =
+    useState<ExternalFaceActionRequest>();
   const date = (value: Date) =>
     new Intl.DateTimeFormat(locale, {
       dateStyle: "medium",
@@ -154,8 +190,78 @@ export function ObjectDetail({
   const passAspectRatio = item.display?.aspectRatio
     ? item.display.aspectRatio.replace("/", " / ")
     : "4 / 3";
-  const hasHtmlDisplay =
-    item.display?.mediaType.toLowerCase().startsWith("text/html") ?? false;
+  const hasInlineHtmlDisplay =
+    item.display?.kind === "document" &&
+    item.display.mediaType.toLowerCase().startsWith("text/html");
+  const canHandleBridgeActions =
+    isValidElement(actions) && typeof actions.type !== "string";
+  const readBridgeAttributes = useCallback(
+    () => readExternalFaceAttributes(item.id),
+    [item.id],
+  );
+
+  const requestBridgeAction = useCallback(
+    async (request: ExternalFaceActionRequest) => {
+      if (actionInProgress.current) {
+        throw new ExternalFaceBridgeError(
+          "action_in_progress",
+          "Another action request is already awaiting confirmation.",
+        );
+      }
+      actionInProgress.current = true;
+      try {
+        await verifyExternalFaceAction(item.id, request.name);
+        return new Promise<ExternalFaceActionResult>((resolve, reject) => {
+          setPendingBridgeAction({ resolve, reject });
+          setRequestedAction(request);
+          setMenuOpen(false);
+          setModalView("actions");
+        });
+      } catch (error) {
+        actionInProgress.current = false;
+        throw error;
+      }
+    },
+    [item.id],
+  );
+
+  const completeBridgeAction = useCallback(
+    (actionId: string) => {
+      pendingBridgeAction?.resolve({
+        status: "completed",
+        action_id: actionId,
+      });
+      setPendingBridgeAction(undefined);
+      setRequestedAction(undefined);
+      setModalView(null);
+    },
+    [pendingBridgeAction],
+  );
+
+  const renderedActions = canHandleBridgeActions
+    ? cloneElement(actions as ReactElement<ObjectActionSlotContext>, {
+        requestedAction,
+        onRequestedActionCompleted: requestedAction
+          ? completeBridgeAction
+          : undefined,
+      })
+    : actions;
+
+  const cancelBridgeAction = useCallback(() => {
+    pendingBridgeAction?.reject(
+      new ExternalFaceBridgeError(
+        "user_cancelled",
+        "The action request was cancelled.",
+      ),
+    );
+    setPendingBridgeAction(undefined);
+    setRequestedAction(undefined);
+  }, [pendingBridgeAction]);
+
+  const closeModal = useCallback(() => {
+    if (modalView === "actions") cancelBridgeAction();
+    setModalView(null);
+  }, [cancelBridgeAction, modalView]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -174,7 +280,7 @@ export function ObjectDetail({
     document.body.style.overflow = "hidden";
     closeButton.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setModalView(null);
+      if (event.key === "Escape") closeModal();
     };
     document.addEventListener("keydown", closeOnEscape);
     return () => {
@@ -182,7 +288,25 @@ export function ObjectDetail({
       document.body.style.overflow = previousOverflow;
       trigger?.focus();
     };
-  }, [modalView]);
+  }, [closeModal, modalView]);
+
+  useEffect(
+    () => () => {
+      pendingBridgeAction?.reject(
+        new ExternalFaceBridgeError(
+          "bridge_closed",
+          "The Viewer closed the action request.",
+        ),
+      );
+    },
+    [pendingBridgeAction],
+  );
+
+  useEffect(() => {
+    if (!pendingBridgeAction && !requestedAction) {
+      actionInProgress.current = false;
+    }
+  }, [pendingBridgeAction, requestedAction]);
 
   const showDetails = () => {
     setMenuOpen(false);
@@ -223,8 +347,12 @@ export function ObjectDetail({
         </div>
         <div className="card wallet-pass-shell">
           <div
-            className={`wallet-pass-stage${hasHtmlDisplay ? " is-html-display" : ""}`}
-            style={hasHtmlDisplay ? undefined : { aspectRatio: passAspectRatio }}
+            className={`wallet-pass-stage${hasInlineHtmlDisplay ? " is-html-display" : ""}`}
+            style={
+              hasInlineHtmlDisplay
+                ? undefined
+                : { aspectRatio: passAspectRatio }
+            }
           >
             {item.display ? (
               <ObjectVisual
@@ -232,6 +360,26 @@ export function ObjectDetail({
                 display={item.display}
                 name={item.name}
                 eager
+                bridgeContext={
+                  bridgeEnabled
+                      ? toAuthenticatedExternalFaceContext(
+                          item,
+                          bridgeActions,
+                          item.display?.config ?? null,
+                          "detail",
+                        )
+                    : undefined
+                }
+                bridgeHandlers={{
+                  openDetails: showDetails,
+                  readAttributes: bridgeEnabled
+                    ? readBridgeAttributes
+                    : undefined,
+                  requestAction:
+                    bridgeEnabled && canHandleBridgeActions
+                      ? requestBridgeAction
+                      : undefined,
+                }}
               />
             ) : (
               <StandardObjectFace item={item} />
@@ -258,7 +406,7 @@ export function ObjectDetail({
         <div
           className="object-pass-modal-backdrop"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setModalView(null);
+            if (event.target === event.currentTarget) closeModal();
           }}
         >
           <section
@@ -280,7 +428,7 @@ export function ObjectDetail({
                   type="button"
                   className="object-pass-modal-close"
                   aria-label={t("closeDetails")}
-                  onClick={() => setModalView(null)}
+                  onClick={closeModal}
                 >
                   <X size={20} aria-hidden />
                 </button>
@@ -305,7 +453,7 @@ export function ObjectDetail({
                 </>
               ) : (
                 <section className="object-pass-detail-actions">
-                  {actions}
+                  {renderedActions}
                 </section>
               )}
             </div>

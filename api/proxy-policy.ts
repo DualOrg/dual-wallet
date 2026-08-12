@@ -35,6 +35,15 @@ export function validateProxyPath(
   }
   if (
     method === "GET" &&
+    path.length === 3 &&
+    path[0] === "objects" &&
+    OBJECT_ID.test(path[1]) &&
+    path[2] === "attributes"
+  ) {
+    return { allowed: true };
+  }
+  if (
+    method === "GET" &&
     path.length === 2 &&
     path[0] === "ebus" &&
     path[1] === "action-logs"

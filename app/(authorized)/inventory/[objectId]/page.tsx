@@ -9,10 +9,12 @@ import { ObjectDetail } from "@/app/_components/inventory/object-detail";
 import { ObjectActions } from "@/app/_components/inventory/object-actions";
 import { ShareObjectButton } from "@/app/_components/inventory/share-object-button";
 import { useInventoryObject } from "@/app/_hooks/data";
+import { useSession } from "@/app/_providers/session-provider";
 
 export default function ObjectPage() {
   const t = useTranslations("object");
   const params = useParams<{ objectId: string }>();
+  const session = useSession();
   const objectId = decodeURIComponent(params.objectId);
   const query = useInventoryObject(objectId);
   if (query.isPending)
@@ -52,6 +54,8 @@ export default function ObjectPage() {
         actions={
           item.actions.length ? <ObjectActions item={item} /> : undefined
         }
+        bridgeEnabled={session.isAuthenticated}
+        bridgeActions={item.actions}
       />
     </>
   );
