@@ -199,6 +199,9 @@ export async function mockBackend(page: Page) {
       request.method() === "GET" &&
       path === "/api/backend/ebus/action-logs"
     ) {
+      if (url.searchParams.get("status") === "failed") {
+        return json(route, { action_logs: [] });
+      }
       return url.searchParams.get("next") === "activity-page-2"
         ? json(route, { action_logs: [secondActionLog] })
         : json(route, {

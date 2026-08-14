@@ -168,9 +168,7 @@ export default function ActivityPage() {
           </div>
         </>
       )}
-      {!query.isPending &&
-      !query.isError &&
-      (hasPreviousPage || hasNextPage) ? (
+      {!query.isPending && !query.isError ? (
         <nav className="activity-pagination" aria-label={t("pagination")}>
           <Button
             variant="secondary"

@@ -383,6 +383,18 @@ test("activity shows the wallet action timeline", async ({ page }) => {
   await expect(
     page.getByText("Mint membership", { exact: true }),
   ).toBeVisible();
+
+  await page.getByLabel("Status").selectOption("failed");
+  await expect(
+    page.getByText("No activity yet", { exact: true }),
+  ).toBeVisible();
+  await expect(pagination).toBeVisible();
+  await expect(
+    pagination.getByRole("button", { name: "Previous page" }),
+  ).toBeDisabled();
+  await expect(
+    pagination.getByRole("button", { name: "Next page" }),
+  ).toBeDisabled();
 });
 
 test("settings update the profile", async ({ page }) => {
