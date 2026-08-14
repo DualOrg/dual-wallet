@@ -57,7 +57,7 @@ export default function InventoryPage() {
     getInventoryView,
     getServerInventoryView,
   );
-  const query = useInventory(useDeferredValue(search), wallet?.address);
+  const query = useInventory(useDeferredValue(search), wallet?.account.address);
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
   return (
     <>

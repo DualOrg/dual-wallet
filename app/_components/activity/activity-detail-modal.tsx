@@ -56,6 +56,7 @@ export function ActivityDetailModal({
 
   if (!entry) return null;
   const detail = entry.detail;
+  const versionLabel = detail.version === 1 ? t("version1") : t("version2");
   const formatDate = (value: Date) =>
     new Intl.DateTimeFormat(locale, {
       dateStyle: "medium",
@@ -80,6 +81,7 @@ export function ActivityDetailModal({
             <p className="page-eyebrow">{t("eyebrow")}</p>
             <div className="activity-modal-title-row">
               <h2 id="activity-detail-title">{entry.name}</h2>
+              <span className="activity-version-badge">{versionLabel}</span>
               <StatusBadge status={entry.status} />
             </div>
           </div>
@@ -102,7 +104,7 @@ export function ActivityDetailModal({
               <DetailField label={t("batchId")} value={detail.batchId} />
               <DetailField label={t("name")} value={detail.name} />
               <DetailField label={t("alias")} value={detail.alias} />
-              <DetailField label={t("version")} value={detail.version} />
+              <DetailField label={t("version")} value={versionLabel} />
               <DetailField label={t("nonce")} value={detail.nonce} />
               <DetailField
                 label={t("created")}
@@ -131,11 +133,8 @@ export function ActivityDetailModal({
                 label={t("messageHash")}
                 value={detail.messageHash}
               />
-              <DetailField label={t("signer")} value={detail.signer} />
-              <DetailField
-                label={t("delegatedSigner")}
-                value={detail.delegatedSigner}
-              />
+              <DetailField label={t("account")} value={detail.account} />
+              <DetailField label={t("controller")} value={detail.controller} />
             </dl>
           </section>
 

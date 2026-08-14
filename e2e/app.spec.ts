@@ -3,6 +3,7 @@ import {
   mockExternalBridgeDisplay,
   mockViewerApi,
   smartObject,
+  viewerWallet,
 } from "./support";
 
 async function expectModalWithinViewport(
@@ -322,6 +323,20 @@ test("activity shows the wallet action timeline", async ({ page }) => {
   await expect(
     details.getByText("state-change-e2e-1", { exact: true }),
   ).toBeVisible();
+  await expect(details.getByText("V2 · Kernel", { exact: true })).toHaveCount(
+    2,
+  );
+  await expect(details.getByText("Account", { exact: true })).toBeVisible();
+  await expect(details.getByText("Controller", { exact: true })).toBeVisible();
+  await expect(
+    details.getByText(viewerWallet.account.address, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    details.getByText(viewerWallet.controller.address, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    details.getByText("personal_sign", { exact: true }),
+  ).toBeVisible();
   await expect(details.getByText("0xsignature", { exact: true })).toHaveCount(
     0,
   );
@@ -339,6 +354,9 @@ test("settings update the profile", async ({ page }) => {
   await expect(
     page.getByText("0x12345678…ef12345678", { exact: true }),
   ).toBeVisible();
+  await expect(page.getByText("Smart-account address")).toBeVisible();
+  await expect(page.getByText("Controller address")).toBeVisible();
+  await expect(page.getByTitle(viewerWallet.controller.address)).toBeVisible();
 });
 
 test("account deletion requires explicit confirmation", async ({ page }) => {

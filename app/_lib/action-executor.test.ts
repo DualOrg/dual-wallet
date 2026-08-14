@@ -1,6 +1,6 @@
 import { getEbusApi } from "@/api/web-sdk-client";
 import { executeInventoryAction } from "@/app/_lib/action-executor";
-import { signActionWithPasskey } from "@/app/_utils/webauthn";
+import { base64urlToBytes, signActionWithPasskey } from "@/app/_utils/webauthn";
 
 jest.mock("@/api/web-sdk-client", () => ({
   getEbusApi: jest.fn(),
@@ -17,6 +17,7 @@ jest.mock("@/app/_utils/webauthn", () => ({
 
 const mockedApi = jest.mocked(getEbusApi);
 const mockedPasskey = jest.mocked(signActionWithPasskey);
+const mockedBase64urlToBytes = jest.mocked(base64urlToBytes);
 
 describe("executeInventoryAction", () => {
   const action = { pickup: { id: "object-1" } };
@@ -78,6 +79,43 @@ describe("executeInventoryAction", () => {
           clientDataJson: "client-data",
           signatureR: "0x01",
           signatureS: "0x02",
+        },
+      },
+    });
+  });
+
+  it("uses the EOA controller address only for personal_sign", async () => {
+    const executeAction = jest
+      .fn()
+      .mockResolvedValue({ actionId: "action-1", steps: [] });
+    const prepareAction = jest
+      .fn()
+      .mockResolvedValue({ nonce: 8, challenge: "AQIDBA" });
+    const request = jest.fn().mockResolvedValue("0xsignature");
+    mockedApi.mockReturnValue({
+      executeAction,
+      prepareAction,
+    } as unknown as ReturnType<typeof getEbusApi>);
+    mockedBase64urlToBytes.mockReturnValue(Uint8Array.from([1, 2, 3, 4]));
+    Object.defineProperty(window, "ethereum", {
+      configurable: true,
+      value: { request },
+    });
+
+    await executeInventoryAction(action, "eoa", "0xcontroller");
+
+    expect(request).toHaveBeenCalledWith({
+      method: "personal_sign",
+      params: ["0x01020304", "0xcontroller"],
+    });
+    expect(executeAction).toHaveBeenCalledWith({
+      executeRequest: {
+        action,
+        nonce: 8,
+        auth: {
+          type: "personal_sign",
+          challenge: "AQIDBA",
+          signature: "0xsignature",
         },
       },
     });

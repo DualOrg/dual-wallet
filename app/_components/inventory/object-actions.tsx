@@ -74,7 +74,7 @@ export function ObjectActions({
       const result = await executeInventoryAction(
         action,
         session.authenticationMethod,
-        session.wallet?.address,
+        session.wallet?.controller.address,
       );
       setCompletedId(result.actionId);
       await Promise.all([

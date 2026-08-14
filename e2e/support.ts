@@ -1,6 +1,7 @@
 import type { Page, Route } from "@playwright/test";
+import type { ViewerWallet } from "@/app/_domain/wallet";
 
-export const viewerWallet = {
+export const viewerWallet: ViewerWallet = {
   id: "wallet-e2e-1",
   nickname: "Ada Viewer",
   email: "ada@example.com",
@@ -9,9 +10,25 @@ export const viewerWallet = {
   fqdn: "demo.localhost",
   activated: true,
   disabled: false,
-  address: "0x1234567890abcdef1234567890abcdef12345678",
-  accountType: "smartwallet",
-  custody: "self-custodial",
+  account: {
+    address: "0x1234567890abcdef1234567890abcdef12345678",
+    type: "SMART_WALLET",
+  },
+  controller: {
+    address: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+    type: "SECP256K1",
+    custody: "self-custodial",
+    publicKey: "0xcontrollerpublickey",
+  },
+  smartAccount: {
+    chainId: 1,
+    factory: "0xfactory",
+    implementation: "0ximplementation",
+    index: 0,
+    validator: "0xvalidator",
+    validatorType: "ECDSA",
+    version: "0.3.1",
+  },
   hasPasskey: true,
   createdAt: "2026-01-01T00:00:00.000Z",
   modifiedAt: "2026-02-01T00:00:00.000Z",
@@ -26,7 +43,7 @@ export const smartObject = {
     category: "Membership",
     edition: 7,
   },
-  owner: viewerWallet.address,
+  owner: viewerWallet.account.address,
   template_id: "507f1f77bcf86cd799439012",
   nonce: 1,
   version: 3,
@@ -46,8 +63,8 @@ export const actionLog = {
   alias: "Mint membership",
   params: { id: smartObject.id },
   message_hash: "0xmessagehash",
-  signer: viewerWallet.address,
-  signature: "0xsignature",
+  account: viewerWallet.account.address,
+  controller: viewerWallet.controller.address,
   hash: "0xabcdefabcdefabcdefabcdefabcdefabcdef",
   affected_objects: [
     {
@@ -70,7 +87,8 @@ export const actionLog = {
   total_fee: "0.003 DUAL",
   total_fee_wei: "3000",
   nonce: 1,
-  version: 1,
+  auth: { type: "personal_sign", signature: "0xsignature" },
+  version: 2,
   when_created: "2026-02-15T09:30:00.000Z",
   when_modified: "2026-02-15T09:31:00.000Z",
 };

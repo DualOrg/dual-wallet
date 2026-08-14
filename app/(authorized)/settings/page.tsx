@@ -32,6 +32,20 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
   const [error, setError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const controllerType =
+    wallet.controller.type === "WEBAUTHN"
+      ? t("controllerTypeWebauthn")
+      : t("controllerTypeSecp256k1");
+  const controllerCustody =
+    wallet.controller.custody === "custodial"
+      ? t("custodyCustodial")
+      : wallet.controller.custody === "mpc"
+        ? t("custodyMpc")
+        : t("custodySelfCustodial");
+  const validatorType =
+    wallet.smartAccount.validatorType === "WEBAUTHN"
+      ? t("validatorTypeWebauthn")
+      : t("validatorTypeEcdsa");
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -140,18 +154,48 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
           </header>
           <div className="security-grid">
             <div className="security-item">
-              <span>{t("accountType")}</span>
-              <strong>{wallet.accountType || "—"}</strong>
-            </div>
-            <div className="security-item">
-              <span>{t("custody")}</span>
-              <strong>{wallet.custody || "—"}</strong>
-            </div>
-            <div className="security-item">
-              <span>{t("address")}</span>
-              <strong title={wallet.address}>
-                {wallet.address ? shortId(wallet.address, 10) : "—"}
+              <span>{t("smartAccountAddress")}</span>
+              <strong title={wallet.account.address}>
+                {shortId(wallet.account.address, 10)}
               </strong>
+            </div>
+            <div className="security-item">
+              <span>{t("accountType")}</span>
+              <strong>{t("accountTypeSmartWallet")}</strong>
+            </div>
+            <div className="security-item">
+              <span>{t("controllerAddress")}</span>
+              <strong title={wallet.controller.address}>
+                {shortId(wallet.controller.address, 10)}
+              </strong>
+            </div>
+            <div className="security-item">
+              <span>{t("controllerType")}</span>
+              <strong>{controllerType}</strong>
+            </div>
+            <div className="security-item">
+              <span>{t("controllerCustody")}</span>
+              <strong>{controllerCustody}</strong>
+            </div>
+            {wallet.controller.publicKey ? (
+              <div className="security-item">
+                <span>{t("controllerPublicKey")}</span>
+                <strong title={wallet.controller.publicKey}>
+                  {shortId(wallet.controller.publicKey, 10)}
+                </strong>
+              </div>
+            ) : null}
+            <div className="security-item">
+              <span>{t("kernelVersion")}</span>
+              <strong>{wallet.smartAccount.version}</strong>
+            </div>
+            <div className="security-item">
+              <span>{t("chainId")}</span>
+              <strong>{wallet.smartAccount.chainId}</strong>
+            </div>
+            <div className="security-item">
+              <span>{t("validatorType")}</span>
+              <strong>{validatorType}</strong>
             </div>
             <div className="security-item">
               <span>{t("passkey")}</span>
@@ -160,11 +204,11 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
               </strong>
             </div>
             <div className="security-item">
-              <span>Email</span>
+              <span>{t("email")}</span>
               <strong>{wallet.email || "—"}</strong>
             </div>
             <div className="security-item">
-              <span>Status</span>
+              <span>{t("status")}</span>
               <strong>
                 {wallet.activated ? t("verified") : t("unverified")}
               </strong>

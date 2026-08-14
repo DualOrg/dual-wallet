@@ -100,23 +100,17 @@ export interface ActionLog {
      */
     messageHash: string;
     /**
-     * 
+     * Execution identity committed by the action-log hash. For version 1 this can be a legacy EOA; for version 2 it is the canonical Kernel smart-account address.
      * @type {string}
      * @memberof ActionLog
      */
-    signer: string;
+    account: string;
     /**
-     * 
+     * Signing identity. For version 1 the deployment migration derives it from the legacy delegated signer, or from account when no delegated signer was stored. For version 2 it is the controller that authorized the Kernel account.
      * @type {string}
      * @memberof ActionLog
      */
-    delegatedSigner?: string;
-    /**
-     * 
-     * @type {string}
-     * @memberof ActionLog
-     */
-    signature: string;
+    controller: string;
     /**
      * 
      * @type {string}
@@ -208,17 +202,17 @@ export interface ActionLog {
      */
     access?: ActionAccess;
     /**
-     * 
+     * Canonical signature bundle used for proof verification. The deployment migration normalizes version 1 legacy signature fields into this bundle; version 2 stores it directly.
      * @type {AuthBundle}
      * @memberof ActionLog
      */
-    auth?: AuthBundle;
+    auth: AuthBundle;
     /**
-     * 
-     * @type {number}
+     * Action-log hash-layout version. Version 1 is the immutable legacy layout; version 2 commits account, controller, and auth type. New action logs are always version 2.
+     * @type {ActionLogVersionEnum}
      * @memberof ActionLog
      */
-    version: number;
+    version: ActionLogVersionEnum;
     /**
      * 
      * @type {Date}
@@ -234,6 +228,15 @@ export interface ActionLog {
 }
 
 
+/**
+ * @export
+ */
+export const ActionLogVersionEnum = {
+    NUMBER_1: 1,
+    NUMBER_2: 2
+} as const;
+export type ActionLogVersionEnum = typeof ActionLogVersionEnum[keyof typeof ActionLogVersionEnum];
+
 
 /**
  * Check if a given object implements the ActionLog interface.
@@ -243,8 +246,8 @@ export function instanceOfActionLog(value: object): value is ActionLog {
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('params' in value) || value['params'] === undefined) return false;
     if ((!('messageHash' in value) && !('message_hash' in value)) || (value['messageHash'] === undefined && value['message_hash'] === undefined)) return false;
-    if (!('signer' in value) || value['signer'] === undefined) return false;
-    if (!('signature' in value) || value['signature'] === undefined) return false;
+    if (!('account' in value) || value['account'] === undefined) return false;
+    if (!('controller' in value) || value['controller'] === undefined) return false;
     if (!('hash' in value) || value['hash'] === undefined) return false;
     if ((!('affectedObjects' in value) && !('affected_objects' in value)) || (value['affectedObjects'] === undefined && value['affected_objects'] === undefined)) return false;
     if (!('status' in value) || value['status'] === undefined) return false;
@@ -256,6 +259,7 @@ export function instanceOfActionLog(value: object): value is ActionLog {
     if ((!('totalFee' in value) && !('total_fee' in value)) || (value['totalFee'] === undefined && value['total_fee'] === undefined)) return false;
     if ((!('totalFeeWei' in value) && !('total_fee_wei' in value)) || (value['totalFeeWei'] === undefined && value['total_fee_wei'] === undefined)) return false;
     if (!('nonce' in value) || value['nonce'] === undefined) return false;
+    if (!('auth' in value) || value['auth'] === undefined) return false;
     if (!('version' in value) || value['version'] === undefined) return false;
     if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
     if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
@@ -278,9 +282,8 @@ export function ActionLogFromJSONTyped(json: any, ignoreDiscriminator: boolean):
         'alias': json['alias'] == null ? undefined : json['alias'],
         'params': ActionParamsFromJSON(json['params']),
         'messageHash': json['message_hash'],
-        'signer': json['signer'],
-        'delegatedSigner': json['delegated_signer'] == null ? undefined : json['delegated_signer'],
-        'signature': json['signature'],
+        'account': json['account'],
+        'controller': json['controller'],
         'hash': json['hash'],
         'affectedObjects': ((json['affected_objects'] as Array<any>).map(AffectedObjectFromJSON)),
         'status': ActionLogStatusFromJSON(json['status']),
@@ -296,7 +299,7 @@ export function ActionLogFromJSONTyped(json: any, ignoreDiscriminator: boolean):
         'nonce': json['nonce'],
         'permit': json['permit'] == null ? undefined : ActionPermitFromJSON(json['permit']),
         'access': json['access'] == null ? undefined : ActionAccessFromJSON(json['access']),
-        'auth': json['auth'] == null ? undefined : AuthBundleFromJSON(json['auth']),
+        'auth': AuthBundleFromJSON(json['auth']),
         'version': json['version'],
         'whenModified': (new Date(json['when_modified'])),
         'whenCreated': (new Date(json['when_created'])),
@@ -320,9 +323,8 @@ export function ActionLogToJSONTyped(value?: ActionLog | null, ignoreDiscriminat
         'alias': value['alias'],
         'params': ActionParamsToJSON(value['params']),
         'message_hash': value['messageHash'],
-        'signer': value['signer'],
-        'delegated_signer': value['delegatedSigner'],
-        'signature': value['signature'],
+        'account': value['account'],
+        'controller': value['controller'],
         'hash': value['hash'],
         'affected_objects': ((value['affectedObjects'] as Array<any>).map(AffectedObjectToJSON)),
         'status': ActionLogStatusToJSON(value['status']),

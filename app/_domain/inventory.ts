@@ -42,7 +42,9 @@ export interface ActivityEntry {
   name: string;
   status: "pending" | "completed" | "failed";
   hash: string;
-  signer: string;
+  account: string;
+  controller: string;
+  version: ActionLog["version"];
   affectedCount: number;
   totalFee: string;
   createdAt: Date;
@@ -56,8 +58,8 @@ export interface ActivityDetail {
   alias?: string;
   params: Omit<ActionLog["params"], "permitSecret">;
   messageHash: string;
-  signer: string;
-  delegatedSigner?: string;
+  account: string;
+  controller: string;
   hash: string;
   affectedObjects: ActionLog["affectedObjects"];
   baseFee: string;
@@ -72,8 +74,8 @@ export interface ActivityDetail {
   nonce: number;
   permit?: ActionLog["permit"];
   access?: ActionLog["access"];
-  authenticationType?: NonNullable<ActionLog["auth"]>["type"];
-  version: number;
+  authenticationType: ActionLog["auth"]["type"];
+  version: ActionLog["version"];
   whenModified: Date;
   whenCreated: Date;
 }
@@ -215,7 +217,9 @@ export function toActivityEntry(value: ActionLog): ActivityEntry {
     name: value.alias || value.name,
     status,
     hash: value.hash,
-    signer: value.signer,
+    account: value.account,
+    controller: value.controller,
+    version: value.version,
     affectedCount: value.affectedObjects.length,
     totalFee: value.totalFee,
     createdAt: value.whenCreated,
@@ -226,8 +230,8 @@ export function toActivityEntry(value: ActionLog): ActivityEntry {
       alias: value.alias,
       params,
       messageHash: value.messageHash,
-      signer: value.signer,
-      delegatedSigner: value.delegatedSigner,
+      account: value.account,
+      controller: value.controller,
       hash: value.hash,
       affectedObjects: value.affectedObjects,
       baseFee: value.baseFee,
@@ -242,7 +246,7 @@ export function toActivityEntry(value: ActionLog): ActivityEntry {
       nonce: value.nonce,
       permit: value.permit,
       access: value.access,
-      authenticationType: value.auth?.type,
+      authenticationType: value.auth.type,
       version: value.version,
       whenModified: value.whenModified,
       whenCreated: value.whenCreated,

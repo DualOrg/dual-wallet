@@ -14,6 +14,21 @@
  */
 
 import { mapValues } from '../runtime';
+import type { SmartAccount } from './SmartAccount';
+import {
+    SmartAccountFromJSON,
+    SmartAccountFromJSONTyped,
+    SmartAccountToJSON,
+    SmartAccountToJSONTyped,
+} from './SmartAccount';
+import type { AccountController } from './AccountController';
+import {
+    AccountControllerFromJSON,
+    AccountControllerFromJSONTyped,
+    AccountControllerToJSON,
+    AccountControllerToJSONTyped,
+} from './AccountController';
+
 /**
  * 
  * @export
@@ -21,39 +36,29 @@ import { mapValues } from '../runtime';
  */
 export interface Account {
     /**
-     * The public address of the account.
+     * The canonical Kernel smart-account execution address.
      * @type {string}
      * @memberof Account
      */
     address: string;
     /**
-     * The public key of the account.
-     * @type {string}
-     * @memberof Account
-     */
-    publicKey: string;
-    /**
-     * The HD wallet path of the account, if applicable.
-     * @type {string}
-     * @memberof Account
-     */
-    path?: string;
-    /**
-     * The type of the account.
+     * The execution account type. All platform accounts execute through a smart wallet.
      * @type {AccountTypeEnum}
      * @memberof Account
      */
     type: AccountTypeEnum;
     /**
-     * Indicates who controls the private key.
-     * - `custodial`: platform holds the key on behalf of the user.
-     * - `self-custodial`: user holds the key (passkey / smart wallet).
-     * - `mpc`: key is split between user and platform via MPC.
-     * 
-     * @type {AccountCustodyEnum}
+     * The credential or key authorized to control the smart account.
+     * @type {AccountController}
      * @memberof Account
      */
-    custody?: AccountCustodyEnum;
+    controller: AccountController;
+    /**
+     * Counterfactual Kernel deployment metadata for the execution account.
+     * @type {SmartAccount}
+     * @memberof Account
+     */
+    smartAccount: SmartAccount;
 }
 
 
@@ -61,21 +66,9 @@ export interface Account {
  * @export
  */
 export const AccountTypeEnum = {
-    Ecdsa: 'ECDSA',
-    Secp256K1: 'SECP256K1',
     SmartWallet: 'SMART_WALLET'
 } as const;
 export type AccountTypeEnum = typeof AccountTypeEnum[keyof typeof AccountTypeEnum];
-
-/**
- * @export
- */
-export const AccountCustodyEnum = {
-    Custodial: 'custodial',
-    SelfCustodial: 'self-custodial',
-    Mpc: 'mpc'
-} as const;
-export type AccountCustodyEnum = typeof AccountCustodyEnum[keyof typeof AccountCustodyEnum];
 
 
 /**
@@ -83,8 +76,11 @@ export type AccountCustodyEnum = typeof AccountCustodyEnum[keyof typeof AccountC
  */
 export function instanceOfAccount(value: object): value is Account {
     if (!('address' in value) || value['address'] === undefined) return false;
-    if ((!('publicKey' in value) && !('public_key' in value)) || (value['publicKey'] === undefined && value['public_key'] === undefined)) return false;
     if (!('type' in value) || value['type'] === undefined) return false;
+    if (value['type'] !== 'SMART_WALLET') return false;
+    
+    if (!('controller' in value) || value['controller'] === undefined) return false;
+    if ((!('smartAccount' in value) && !('smart_account' in value)) || (value['smartAccount'] === undefined && value['smart_account'] === undefined)) return false;
     return true;
 }
 
@@ -99,10 +95,9 @@ export function AccountFromJSONTyped(json: any, ignoreDiscriminator: boolean): A
     return {
         
         'address': json['address'],
-        'publicKey': json['public_key'],
-        'path': json['path'] == null ? undefined : json['path'],
         'type': json['type'],
-        'custody': json['custody'] == null ? undefined : json['custody'],
+        'controller': AccountControllerFromJSON(json['controller']),
+        'smartAccount': SmartAccountFromJSON(json['smart_account']),
     };
 }
 
@@ -118,10 +113,9 @@ export function AccountToJSONTyped(value?: Account | null, ignoreDiscriminator: 
     return {
         
         'address': value['address'],
-        'public_key': value['publicKey'],
-        'path': value['path'],
         'type': value['type'],
-        'custody': value['custody'],
+        'controller': AccountControllerToJSON(value['controller']),
+        'smart_account': SmartAccountToJSON(value['smartAccount']),
     };
 }
 

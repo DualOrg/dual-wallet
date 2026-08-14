@@ -20,7 +20,7 @@ async function executionError(error: unknown) {
 export async function executeInventoryAction(
   action: ActionsRequest,
   authenticationMethod: AuthenticationMethod,
-  walletAddress?: string,
+  controllerAddress?: string,
 ): Promise<ExecuteResult> {
   const api = getEbusApi();
   try {
@@ -49,13 +49,13 @@ export async function executeInventoryAction(
       });
     }
 
-    if (!window.ethereum || !walletAddress)
+    if (!window.ethereum || !controllerAddress)
       throw new Error("No compatible browser wallet was found.");
     const signature = await window.ethereum.request({
       method: "personal_sign",
       params: [
         bytesToHex(base64urlToBytes(prepared.challenge)),
-        walletAddress,
+        controllerAddress,
       ],
     });
     if (typeof signature !== "string")

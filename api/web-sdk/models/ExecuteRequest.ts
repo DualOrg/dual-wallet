@@ -62,6 +62,9 @@ export interface ExecuteRequest {
      * The client passes it directly to navigator.credentials.get() as
      * the challenge bytes.
      * 
+     * Custodial callers may omit this field; eventbus asks base to sign with
+     * the wallet's stored controller and persists the resulting auth bundle.
+     * 
      * @type {AuthBundle}
      * @memberof ExecuteRequest
      */

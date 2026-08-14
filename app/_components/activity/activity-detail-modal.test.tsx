@@ -17,6 +17,8 @@ jest.mock("next-intl", () => ({
         name: "Action name",
         alias: "Alias",
         version: "Version",
+        version1: "V1 · Historical",
+        version2: "V2 · Kernel",
         nonce: "Nonce",
         created: "Created",
         modified: "Last modified",
@@ -25,8 +27,8 @@ jest.mock("next-intl", () => ({
         integrity: "Integrity and participants",
         hash: "Action hash",
         messageHash: "Message hash",
-        signer: "Signer",
-        delegatedSigner: "Delegated signer",
+        account: "Account",
+        controller: "Controller",
         fees: "Fees",
         baseFee: "Base fee",
         baseFeeWei: "Base fee (wei)",
@@ -59,8 +61,8 @@ const raw = {
   alias: "Update passport",
   params: { id: "object-1", dataHash: "0xdata", permitSecret: "top-secret" },
   messageHash: "0xmessage",
-  signer: "0xsigner",
-  signature: "0xsignature",
+  account: "0xkernel-account",
+  controller: "0xcontroller",
   hash: "0xaction",
   affectedObjects: [
     {
@@ -84,8 +86,12 @@ const raw = {
   totalFeeWei: "300",
   nonce: 4,
   access: { type: "public" },
-  auth: { type: "webauthn", credentialId: "credential-secret" },
-  version: 1,
+  auth: {
+    type: "webauthn",
+    credentialId: "credential-secret",
+    signatureR: "signature-r-secret",
+  },
+  version: 2,
   whenCreated: new Date("2026-08-11T10:00:00Z"),
   whenModified: new Date("2026-08-11T10:01:00Z"),
 } as ActionLog;
@@ -104,9 +110,12 @@ describe("ActivityDetailModal", () => {
       screen.getByRole("heading", { name: "Update passport" }),
     ).toBeTruthy();
     expect(screen.getByText("0xmessage")).toBeTruthy();
+    expect(screen.getByText("0xkernel-account")).toBeTruthy();
+    expect(screen.getByText("0xcontroller")).toBeTruthy();
+    expect(screen.getAllByText("V2 · Kernel")).toHaveLength(2);
     expect(screen.getByText("state-change-1")).toBeTruthy();
     expect(screen.getByText("webauthn")).toBeTruthy();
-    expect(screen.queryByText("0xsignature")).toBeNull();
+    expect(screen.queryByText("signature-r-secret")).toBeNull();
     expect(screen.queryByText("top-secret")).toBeNull();
     expect(screen.queryByText("credential-secret")).toBeNull();
 

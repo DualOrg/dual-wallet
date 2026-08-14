@@ -329,7 +329,7 @@ export interface ListActionLogsRequest {
     batchId?: string;
     walletId?: string;
     objectId?: string;
-    signer?: string;
+    account?: string;
     status?: string;
     whenCreated$gt?: Date;
     whenCreated$lt?: Date;
@@ -1863,8 +1863,8 @@ export class ExplorerApi extends runtime.BaseAPI {
             queryParameters['object_id'] = requestParameters['objectId'];
         }
 
-        if (requestParameters['signer'] != null) {
-            queryParameters['signer'] = requestParameters['signer'];
+        if (requestParameters['account'] != null) {
+            queryParameters['account'] = requestParameters['account'];
         }
 
         if (requestParameters['status'] != null) {
@@ -1913,7 +1913,7 @@ export class ExplorerApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a paginated list of blockchain action execution logs. This endpoint provides access to detailed information about action processing including status, wallet interactions, batch associations, and execution timestamps. Action logs can be filtered by various criteria including action ID, batch ID, wallet ID, object ID, signer, and status. 
+     * Retrieve a paginated list of blockchain action execution logs. This endpoint provides access to detailed information about action processing including status, wallet interactions, batch associations, and execution timestamps. Action logs can be filtered by various criteria including action ID, batch ID, wallet ID, object ID, account, and status. 
      * List action logs
      */
     async listActionLogsRaw(requestParameters: ListActionLogsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListActionLogsOut>> {
@@ -1924,7 +1924,7 @@ export class ExplorerApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a paginated list of blockchain action execution logs. This endpoint provides access to detailed information about action processing including status, wallet interactions, batch associations, and execution timestamps. Action logs can be filtered by various criteria including action ID, batch ID, wallet ID, object ID, signer, and status. 
+     * Retrieve a paginated list of blockchain action execution logs. This endpoint provides access to detailed information about action processing including status, wallet interactions, batch associations, and execution timestamps. Action logs can be filtered by various criteria including action ID, batch ID, wallet ID, object ID, account, and status. 
      * List action logs
      */
     async listActionLogs(requestParameters: ListActionLogsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListActionLogsOut> {

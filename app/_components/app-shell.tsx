@@ -90,7 +90,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="avatar">{initials}</span>
             <span className="account-copy">
               <strong>{name}</strong>
-              <span>{wallet?.address}</span>
+              <span>{wallet?.account.address}</span>
             </span>
           </div>
         </div>

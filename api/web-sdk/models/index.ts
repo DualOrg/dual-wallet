@@ -2,6 +2,8 @@
 /* tslint:disable */
 /* eslint-disable */
 export * from './Account';
+export * from './AccountController';
+export * from './AccountCustody';
 export * from './ActionAccess';
 export * from './ActionLog';
 export * from './ActionLogStatus';
@@ -159,6 +161,7 @@ export * from './Session';
 export * from './SessionPermissions';
 export * from './SetAttributes';
 export * from './SetNewPasswordIn';
+export * from './SmartAccount';
 export * from './SmartObject';
 export * from './StakingOperation';
 export * from './StakingOperationType';

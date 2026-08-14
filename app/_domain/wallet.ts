@@ -1,4 +1,29 @@
+import type { Account } from "@/api/web-sdk/models/Account";
+import type { AccountController } from "@/api/web-sdk/models/AccountController";
+import type { SmartAccount } from "@/api/web-sdk/models/SmartAccount";
 import type { Wallet } from "@/api/web-sdk/models/Wallet";
+
+export interface ViewerExecutionAccount {
+  address: Account["address"];
+  type: Account["type"];
+}
+
+export interface ViewerAccountController {
+  address: AccountController["address"];
+  type: AccountController["type"];
+  custody: AccountController["custody"];
+  publicKey?: AccountController["publicKey"];
+}
+
+export interface ViewerSmartAccount {
+  chainId: SmartAccount["chainId"];
+  factory: SmartAccount["factory"];
+  implementation: SmartAccount["implementation"];
+  index: SmartAccount["index"];
+  validator: SmartAccount["validator"];
+  validatorType: SmartAccount["validatorType"];
+  version: SmartAccount["version"];
+}
 
 export interface ViewerWallet {
   id: string;
@@ -9,9 +34,9 @@ export interface ViewerWallet {
   fqdn: string;
   activated: boolean;
   disabled: boolean;
-  address: string;
-  accountType: string;
-  custody?: string;
+  account: ViewerExecutionAccount;
+  controller: ViewerAccountController;
+  smartAccount: ViewerSmartAccount;
   hasPasskey: boolean;
   createdAt: string;
   modifiedAt: string;
@@ -27,9 +52,25 @@ export function toViewerWallet(wallet: Wallet): ViewerWallet {
     fqdn: wallet.fqdn,
     activated: wallet.activated,
     disabled: wallet.disabled,
-    address: wallet.account.address,
-    accountType: wallet.account.type,
-    custody: wallet.account.custody,
+    account: {
+      address: wallet.account.address,
+      type: wallet.account.type,
+    },
+    controller: {
+      address: wallet.account.controller.address,
+      type: wallet.account.controller.type,
+      custody: wallet.account.controller.custody,
+      publicKey: wallet.account.controller.publicKey,
+    },
+    smartAccount: {
+      chainId: wallet.account.smartAccount.chainId,
+      factory: wallet.account.smartAccount.factory,
+      implementation: wallet.account.smartAccount.implementation,
+      index: wallet.account.smartAccount.index,
+      validator: wallet.account.smartAccount.validator,
+      validatorType: wallet.account.smartAccount.validatorType,
+      version: wallet.account.smartAccount.version,
+    },
     hasPasskey: Boolean(wallet.passkey),
     createdAt: wallet.whenCreated.toISOString(),
     modifiedAt: wallet.whenModified.toISOString(),

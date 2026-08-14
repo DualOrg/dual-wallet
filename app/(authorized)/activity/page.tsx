@@ -109,6 +109,9 @@ export default function ActivityPage() {
                 <div className="activity-main">
                   <div className="activity-title-row">
                     <strong>{item.name}</strong>
+                    <span className="activity-version-badge">
+                      {t("versionBadge", { version: item.version })}
+                    </span>
                     <StatusBadge status={item.status} />
                   </div>
                   <div className="activity-meta">

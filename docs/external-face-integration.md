@@ -179,7 +179,7 @@ SDK for the bound object and returns the minimized attribute projection.
 action name and schema-checked suggested defaults. Viewer:
 
 1. refetches fresh object/action availability;
-2. rejects child-supplied object, wallet, signer, organization, endpoint, or
+2. rejects child-supplied object, wallet, controller, organization, endpoint, or
    unknown input fields;
 3. opens native confirmation UI;
 4. executes through the existing email, passkey, or EOA path;

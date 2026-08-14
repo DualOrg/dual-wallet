@@ -22,36 +22,27 @@ import { mapValues } from '../runtime';
 export interface AuthBundle {
     /**
      * Signature scheme discriminator.
-     * - eoa: existing EOA path (MetaMask, hardware wallet, KMS-backed service keys)
-     * - webauthn:  passkey path (P-256 / WebAuthn assertion over EIP-712 hash)
-     * - session_key: session-token path
-     * - personal_sign: personal sign path (Ethereum personal_sign)
+     * - eoa: secp256k1 smart-account controller over the raw EIP-712 digest
+     * - webauthn: passkey smart-account controller (P-256 assertion)
+     * - session_key: separately authorized ephemeral controller
+     * - personal_sign: secp256k1 smart-account controller over the Ethereum-wrapped digest
      * 
      * @type {AuthBundleTypeEnum}
      * @memberof AuthBundle
      */
     type: AuthBundleTypeEnum;
     /**
-     * base64url-encoded challenge fetched from GET /auth/challenge immediately
-     * before signing. The server consumes (deletes) this challenge after a single
-     * successful use to prevent replay attacks.
-     * 
-     * [type=eoa] the challenge string is the message passed to eth_personal_sign.
-     * 
-     * [type=webauthn] the challenge string was passed to navigator.credentials.get()
-     * as the challenge bytes. The server independently verifies that
-     * clientDataJSON.challenge (at challenge_index) equals this value — proving the
-     * WebAuthn assertion was made over this specific challenge and not replayed
-     * from a different session.
+     * Optional encoded signing context. For action authorization the server
+     * independently reconstructs the EIP-712 digest. A WebAuthn assertion must
+     * contain that digest as its exact clientDataJSON challenge.
      * 
      * @type {string}
      * @memberof AuthBundle
      */
     challenge?: string;
     /**
-     * [type=secp256k1] hex-encoded 65-byte secp256k1 signature (r || s || v)
-     * over the EIP-712 hash of the action.
-     * This is the existing signature field — same format, just moved under auth.
+     * Hex-encoded 65-byte secp256k1 signature (r || s || v). `eoa` signs the
+     * raw EIP-712 hash; `personal_sign` signs its Ethereum message wrapper.
      * 
      * @type {string}
      * @memberof AuthBundle
@@ -84,7 +75,7 @@ export interface AuthBundle {
     pubkeyY?: string;
     /**
      * base64url-encoded authenticatorData from the WebAuthn assertion.
-     * Server checks: rpIdHash == sha256("pay.dual.network"), UP flag set, UV flag set.
+     * Action verification requires the UP and UV flags.
      * 
      * @type {string}
      * @memberof AuthBundle
@@ -92,8 +83,8 @@ export interface AuthBundle {
     authenticatorData?: string;
     /**
      * base64url-encoded clientDataJSON from the WebAuthn assertion.
-     * Server checks: type == "webauthn.get", origin == "https://pay.dual.network",
-     * challenge field (at challenge_index) base64url-decodes to the expected value.
+     * Action verification requires type == "webauthn.get" and exact equality
+     * between its challenge and the reconstructed action digest.
      * 
      * @type {string}
      * @memberof AuthBundle

@@ -21,13 +21,6 @@ import {
     RoleToJSON,
     RoleToJSONTyped,
 } from './Role';
-import type { Account } from './Account';
-import {
-    AccountFromJSON,
-    AccountFromJSONTyped,
-    AccountToJSON,
-    AccountToJSONTyped,
-} from './Account';
 import type { Asset } from './Asset';
 import {
     AssetFromJSON,
@@ -98,12 +91,6 @@ export interface Organization {
      */
     description?: string;
     /**
-     * Blockchain account information associated with the organization
-     * @type {Account}
-     * @memberof Organization
-     */
-    account: Account;
-    /**
      * Timestamp when the organization was created
      * @type {Date}
      * @memberof Organization
@@ -124,7 +111,6 @@ export function instanceOfOrganization(value: object): value is Organization {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('fqdn' in value) || value['fqdn'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
-    if (!('account' in value) || value['account'] === undefined) return false;
     if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
     if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
     return true;
@@ -148,7 +134,6 @@ export function OrganizationFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'members': json['members'] == null ? undefined : ((json['members'] as Array<any>).map(MemberFromJSON)),
         'roles': json['roles'] == null ? undefined : ((json['roles'] as Array<any>).map(RoleFromJSON)),
         'description': json['description'] == null ? undefined : json['description'],
-        'account': AccountFromJSON(json['account']),
         'whenCreated': (new Date(json['when_created'])),
         'whenModified': (new Date(json['when_modified'])),
     };
@@ -173,7 +158,6 @@ export function OrganizationToJSONTyped(value?: Organization | null, ignoreDiscr
         'members': value['members'] == null ? undefined : ((value['members'] as Array<any>).map(MemberToJSON)),
         'roles': value['roles'] == null ? undefined : ((value['roles'] as Array<any>).map(RoleToJSON)),
         'description': value['description'],
-        'account': AccountToJSON(value['account']),
         'when_created': value['whenCreated'].toISOString(),
         'when_modified': value['whenModified'].toISOString(),
     };

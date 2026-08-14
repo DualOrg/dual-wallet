@@ -47,7 +47,7 @@ Development also allows `http://localhost:4100` and `http://127.0.0.1:4100`. Vie
 - Passkey registration and login
 - Email verification and resend
 - Forgot/reset password
-- Wallet inventory, object details and paginated action logs
+- Kernel smart-account inventory, object details and versioned action logs
 - Public object previews and share links using the API's filtered public projection
 - External face `card` views in inventory/public pages and `detail` views on authenticated object pages
 - Profile/language updates and account deletion
@@ -79,6 +79,13 @@ the iframe.
 Browser code never receives API access or refresh tokens. Auth routes establish an opaque, host-only, `HttpOnly`, `SameSite=Strict` cookie and keep tokens server-side. The allow-listed `/api/backend` proxy exposes only the Viewer operations needed by the generated SDK.
 
 The included session store is process-local and fits the provided single-process standalone Docker runtime. A horizontally scaled deployment must replace it with a shared encrypted/TTL session store before adding replicas.
+
+The authenticated wallet projection distinguishes the Kernel execution account
+from its authorized controller. Object ownership and inventory filtering use
+the smart-account address. EOA, passkey and future session-key values are
+controller authentication methods carried through the existing
+prepare/sign/execute flow; controller addresses are never treated as object
+owners.
 
 Passkeys also require the smart object backend WebAuthn configuration to use a relying-party ID that is a registrable suffix of every Viewer tenant host, and to allow those tenant origins. This cannot be relaxed safely in browser code.
 

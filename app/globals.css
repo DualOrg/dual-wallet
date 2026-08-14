@@ -847,6 +847,19 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.activity-version-badge {
+  display: inline-flex;
+  width: max-content;
+  flex: 0 0 auto;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--brand) 28%, var(--border));
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--brand);
+  background: var(--brand-soft);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
 .activity-meta {
   display: flex;
   gap: 14px;
