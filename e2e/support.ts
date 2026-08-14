@@ -93,6 +93,18 @@ export const actionLog = {
   when_modified: "2026-02-15T09:31:00.000Z",
 };
 
+export const secondActionLog = {
+  ...actionLog,
+  id: "action-log-e2e-2",
+  name: "transfer",
+  alias: "Transfer membership",
+  params: { id: smartObject.id, to: "0xrecipient" },
+  message_hash: "0xsecondmessagehash",
+  hash: "0x9876543210abcdef9876543210abcdef",
+  when_created: "2026-02-14T09:30:00.000Z",
+  when_modified: "2026-02-14T09:31:00.000Z",
+};
+
 const bridgeAttributes = [
   {
     id: "attribute-e2e-1",
@@ -187,7 +199,12 @@ export async function mockBackend(page: Page) {
       request.method() === "GET" &&
       path === "/api/backend/ebus/action-logs"
     ) {
-      return json(route, { action_logs: [actionLog] });
+      return url.searchParams.get("next") === "activity-page-2"
+        ? json(route, { action_logs: [secondActionLog] })
+        : json(route, {
+            action_logs: [actionLog],
+            next: "activity-page-2",
+          });
     }
     if (request.method() === "POST" && path === "/api/backend/ebus/prepare") {
       return json(route, { nonce: 2, challenge: "AQIDBA" });

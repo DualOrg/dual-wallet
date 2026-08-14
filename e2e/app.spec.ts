@@ -20,6 +20,31 @@ test.beforeEach(async ({ page }) => {
   await mockViewerApi(page, { authenticated: true });
 });
 
+test("account chip opens a compact user profile", async ({ page }) => {
+  await page.goto("/inventory");
+
+  const trigger = page.getByRole("button", { name: "Open user profile" });
+  await expect(trigger.getByText("0x12....678", { exact: true })).toBeVisible();
+  await trigger.click();
+
+  const profile = page.getByRole("dialog", { name: "User profile" });
+  await expect(profile).toBeVisible();
+  await expect(
+    profile.getByText(viewerWallet.nickname!, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    profile.getByText(viewerWallet.email!, { exact: true }),
+  ).toBeVisible();
+  await expect(profile.getByText("0x12....678", { exact: true })).toBeVisible();
+  await expect(
+    profile.getByRole("link", { name: "Manage profile" }),
+  ).toHaveAttribute("href", "/settings");
+
+  await page.keyboard.press("Escape");
+  await expect(profile).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
 test("inventory opens a complete object detail", async ({ page }) => {
   await page.goto("/inventory");
 
@@ -342,6 +367,22 @@ test("activity shows the wallet action timeline", async ({ page }) => {
   );
   await details.getByRole("button", { name: "Close activity details" }).click();
   await expect(details).toHaveCount(0);
+
+  const pagination = page.getByRole("navigation", { name: "Activity pages" });
+  await expect(
+    pagination.getByRole("button", { name: "Previous page" }),
+  ).toBeDisabled();
+  await pagination.getByRole("button", { name: "Next page" }).click();
+  await expect(
+    page.getByText("Transfer membership", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Mint membership", { exact: true })).toHaveCount(
+    0,
+  );
+  await pagination.getByRole("button", { name: "Previous page" }).click();
+  await expect(
+    page.getByText("Mint membership", { exact: true }),
+  ).toBeVisible();
 });
 
 test("settings update the profile", async ({ page }) => {

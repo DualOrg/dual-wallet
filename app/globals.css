@@ -448,13 +448,34 @@ button {
   gap: 8px;
   margin-top: auto;
 }
+.account-profile-wrap {
+  position: relative;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
 .account-chip {
   display: grid;
+  width: 100%;
   grid-template-columns: 36px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
-  border-top: 1px solid var(--border);
-  padding: 18px 5px 2px;
+  border: 0;
+  border-radius: 12px;
+  color: inherit;
+  background: transparent;
+  padding: 5px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.account-chip:hover,
+.account-chip[aria-expanded="true"] {
+  background: var(--surface-subtle);
+}
+.account-chip:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand) 28%, transparent);
+  outline-offset: 2px;
 }
 .avatar {
   display: grid;
@@ -483,6 +504,80 @@ button {
 .account-copy span {
   color: var(--muted);
   font-size: 0.72rem;
+}
+.account-profile-popover {
+  position: absolute;
+  z-index: 40;
+  bottom: calc(100% + 10px);
+  left: 0;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-raised);
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
+.account-profile-header {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+}
+.account-profile-avatar {
+  width: 42px;
+  height: 42px;
+}
+.account-profile-header strong,
+.account-profile-header small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-profile-header strong {
+  font-size: 0.9rem;
+}
+.account-profile-header small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.account-profile-details {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+  border-block: 1px solid var(--border);
+  padding: 12px 0;
+}
+.account-profile-details div {
+  min-width: 0;
+}
+.account-profile-details dt {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+.account-profile-details dd {
+  overflow: hidden;
+  margin: 3px 0 0;
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-profile-link {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 10px;
+  color: var(--ink);
+  background: var(--brand-soft);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+.account-profile-link:hover {
+  color: var(--brand);
 }
 .mobile-topbar {
   display: none;
@@ -797,6 +892,12 @@ button {
 
 .activity-list {
   overflow: hidden;
+}
+.activity-pagination {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
 }
 .activity-item {
   width: 100%;

@@ -101,19 +101,23 @@ export function useInventoryObject(objectId: string) {
   });
 }
 
-export function useActivity(search: string, status: string, walletId?: string) {
-  return useInfiniteQuery({
-    queryKey: ["activity", search, status, walletId],
+export function useActivity(
+  search: string,
+  status: string,
+  walletId?: string,
+  cursor?: string,
+) {
+  return useQuery({
+    queryKey: ["activity", search, status, walletId, cursor],
     enabled: Boolean(walletId),
-    initialPageParam: undefined as string | undefined,
-    queryFn: async ({ pageParam }) => {
+    queryFn: async () => {
       try {
         const result = await getEbusApi().listActionLogs({
           autocomplete: search || undefined,
           status: status || undefined,
           walletId,
           limit: 25,
-          next: pageParam,
+          next: cursor,
           order: "desc",
           sortBy: "when_created",
         });
@@ -125,6 +129,5 @@ export function useActivity(search: string, status: string, walletId?: string) {
         throw await usefulError(error, "Activity could not be loaded.");
       }
     },
-    getNextPageParam: (page) => page.next,
   });
 }

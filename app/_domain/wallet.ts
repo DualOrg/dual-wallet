@@ -42,6 +42,11 @@ export interface ViewerWallet {
   modifiedAt: string;
 }
 
+export function shortAccountAddress(address: string) {
+  if (address.length <= 11) return address;
+  return `${address.slice(0, 4)}....${address.slice(-3)}`;
+}
+
 export function toViewerWallet(wallet: Wallet): ViewerWallet {
   return {
     id: wallet.id,

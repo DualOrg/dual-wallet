@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Brand } from "@/app/_components/design-system/brand";
+import { UserProfileMenu } from "@/app/_components/user-profile-menu";
 import { useSession } from "@/app/_providers/session-provider";
 import { useTheme } from "@/app/_providers/theme-provider";
 import { cn } from "@/app/_utils/cn";
@@ -67,9 +68,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.refresh();
   };
 
-  const name = wallet?.nickname || wallet?.email || t("account");
-  const initials = name.slice(0, 2).toUpperCase();
-
   return (
     <div className="app-layout">
       <aside className="sidebar">
@@ -86,13 +84,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <LogOut size={19} />
             {t("logout")}
           </button>
-          <div className="account-chip">
-            <span className="avatar">{initials}</span>
-            <span className="account-copy">
-              <strong>{name}</strong>
-              <span>{wallet?.account.address}</span>
-            </span>
-          </div>
+          {wallet ? <UserProfileMenu wallet={wallet} /> : null}
         </div>
       </aside>
       <div className="main">

@@ -5,7 +5,8 @@ import {
   Activity as ActivityIcon,
   AlertTriangle,
   Boxes,
-  LoaderCircle,
+  ChevronLeft,
+  ChevronRight,
   Search,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -32,8 +33,38 @@ export default function ActivityPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState<ActivityEntry | null>(null);
-  const query = useActivity(useDeferredValue(search), status, wallet?.id);
-  const items = query.data?.pages.flatMap((page) => page.items) ?? [];
+  const [cursorHistory, setCursorHistory] = useState<Array<string | undefined>>(
+    [undefined],
+  );
+  const cursor = cursorHistory[cursorHistory.length - 1];
+  const query = useActivity(
+    useDeferredValue(search),
+    status,
+    wallet?.id,
+    cursor,
+  );
+  const items = query.data?.items ?? [];
+  const nextCursor = query.data?.next;
+  const hasPreviousPage = cursorHistory.length > 1;
+  const hasNextPage = Boolean(nextCursor && nextCursor !== cursor);
+
+  const resetPaging = () => {
+    setCursorHistory([undefined]);
+    setSelected(null);
+  };
+
+  const previousPage = () => {
+    setCursorHistory((current) =>
+      current.length > 1 ? current.slice(0, -1) : current,
+    );
+    setSelected(null);
+  };
+
+  const nextPage = () => {
+    if (!nextCursor || nextCursor === cursor) return;
+    setCursorHistory((current) => [...current, nextCursor]);
+    setSelected(null);
+  };
   return (
     <>
       <PageHeader
@@ -52,7 +83,10 @@ export default function ActivityPage() {
             className="input"
             type="search"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              resetPaging();
+            }}
             placeholder={t("searchPlaceholder")}
           />
         </div>
@@ -64,7 +98,10 @@ export default function ActivityPage() {
           className="input"
           style={{ width: 190 }}
           value={status}
-          onChange={(event) => setStatus(event.target.value)}
+          onChange={(event) => {
+            setStatus(event.target.value);
+            resetPaging();
+          }}
         >
           <option value="">{t("allStatuses")}</option>
           <option value="pending">{t("pending")}</option>
@@ -129,22 +166,30 @@ export default function ActivityPage() {
               </button>
             ))}
           </div>
-          {query.hasNextPage ? (
-            <div className="load-more">
-              <Button
-                variant="secondary"
-                disabled={query.isFetchingNextPage}
-                onClick={() => query.fetchNextPage()}
-              >
-                {query.isFetchingNextPage ? (
-                  <LoaderCircle size={17} className="animate-spin" />
-                ) : null}
-                {t("loadMore")}
-              </Button>
-            </div>
-          ) : null}
         </>
       )}
+      {!query.isPending &&
+      !query.isError &&
+      (hasPreviousPage || hasNextPage) ? (
+        <nav className="activity-pagination" aria-label={t("pagination")}>
+          <Button
+            variant="secondary"
+            disabled={!hasPreviousPage || query.isFetching}
+            onClick={previousPage}
+          >
+            <ChevronLeft size={17} aria-hidden />
+            {t("previousPage")}
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={!hasNextPage || query.isFetching}
+            onClick={nextPage}
+          >
+            {t("nextPage")}
+            <ChevronRight size={17} aria-hidden />
+          </Button>
+        </nav>
+      ) : null}
       <ActivityDetailModal entry={selected} onClose={() => setSelected(null)} />
     </>
   );

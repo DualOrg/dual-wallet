@@ -1,7 +1,14 @@
 import type { Wallet } from "@/api/web-sdk/models/Wallet";
-import { toViewerWallet } from "@/app/_domain/wallet";
+import { shortAccountAddress, toViewerWallet } from "@/app/_domain/wallet";
 
 describe("wallet adapter", () => {
+  it("shortens account addresses for compact profile displays", () => {
+    expect(
+      shortAccountAddress("0x1234567890abcdef1234567890abcdef12345f45"),
+    ).toBe("0x12....f45");
+    expect(shortAccountAddress("0x1234")).toBe("0x1234");
+  });
+
   it("keeps the Kernel execution account separate from its controller", () => {
     const wallet = {
       id: "wallet-1",

@@ -21,6 +21,16 @@
     "logout": "Sign out",
     "account": "Your account"
   },
+  "profileMenu": {
+    "account": "Your account",
+    "open": "Open user profile",
+    "close": "Close user profile",
+    "title": "User profile",
+    "noEmail": "No email address",
+    "smartAccount": "Smart account",
+    "controller": "Controller",
+    "manage": "Manage profile"
+  },
   "auth": {
     "eyebrow": "Your digital objects world",
     "headline": "Everything you own, in one trusted place.",
@@ -235,7 +245,9 @@
     "affected": "{count, plural, one {# object} other {# objects}}",
     "fee": "Total fee",
     "hash": "Transaction hash",
-    "loadMore": "Load more activity",
+    "pagination": "Activity pages",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
     "openDetails": "Open details for {name}",
     "versionBadge": "V{version}",
     "details": {
