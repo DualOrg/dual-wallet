@@ -1,7 +1,7 @@
 {
   "name": "Viewer Demo - Product Passport Face",
   "renderer": "go-template",
-  "renderer_config": {"demo": "digital-product-passport", "version": 1},
+  "renderer_config": { "demo": "digital-product-passport", "version": 1 },
   "views": [
     {
       "variant": "card",

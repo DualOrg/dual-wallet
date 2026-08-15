@@ -11,6 +11,7 @@ import {
 } from "react";
 import { Info, MoreHorizontal, X, Zap } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
+import { ModalDialog } from "@/app/_components/design-system/modal-dialog";
 import { ObjectVisual } from "@/app/_components/inventory/object-visual";
 import {
   shortId,
@@ -18,14 +19,14 @@ import {
 } from "@/app/_domain/inventory";
 import {
   ExternalFaceBridgeError,
-  toAuthenticatedExternalFaceContext,
+  toAuthenticatedExternalFaceDetailContext,
   type ExternalFaceActionRequest,
   type ExternalFaceActionResult,
 } from "@/app/_lib/external-face-bridge";
 import {
   readExternalFaceAttributes,
   verifyExternalFaceAction,
-} from "@/app/_lib/external-face-data";
+} from "@/app/_services/external-face.client";
 
 function displayKey(value: string) {
   const words = value.replaceAll("_", " ").trim();
@@ -272,24 +273,6 @@ export function ObjectDetail({
     return () => document.removeEventListener("pointerdown", closeMenu);
   }, [menuOpen]);
 
-  useEffect(() => {
-    if (!modalView) return;
-    const trigger =
-      modalView === "actions" ? actionButton.current : moreButton.current;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    closeButton.current?.focus();
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeModal();
-    };
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("keydown", closeOnEscape);
-      document.body.style.overflow = previousOverflow;
-      trigger?.focus();
-    };
-  }, [closeModal, modalView]);
-
   useEffect(
     () => () => {
       pendingBridgeAction?.reject(
@@ -336,21 +319,22 @@ export function ObjectDetail({
               className="wallet-pass-more"
               aria-label={t("moreOptions")}
               aria-expanded={menuOpen}
-              aria-haspopup="menu"
+              aria-controls="object-options-popover"
               onClick={() => setMenuOpen((open) => !open)}
             >
               <MoreHorizontal size={23} aria-hidden />
             </button>
             {menuOpen ? (
-              <div className="wallet-pass-menu-popover" role="menu">
-                <button type="button" role="menuitem" onClick={showDetails}>
+              <div
+                id="object-options-popover"
+                className="wallet-pass-menu-popover"
+              >
+                <button type="button" onClick={showDetails}>
                   <Info size={18} aria-hidden />
                   {t("showDetails")}
                 </button>
                 {action ? (
-                  <div className="wallet-pass-menu-action" role="none">
-                    {action}
-                  </div>
+                  <div className="wallet-pass-menu-action">{action}</div>
                 ) : null}
               </div>
             ) : null}
@@ -373,12 +357,11 @@ export function ObjectDetail({
                 eager
                 bridgeContext={
                   bridgeEnabled
-                      ? toAuthenticatedExternalFaceContext(
-                          item,
-                          bridgeActions,
-                          item.display?.config ?? null,
-                          "detail",
-                        )
+                    ? toAuthenticatedExternalFaceDetailContext(
+                        item,
+                        bridgeActions,
+                        item.display?.config ?? null,
+                      )
                     : undefined
                 }
                 bridgeHandlers={{
@@ -400,62 +383,54 @@ export function ObjectDetail({
       </section>
 
       {modalView ? (
-        <div
-          className="object-pass-modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeModal();
-          }}
+        <ModalDialog
+          labelledBy="object-pass-detail-title"
+          onClose={closeModal}
+          initialFocusRef={closeButton}
         >
-          <section
-            className="card object-pass-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="object-pass-detail-title"
-          >
-            <header className="object-pass-modal-header">
-              <div>
-                <p className="page-eyebrow">
-                  {t(modalView === "actions" ? "actions" : "details")}
-                </p>
-                <h2 id="object-pass-detail-title">{item.name}</h2>
-              </div>
-              <div className="object-pass-modal-actions">
-                <button
-                  ref={closeButton}
-                  type="button"
-                  className="object-pass-modal-close"
-                  aria-label={t("closeDetails")}
-                  onClick={closeModal}
-                >
-                  <X size={20} aria-hidden />
-                </button>
-              </div>
-            </header>
-            <div className="object-pass-modal-body">
-              {modalView === "details" ? (
-                <>
-                  <DataSection title={t("metadata")} values={metadata} />
-                  <CustomJsonSection
-                    title={t("customData")}
-                    value={item.custom}
-                    empty={t("noCustomData")}
-                  />
-                  {system.length ? (
-                    <DataSection title={t("systemData")} values={system} />
-                  ) : null}
-                  <DataSection
-                    title={t("objectInformation")}
-                    values={objectInformation}
-                  />
-                </>
-              ) : (
-                <section className="object-pass-detail-actions">
-                  {renderedActions}
-                </section>
-              )}
+          <header className="object-pass-modal-header">
+            <div>
+              <p className="page-eyebrow">
+                {t(modalView === "actions" ? "actions" : "details")}
+              </p>
+              <h2 id="object-pass-detail-title">{item.name}</h2>
             </div>
-          </section>
-        </div>
+            <div className="object-pass-modal-actions">
+              <button
+                ref={closeButton}
+                type="button"
+                className="object-pass-modal-close"
+                aria-label={t("closeDetails")}
+                onClick={closeModal}
+              >
+                <X size={20} aria-hidden />
+              </button>
+            </div>
+          </header>
+          <div className="object-pass-modal-body">
+            {modalView === "details" ? (
+              <>
+                <DataSection title={t("metadata")} values={metadata} />
+                <CustomJsonSection
+                  title={t("customData")}
+                  value={item.custom}
+                  empty={t("noCustomData")}
+                />
+                {system.length ? (
+                  <DataSection title={t("systemData")} values={system} />
+                ) : null}
+                <DataSection
+                  title={t("objectInformation")}
+                  values={objectInformation}
+                />
+              </>
+            ) : (
+              <section className="object-pass-detail-actions">
+                {renderedActions}
+              </section>
+            )}
+          </div>
+        </ModalDialog>
       ) : null}
     </>
   );

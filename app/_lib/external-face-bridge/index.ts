@@ -5,8 +5,10 @@ export {
   type ExternalFaceApplicationDescriptor,
 } from "@/app/_lib/external-face-bridge/core/application";
 export {
-  toAuthenticatedExternalFaceContext,
+  toAuthenticatedExternalFaceDetailContext,
+  toInventoryCardExternalFaceContext,
   type AuthenticatedExternalFaceContext,
+  type ExternalFaceDetailObject,
   type ExternalFaceObject,
 } from "@/app/_lib/external-face-bridge/core/context";
 export { ExternalFaceBridgeError } from "@/app/_lib/external-face-bridge/core/errors";

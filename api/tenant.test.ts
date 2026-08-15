@@ -53,10 +53,7 @@ describe("organizationIdFromHost", () => {
       host: "example.com",
     });
     expect(
-      organizationIdFromHost(
-        "customer.example.com",
-        "wallet.dual.network",
-      ),
+      organizationIdFromHost("customer.example.com", "wallet.dual.network"),
     ).toEqual({
       organizationId: DEFAULT_ORGANIZATION_ID,
       subdomain: "customer",

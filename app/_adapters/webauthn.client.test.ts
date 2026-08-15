@@ -1,4 +1,4 @@
-import { decodeP256Signature } from "@/app/_utils/webauthn";
+import { decodeP256Signature } from "@/app/_adapters/webauthn.client";
 
 describe("decodeP256Signature", () => {
   it("decodes DER integers into fixed-width P-256 scalars", () => {

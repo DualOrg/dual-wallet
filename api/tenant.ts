@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { NextRequest } from "next/server";
 
 export interface TenantContext {
@@ -49,9 +51,7 @@ function isValidHost(host: string) {
   if (host.length > 253) return false;
   return host
     .split(".")
-    .every((label) =>
-      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label),
-    );
+    .every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label));
 }
 
 export function organizationIdFromHost(

@@ -1,5 +1,3 @@
-"use client";
-
 import { ShieldCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Brand } from "@/app/_components/design-system/brand";
@@ -20,7 +18,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
             <span className="auth-point">{t("portable")}</span>
           </div>
         </div>
-        <ShieldCheck size={30} color="#72d9e7" aria-hidden />
+        <ShieldCheck size={30} className="auth-shield" aria-hidden />
       </section>
       <section className="auth-panel">
         <div className="auth-card">{children}</div>

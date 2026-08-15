@@ -26,7 +26,11 @@
   --brand-strong: #087f98;
   --brand-soft: #e8f7fa;
   --ink: #092c33;
-  --muted: #687d82;
+  --muted: #5c7277;
+  --content-accent: #087f98;
+  --action-primary: #087f98;
+  --action-primary-hover: #066779;
+  --on-action-primary: #ffffff;
   --surface: #ffffff;
   --surface-raised: #ffffff;
   --surface-subtle: #f3f7f7;
@@ -44,6 +48,10 @@
   --brand-soft: #073b45;
   --ink: #eef9fa;
   --muted: #9cb2b6;
+  --content-accent: #72d0df;
+  --action-primary: #72d0df;
+  --action-primary-hover: #9be1eb;
+  --on-action-primary: #071f24;
   --surface: #071f24;
   --surface-raised: #0c2a30;
   --surface-subtle: #0a252b;
@@ -128,12 +136,12 @@ button {
   transform: none;
 }
 .button-primary {
-  color: #fff;
-  background: var(--brand);
+  color: var(--on-action-primary);
+  background: var(--action-primary);
   box-shadow: 0 8px 24px rgba(21, 157, 184, 0.23);
 }
 .button-primary:hover {
-  background: var(--brand-strong);
+  background: var(--action-primary-hover);
 }
 .button-secondary {
   color: var(--ink);
@@ -189,6 +197,10 @@ button {
 .field-error {
   margin: 0;
   color: var(--danger);
+  font-size: 0.82rem;
+}
+.field-hint {
+  color: var(--muted);
   font-size: 0.82rem;
 }
 
@@ -273,13 +285,16 @@ button {
   position: relative;
   z-index: 1;
 }
+.auth-shield {
+  color: #72d9e7;
+}
 .auth-copy {
   max-width: 660px;
 }
 .auth-kicker,
 .page-eyebrow {
   margin: 0 0 12px;
-  color: var(--brand);
+  color: var(--content-accent);
   font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.15em;
@@ -1175,11 +1190,11 @@ button {
 }
 .wallet-pass-actions-button {
   width: 42px;
-  color: white;
-  background: color-mix(in srgb, var(--brand-strong) 88%, transparent);
+  color: var(--on-action-primary);
+  background: var(--action-primary);
 }
 .wallet-pass-actions-button:hover {
-  background: var(--brand-strong);
+  background: var(--action-primary-hover);
 }
 .wallet-pass-menu-popover {
   position: absolute;

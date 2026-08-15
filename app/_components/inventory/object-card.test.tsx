@@ -2,6 +2,23 @@ import { render, screen } from "@testing-library/react";
 import { ObjectCard } from "@/app/_components/inventory/object-card";
 import type { InventoryObject } from "@/app/_domain/inventory";
 
+jest.mock("next-intl", () => ({
+  useTranslations:
+    () => (key: string, values?: Record<string, string | number>) => {
+      if (key === "openNamed") return `Open ${values?.name}`;
+      if (key === "actionsAvailable") {
+        return `${values?.count} action${values?.count === 1 ? "" : "s"} available`;
+      }
+      return (
+        {
+          smartObject: "Smart object",
+          verifiedObject: "Verified digital object",
+          objectId: "Object ID",
+        }[key] ?? key
+      );
+    },
+}));
+
 jest.mock("@/app/_components/inventory/object-visual", () => ({
   ObjectVisual: ({
     name,
@@ -15,6 +32,7 @@ jest.mock("@/app/_components/inventory/object-visual", () => ({
     <div
       data-testid="object-visual"
       data-bridge={bridgeContext ? "enabled" : "disabled"}
+      data-context={bridgeContext ? JSON.stringify(bridgeContext) : undefined}
       data-interaction={allowInteraction === false ? "disabled" : "enabled"}
     >
       {name} visual
@@ -36,7 +54,6 @@ const item: InventoryObject = {
   createdAt: new Date("2026-08-11T12:00:00Z"),
   modifiedAt: new Date("2026-08-11T12:01:00Z"),
   actions: [],
-  raw: {} as InventoryObject["raw"],
 };
 
 describe("ObjectCard", () => {
@@ -72,12 +89,36 @@ describe("ObjectCard", () => {
     );
   });
 
-  it("passes object data to the face bridge only when explicitly enabled", () => {
+  it("passes only minimized card data to the face bridge when enabled", () => {
     const { rerender } = render(<ObjectCard item={item} />);
     expect(screen.getByTestId("object-visual").dataset.bridge).toBe("disabled");
 
-    rerender(<ObjectCard item={item} bridgeEnabled />);
-    expect(screen.getByTestId("object-visual").dataset.bridge).toBe("enabled");
+    rerender(
+      <ObjectCard
+        item={{
+          ...item,
+          actions: ["update"],
+          custom: { privateSerial: "secret" },
+          system: { origin: "private" },
+        }}
+        bridgeEnabled
+      />,
+    );
+    const visual = screen.getByTestId("object-visual");
+    expect(visual.dataset.bridge).toBe("enabled");
+    const context = JSON.parse(visual.dataset.context ?? "{}") as {
+      object?: Record<string, unknown>;
+      actions?: string[];
+      variant?: string;
+    };
+    expect(context.variant).toBe("card");
+    expect(context.actions).toEqual([]);
+    expect(context.object).not.toHaveProperty("custom");
+    expect(context.object).not.toHaveProperty("system");
+    expect(context.object).not.toHaveProperty("owner");
+    expect(context.object).not.toHaveProperty("content_hash");
+    expect(context.object).not.toHaveProperty("state_hash");
+    expect(visual.dataset.context).not.toMatch(/secret|privateSerial|update/);
   });
 
   it("shows an actions indicator only for executable object actions", () => {

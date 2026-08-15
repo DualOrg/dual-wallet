@@ -10,7 +10,7 @@ import {
   tenantRequired,
 } from "@/api/request";
 import { getWalletsApi } from "@/api/web-sdk-client";
-import { toViewerWallet } from "@/app/_domain/wallet";
+import { toViewerWallet } from "@/app/_adapters/wallet";
 
 export async function POST(request: NextRequest) {
   const invalidOrigin = mutationGuard(request);

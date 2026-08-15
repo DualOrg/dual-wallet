@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ActionLog } from "@/api/web-sdk/models/ActionLog";
 import { ActivityDetailModal } from "@/app/_components/activity/activity-detail-modal";
-import { toActivityEntry } from "@/app/_domain/inventory";
+import { toActivityEntry } from "@/app/_adapters/inventory";
 
 jest.mock("next-intl", () => ({
   useLocale: () => "en",

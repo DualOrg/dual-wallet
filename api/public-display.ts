@@ -1,3 +1,5 @@
+import "server-only";
+
 const OBJECT_ID = /^[a-zA-Z0-9_-]{1,128}$/;
 const VARIANTS = new Set(["card", "detail", "share"]);
 

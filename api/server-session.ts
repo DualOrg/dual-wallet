@@ -1,3 +1,5 @@
+import "server-only";
+
 import { createHash, randomBytes } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
@@ -8,8 +10,9 @@ import type { TenantContext } from "@/api/tenant";
 import { tenantFromRequest } from "@/api/tenant";
 import { ResponseError } from "@/api/web-sdk/runtime";
 import { getWalletsApi } from "@/api/web-sdk-client";
+import { toViewerWallet } from "@/app/_adapters/wallet";
 import type { AuthenticationMethod } from "@/app/_domain/session";
-import { toViewerWallet, type ViewerWallet } from "@/app/_domain/wallet";
+import type { ViewerWallet } from "@/app/_domain/wallet";
 
 const isProduction = process.env.NODE_ENV === "production";
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;

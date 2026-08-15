@@ -18,11 +18,11 @@
       "recycling_status": "CIRCULAR READY"
     }
   },
-  "factory": {"max_supply": 500, "minted_count": 0},
+  "factory": { "max_supply": 500, "minted_count": 0 },
   "actions": [
-    {"name": "mint", "access": {"type": "private"}},
-    {"name": "transfer", "access": {"type": "public"}},
-    {"name": "update", "access": {"type": "public"}}
+    { "name": "mint", "access": { "type": "private" } },
+    { "name": "transfer", "access": { "type": "public" } },
+    { "name": "update", "access": { "type": "public" } }
   ],
   "public_access": {
     "custom": [

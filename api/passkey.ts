@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { PasskeyLoginVerifyIn } from "@/api/web-sdk/models/PasskeyLoginVerifyIn";
 import type { PasskeyRegisterVerifyIn } from "@/api/web-sdk/models/PasskeyRegisterVerifyIn";
 import type { Language } from "@/api/web-sdk/models/Language";

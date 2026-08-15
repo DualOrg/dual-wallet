@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Play, ShieldCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Alert } from "@/app/_components/design-system/alert";
@@ -9,17 +8,16 @@ import { Button } from "@/app/_components/design-system/button";
 import { Field, TextareaField } from "@/app/_components/design-system/field";
 import type { InventoryObject } from "@/app/_domain/inventory";
 import { shortId } from "@/app/_domain/inventory";
+import { ViewerError } from "@/app/_domain/errors";
+import { useExecuteInventoryAction } from "@/app/_hooks/use-inventory-action";
 import type { ExternalFaceActionRequest } from "@/app/_lib/external-face-bridge";
-import { executeInventoryAction } from "@/app/_lib/action-executor";
 import {
   ActionInputError,
   actionFields,
-  buildInventoryAction,
   isInventoryActionName,
   type ActionInput,
   type InventoryActionName,
-} from "@/app/_lib/inventory-actions";
-import { useSession } from "@/app/_providers/session-provider";
+} from "@/app/_services/inventory-actions";
 
 export function ObjectActions({
   item,
@@ -31,8 +29,7 @@ export function ObjectActions({
   onRequestedActionCompleted?: (actionId: string) => void;
 }) {
   const t = useTranslations("actions");
-  const session = useSession();
-  const queryClient = useQueryClient();
+  const execution = useExecuteInventoryAction();
   const actions = useMemo(
     () => Array.from(new Set(item.actions)).filter(isInventoryActionName),
     [item.actions],
@@ -45,7 +42,6 @@ export function ObjectActions({
     initialRequest?.name ?? actions[0] ?? null,
   );
   const [input, setInput] = useState<ActionInput>(initialRequest?.input ?? {});
-  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completedId, setCompletedId] = useState<string | null>(null);
 
@@ -64,24 +60,13 @@ export function ObjectActions({
     event.preventDefault();
     setError(null);
     setCompletedId(null);
-    if (!session.authenticationMethod) {
-      setError(t("sessionExpired"));
-      return;
-    }
     try {
-      const action = buildInventoryAction(selected, item.id, input);
-      setPending(true);
-      const result = await executeInventoryAction(
-        action,
-        session.authenticationMethod,
-        session.wallet?.controller.address,
-      );
+      const result = await execution.mutateAsync({
+        name: selected,
+        objectId: item.id,
+        input,
+      });
       setCompletedId(result.actionId);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["inventory"] }),
-        queryClient.invalidateQueries({ queryKey: ["inventory-object"] }),
-        queryClient.invalidateQueries({ queryKey: ["activity"] }),
-      ]);
       onRequestedActionCompleted?.(result.actionId);
     } catch (caught) {
       if (caught instanceof ActionInputError) {
@@ -92,11 +77,13 @@ export function ObjectActions({
         );
       } else {
         setError(
-          caught instanceof Error ? caught.message : t("executionFailed"),
+          caught instanceof ViewerError && caught.category === "authentication"
+            ? t("sessionExpired")
+            : caught instanceof Error
+              ? caught.message
+              : t("executionFailed"),
         );
       }
-    } finally {
-      setPending(false);
     }
   };
 
@@ -118,7 +105,7 @@ export function ObjectActions({
             variant={selected === name ? "primary" : "secondary"}
             aria-pressed={selected === name}
             disabled={
-              pending ||
+              execution.isPending ||
               Boolean(requestedAction && requestedAction.name !== name)
             }
             onClick={() => choose(name)}
@@ -185,10 +172,10 @@ export function ObjectActions({
           <Button
             type="submit"
             variant={selected === "burn" ? "danger" : "primary"}
-            disabled={pending}
+            disabled={execution.isPending}
           >
             <Play size={16} aria-hidden />
-            {t(pending ? "executing" : "execute", {
+            {t(execution.isPending ? "executing" : "execute", {
               action: t(`names.${selected}`),
             })}
           </Button>

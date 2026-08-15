@@ -1,4 +1,8 @@
 {
+  "metadata": {
+    "title": "Dual Viewer",
+    "description": "Your secure smart object inventory and wallet activity."
+  },
   "common": {
     "brand": "Dual Viewer",
     "smartObject": "Smart object",
@@ -19,7 +23,8 @@
     "activity": "Activity",
     "settings": "Settings",
     "logout": "Sign out",
-    "account": "Your account"
+    "account": "Your account",
+    "mainNavigation": "Main navigation"
   },
   "profileMenu": {
     "account": "Your account",
@@ -42,6 +47,7 @@
     "welcomeDescription": "Sign in to open your smart object inventory.",
     "create": "Create your account",
     "createDescription": "Email is the quickest way to start. You can also use a wallet or passkey.",
+    "methodLabel": "Authentication method",
     "emailMethod": "Email",
     "walletMethod": "Wallet",
     "passkeyMethod": "Passkey",
@@ -68,7 +74,13 @@
     "createPasskey": "Create a passkey account",
     "passkeyDescription": "Use Face ID, Touch ID or your device PIN. Your passkey never leaves your device.",
     "passwordMismatch": "Passwords do not match.",
-    "tenantMissing": "This Viewer host is not configured."
+    "tenantMissing": "This Viewer host is not configured.",
+    "errors": {
+      "wallet_unavailable": "No compatible browser wallet was found.",
+      "wallet_account_missing": "The wallet did not provide an account.",
+      "wallet_signature_missing": "The wallet did not return a signature.",
+      "unknown": "Something went wrong."
+    }
   },
   "verify": {
     "title": "Verify your account",
@@ -114,6 +126,10 @@
     "loadMore": "Load more",
     "loadingMore": "Loading more…",
     "objectId": "Object ID",
+    "smartObject": "Smart object",
+    "verifiedObject": "Verified digital object",
+    "actionsAvailable": "{count, plural, one {# action available} other {# actions available}}",
+    "openNamed": "Open {name}",
     "template": "Template",
     "owner": "Owner",
     "updated": "Updated {date}",
@@ -282,6 +298,10 @@
       "totalFee": "Total fee",
       "totalFeeWei": "Total fee (wei)",
       "parameters": "Parameters",
+      "parameterId": "Parameter object ID",
+      "quantity": "Quantity",
+      "destination": "Destination",
+      "dataHash": "Data hash",
       "affectedObjects": "Affected objects ({count})",
       "objectId": "Object ID",
       "templateId": "Template ID",
@@ -292,6 +312,10 @@
       "previousIntegrityHash": "Previous integrity hash",
       "integrityHash": "Integrity hash",
       "permit": "Permit",
+      "commitment": "Commitment",
+      "actionType": "Action type",
+      "recipient": "Recipient",
+      "deadline": "Deadline",
       "access": "Access policy",
       "securityNote": "Signature material, authentication payloads and permit secrets are intentionally hidden."
     }
@@ -304,7 +328,17 @@
     "profileDescription": "These details are used across your smart object experience.",
     "nickname": "Display name",
     "phone": "Phone number",
+    "phonePlaceholder": "+41 79 000 00 00",
     "language": "Language",
+    "languages": {
+      "en": "English",
+      "de": "Deutsch",
+      "fr": "Français",
+      "it": "Italiano",
+      "es": "Español",
+      "pt": "Português",
+      "ru": "Русский"
+    },
     "security": "Smart account and controller",
     "securityDescription": "Your Kernel execution account and the controller authorized to sign for it.",
     "accountType": "Account type",

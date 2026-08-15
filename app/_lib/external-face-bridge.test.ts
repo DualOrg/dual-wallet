@@ -5,7 +5,8 @@ import {
   externalFaceBridgeOrigin,
   resolveExternalFaceBridgeRequest,
   startAuthenticatedExternalFaceBridge,
-  toAuthenticatedExternalFaceContext,
+  toAuthenticatedExternalFaceDetailContext,
+  toInventoryCardExternalFaceContext,
 } from "@/app/_lib/external-face-bridge";
 import type { ObjectDetail } from "@/app/_domain/inventory";
 
@@ -54,20 +55,50 @@ describe("authenticated external face bridge", () => {
     );
   });
 
-  it("builds the bridge object without system data or credentials", () => {
-    const context = toAuthenticatedExternalFaceContext(item, ["update"]);
+  it("minimizes inventory-card context and grants no privileged data", () => {
+    const context = toInventoryCardExternalFaceContext(item);
     expect(context.object).toMatchObject({
       id: "object-1",
       template_id: "template-1",
       metadata: { name: "Passport" },
-      custom: { serial_number: "SERIAL-1" },
     });
+    expect(context.actions).toEqual([]);
     expect(context.object).not.toHaveProperty("system");
-    expect(JSON.stringify(context)).not.toMatch(/token|cookie|private_source/i);
+    expect(context.object).not.toHaveProperty("owner");
+    expect(context.object).not.toHaveProperty("custom");
+    expect(context.object).not.toHaveProperty("content_hash");
+    expect(context.object).not.toHaveProperty("state_hash");
+    const serializedPayload = JSON.stringify({
+      object: context.object,
+      actions: context.actions,
+      config: context.config,
+      variant: context.variant,
+    });
+    expect(serializedPayload).not.toMatch(
+      /token|cookie|private_source|serial_number|state-hash|content-hash/i,
+    );
+    expect(
+      externalFaceCapabilities({}, context.variant).map(
+        ({ operation }) => operation,
+      ),
+    ).toEqual(["bridge.ping", "object.current.read"]);
+  });
+
+  it("keeps detail-only data in the authenticated detail context", () => {
+    const context = toAuthenticatedExternalFaceDetailContext(item, ["update"]);
+    expect(context.object).toMatchObject({
+      id: "object-1",
+      owner: "0x1234",
+      custom: { serial_number: "SERIAL-1" },
+      content_hash: "content-hash",
+      state_hash: "state-hash",
+    });
+    expect(context.actions).toEqual(["update"]);
+    expect(context.object).not.toHaveProperty("system");
   });
 
   it("uses only the selected public face-view config", () => {
-    const context = toAuthenticatedExternalFaceContext({
+    const context = toAuthenticatedExternalFaceDetailContext({
       ...item,
       display: {
         kind: "external-document",
@@ -159,7 +190,7 @@ describe("authenticated external face bridge", () => {
   });
 
   it("returns only the bound current object", async () => {
-    const context = toAuthenticatedExternalFaceContext(item);
+    const context = toInventoryCardExternalFaceContext(item);
     await expect(
       resolveExternalFaceBridgeRequest(
         {
@@ -187,7 +218,7 @@ describe("authenticated external face bridge", () => {
           operation: "execute_action",
           payload: {},
         },
-        toAuthenticatedExternalFaceContext(item),
+        toInventoryCardExternalFaceContext(item),
         {},
       ),
     ).rejects.toThrow("capability_denied");
@@ -217,7 +248,7 @@ describe("authenticated external face bridge", () => {
           operation: "object.attributes.read",
           payload: {},
         },
-        toAuthenticatedExternalFaceContext(item),
+        toAuthenticatedExternalFaceDetailContext(item),
         { readAttributes },
       ),
     ).resolves.toMatchObject({
@@ -244,7 +275,7 @@ describe("authenticated external face bridge", () => {
             input: { custom: { service_status: "complete" } },
           },
         },
-        toAuthenticatedExternalFaceContext(item, ["update"]),
+        toAuthenticatedExternalFaceDetailContext(item, ["update"]),
         { requestAction },
       ),
     ).resolves.toEqual({ status: "completed", action_id: "action-1" });
@@ -255,7 +286,7 @@ describe("authenticated external face bridge", () => {
   });
 
   it("rejects unavailable actions and child-supplied object identifiers", async () => {
-    const context = toAuthenticatedExternalFaceContext(item, ["update"]);
+    const context = toAuthenticatedExternalFaceDetailContext(item, ["update"]);
     const request = {
       type: "dual.face.request" as const,
       protocol: "dual.face.bridge" as const,
@@ -340,7 +371,7 @@ describe("authenticated external face bridge", () => {
       const frame = {
         contentWindow: { postMessage },
       } as unknown as HTMLIFrameElement;
-      const context = toAuthenticatedExternalFaceContext(item);
+      const context = toInventoryCardExternalFaceContext(item);
       const host = startAuthenticatedExternalFaceBridge({
         frame,
         displayUrl: "https://dpp.faces.dual.network/v1/embed",

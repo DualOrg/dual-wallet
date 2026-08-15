@@ -27,7 +27,7 @@ test("account chip opens a compact user profile", async ({ page }) => {
   await expect(trigger.getByText("0x12....678", { exact: true })).toBeVisible();
   await trigger.click();
 
-  const profile = page.getByRole("dialog", { name: "User profile" });
+  const profile = page.locator("#user-profile-popover");
   await expect(profile).toBeVisible();
   await expect(
     profile.getByText(viewerWallet.nickname!, { exact: true }),
@@ -76,8 +76,8 @@ test("inventory opens a complete object detail", async ({ page }) => {
   expect(moreButtonBox!.y + moreButtonBox!.height).toBeLessThan(passBox!.y);
 
   await page.getByRole("button", { name: "More pass options" }).click();
-  await expect(page.getByRole("menuitem", { name: "Share" })).toBeVisible();
-  await page.getByRole("menuitem", { name: "Show details" }).click();
+  await expect(page.getByRole("button", { name: "Share" })).toBeVisible();
+  await page.getByRole("button", { name: "Show details" }).click();
   const details = page.getByRole("dialog");
   await expect(details.getByText("founder", { exact: false })).toBeVisible();
   await expect(details.getByText("0xstatehash", { exact: true })).toBeVisible();
@@ -88,14 +88,12 @@ test("inventory opens a complete object detail", async ({ page }) => {
   });
   const actionsButtonBox = await actionsButton.boundingBox();
   expect(actionsButtonBox).not.toBeNull();
-  expect(actionsButtonBox!.y).toBeGreaterThan(passBox!.y + passBox!.height);
-  expect(
-    Math.abs(
-      actionsButtonBox!.x +
-        actionsButtonBox!.width -
-        (moreButtonBox!.x + moreButtonBox!.width),
-    ),
-  ).toBeLessThanOrEqual(1);
+  expect(Math.abs(actionsButtonBox!.y - moreButtonBox!.y)).toBeLessThanOrEqual(
+    1,
+  );
+  expect(actionsButtonBox!.x + actionsButtonBox!.width).toBeLessThanOrEqual(
+    moreButtonBox!.x,
+  );
 
   await actionsButton.click();
   await expect(
@@ -110,7 +108,7 @@ test("detail modals fit and scroll inside a mobile viewport", async ({
   await page.goto(`/inventory/${smartObject.id}`);
 
   await page.getByRole("button", { name: "More pass options" }).click();
-  await page.getByRole("menuitem", { name: "Show details" }).click();
+  await page.getByRole("button", { name: "Show details" }).click();
 
   const objectDialog = page.getByRole("dialog");
   await expect(objectDialog).toBeVisible();
@@ -287,8 +285,8 @@ test("a public object link opens without a Viewer session", async ({
     page.getByRole("button", { name: "Show object actions" }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "More pass options" }).click();
-  await expect(page.getByRole("menuitem", { name: "Share" })).toBeVisible();
-  await page.getByRole("menuitem", { name: "Show details" }).click();
+  await expect(page.getByRole("button", { name: "Share" })).toBeVisible();
+  await page.getByRole("button", { name: "Show details" }).click();
   const details = page.getByRole("dialog");
   await expect(details.getByText("founder", { exact: false })).toBeVisible();
   await expect(details.getByText("0xstatehash", { exact: true })).toBeVisible();

@@ -1,5 +1,6 @@
 import type { Wallet } from "@/api/web-sdk/models/Wallet";
-import { shortAccountAddress, toViewerWallet } from "@/app/_domain/wallet";
+import { toViewerWallet } from "@/app/_adapters/wallet";
+import { shortAccountAddress } from "@/app/_domain/wallet";
 
 describe("wallet adapter", () => {
   it("shortens account addresses for compact profile displays", () => {

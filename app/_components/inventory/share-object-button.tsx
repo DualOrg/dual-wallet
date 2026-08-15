@@ -5,13 +5,7 @@ import { Check, Share2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/app/_components/design-system/button";
 
-export function ShareObjectButton({
-  objectId,
-  menuItem = false,
-}: {
-  objectId: string;
-  menuItem?: boolean;
-}) {
+export function ShareObjectButton({ objectId }: { objectId: string }) {
   const t = useTranslations("object");
   const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
 
@@ -41,12 +35,7 @@ export function ShareObjectButton({
 
   return (
     <div className="share-control">
-      <Button
-        type="button"
-        variant="secondary"
-        role={menuItem ? "menuitem" : undefined}
-        onClick={share}
-      >
+      <Button type="button" variant="secondary" onClick={share}>
         {status === "copied" ? (
           <Check size={17} aria-hidden />
         ) : (

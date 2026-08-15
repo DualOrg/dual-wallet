@@ -72,7 +72,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="app-layout">
       <aside className="sidebar">
         <Brand />
-        <nav className="sidebar-nav" aria-label="Main navigation">
+        <nav className="sidebar-nav" aria-label={t("mainNavigation")}>
           <Nav />
         </nav>
         <div className="sidebar-footer">
@@ -100,7 +100,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         </header>
         {mobileOpen ? (
-          <nav className="mobile-nav" aria-label="Main navigation">
+          <nav className="mobile-nav" aria-label={t("mainNavigation")}>
             <Nav close={() => setMobileOpen(false)} />
             <button className="nav-link" type="button" onClick={toggleTheme}>
               {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}

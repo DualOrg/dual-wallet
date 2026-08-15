@@ -57,7 +57,7 @@ describe("UserProfileMenu", () => {
     expect(screen.getByText("0x12....f45")).toBeTruthy();
     fireEvent.click(trigger);
 
-    expect(screen.getByRole("dialog", { name: "User profile" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "User profile" })).toBeTruthy();
     expect(screen.getAllByText("ww")).toHaveLength(2);
     expect(screen.getByText("ww@example.com")).toBeTruthy();
     expect(screen.getByText("SECP256K1")).toBeTruthy();

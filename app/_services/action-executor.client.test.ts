@@ -1,6 +1,9 @@
 import { getEbusApi } from "@/api/web-sdk-client";
-import { executeInventoryAction } from "@/app/_lib/action-executor";
-import { base64urlToBytes, signActionWithPasskey } from "@/app/_utils/webauthn";
+import { executeInventoryAction } from "@/app/_services/action-executor.client";
+import {
+  base64urlToBytes,
+  signActionWithPasskey,
+} from "@/app/_adapters/webauthn.client";
 
 jest.mock("@/api/web-sdk-client", () => ({
   getEbusApi: jest.fn(),
@@ -10,7 +13,7 @@ jest.mock("@/api/web-sdk-client", () => ({
   })),
 }));
 
-jest.mock("@/app/_utils/webauthn", () => ({
+jest.mock("@/app/_adapters/webauthn.client", () => ({
   base64urlToBytes: jest.fn(),
   signActionWithPasskey: jest.fn(),
 }));

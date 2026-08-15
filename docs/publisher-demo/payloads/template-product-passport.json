@@ -19,11 +19,11 @@
       "status": "AUTHENTIC"
     }
   },
-  "factory": {"max_supply": 1000, "minted_count": 0},
+  "factory": { "max_supply": 1000, "minted_count": 0 },
   "actions": [
-    {"name": "mint", "access": {"type": "private"}},
-    {"name": "transfer", "access": {"type": "public"}},
-    {"name": "update", "access": {"type": "public"}}
+    { "name": "mint", "access": { "type": "private" } },
+    { "name": "transfer", "access": { "type": "public" } },
+    { "name": "update", "access": { "type": "public" } }
   ],
   "public_access": {
     "custom": [

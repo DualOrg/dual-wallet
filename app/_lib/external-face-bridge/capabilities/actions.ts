@@ -4,7 +4,7 @@ import {
   isInventoryActionName,
   type ActionInput,
   type InventoryActionName,
-} from "@/app/_lib/inventory-actions";
+} from "@/app/_services/inventory-actions";
 import type { ExternalFaceCapability } from "@/app/_lib/external-face-bridge/capabilities/types";
 import type { AuthenticatedExternalFaceContext } from "@/app/_lib/external-face-bridge/core/context";
 import { ExternalFaceBridgeError } from "@/app/_lib/external-face-bridge/core/errors";

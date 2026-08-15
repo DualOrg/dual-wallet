@@ -24,10 +24,15 @@ export interface ExternalFaceBridgeHandlers
 
 export function externalFaceCapabilities(
   handlers: ExternalFaceBridgeHandlers,
+  variant: AuthenticatedExternalFaceContext["variant"] = "detail",
 ): ExternalFaceCapability[] {
+  const currentObjectCapabilities = objectCapabilities().filter(
+    ({ operation }) =>
+      variant === "detail" || operation === "object.current.read",
+  );
   return [
     ...coreCapabilities(),
-    ...objectCapabilities(),
+    ...currentObjectCapabilities,
     ...attributeCapabilities(handlers),
     ...actionCapabilities(handlers),
     ...viewerUiCapabilities(handlers),
@@ -39,7 +44,7 @@ export async function resolveExternalFaceBridgeRequest(
   context: AuthenticatedExternalFaceContext,
   handlers: ExternalFaceBridgeHandlers,
 ) {
-  const capability = externalFaceCapabilities(handlers).find(
+  const capability = externalFaceCapabilities(handlers, context.variant).find(
     (candidate) => candidate.operation === request.operation,
   );
   if (!capability) throw new Error("capability_denied");

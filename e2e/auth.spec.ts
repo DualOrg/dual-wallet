@@ -1,10 +1,21 @@
 import { expect, test } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import {
   installEoaProvider,
   installPasskeyProvider,
   mockViewerApi,
   smartObject,
 } from "./support";
+
+test("login has no automatically detectable accessibility violations", async ({
+  page,
+}) => {
+  await mockViewerApi(page);
+  await page.goto("/login");
+
+  const results = await new AxeBuilder({ page }).analyze();
+  expect(results.violations).toEqual([]);
+});
 
 test("email login opens the wallet inventory", async ({ page }) => {
   await mockViewerApi(page);

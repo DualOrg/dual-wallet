@@ -58,7 +58,6 @@ export function UserProfileMenu({ wallet }: { wallet: ViewerWallet }) {
         <section
           id="user-profile-popover"
           className="account-profile-popover"
-          role="dialog"
           aria-label={t("title")}
         >
           <header className="account-profile-header">

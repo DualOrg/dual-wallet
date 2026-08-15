@@ -5,6 +5,21 @@ For changes that originate in api-v3 or affect generated SDK contracts, read
 `api/web-sdk/**` only through `npm run sdk:sync`; never hand-edit it as the
 source of an API change.
 
+The focused development guides below are normative. Read every guide whose
+scope is affected before editing implementation or tests:
+
+- Viewer routes, product behavior, disclosure, local persistence, or external
+  faces: `docs/development/viewer-product-guidelines.md`.
+- Components, styles, interaction primitives, copy, formatting, or responsive
+  behavior: `docs/development/ui-accessibility-guidelines.md`.
+- Domain models, adapters, services, SDK usage, errors, or async workflows:
+  `docs/development/architecture-logic-guidelines.md`.
+- React components, Server/Client boundaries, state, hooks, forms, context, or
+  TanStack Query: `docs/development/react-state-guidelines.md`.
+
+These guides refine the repository rules; this file wins if a genuine conflict
+remains. Keep the guides synchronized with architectural changes.
+
 - Repo: https://github.com/vlabsio/viewer
 - The Viewer is the end-user SmartToken application. It authenticates a wallet
   account and gives that user access to their inventory, object details,
@@ -39,6 +54,10 @@ source of an API change.
   - `/verify`: wallet/account verification using the delivered code.
   - `/forgot-password`: request a password reset.
   - `/reset-password`: consume the reset token and set a new password.
+- Public object routes:
+  - `/objects/[objectId]`: canonical anonymous object view using only the public
+    object projection and no authenticated bridge.
+  - `/o/[objectId]`: redirect-only short alias for the canonical public URL.
 - Authorized routes:
   - `/inventory`: the current wallet's SmartToken objects, with loading, empty,
     error, pagination, filtering, and responsive card/list states.
@@ -68,6 +87,9 @@ source of an API change.
   - Settings feature: `app/(authorized)/settings/`
   - Stable generated-DTO adapters: `app/_adapters/`
   - Domain models, errors, and view states: `app/_domain/`
+  - Viewer use cases and transport orchestration: `app/_services/`
+  - Reviewed protocol/integration modules, not general feature business logic:
+    `app/_lib/`
   - Deployment/API configuration: `app/_config/`
   - Shared components, hooks, providers, types, and utilities:
     `app/_components/`, `app/_hooks/`, `app/_providers/`, `app/_types/`, and
@@ -126,6 +148,7 @@ source of an API change.
   - Type-check: `npm run typecheck`
   - Lint with zero warnings: `npm run lint`
   - Format configured source: `npm run format`
+  - Verify formatting without writing: `npm run format:check`
   - Run Jest: `npm test`
   - Run the complete application gate: `npm run check`
   - Synchronize the generated SDK: `npm run sdk:sync`
@@ -146,20 +169,38 @@ source of an API change.
 - Keep generated transport DTOs at the boundary. Convert them into stable
   Viewer domain/view models in `app/_adapters/`; do not let OpenAPI naming and
   optionality spread through presentation components.
+- `app/_domain/` never imports React, Next.js, browser APIs, generated SDK
+  modules, or SDK clients. Components and pages never instantiate generated API
+  clients or construct transport payloads. Follow
+  `docs/development/architecture-logic-guidelines.md` and enforce the dependency
+  direction with import-boundary linting.
 - Respect Server Component and Client Component boundaries. Add `"use client"`
-  only for browser state, event handlers, wallet connectors, WebAuthn, or other
-  browser APIs.
+  at the smallest practical interactive boundary for browser state, event
+  handlers, wallet connectors, WebAuthn, or other browser APIs. Pages and
+  layouts remain Server Components by default.
+- Server Components call a server-only data/service layer directly instead of
+  making HTTP requests to Viewer route handlers. Browser code calls only
+  same-origin, allowlisted routes through browser-safe services.
+- Mark session, tenant, upstream-origin, credential, and token-bearing modules
+  with `import "server-only"`.
 - Never import server session code, upstream origins, refresh credentials, or
   SDK instances containing bearer tokens into client bundles.
 - Use React Query for client-owned remote state. Centralize query keys and
   invalidate the smallest correct set after profile or future object mutations.
+- Use typed per-feature query-key factories and focused mutation hooks. Raw
+  query-key arrays, SDK DTOs, and direct mutation calls do not belong in pages
+  or components. Enable the TanStack Query strict ESLint rules when establishing
+  the greenfield quality baseline.
 - Keep protocol values explicit about units and serialization. Use `bigint` or
   Viem-safe values for chain amounts and never use JavaScript floating point for
   token arithmetic.
 - Prefer existing design-system primitives for buttons, fields, cards, modals,
   status badges, skeletons, empty states, pagination, and errors.
 - User-visible copy belongs in translation catalogs and is accessed through
-  `next-intl`; do not scatter hard-coded UI strings through components.
+  `next-intl`; this includes ARIA labels, titles, image alternatives,
+  placeholders, metadata, validation, and fallback copy. Format dates, numbers,
+  fees, units, lists, and plurals with the active locale; do not hard-code a
+  locale in feature code.
 - Use brief comments for non-obvious security, WebAuthn, signing, unit,
   pagination, or protocol invariants. Avoid comments that restate the code.
 - Keep focused changes focused. Do not combine feature work with unrelated
@@ -175,6 +216,13 @@ source of an API change.
   typed props and do not rediscover auth or wallet state from unrelated globals.
 - Keep state close to its owner. Introduce context only for genuinely shared
   state such as session, theme, or connector state.
+- Use the URL for non-sensitive filters, sorting, selection, and pagination that
+  should survive refresh or Back/Forward navigation. Use local state for
+  ephemeral menus, dialogs, and unsaved input. Web Storage is limited to parsed,
+  namespaced, non-sensitive presentation preferences.
+- Model multi-step authentication, action execution, and destructive workflows
+  with discriminated unions or reducers. Avoid parallel booleans that can
+  represent impossible states.
 - Components and hooks must be pure and idempotent during render. Never mutate
   props, cached query data, context, or module-level objects.
 - Follow the Rules of Hooks without exception: call hooks only at the top level
@@ -183,6 +231,9 @@ source of an API change.
 - Effects synchronize with external systems. Do not use effects for values that
   can be derived during render or for logic that belongs in a user event.
   Complete dependencies and clean up subscriptions, timers, and in-flight work.
+- Use `useSyncExternalStore` for genuine external subscriptions. Use
+  `useMemo`, `useCallback`, and `memo` only for measured expensive work or a
+  required referential contract, not as a default component style.
 - Use immutable and functional state updates where appropriate. Use stable
   semantic keys for lists; cursor pages and action logs must not use array
   indexes as identity.
@@ -204,6 +255,10 @@ source of an API change.
 - Preserve the semantic token layering used by Console App. Product components
   consume semantic surface/content/stroke/action/status tokens, not raw palette
   values or one-off hex colors.
+- Maintain primitive, semantic, and component token layers for color,
+  typography, spacing, sizing, radius, elevation, motion, content width, and
+  z-index. Ordinary feature layout must not use raw colors or arbitrary inline
+  style constants.
 - The current brand primary is teal (`#159DB8`), with Satoshi typography and
   Console App's light/dark surface system. These values belong in tokens, never
   repeated across feature components.
@@ -216,6 +271,9 @@ source of an API change.
 - Maintain semantic HTML, visible labels, keyboard access, focus restoration,
   sufficient contrast, reduced-motion behavior, and useful loading/error/empty
   states. Do not rely on color alone for action-log status.
+- Target WCAG 2.2 AA. Feature code does not hand-roll dialogs, menus, tabs,
+  comboboxes, tooltips, or focus traps; use reviewed design-system primitives
+  implementing the complete keyboard, focus, and ARIA pattern.
 
 ## Generated SDK and API Contract
 
@@ -341,9 +399,12 @@ documents it links. Keep that guide synchronized with the code and tests.
   integration adds a capability module without teaching transport about the
   use case.
 - Public object pages never initialize the authenticated bridge. Inventory
-  cards receive no private-attribute or action-request handler. Only an
-  authenticated detail route may grant `object.attributes.read` or
-  `object.action.request` to an explicitly configured application path.
+  cards may receive only the reviewed minimized card projection and
+  non-privileged card capability; they receive no private/custom fields,
+  content or state hashes, signer/session data, private-attribute handler, or
+  action-request handler. Only an authenticated detail route may grant
+  `object.attributes.read` or `object.action.request` to an explicitly
+  configured application path.
 - `object.attributes.read` accepts no object ID and maps only to the bound
   object's authenticated attribute GET through the BFF. Return the minimized
   attribute projection; never expose hashes used for write preconditions,
@@ -364,6 +425,9 @@ documents it links. Keep that guide synchronized with the code and tests.
 - Activity maps status, action name/alias, affected objects, transaction hash,
   timestamps, and fee strings into a user-readable model. Preserve exact fee
   strings and label units; do not imply finality beyond the API status.
+- Never render a raw action-log DTO or upstream response. Secondary technical
+  disclosure uses an adapted, redacted domain projection and never includes
+  signatures, authentication payloads, permit secrets, or raw errors.
 - Inventory/object query keys and activity query keys must include every
   filter, wallet identity, and cursor that changes their result.
 - Settings invalidates the current-wallet query after successful updates and
@@ -425,11 +489,18 @@ check`. Run `npm run build` for routes, server/client boundaries, environment,
   cross-origin iframe integration coverage with mocked APIs.
 - Test loading, empty, error, partial-data, stale-session, and pagination states
   in addition to the happy path.
+- The greenfield quality baseline also enforces architecture import boundaries,
+  TanStack Query's strict ESLint rules, formatting checks, automated
+  accessibility checks, and reviewed viewport/theme visual coverage. Do not
+  enable a rule without resolving existing violations or recording an explicit,
+  time-bounded migration.
 
 ## Documentation and Delivery
 
 - `README.md` is the repository overview; `docs/README.md` is the documentation
   index. Establish both as part of the greenfield scaffold.
+- The focused product, UI/accessibility, architecture/logic, and React/state
+  guides live in `docs/development/` and are indexed from `docs/README.md`.
 - Document the greenfield Next.js architecture and its current deployment.
 - Update relevant documentation in the same change when modifying:
   - auth method flows, cookies, refresh, or proxy policy;
@@ -449,8 +520,9 @@ check`. Run `npm run build` for routes, server/client boundaries, environment,
 
 ## Greenfield Implementation Order
 
-1. Establish the Next.js/App Router scaffold, quality scripts, same-origin BFF,
-   secure session model, SDK synchronization, and Console App-derived tokens.
+1. Establish the Next.js/App Router scaffold, layer/import boundaries, quality
+   scripts, formatting and accessibility gates, same-origin BFF, secure session
+   model, SDK synchronization, and Console App-derived token layers.
 2. Complete email registration/login, verification, password recovery, refresh,
    logout, and route protection end to end.
 3. Add EOA and passkey alternatives with deterministic unit and browser tests.

@@ -2,29 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { cache } from "react";
 import { ThemeToggle } from "@/app/_components/design-system/theme-toggle";
 import { ObjectDetail } from "@/app/_components/inventory/object-detail";
 import { ShareObjectButton } from "@/app/_components/inventory/share-object-button";
-import { toPublicObject } from "@/app/_domain/inventory";
-import { getObjectsApi } from "@/api/web-sdk-client";
-import { ResponseError } from "@/api/web-sdk/runtime";
-
-const getPublicObject = cache(async (objectId: string) => {
-  const result = await getObjectsApi().listObjectsPublic(
-    {
-      id: objectId,
-      limit: 1,
-      include: ["display"],
-      displayVariant: "card",
-    },
-    { cache: "no-store" },
-  );
-  const item = result.items?.[0];
-  if (item) return toPublicObject(item.object, item.display);
-  const object = result.objects[0];
-  return object ? toPublicObject(object) : undefined;
-});
+import {
+  getPublicObject,
+  isPublicObjectNotFound,
+} from "@/app/_services/public-object.server";
 
 async function loadPublicObject(objectId: string) {
   try {
@@ -32,7 +16,7 @@ async function loadPublicObject(objectId: string) {
     if (!item) notFound();
     return item;
   } catch (error) {
-    if (error instanceof ResponseError && error.response.status === 404) {
+    if (isPublicObjectNotFound(error)) {
       notFound();
     }
     throw error;
@@ -63,7 +47,7 @@ export async function generateMetadata({
       },
     };
   } catch {
-    return { title: "Object not available" };
+    return { title: t("publicNotFound") };
   }
 }
 
@@ -91,7 +75,7 @@ export default async function PublicObjectPage({
       <div className="public-object-content">
         <ObjectDetail
           item={item}
-          action={<ShareObjectButton objectId={item.id} menuItem />}
+          action={<ShareObjectButton objectId={item.id} />}
         />
       </div>
     </main>

@@ -91,7 +91,7 @@ describe("ObjectDetail", () => {
     ).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "More pass options" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Show details" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show details" }));
 
     const dialog = screen.getByRole("dialog");
     expect(dialog).toBeTruthy();

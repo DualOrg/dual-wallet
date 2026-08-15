@@ -5,7 +5,10 @@ const createJestConfig = nextJest({ dir: "./" });
 module.exports = createJestConfig({
   testEnvironment: "jsdom",
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
-  moduleNameMapper: { "^@/(.*)$": "<rootDir>/$1" },
+  moduleNameMapper: {
+    "^@/(.*)$": "<rootDir>/$1",
+    "^server-only$": "<rootDir>/test/server-only.ts",
+  },
   testPathIgnorePatterns: ["<rootDir>/e2e/", "<rootDir>/api/web-sdk/"],
   modulePathIgnorePatterns: ["<rootDir>/.next/"],
   collectCoverageFrom: [
@@ -13,6 +16,6 @@ module.exports = createJestConfig({
     "api/**/*.ts",
     "!api/web-sdk/**",
     "!app/**/page.tsx",
-    "!app/**/layout.tsx"
+    "!app/**/layout.tsx",
   ],
 });

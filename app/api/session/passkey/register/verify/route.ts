@@ -11,7 +11,7 @@ import { establishSession } from "@/api/server-session";
 import { tenantFromRequest } from "@/api/tenant";
 import { Language } from "@/api/web-sdk/models/Language";
 import { getWalletsApi } from "@/api/web-sdk-client";
-import { toViewerWallet } from "@/app/_domain/wallet";
+import { toViewerWallet } from "@/app/_adapters/wallet";
 
 export async function POST(request: NextRequest) {
   const invalidOrigin = mutationGuard(request);

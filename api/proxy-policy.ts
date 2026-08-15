@@ -1,3 +1,5 @@
+import "server-only";
+
 export type ProxyDecision =
   | { allowed: true }
   | { allowed: false; status: 400 | 404 | 405; message: string };

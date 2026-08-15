@@ -1,3 +1,5 @@
+import "client-only";
+
 import type { PasskeyLoginOptionsOut } from "@/api/web-sdk/models/PasskeyLoginOptionsOut";
 import type { PasskeyLoginVerifyIn } from "@/api/web-sdk/models/PasskeyLoginVerifyIn";
 import type { PasskeyRegisterOptionsOut } from "@/api/web-sdk/models/PasskeyRegisterOptionsOut";

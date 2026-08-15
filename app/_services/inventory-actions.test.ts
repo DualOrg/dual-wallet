@@ -3,7 +3,7 @@ import {
   buildInventoryAction,
   bridgeActionInput,
   isInventoryActionName,
-} from "@/app/_lib/inventory-actions";
+} from "@/app/_services/inventory-actions";
 import { ActionsRequestToJSON } from "@/api/web-sdk/models/ActionsRequest";
 
 describe("inventory actions", () => {

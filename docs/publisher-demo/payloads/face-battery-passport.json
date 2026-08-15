@@ -1,7 +1,7 @@
 {
   "name": "Viewer Demo - Battery Passport Face",
   "renderer": "go-template",
-  "renderer_config": {"demo": "battery-passport", "version": 1},
+  "renderer_config": { "demo": "battery-passport", "version": 1 },
   "views": [
     {
       "variant": "card",

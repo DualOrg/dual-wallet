@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { MAX_BFF_BODY_BYTES } from "@/api/settings";

@@ -1,9 +1,11 @@
+import "client-only";
+
 import { getObjectsApi, normalizeApiError } from "@/api/web-sdk-client";
 import {
   ExternalFaceBridgeError,
   type ExternalFaceAttributeResult,
 } from "@/app/_lib/external-face-bridge";
-import type { InventoryActionName } from "@/app/_lib/inventory-actions";
+import type { InventoryActionName } from "@/app/_services/inventory-actions";
 
 export async function readExternalFaceAttributes(
   objectId: string,

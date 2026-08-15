@@ -3,11 +3,11 @@ import type { ObjectDisplay } from "@/api/web-sdk/models/ObjectDisplay";
 import type { PublicSmartObject } from "@/api/web-sdk/models/PublicSmartObject";
 import type { SmartObject } from "@/api/web-sdk/models/SmartObject";
 import {
-  shortId,
   toActivityEntry,
   toInventoryObject,
   toPublicObject,
-} from "@/app/_domain/inventory";
+} from "@/app/_adapters/inventory";
+import { shortId } from "@/app/_domain/inventory";
 
 function actionLog(overrides: Partial<ActionLog> = {}): ActionLog {
   return {

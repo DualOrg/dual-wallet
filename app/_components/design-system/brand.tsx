@@ -1,8 +1,10 @@
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 
 export function Brand({ inverse = false }: { inverse?: boolean }) {
+  const t = useTranslations("common");
   return (
-    <span className="brand" style={inverse ? { color: "#fff" } : undefined}>
+    <span className={inverse ? "brand brand-inverse" : "brand"}>
       <Image
         className="brand-mark"
         src="/favicon.svg"
@@ -11,7 +13,7 @@ export function Brand({ inverse = false }: { inverse?: boolean }) {
         height={34}
         aria-hidden
       />
-      <span>Dual Viewer</span>
+      <span>{t("brand")}</span>
     </span>
   );
 }

@@ -1,16 +1,12 @@
 "use client";
 
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useCallback, useContext, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AuthenticationMethod } from "@/app/_domain/session";
 import type { ViewerWallet } from "@/app/_domain/wallet";
-import { requestJson } from "@/app/_utils/client-api";
-
-interface SessionPayload {
-  authenticated: boolean;
-  authenticationMethod: AuthenticationMethod;
-  wallet: ViewerWallet;
-}
+import { queryKeys } from "@/app/_hooks/query-keys";
+import { sessionQueryOptions } from "@/app/_hooks/query-options";
+import { logoutSession } from "@/app/_services/session.client";
 
 interface SessionValue {
   wallet: ViewerWallet | null;
@@ -22,43 +18,31 @@ interface SessionValue {
 }
 
 const SessionContext = createContext<SessionValue | undefined>(undefined);
-export const sessionQueryKey = ["viewer-session"] as const;
-
-async function loadSession() {
-  const response = await fetch("/api/session", { cache: "no-store" });
-  if (response.status === 401) return null;
-  if (!response.ok) throw new Error("Session could not be loaded.");
-  return (await response.json()) as SessionPayload;
-}
+export const sessionQueryKey = queryKeys.session.all;
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
-  const query = useQuery({
-    queryKey: sessionQueryKey,
-    queryFn: loadSession,
-    retry: false,
-    staleTime: 30_000,
-  });
+  const { data, isLoading, refetch } = useQuery(sessionQueryOptions());
 
+  const refresh = useCallback(async () => {
+    const result = await refetch();
+    return result.data?.wallet ?? null;
+  }, [refetch]);
+  const logout = useCallback(async () => {
+    await logoutSession();
+    queryClient.setQueryData(sessionQueryKey, null);
+    queryClient.clear();
+  }, [queryClient]);
   const value = useMemo<SessionValue>(
     () => ({
-      wallet: query.data?.wallet ?? null,
-      authenticationMethod: query.data?.authenticationMethod ?? null,
-      isLoading: query.isLoading,
-      isAuthenticated: Boolean(query.data?.authenticated),
-      refresh: async () => {
-        const result = await query.refetch();
-        return result.data?.wallet ?? null;
-      },
-      logout: async () => {
-        await requestJson<{ ok: boolean }>("/api/session/logout", {
-          method: "POST",
-        });
-        queryClient.setQueryData(sessionQueryKey, null);
-        queryClient.clear();
-      },
+      wallet: data?.wallet ?? null,
+      authenticationMethod: data?.authenticationMethod ?? null,
+      isLoading,
+      isAuthenticated: Boolean(data?.authenticated),
+      refresh,
+      logout,
     }),
-    [query, queryClient],
+    [data, isLoading, logout, refresh],
   );
 
   return (

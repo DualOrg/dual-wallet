@@ -1,7 +1,7 @@
 {
   "name": "Viewer Demo - Arcana Card Face",
   "renderer": "go-template",
-  "renderer_config": {"demo": "magic-card", "version": 1},
+  "renderer_config": { "demo": "magic-card", "version": 1 },
   "views": [
     {
       "variant": "card",

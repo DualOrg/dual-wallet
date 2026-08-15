@@ -1,9 +1,14 @@
+import "client-only";
+
 import { AuthBundleTypeEnum } from "@/api/web-sdk/models/AuthBundle";
 import type { ActionsRequest } from "@/api/web-sdk/models/ActionsRequest";
 import type { ExecuteResult } from "@/api/web-sdk/models/ExecuteResult";
 import { getEbusApi, normalizeApiError } from "@/api/web-sdk-client";
 import type { AuthenticationMethod } from "@/app/_domain/session";
-import { base64urlToBytes, signActionWithPasskey } from "@/app/_utils/webauthn";
+import {
+  base64urlToBytes,
+  signActionWithPasskey,
+} from "@/app/_adapters/webauthn.client";
 
 function bytesToHex(value: Uint8Array) {
   return `0x${Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;

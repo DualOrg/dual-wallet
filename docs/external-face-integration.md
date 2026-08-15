@@ -36,17 +36,17 @@ dedicated top-level application with its own BFF and host-only session; see
 ## Display resolution
 
 `api-v3` resolves a source-free `ObjectDisplay` from the selected
-`FaceView`. Viewer adapts that response in `app/_domain/inventory.ts` and
+`FaceView`. Viewer adapts that response in `app/_adapters/inventory.ts` and
 renders it in `app/_components/inventory/object-visual.tsx`.
 
 The normal selection is:
 
-| Surface                   | Requested variant                       | Interaction                        | Authenticated bridge                                      |
-| ------------------------- | --------------------------------------- | ---------------------------------- | --------------------------------------------------------- |
-| Public object page        | `card` or resolved public route variant | Display-specific                   | Never                                                     |
-| Inventory grid/list card  | `card`                                  | Disabled on the card link          | Current-object operations only when the URL is registered |
-| Authenticated object page | `detail`                                | Allowed when `interactive` is true | Registered detail capabilities                            |
-| Share URL                 | `share` where requested by the API      | Public-only                        | Never                                                     |
+| Surface                   | Requested variant                       | Interaction                        | Authenticated bridge                                  |
+| ------------------------- | --------------------------------------- | ---------------------------------- | ----------------------------------------------------- |
+| Public object page        | `card` or resolved public route variant | Display-specific                   | Never                                                 |
+| Inventory grid/list card  | `card`                                  | Disabled on the card link          | Minimized current-object context only when registered |
+| Authenticated object page | `detail`                                | Allowed when `interactive` is true | Registered detail capabilities                        |
+| Share URL                 | `share` where requested by the API      | Public-only                        | Never                                                 |
 
 If `detail` or `default` is absent, the object page uses the standard metadata
 face. If no display is usable at all, Viewer renders name, description,
@@ -144,10 +144,13 @@ Current host limits in `core/protocol.ts` are:
 | Requests               | 30 per minute per channel |
 | Remembered request IDs | 2,048                     |
 
-The normalized context contains the selected object, selected view config,
-available standard action names, locale, theme, variant, and granted operation
-names. It omits generated DTO internals, system fields, credentials, signing
-material, and raw action payloads.
+The normalized context contains the selected object projection, selected view
+config, locale, theme, variant, and granted operation names. Detail contexts
+may also contain the available standard action names. Card contexts contain no
+owner, custom data, system data, content/state hashes, or actions. Every
+context omits generated DTO internals, credentials, signing material, and raw
+action payloads. Revision hashes used for host-side change detection remain
+internal and are never serialized to a card iframe.
 
 ## Capability matrix
 
@@ -165,8 +168,11 @@ Core current-object and subscription operations are composed by the host.
 Additional operations are advertised only when the rendering component injects
 the corresponding handler.
 
-Inventory cards do not inject private-attribute, action, or Viewer-UI handlers.
-The authenticated detail component injects:
+Inventory cards expose only `bridge.ping` and the minimized
+`object.current.read`; they do not expose change subscriptions because the v1
+event envelope contains a content hash. They also do not inject
+private-attribute, action, or Viewer-UI handlers. The authenticated detail
+component injects:
 
 - `viewer.details.open` to open the native details modal;
 - `object.attributes.read` to load attributes for the already-bound object;
@@ -213,11 +219,11 @@ port 4100. Do not add production wildcard origins or broad path prefixes.
 
 | Concern                                   | File or directory                                                               |
 | ----------------------------------------- | ------------------------------------------------------------------------------- |
-| API response adaptation and fallback      | `app/_domain/inventory.ts`                                                      |
+| API response adaptation and fallback      | `app/_adapters/inventory.ts`                                                    |
 | Image/document/external iframe renderer   | `app/_components/inventory/object-visual.tsx`                                   |
 | Inventory card grants                     | `app/_components/inventory/object-card.tsx`                                     |
 | Detail grants, modals, and action handoff | `app/_components/inventory/object-detail.tsx`                                   |
-| Attribute and action host adapters        | `app/_lib/external-face-data.ts`                                                |
+| Attribute and action host services        | `app/_services/external-face.client.ts`                                         |
 | Application/path/major registry           | `app/_lib/external-face-bridge/core/application.ts`                             |
 | Object/config/action context              | `app/_lib/external-face-bridge/core/context.ts`                                 |
 | MessageChannel host and limits            | `app/_lib/external-face-bridge/core/transport.ts`                               |

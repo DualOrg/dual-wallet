@@ -66,7 +66,9 @@ export function startAuthenticatedExternalFaceBridge({
   );
 
   const operationNames = () =>
-    externalFaceCapabilities(handlers).map(({ operation }) => operation);
+    externalFaceCapabilities(handlers, context.variant).map(
+      ({ operation }) => operation,
+    );
 
   const postInitialization = () => {
     channel.port1.postMessage({
@@ -228,15 +230,15 @@ export function startAuthenticatedExternalFaceBridge({
   return {
     close,
     updateContext(next) {
-      const previousHash = context.object.content_hash;
-      const previousStateHash = context.object.state_hash;
+      const previousHash = context.revision.contentHash;
+      const previousStateHash = context.revision.stateHash;
       context = next;
       if (
         !closed &&
         initialized &&
         subscribed &&
-        (previousHash !== next.object.content_hash ||
-          previousStateHash !== next.object.state_hash)
+        (previousHash !== next.revision.contentHash ||
+          previousStateHash !== next.revision.stateHash)
       ) {
         channel.port1.postMessage({
           type: bridgeMessageTypes.event,
@@ -245,7 +247,7 @@ export function startAuthenticatedExternalFaceBridge({
           event: "object.changed",
           payload: {
             object_id: next.object.id,
-            content_hash: next.object.content_hash,
+            content_hash: next.revision.contentHash,
             change: ["object", "attributes"],
           },
         });
