@@ -126,6 +126,7 @@ function StandardObjectFace({ item }: { item: ObjectDetailModel }) {
 interface ObjectActionSlotContext {
   requestedAction?: ExternalFaceActionRequest;
   onRequestedActionCompleted?: (actionId: string) => void;
+  onCancel?: () => void;
 }
 
 export function ObjectDetail({
@@ -239,15 +240,6 @@ export function ObjectDetail({
     [pendingBridgeAction],
   );
 
-  const renderedActions = canHandleBridgeActions
-    ? cloneElement(actions as ReactElement<ObjectActionSlotContext>, {
-        requestedAction,
-        onRequestedActionCompleted: requestedAction
-          ? completeBridgeAction
-          : undefined,
-      })
-    : actions;
-
   const cancelBridgeAction = useCallback(() => {
     pendingBridgeAction?.reject(
       new ExternalFaceBridgeError(
@@ -263,6 +255,16 @@ export function ObjectDetail({
     if (modalView === "actions") cancelBridgeAction();
     setModalView(null);
   }, [cancelBridgeAction, modalView]);
+
+  const renderedActions = canHandleBridgeActions
+    ? cloneElement(actions as ReactElement<ObjectActionSlotContext>, {
+        requestedAction,
+        onRequestedActionCompleted: requestedAction
+          ? completeBridgeAction
+          : undefined,
+        onCancel: closeModal,
+      })
+    : actions;
 
   useEffect(() => {
     if (!menuOpen) return;

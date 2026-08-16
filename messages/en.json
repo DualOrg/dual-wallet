@@ -179,12 +179,15 @@
     "notFound": "This object was not found or is not available to your wallet."
   },
   "actions": {
-    "eyebrow": "Smart object actions",
     "title": "Available actions",
-    "description": "These actions are enabled by this object's template.",
     "confirmation": "Run {action} for this object.",
     "execute": "Run {action}",
     "executing": "Authorizing…",
+    "confirm": "Yes, run {action}",
+    "confirmDestructive": "{action} is permanent and cannot be undone. Confirm to continue.",
+    "cancel": "Cancel",
+    "deny": "Deny",
+    "optional": "Optional",
     "completed": "Action submitted. ID: {id}",
     "executionFailed": "The action could not be completed.",
     "sessionExpired": "Your sign-in method is unavailable. Please sign in again.",

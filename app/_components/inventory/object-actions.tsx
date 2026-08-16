@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Play, ShieldCheck } from "lucide-react";
+import { Play } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Alert } from "@/app/_components/design-system/alert";
 import { Button } from "@/app/_components/design-system/button";
@@ -19,14 +19,20 @@ import {
   type InventoryActionName,
 } from "@/app/_services/inventory-actions";
 
+// ponytail: `burn` is the only irreversible action today. If more appear, move
+// this to a `destructive` flag on the action definitions.
+const destructive = (name: InventoryActionName) => name === "burn";
+
 export function ObjectActions({
   item,
   requestedAction,
   onRequestedActionCompleted,
+  onCancel,
 }: {
   item: InventoryObject;
   requestedAction?: ExternalFaceActionRequest;
   onRequestedActionCompleted?: (actionId: string) => void;
+  onCancel?: () => void;
 }) {
   const t = useTranslations("actions");
   const execution = useExecuteInventoryAction();
@@ -43,23 +49,43 @@ export function ObjectActions({
   );
   const [input, setInput] = useState<ActionInput>(initialRequest?.input ?? {});
   const [error, setError] = useState<string | null>(null);
+  const [fieldError, setFieldError] = useState<{
+    field: string;
+    message: string;
+  } | null>(null);
   const [completedId, setCompletedId] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   if (!actions.length || !selected) return null;
   const fields = actionFields(selected);
   const fieldLabel = (name: string) => t(`fields.${name}`);
+  const needsConfirmation = destructive(selected);
+
+  const reset = () => {
+    setError(null);
+    setFieldError(null);
+    setCompletedId(null);
+    setConfirming(false);
+  };
 
   const choose = (name: InventoryActionName) => {
     setSelected(name);
     setInput({});
-    setError(null);
-    setCompletedId(null);
+    reset();
+  };
+
+  const edit = (name: string, value: string) => {
+    setInput((current) => ({ ...current, [name]: value }));
+    reset();
   };
 
   const execute = async (event: React.FormEvent) => {
     event.preventDefault();
-    setError(null);
-    setCompletedId(null);
+    if (needsConfirmation && !confirming) {
+      setConfirming(true);
+      return;
+    }
+    reset();
     try {
       const result = await execution.mutateAsync({
         name: selected,
@@ -70,11 +96,15 @@ export function ObjectActions({
       onRequestedActionCompleted?.(result.actionId);
     } catch (caught) {
       if (caught instanceof ActionInputError) {
-        setError(
-          t(`validation.${caught.code}`, {
-            field: fieldLabel(caught.field),
-          }),
-        );
+        const message = t(`validation.${caught.code}`, {
+          field: fieldLabel(caught.field),
+        });
+        // Anchor the message to its own field when we render that field.
+        if (fields.some((field) => field.name === caught.field)) {
+          setFieldError({ field: caught.field, message });
+        } else {
+          setError(message);
+        }
       } else {
         setError(
           caught instanceof ViewerError && caught.category === "authentication"
@@ -89,15 +119,7 @@ export function ObjectActions({
 
   return (
     <section className="card object-actions-card">
-      <div className="object-actions-heading">
-        <div>
-          <p className="page-eyebrow">{t("eyebrow")}</p>
-          <h2>{t("title")}</h2>
-          <p>{t("description")}</p>
-        </div>
-        <ShieldCheck size={24} aria-hidden />
-      </div>
-      <div className="object-action-tabs" aria-label={t("title")}>
+      <div className="object-action-tabs" role="group" aria-label={t("title")}>
         {actions.map((name) => (
           <Button
             key={name}
@@ -116,52 +138,52 @@ export function ObjectActions({
       </div>
       <form className="object-action-form" onSubmit={execute}>
         {requestedAction ? <Alert>{t("externalRequest")}</Alert> : null}
-        {fields.length ? (
-          <div className="form-grid">
-            {fields.map((field) =>
-              field.kind === "json" ? (
-                <TextareaField
-                  key={field.name}
-                  name={field.name}
-                  label={fieldLabel(field.name)}
-                  required={field.required}
-                  rows={5}
-                  value={input[field.name] ?? ""}
-                  placeholder={String(t.raw(`placeholders.${field.name}`))}
-                  onChange={(event) =>
-                    setInput((current) => ({
-                      ...current,
-                      [field.name]: event.target.value,
-                    }))
-                  }
-                />
-              ) : (
-                <Field
-                  key={field.name}
-                  name={field.name}
-                  type={
-                    field.kind === "datetime" ? "datetime-local" : field.kind
-                  }
-                  step={field.kind === "number" ? "any" : undefined}
-                  label={fieldLabel(field.name)}
-                  required={field.required}
-                  value={input[field.name] ?? ""}
-                  placeholder={String(t.raw(`placeholders.${field.name}`))}
-                  onChange={(event) =>
-                    setInput((current) => ({
-                      ...current,
-                      [field.name]: event.target.value,
-                    }))
-                  }
-                />
-              ),
-            )}
-          </div>
-        ) : (
-          <p className="object-action-confirmation">
-            {t("confirmation", { action: t(`names.${selected}`) })}
-          </p>
-        )}
+        <div className="object-action-params">
+          {fields.length ? (
+            <div className="form-grid">
+              {fields.map((field) => {
+                const shared = {
+                  name: field.name,
+                  label: fieldLabel(field.name),
+                  required: field.required,
+                  value: input[field.name] ?? "",
+                  placeholder: String(t.raw(`placeholders.${field.name}`)),
+                  error:
+                    fieldError?.field === field.name
+                      ? fieldError.message
+                      : undefined,
+                  hint: field.required ? undefined : t("optional"),
+                  onChange: (
+                    event: React.ChangeEvent<
+                      HTMLInputElement | HTMLTextAreaElement
+                    >,
+                  ) => edit(field.name, event.target.value),
+                };
+                return field.kind === "json" ? (
+                  <TextareaField key={field.name} rows={5} {...shared} />
+                ) : (
+                  <Field
+                    key={field.name}
+                    type={
+                      field.kind === "datetime" ? "datetime-local" : field.kind
+                    }
+                    step={field.kind === "number" ? "any" : undefined}
+                    {...shared}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <p className="object-action-confirmation">
+              {t("confirmation", { action: t(`names.${selected}`) })}
+            </p>
+          )}
+        </div>
+        {confirming ? (
+          <Alert>
+            {t("confirmDestructive", { action: t(`names.${selected}`) })}
+          </Alert>
+        ) : null}
         {error ? <Alert>{error}</Alert> : null}
         {completedId ? (
           <Alert tone="success">
@@ -169,15 +191,30 @@ export function ObjectActions({
           </Alert>
         ) : null}
         <div className="form-actions">
+          {onCancel ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={execution.isPending}
+              onClick={onCancel}
+            >
+              {t(requestedAction ? "deny" : "cancel")}
+            </Button>
+          ) : null}
           <Button
             type="submit"
-            variant={selected === "burn" ? "danger" : "primary"}
+            variant={needsConfirmation ? "danger" : "primary"}
             disabled={execution.isPending}
           >
             <Play size={16} aria-hidden />
-            {t(execution.isPending ? "executing" : "execute", {
-              action: t(`names.${selected}`),
-            })}
+            {t(
+              execution.isPending
+                ? "executing"
+                : confirming
+                  ? "confirm"
+                  : "execute",
+              { action: t(`names.${selected}`) },
+            )}
           </Button>
         </div>
       </form>

@@ -194,6 +194,13 @@ button {
 .input::placeholder {
   color: color-mix(in srgb, var(--muted) 75%, transparent);
 }
+.field:has(:required) .field-label::after {
+  color: var(--danger);
+  content: " *";
+}
+.input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
 .field-error {
   margin: 0;
   color: var(--danger);
@@ -1359,33 +1366,46 @@ button {
   box-shadow: none;
   padding: 0;
 }
-.share-control {
+/*
+ * Switching action must move the parameters, not the modal. Centring re-centres
+ * the dialog on every height change, so anchor the actions view to the top: the
+ * header and the action tabs hold still and only the bottom edge follows the
+ * parameters. Desktop only: below 760px the dialog is a bottom sheet.
+ */
+@media (min-width: 761px) {
+  .object-pass-modal-backdrop:has(.object-pass-detail-actions) {
+    align-items: start;
+  }
+}
+.object-pass-modal-body:has(.object-pass-detail-actions) {
+  display: flex;
+  overflow: hidden;
+  flex-direction: column;
+}
+.object-pass-detail-actions,
+.object-pass-detail-actions .object-actions-card,
+.object-pass-detail-actions .object-action-form {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+.object-pass-detail-actions .object-action-params {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.object-pass-detail-actions .form-actions {
   flex: 0 0 auto;
 }
-.object-actions-card {
-  margin-top: 24px;
-  padding: 25px;
-}
-.object-actions-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-}
-.object-actions-heading h2 {
-  margin: 5px 0 0;
-  font-size: 1.2rem;
-}
-.object-actions-heading > div > p:last-child {
-  margin: 7px 0 0;
-  color: var(--muted);
-  font-size: 0.9rem;
+.share-control {
+  flex: 0 0 auto;
 }
 .object-action-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 9px;
-  margin-top: 22px;
 }
 .object-action-form {
   margin-top: 22px;
@@ -1394,6 +1414,16 @@ button {
 }
 .object-action-form .alert {
   margin-top: 16px;
+}
+/* One field fills the row, two sit side by side, JSON always spans. */
+.object-action-form .form-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+}
+.object-action-form .form-grid .field:has(textarea) {
+  grid-column: 1 / -1;
+}
+.object-action-form .form-actions {
+  gap: 10px;
 }
 .object-action-confirmation {
   margin: 0;

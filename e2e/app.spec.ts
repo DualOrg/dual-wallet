@@ -97,8 +97,38 @@ test("inventory opens a complete object detail", async ({ page }) => {
 
   await actionsButton.click();
   await expect(
-    page.getByRole("heading", { name: "Available actions", level: 2 }),
+    page.getByRole("group", { name: "Available actions" }),
   ).toBeVisible();
+});
+
+test("switching action moves the parameters, not the modal", async ({
+  page,
+}) => {
+  await page.goto(`/inventory/${smartObject.id}`);
+  await page.getByRole("button", { name: "Show object actions" }).click();
+
+  const dialog = page.getByRole("dialog");
+  const tabs = dialog.getByRole("group", { name: "Available actions" });
+  const submit = dialog.getByRole("button", { name: /^Run / });
+
+  // "Pick up" takes no parameters, "Transfer" takes one: the tallest thing that
+  // may change between them is the parameter area, never the dialog itself.
+  const before = {
+    dialog: (await dialog.boundingBox())!,
+    tabs: await tabs.boundingBox(),
+    submitY: (await submit.boundingBox())!.y,
+  };
+  await expect(dialog.getByLabel(/Destination/)).toBeHidden();
+
+  await dialog.getByRole("button", { name: "Transfer" }).click();
+  await expect(dialog.getByLabel(/Destination/)).toBeVisible();
+
+  const after = (await dialog.boundingBox())!;
+  expect(after.y).toBe(before.dialog.y);
+  expect(await tabs.boundingBox()).toEqual(before.tabs);
+  // Only the bottom edge follows the parameters, taking the submit row with it.
+  expect(after.height).toBeGreaterThan(before.dialog.height);
+  expect((await submit.boundingBox())!.y).toBeGreaterThan(before.submitY);
 });
 
 test("detail modals fit and scroll inside a mobile viewport", async ({
