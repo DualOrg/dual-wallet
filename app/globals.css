@@ -1435,46 +1435,6 @@ button {
   font-family: var(--font-mono, ui-monospace, monospace);
   line-height: 1.5;
 }
-.public-object-page {
-  position: relative;
-  min-height: 100svh;
-  background:
-    radial-gradient(circle at 85% 10%, var(--brand-soft), transparent 32%),
-    var(--surface-subtle);
-}
-.public-object-header {
-  display: flex;
-  width: min(620px, calc(100% - 36px));
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  margin: 0 auto;
-  padding: 24px 0;
-}
-.public-object-header-actions {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-}
-.public-object-header.has-object-menu .public-object-header-actions {
-  width: 100%;
-  justify-content: space-between;
-  padding-right: 52px;
-}
-.public-object-page .wallet-pass-top-controls {
-  position: absolute;
-  z-index: 10;
-  top: 24px;
-  right: max(18px, calc((100% - 620px) / 2));
-  width: auto;
-  margin: 0;
-  padding: 0;
-}
-.public-object-content {
-  width: min(1180px, 100%);
-  margin: 0 auto;
-  padding: 36px clamp(24px, 5vw, 72px) 80px;
-}
 
 .settings-stack {
   display: grid;
@@ -1718,24 +1678,6 @@ button {
   }
   .share-control .button {
     width: 100%;
-  }
-  .public-object-header {
-    padding-right: 0;
-    padding-left: 0;
-  }
-  .public-object-header.has-object-menu .public-object-header-actions {
-    padding-right: 46px;
-  }
-  .public-object-content {
-    padding-right: 18px;
-    padding-left: 18px;
-  }
-  .public-object-page .wallet-pass-top-controls {
-    top: 24px;
-  }
-  .public-object-page .wallet-pass-more {
-    width: 42px;
-    height: 42px;
   }
 }
 

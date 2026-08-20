@@ -1,12 +1,7 @@
 import type { ActionLog } from "@/api/web-sdk/models/ActionLog";
 import type { ObjectDisplay } from "@/api/web-sdk/models/ObjectDisplay";
-import type { PublicSmartObject } from "@/api/web-sdk/models/PublicSmartObject";
 import type { SmartObject } from "@/api/web-sdk/models/SmartObject";
-import {
-  toActivityEntry,
-  toInventoryObject,
-  toPublicObject,
-} from "@/app/_adapters/inventory";
+import { toActivityEntry, toInventoryObject } from "@/app/_adapters/inventory";
 import { shortId } from "@/app/_domain/inventory";
 
 function actionLog(overrides: Partial<ActionLog> = {}): ActionLog {
@@ -53,29 +48,6 @@ describe("inventory adapters", () => {
     expect(toInventoryObject(value)).toMatchObject({
       name: "Membership",
       imageUrl: undefined,
-      owner: "0x123",
-    });
-  });
-
-  it("adapts only the image included in the public object projection", () => {
-    const value = {
-      id: "object-public",
-      metadata: {
-        name: "Public membership",
-        image: { id: "image-1", url: "https://assets.example/object.png" },
-      },
-      owner: "0x123",
-      templateId: "template-1",
-      version: 2,
-      stateHash: "state",
-      contentHash: "content",
-      whenCreated: new Date("2026-01-01T00:00:00Z"),
-      whenModified: new Date("2026-02-01T00:00:00Z"),
-    } as PublicSmartObject;
-
-    expect(toPublicObject(value)).toMatchObject({
-      name: "Public membership",
-      imageUrl: "https://assets.example/object.png",
       owner: "0x123",
     });
   });

@@ -29,7 +29,6 @@ export default defineConfig([
     files: [
       "app/(authorized)/**/*.{ts,tsx}",
       "app/(unauthorized)/**/*.{ts,tsx}",
-      "app/objects/**/*.{ts,tsx}",
       "app/_components/**/*.{ts,tsx}",
       "app/_hooks/**/*.{ts,tsx}",
       "app/_providers/**/*.{ts,tsx}",

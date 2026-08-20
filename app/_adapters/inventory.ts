@@ -1,6 +1,5 @@
 import type { ActionLog } from "@/api/web-sdk/models/ActionLog";
 import type { ObjectDisplay } from "@/api/web-sdk/models/ObjectDisplay";
-import type { PublicSmartObject } from "@/api/web-sdk/models/PublicSmartObject";
 import type { SmartObject } from "@/api/web-sdk/models/SmartObject";
 import type {
   ActivityAccess,
@@ -99,7 +98,7 @@ function toObjectPresentation(
 }
 
 function toObjectDetail(
-  value: SmartObject | PublicSmartObject,
+  value: SmartObject,
   fallbackImageUrl?: string,
   display?: ObjectDisplay,
 ): ObjectDetail {
@@ -136,13 +135,6 @@ export function toInventoryObject(
     ),
     actions,
   };
-}
-
-export function toPublicObject(
-  value: PublicSmartObject,
-  display?: ObjectDisplay,
-): ObjectDetail {
-  return toObjectDetail(value, undefined, display);
 }
 
 function activityParameters(value: ActionLog["params"]): ActivityParameters {
