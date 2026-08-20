@@ -1,9 +1,0 @@
-{
-  "action": {
-    "delete_attributes": {
-      "id": "REPLACE_WITH_OBJECT_ID",
-      "keys": ["last_service"]
-    }
-  },
-  "nonce": 0
-}
