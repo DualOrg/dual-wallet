@@ -37,7 +37,7 @@ export function AuthMethods({
           auth.clearError();
         }}
       >
-        {auth.error ? <Alert>{auth.error}</Alert> : null}
+        {auth.error ? <Alert takeFocus>{auth.error}</Alert> : null}
         {method === "email" ? emailPanel(auth) : null}
         {method === "wallet" ? (
           <div className="method-panel">

@@ -33,6 +33,15 @@ export default async function RootLayout({
   const messages = await getMessages();
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Applies the stored or system theme before first paint so dark-theme
+            users never see a light flash. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem("viewer-theme");if(t!=="light"&&t!=="dark")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.classList.toggle("dark",t==="dark")}catch(e){}`,
+          }}
+        />
+      </head>
       <body>
         <NextIntlClientProvider messages={messages}>
           {children}

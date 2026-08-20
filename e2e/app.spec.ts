@@ -157,9 +157,7 @@ test("detail modals fit and scroll inside a mobile viewport", async ({
     .getByRole("button", { name: "Close pass details" })
     .click();
   await page.goto("/activity");
-  await page
-    .getByRole("button", { name: "Open details for Mint membership" })
-    .click();
+  await page.getByRole("button", { name: /Mint membership/ }).click();
 
   const activityDialog = page.getByRole("dialog");
   await expect(activityDialog).toBeVisible();
@@ -263,12 +261,12 @@ test("activity shows the wallet action timeline", async ({ page }) => {
   await expect(
     page.getByText("Mint membership", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("completed", { exact: true })).toBeVisible();
+  await expect(
+    page.locator(".activity-item .status", { hasText: "Completed" }),
+  ).toBeVisible();
   await expect(page.getByText("0.003 DUAL", { exact: true })).toBeVisible();
 
-  await page
-    .getByRole("button", { name: "Open details for Mint membership" })
-    .click();
+  await page.getByRole("button", { name: /Mint membership/ }).click();
   const details = page.getByRole("dialog");
   await expect(details).toBeVisible();
   await expect(

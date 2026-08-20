@@ -31,7 +31,7 @@ export function Tabs<Id extends string>({
 
   return (
     <>
-      <div className="auth-methods" role="tablist" aria-label={label}>
+      <div className="tablist" role="tablist" aria-label={label}>
         {options.map((option, index) => (
           <button
             ref={(node) => {
@@ -39,7 +39,7 @@ export function Tabs<Id extends string>({
             }}
             id={`${instanceId}-${option.id}-tab`}
             key={option.id}
-            className="auth-method"
+            className="tab"
             type="button"
             role="tab"
             tabIndex={value === option.id ? 0 : -1}

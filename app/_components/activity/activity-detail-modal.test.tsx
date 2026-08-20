@@ -5,6 +5,9 @@ import { toActivityEntry } from "@/app/_adapters/inventory";
 
 jest.mock("next-intl", () => ({
   useLocale: () => "en",
+  useFormatter: () => ({
+    dateTime: (value: Date) => value.toISOString(),
+  }),
   useTranslations:
     () =>
     (key: string, values?: { count?: number }): string =>

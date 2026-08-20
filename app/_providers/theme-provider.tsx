@@ -16,6 +16,7 @@ interface ThemeValue {
 
 const ThemeContext = createContext<ThemeValue | undefined>(undefined);
 const themeEvent = "viewer-theme-change";
+const storageKey = "viewer-theme";
 
 function subscribe(callback: () => void) {
   window.addEventListener(themeEvent, callback);
@@ -30,14 +31,25 @@ function serverTheme(): Theme {
   return "light";
 }
 
+function applyTheme(next: Theme) {
+  document.documentElement.classList.toggle("dark", next === "dark");
+  window.dispatchEvent(new Event(themeEvent));
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  // The pre-hydration script in the root layout has already applied the stored
+  // or system theme, so the first client snapshot is the real one.
   const theme = useSyncExternalStore(subscribe, currentTheme, serverTheme);
 
+  // Follow the operating system until the user makes an explicit choice.
   useEffect(() => {
-    const saved = localStorage.getItem("viewer-theme");
-    const next = saved === "dark" || saved === "light" ? saved : "light";
-    document.documentElement.classList.toggle("dark", next === "dark");
-    window.dispatchEvent(new Event(themeEvent));
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => {
+      if (localStorage.getItem(storageKey)) return;
+      applyTheme(query.matches ? "dark" : "light");
+    };
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
   }, []);
 
   const value = useMemo<ThemeValue>(
@@ -45,9 +57,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       theme,
       toggleTheme: () => {
         const next = currentTheme() === "dark" ? "light" : "dark";
-        document.documentElement.classList.toggle("dark", next === "dark");
-        localStorage.setItem("viewer-theme", next);
-        window.dispatchEvent(new Event(themeEvent));
+        localStorage.setItem(storageKey, next);
+        applyTheme(next);
       },
     }),
     [theme],

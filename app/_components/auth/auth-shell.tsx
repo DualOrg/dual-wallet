@@ -10,7 +10,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
         <Brand inverse />
         <div className="auth-copy">
           <p className="auth-kicker">{t("eyebrow")}</p>
-          <h2 className="auth-headline">{t("headline")}</h2>
+          <p className="auth-headline">{t("headline")}</p>
           <p className="auth-supporting">{t("supporting")}</p>
           <div className="auth-points">
             <span className="auth-point">{t("secure")}</span>

@@ -6,17 +6,33 @@
   "common": {
     "brand": "Dual Viewer",
     "smartObject": "Smart object",
-    "loading": "Loading\u2026",
+    "loading": "Loading…",
     "tryAgain": "Try again",
     "cancel": "Cancel",
     "save": "Save changes",
-    "saving": "Saving\u2026",
+    "saving": "Saving…",
     "copy": "Copy",
     "copied": "Copied",
     "notAvailable": "Not available",
     "requestId": "Request ID: {id}",
     "theme": "Change color theme",
-    "menu": "Open navigation"
+    "skipToContent": "Skip to main content",
+    "openMenu": "Open navigation",
+    "closeMenu": "Close navigation",
+    "loadingPage": "Loading page",
+    "goToInventory": "Go to inventory"
+  },
+  "errors": {
+    "authentication": "Your session has expired. Sign in again to continue.",
+    "forbidden": "You do not have access to this.",
+    "not_found": "We could not find this.",
+    "validation": "Some of the details are not valid. Check them and try again.",
+    "rate_limited": "Too many requests. Wait a moment and try again.",
+    "upstream": "The service is temporarily unavailable. Try again shortly.",
+    "unknown": "Something went wrong. Try again.",
+    "pageTitle": "Something went wrong",
+    "notFoundTitle": "Page not found",
+    "notFoundDescription": "The page you were looking for does not exist."
   },
   "nav": {
     "inventory": "Inventory",
@@ -24,7 +40,8 @@
     "settings": "Settings",
     "logout": "Sign out",
     "account": "Your account",
-    "mainNavigation": "Main navigation"
+    "mainNavigation": "Main navigation",
+    "skipToContent": "Skip to main content"
   },
   "profileMenu": {
     "account": "Your account",
@@ -59,9 +76,9 @@
     "namePlaceholder": "How should we call you?",
     "confirmPassword": "Confirm password",
     "signIn": "Sign in",
-    "signingIn": "Signing in\u2026",
+    "signingIn": "Signing in…",
     "createAccount": "Create account",
-    "creatingAccount": "Creating account\u2026",
+    "creatingAccount": "Creating account…",
     "forgotPassword": "Forgot password?",
     "noAccount": "New to smart objects?",
     "hasAccount": "Already have an account?",
@@ -87,16 +104,16 @@
     "description": "Enter the verification code sent to your email.",
     "code": "Verification code",
     "submit": "Verify account",
-    "submitting": "Verifying\u2026",
+    "submitting": "Verifying…",
     "resend": "Send a new code",
     "resent": "A new verification code is on its way.",
     "success": "Your account is verified."
   },
   "recovery": {
     "title": "Reset your password",
-    "description": "Enter your email and we\u2019ll send a secure reset link if an account exists.",
+    "description": "Enter your email and we’ll send a secure reset link if an account exists.",
     "send": "Send reset link",
-    "sending": "Sending\u2026",
+    "sending": "Sending…",
     "sentTitle": "Check your inbox",
     "sentDescription": "If an account exists for that email, a password reset link has been sent.",
     "back": "Back to sign in",
@@ -105,7 +122,7 @@
     "newPassword": "New password",
     "confirm": "Confirm new password",
     "update": "Update password",
-    "updating": "Updating\u2026",
+    "updating": "Updating…",
     "updatedTitle": "Password updated",
     "updatedDescription": "You can now sign in with your new password.",
     "missingToken": "This reset link is incomplete. Request a new one."
@@ -124,7 +141,7 @@
     "emptyDescription": "Objects issued or transferred to this wallet will appear here.",
     "errorTitle": "Inventory could not be loaded",
     "loadMore": "Load more",
-    "loadingMore": "Loading more\u2026",
+    "loadingMore": "Loading more…",
     "objectId": "Object ID",
     "smartObject": "Smart object",
     "verifiedObject": "Verified digital object",
@@ -133,7 +150,9 @@
     "template": "Template",
     "owner": "Owner",
     "updated": "Updated {date}",
-    "open": "Open object"
+    "open": "Open object",
+    "resultCount": "{count, plural, =0 {No objects} one {# object} other {# objects}}",
+    "loadingObjects": "Loading objects"
   },
   "object": {
     "back": "Back to inventory",
@@ -172,13 +191,16 @@
     "shareFailedShort": "Copy failed",
     "sharedStatus": "The public object link was copied to your clipboard.",
     "shareFailed": "The public object link could not be shared or copied.",
-    "notFound": "This object was not found or is not available to your wallet."
+    "notFound": "This object was not found or is not available to your wallet.",
+    "optionsMenu": "Object options",
+    "customDataRegion": "{title}, scrollable region",
+    "loadingObject": "Loading object"
   },
   "actions": {
     "title": "Available actions",
     "confirmation": "Run {action} for this object.",
     "execute": "Run {action}",
-    "executing": "Authorizing\u2026",
+    "executing": "Authorizing…",
     "confirm": "Yes, run {action}",
     "confirmDestructive": "{action} is permanent and cannot be undone. Confirm to continue.",
     "cancel": "Cancel",
@@ -241,7 +263,8 @@
       "required": "Enter {field}.",
       "number": "Enter a valid number for {field}.",
       "json": "Enter valid JSON for {field}."
-    }
+    },
+    "confirmStep": "Confirm to continue"
   },
   "activity": {
     "eyebrow": "Wallet history",
@@ -274,8 +297,8 @@
       "name": "Action name",
       "alias": "Alias",
       "version": "Version",
-      "version1": "V1 \u00b7 Historical",
-      "version2": "V2 \u00b7 Kernel",
+      "version1": "V1 · Historical",
+      "version2": "V2 · Kernel",
       "nonce": "Nonce",
       "created": "Created",
       "modified": "Last modified",
@@ -317,7 +340,10 @@
       "deadline": "Deadline",
       "access": "Access policy",
       "securityNote": "Signature material, authentication payloads and permit secrets are intentionally hidden."
-    }
+    },
+    "resultCount": "{count, plural, =0 {No activity} one {# entry} other {# entries}}",
+    "loadingActivity": "Loading activity",
+    "statusLabel": "Status: {status}"
   },
   "settings": {
     "eyebrow": "Your account",
@@ -332,11 +358,11 @@
     "languages": {
       "en": "English",
       "de": "Deutsch",
-      "fr": "Fran\u00e7ais",
+      "fr": "Français",
       "it": "Italiano",
-      "es": "Espa\u00f1ol",
-      "pt": "Portugu\u00eas",
-      "ru": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439"
+      "es": "Español",
+      "pt": "Português",
+      "ru": "Русский"
     },
     "security": "Smart account and controller",
     "securityDescription": "Your Kernel execution account and the controller authorized to sign for it.",
@@ -369,6 +395,7 @@
     "dangerDescription": "This permanently deletes your Viewer wallet account. Blockchain history cannot be deleted.",
     "delete": "Delete my account",
     "deleteConfirm": "Type DELETE to confirm",
-    "deleteAction": "Permanently delete account"
+    "deleteAction": "Permanently delete account",
+    "deleteConfirmValue": "DELETE"
   }
 }

@@ -14,7 +14,7 @@
     "format": "prettier --write app api e2e i18n messages docs test AGENTS.md README.md package.json proxy.ts next.config.ts playwright.config.ts scripts",
     "format:check": "prettier --check app api e2e i18n messages docs test AGENTS.md README.md package.json proxy.ts next.config.ts playwright.config.ts scripts",
     "test": "jest",
-    "test:a11y": "jest --runInBand app/_components/design-system/accessibility.test.tsx",
+    "test:a11y": "jest --runInBand app/_components/design-system app/_components/app-shell.test.tsx",
     "check": "npm run format:check && npm run typecheck && npm run lint && npm test -- --runInBand",
     "sdk:sync": "node scripts/sync-web-sdk.mjs",
     "test:e2e:install": "playwright install chromium",

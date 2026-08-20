@@ -10,12 +10,14 @@ import {
   useRequestVerificationCode,
   useVerifyAccount,
 } from "@/app/_hooks/use-account-mutations";
+import { useErrorMessage } from "@/app/_hooks/use-error-message";
 import { useSession } from "@/app/_providers/session-provider";
 
 export function VerifyPageClient() {
   const t = useTranslations("verify");
   const auth = useTranslations("auth");
   const session = useSession();
+  const errorMessage = useErrorMessage();
   const [code, setCode] = useState("");
   const verification = useVerifyAccount();
   const resendCode = useRequestVerificationCode();
@@ -36,13 +38,13 @@ export function VerifyPageClient() {
       <p className="page-eyebrow">{auth("eyebrow")}</p>
       <h1>{t("title")}</h1>
       <p className="auth-description">{t("description")}</p>
-      {error ? <Alert>{error.message}</Alert> : null}
+      {error ? <Alert takeFocus>{errorMessage(error)}</Alert> : null}
       {resendCode.isSuccess ? (
         <Alert tone="success">{t("resent")}</Alert>
       ) : null}
       {verification.isSuccess ? (
         <Alert tone="success">
-          <CheckCircle2 size={17} />
+          <CheckCircle2 size={17} aria-hidden />
           {t("success")}
         </Alert>
       ) : null}
@@ -57,7 +59,9 @@ export function VerifyPageClient() {
           required
         />
         <Button block type="submit" disabled={pending}>
-          {pending ? <LoaderCircle size={18} className="animate-spin" /> : null}
+          {pending ? (
+            <LoaderCircle size={18} className="animate-spin" aria-hidden />
+          ) : null}
           {t(pending ? "submitting" : "submit")}
         </Button>
         <Button

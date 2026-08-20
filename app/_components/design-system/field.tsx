@@ -1,12 +1,8 @@
-import type {
-  InputHTMLAttributes,
-  SelectHTMLAttributes,
-  TextareaHTMLAttributes,
-} from "react";
+import type { ComponentPropsWithRef } from "react";
 import { useId } from "react";
 import { cn } from "@/app/_utils/cn";
 
-interface FieldProps extends InputHTMLAttributes<HTMLInputElement> {
+interface FieldProps extends ComponentPropsWithRef<"input"> {
   label: string;
   error?: string;
   hint?: string;
@@ -21,12 +17,11 @@ export function Field({
   ...props
 }: FieldProps) {
   const generatedId = useId();
-  const inputId = id ?? props.name ?? generatedId;
-  const descriptionId = error
-    ? `${inputId}-error`
-    : hint
-      ? `${inputId}-hint`
-      : undefined;
+  const inputId = id ?? generatedId;
+  const describedBy =
+    [hint && `${inputId}-hint`, error && `${inputId}-error`]
+      .filter(Boolean)
+      .join(" ") || undefined;
   return (
     <label className="field" htmlFor={inputId}>
       <span className="field-label">{label}</span>
@@ -34,10 +29,10 @@ export function Field({
         id={inputId}
         className={cn("input", className)}
         aria-invalid={Boolean(error)}
-        aria-describedby={descriptionId}
+        aria-describedby={describedBy}
         {...props}
       />
-      {hint && !error ? (
+      {hint ? (
         <span id={`${inputId}-hint`} className="field-hint">
           {hint}
         </span>
@@ -58,18 +53,17 @@ export function SelectField({
   id,
   children,
   ...props
-}: SelectHTMLAttributes<HTMLSelectElement> & {
+}: ComponentPropsWithRef<"select"> & {
   label: string;
   error?: string;
   hint?: string;
 }) {
   const generatedId = useId();
-  const inputId = id ?? props.name ?? generatedId;
-  const descriptionId = error
-    ? `${inputId}-error`
-    : hint
-      ? `${inputId}-hint`
-      : undefined;
+  const inputId = id ?? generatedId;
+  const describedBy =
+    [hint && `${inputId}-hint`, error && `${inputId}-error`]
+      .filter(Boolean)
+      .join(" ") || undefined;
   return (
     <label className="field" htmlFor={inputId}>
       <span className="field-label">{label}</span>
@@ -77,12 +71,12 @@ export function SelectField({
         id={inputId}
         className="input"
         aria-invalid={Boolean(error)}
-        aria-describedby={descriptionId}
+        aria-describedby={describedBy}
         {...props}
       >
         {children}
       </select>
-      {hint && !error ? (
+      {hint ? (
         <span id={`${inputId}-hint`} className="field-hint">
           {hint}
         </span>
@@ -103,18 +97,17 @@ export function TextareaField({
   className,
   id,
   ...props
-}: TextareaHTMLAttributes<HTMLTextAreaElement> & {
+}: ComponentPropsWithRef<"textarea"> & {
   label: string;
   error?: string;
   hint?: string;
 }) {
   const generatedId = useId();
-  const inputId = id ?? props.name ?? generatedId;
-  const descriptionId = error
-    ? `${inputId}-error`
-    : hint
-      ? `${inputId}-hint`
-      : undefined;
+  const inputId = id ?? generatedId;
+  const describedBy =
+    [hint && `${inputId}-hint`, error && `${inputId}-error`]
+      .filter(Boolean)
+      .join(" ") || undefined;
   return (
     <label className="field" htmlFor={inputId}>
       <span className="field-label">{label}</span>
@@ -122,10 +115,10 @@ export function TextareaField({
         id={inputId}
         className={cn("input textarea", className)}
         aria-invalid={Boolean(error)}
-        aria-describedby={descriptionId}
+        aria-describedby={describedBy}
         {...props}
       />
-      {hint && !error ? (
+      {hint ? (
         <span id={`${inputId}-hint`} className="field-hint">
           {hint}
         </span>

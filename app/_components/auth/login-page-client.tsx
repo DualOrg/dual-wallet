@@ -52,7 +52,7 @@ export function LoginPageClient() {
             </Link>
             <Button block type="submit" disabled={Boolean(auth.pending)}>
               {auth.pending === "email" ? (
-                <LoaderCircle size={18} className="animate-spin" />
+                <LoaderCircle size={18} className="animate-spin" aria-hidden />
               ) : null}
               {t(auth.pending === "email" ? "signingIn" : "signIn")}
             </Button>

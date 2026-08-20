@@ -8,6 +8,7 @@ import { Alert } from "@/app/_components/design-system/alert";
 import { Button } from "@/app/_components/design-system/button";
 import { Field, SelectField } from "@/app/_components/design-system/field";
 import { PageHeader } from "@/app/_components/design-system/page-header";
+import { Truncated } from "@/app/_components/design-system/truncated";
 import { shortId } from "@/app/_domain/inventory";
 import {
   isViewerLanguage,
@@ -19,12 +20,14 @@ import {
   useDeleteWalletAccount,
   useUpdateWalletProfile,
 } from "@/app/_hooks/use-wallet-mutations";
+import { useErrorMessage } from "@/app/_hooks/use-error-message";
 import { useSession } from "@/app/_providers/session-provider";
 
 function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
   const t = useTranslations("settings");
   const common = useTranslations("common");
   const router = useRouter();
+  const errorMessage = useErrorMessage();
   const updateProfile = useUpdateWalletProfile();
   const deleteAccount = useDeleteWalletAccount();
   const initialLanguage = isViewerLanguage(wallet.language)
@@ -59,12 +62,15 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
   };
 
   const remove = async () => {
-    if (confirmation !== "DELETE") return;
-    try {
-      await deleteAccount.mutateAsync();
-      router.replace("/login");
-      router.refresh();
-    } catch {}
+    if (confirmation !== t("deleteConfirmValue")) return;
+    // A failure surfaces through deleteAccount.error above the form.
+    const deleted = await deleteAccount.mutateAsync().then(
+      () => true,
+      () => false,
+    );
+    if (!deleted) return;
+    router.replace("/login");
+    router.refresh();
   };
 
   const error = updateProfile.error ?? deleteAccount.error;
@@ -76,7 +82,7 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
         title={t("title")}
         description={t("description")}
       />
-      {error ? <Alert>{error.message}</Alert> : null}
+      {error ? <Alert takeFocus>{errorMessage(error)}</Alert> : null}
       {updateProfile.isSuccess ? (
         <Alert tone="success">{t("updated")}</Alert>
       ) : null}
@@ -90,6 +96,7 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
             <div className="form-grid">
               <Field
                 name="nickname"
+                autoComplete="nickname"
                 label={t("nickname")}
                 value={nickname}
                 onChange={(event) => {
@@ -100,6 +107,8 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
               <Field
                 name="phone"
                 type="tel"
+                autoComplete="tel"
+                inputMode="tel"
                 label={t("phone")}
                 value={phoneNumber}
                 onChange={(event) => {
@@ -129,7 +138,11 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
             <div className="form-actions">
               <Button type="submit" disabled={updateProfile.isPending}>
                 {updateProfile.isPending ? (
-                  <LoaderCircle size={17} className="animate-spin" />
+                  <LoaderCircle
+                    size={17}
+                    className="animate-spin"
+                    aria-hidden
+                  />
                 ) : null}
                 {common(updateProfile.isPending ? "saving" : "save")}
               </Button>
@@ -141,68 +154,73 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
             <h2>{t("security")}</h2>
             <p>{t("securityDescription")}</p>
           </header>
-          <div className="security-grid">
+          <dl className="security-grid">
             <div className="security-item">
-              <span>{t("smartAccountAddress")}</span>
-              <strong title={wallet.account.address}>
-                {shortId(wallet.account.address, 10)}
-              </strong>
+              <dt>{t("smartAccountAddress")}</dt>
+              <dd>
+                <Truncated
+                  value={wallet.account.address}
+                  short={shortId(wallet.account.address, 10)}
+                />
+              </dd>
             </div>
             <div className="security-item">
-              <span>{t("accountType")}</span>
-              <strong>{t("accountTypeSmartWallet")}</strong>
+              <dt>{t("accountType")}</dt>
+              <dd>{t("accountTypeSmartWallet")}</dd>
             </div>
             <div className="security-item">
-              <span>{t("controllerAddress")}</span>
-              <strong title={wallet.controller.address}>
-                {shortId(wallet.controller.address, 10)}
-              </strong>
+              <dt>{t("controllerAddress")}</dt>
+              <dd>
+                <Truncated
+                  value={wallet.controller.address}
+                  short={shortId(wallet.controller.address, 10)}
+                />
+              </dd>
             </div>
             <div className="security-item">
-              <span>{t("controllerType")}</span>
-              <strong>{controllerType}</strong>
+              <dt>{t("controllerType")}</dt>
+              <dd>{controllerType}</dd>
             </div>
             <div className="security-item">
-              <span>{t("controllerCustody")}</span>
-              <strong>{controllerCustody}</strong>
+              <dt>{t("controllerCustody")}</dt>
+              <dd>{controllerCustody}</dd>
             </div>
             {wallet.controller.publicKey ? (
               <div className="security-item">
-                <span>{t("controllerPublicKey")}</span>
-                <strong title={wallet.controller.publicKey}>
-                  {shortId(wallet.controller.publicKey, 10)}
-                </strong>
+                <dt>{t("controllerPublicKey")}</dt>
+                <dd>
+                  <Truncated
+                    value={wallet.controller.publicKey}
+                    short={shortId(wallet.controller.publicKey, 10)}
+                  />
+                </dd>
               </div>
             ) : null}
             <div className="security-item">
-              <span>{t("kernelVersion")}</span>
-              <strong>{wallet.smartAccount.version}</strong>
+              <dt>{t("kernelVersion")}</dt>
+              <dd>{wallet.smartAccount.version}</dd>
             </div>
             <div className="security-item">
-              <span>{t("chainId")}</span>
-              <strong>{wallet.smartAccount.chainId}</strong>
+              <dt>{t("chainId")}</dt>
+              <dd>{wallet.smartAccount.chainId}</dd>
             </div>
             <div className="security-item">
-              <span>{t("validatorType")}</span>
-              <strong>{validatorType}</strong>
+              <dt>{t("validatorType")}</dt>
+              <dd>{validatorType}</dd>
             </div>
             <div className="security-item">
-              <span>{t("passkey")}</span>
-              <strong>
-                {wallet.hasPasskey ? t("enabled") : t("notEnabled")}
-              </strong>
+              <dt>{t("passkey")}</dt>
+              <dd>{wallet.hasPasskey ? t("enabled") : t("notEnabled")}</dd>
             </div>
             <div className="security-item">
-              <span>{t("email")}</span>
-              <strong>{wallet.email || common("notAvailable")}</strong>
+              <dt>{t("email")}</dt>
+              <dd>{wallet.email || common("notAvailable")}</dd>
             </div>
             <div className="security-item">
-              <span>{t("status")}</span>
-              <strong>
-                {wallet.activated ? t("verified") : t("unverified")}
-              </strong>
+              <dt>{t("status")}</dt>
+              <dd>{wallet.activated ? t("verified") : t("unverified")}</dd>
             </div>
-          </div>
+          </dl>
         </section>
         <section className="card settings-card danger-card">
           <header className="settings-card-header">
@@ -225,13 +243,16 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
             <Button
               type="button"
               variant="danger"
-              disabled={confirmation !== "DELETE" || deleteAccount.isPending}
+              disabled={
+                confirmation !== t("deleteConfirmValue") ||
+                deleteAccount.isPending
+              }
               onClick={remove}
             >
               {deleteAccount.isPending ? (
-                <LoaderCircle size={17} className="animate-spin" />
+                <LoaderCircle size={17} className="animate-spin" aria-hidden />
               ) : (
-                <Trash2 size={17} />
+                <Trash2 size={17} aria-hidden />
               )}
               {t("deleteAction")}
             </Button>
@@ -244,6 +265,6 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
 
 export function SettingsPageClient() {
   const { wallet } = useSession();
-  if (!wallet) return <div className="card skeleton" />;
-  return <SettingsContent key={wallet.modifiedAt} wallet={wallet} />;
+  if (!wallet) return <div className="card skeleton" aria-hidden />;
+  return <SettingsContent wallet={wallet} />;
 }

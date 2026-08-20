@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ObjectActions } from "@/app/_components/inventory/object-actions";
 import type { InventoryObject } from "@/app/_domain/inventory";
 import { ActionInputError } from "@/app/_services/inventory-actions";
@@ -86,6 +87,36 @@ describe("ObjectActions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Yes, run Burn" }));
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not burn when the run button is double-clicked", async () => {
+    mutateAsync.mockResolvedValue({ actionId: "action-1" });
+
+    render(<ObjectActions item={item(["burn"])} />);
+    await userEvent.dblClick(screen.getByRole("button", { name: "Run Burn" }));
+
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("burns exactly once when the confirmation is double-clicked", async () => {
+    mutateAsync.mockResolvedValue({ actionId: "action-1" });
+
+    render(<ObjectActions item={item(["burn"])} />);
+    fireEvent.click(screen.getByRole("button", { name: "Run Burn" }));
+    await userEvent.dblClick(
+      screen.getByRole("button", { name: "Yes, run Burn" }),
+    );
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+  });
+
+  it("opens the destructive confirmation focused on the safe choice", () => {
+    render(<ObjectActions item={item(["burn"])} />);
+    fireEvent.click(screen.getByRole("button", { name: "Run Burn" }));
+
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Cancel" }),
+    );
   });
 
   it("offers an explicit denial for actions the embedded app requested", () => {

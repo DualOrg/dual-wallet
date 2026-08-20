@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Play } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Alert } from "@/app/_components/design-system/alert";
@@ -55,6 +55,13 @@ export function ObjectActions({
   } | null>(null);
   const [completedId, setCompletedId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const cancelConfirm = useRef<HTMLButtonElement>(null);
+
+  // A destructive confirmation opens focused on the safe choice, so a repeated
+  // Enter or a stray second click cannot carry through to the irreversible one.
+  useEffect(() => {
+    if (confirming) cancelConfirm.current?.focus();
+  }, [confirming]);
 
   if (!actions.length || !selected) return null;
   const fields = actionFields(selected);
@@ -65,26 +72,31 @@ export function ObjectActions({
     setError(null);
     setFieldError(null);
     setCompletedId(null);
-    setConfirming(false);
   };
 
   const choose = (name: InventoryActionName) => {
     setSelected(name);
     setInput({});
+    setConfirming(false);
     reset();
   };
 
   const edit = (name: string, value: string) => {
     setInput((current) => ({ ...current, [name]: value }));
+    setConfirming(false);
     reset();
   };
 
-  const execute = async (event: React.FormEvent) => {
+  const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (needsConfirmation && !confirming) {
+    if (needsConfirmation) {
       setConfirming(true);
       return;
     }
+    void execute();
+  };
+
+  const execute = async () => {
     reset();
     try {
       const result = await execution.mutateAsync({
@@ -109,9 +121,7 @@ export function ObjectActions({
         setError(
           caught instanceof ViewerError && caught.category === "authentication"
             ? t("sessionExpired")
-            : caught instanceof Error
-              ? caught.message
-              : t("executionFailed"),
+            : t("executionFailed"),
         );
       }
     }
@@ -136,8 +146,10 @@ export function ObjectActions({
           </Button>
         ))}
       </div>
-      <form className="object-action-form" onSubmit={execute}>
-        {requestedAction ? <Alert>{t("externalRequest")}</Alert> : null}
+      <form className="object-action-form" onSubmit={submit}>
+        {requestedAction ? (
+          <Alert tone="info">{t("externalRequest")}</Alert>
+        ) : null}
         <div className="object-action-params">
           {fields.length ? (
             <div className="form-grid">
@@ -179,44 +191,66 @@ export function ObjectActions({
             </p>
           )}
         </div>
-        {confirming ? (
-          <Alert>
-            {t("confirmDestructive", { action: t(`names.${selected}`) })}
-          </Alert>
-        ) : null}
         {error ? <Alert>{error}</Alert> : null}
         {completedId ? (
           <Alert tone="success">
             {t("completed", { id: shortId(completedId) })}
           </Alert>
         ) : null}
-        <div className="form-actions">
-          {onCancel ? (
+        {confirming ? (
+          <>
+            <Alert>
+              {t("confirmDestructive", { action: t(`names.${selected}`) })}
+            </Alert>
+            <div className="form-actions">
+              <Button
+                ref={cancelConfirm}
+                variant="secondary"
+                disabled={execution.isPending}
+                onClick={() => setConfirming(false)}
+              >
+                {t("cancel")}
+              </Button>
+              <Button
+                variant="danger"
+                disabled={execution.isPending}
+                onClick={(event) => {
+                  // The second click of a double-click must not confirm.
+                  if (event.detail > 1) return;
+                  setConfirming(false);
+                  void execute();
+                }}
+              >
+                <Play size={16} aria-hidden />
+                {t(execution.isPending ? "executing" : "confirm", {
+                  action: t(`names.${selected}`),
+                })}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <div className="form-actions">
+            {onCancel ? (
+              <Button
+                variant="secondary"
+                disabled={execution.isPending}
+                onClick={onCancel}
+              >
+                {t(requestedAction ? "deny" : "cancel")}
+              </Button>
+            ) : null}
             <Button
-              type="button"
-              variant="secondary"
+              type="submit"
+              variant={needsConfirmation ? "danger" : "primary"}
               disabled={execution.isPending}
-              onClick={onCancel}
             >
-              {t(requestedAction ? "deny" : "cancel")}
+              <Play size={16} aria-hidden />
+              {t(execution.isPending ? "executing" : "execute", {
+                action: t(`names.${selected}`),
+              })}
             </Button>
-          ) : null}
-          <Button
-            type="submit"
-            variant={needsConfirmation ? "danger" : "primary"}
-            disabled={execution.isPending}
-          >
-            <Play size={16} aria-hidden />
-            {t(
-              execution.isPending
-                ? "executing"
-                : confirming
-                  ? "confirm"
-                  : "execute",
-              { action: t(`names.${selected}`) },
-            )}
-          </Button>
-        </div>
+          </div>
+        )}
       </form>
     </section>
   );

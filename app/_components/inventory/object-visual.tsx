@@ -4,6 +4,7 @@ import Image from "next/image";
 import { Box } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ObjectPresentation } from "@/app/_domain/inventory";
+import { cn } from "@/app/_utils/cn";
 import {
   externalFaceBridgeApplication,
   startAuthenticatedExternalFaceBridge,
@@ -47,7 +48,7 @@ export function ObjectVisual({
   const externalFrame = useRef<HTMLIFrameElement>(null);
   const bridgeHost =
     useRef<ReturnType<typeof startAuthenticatedExternalFaceBridge>>(undefined);
-  const [document, setDocument] = useState<string>();
+  const [inlineDocument, setInlineDocument] = useState<string>();
   const imageUrl = display?.kind === "image" ? display.url : url;
   const externalDocumentUrl = (() => {
     if (
@@ -91,7 +92,7 @@ export function ObjectVisual({
           return response.text();
         })
         .then((source) => {
-          if (active) setDocument(sandboxedDocument(source));
+          if (active) setInlineDocument(sandboxedDocument(source));
         })
         .catch(() => undefined);
     };
@@ -133,16 +134,20 @@ export function ObjectVisual({
       {display?.kind === "external-document" ? (
         <iframe
           ref={externalFrame}
-          className="object-display-frame"
+          className={cn(
+            "object-display-frame",
+            !(display.interactive && allowInteraction) && "is-inert",
+          )}
           src={externalDocumentUrl}
           title={name}
           sandbox={EXTERNAL_DOCUMENT_SANDBOX}
           referrerPolicy="no-referrer"
           loading={eager ? "eager" : "lazy"}
-          style={{
-            pointerEvents:
-              display.interactive && allowInteraction ? "auto" : "none",
-          }}
+          // A frame nobody can interact with must not sit in the tab order or
+          // be announced: inventory cards would otherwise stack up dead stops.
+          {...(display.interactive && allowInteraction
+            ? {}
+            : { tabIndex: -1, "aria-hidden": true })}
           onLoad={() => {
             bridgeHost.current?.close();
             bridgeHost.current =
@@ -156,15 +161,20 @@ export function ObjectVisual({
                 : undefined;
           }}
         />
-      ) : document ? (
+      ) : inlineDocument ? (
         <iframe
-          className="object-display-frame"
-          srcDoc={document}
+          className={cn(
+            "object-display-frame",
+            !(display?.interactive && allowInteraction) && "is-inert",
+          )}
+          srcDoc={inlineDocument}
           title={name}
           sandbox=""
           referrerPolicy="no-referrer"
           loading={eager ? "eager" : "lazy"}
-          style={{ pointerEvents: display?.interactive ? "auto" : "none" }}
+          {...(display?.interactive && allowInteraction
+            ? {}
+            : { tabIndex: -1, "aria-hidden": true })}
         />
       ) : imageUrl ? (
         <Image
@@ -173,7 +183,7 @@ export function ObjectVisual({
           fill
           loading={eager ? "eager" : "lazy"}
           sizes="(max-width: 760px) 100vw, (max-width: 980px) 50vw, 33vw"
-          style={{ objectFit: "cover" }}
+          className="object-image-fill"
         />
       ) : (
         <Box

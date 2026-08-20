@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
+import { useErrorMessage } from "@/app/_hooks/use-error-message";
 import { useSession } from "@/app/_providers/session-provider";
 import {
   AuthFlowError,
@@ -18,6 +19,7 @@ export function useAuthActions() {
   const router = useRouter();
   const session = useSession();
   const t = useTranslations("auth.errors");
+  const errorMessage = useErrorMessage();
 
   const finish = async (result: AuthResult) => {
     await session.refresh();
@@ -42,7 +44,7 @@ export function useAuthActions() {
   const error = mutation.error
     ? mutation.error instanceof AuthFlowError
       ? t(mutation.error.code)
-      : mutation.error.message
+      : errorMessage(mutation.error)
     : null;
   const run = (name: string, action: () => Promise<AuthResult>) => {
     mutation.mutate({ name, action });

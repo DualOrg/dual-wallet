@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -54,6 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { wallet, isLoading, isAuthenticated, logout } = useSession();
   const { theme, toggleTheme } = useTheme();
+  const menuTrigger = useRef<HTMLButtonElement>(null);
   const router = useRouter();
   const t = useTranslations("nav");
   const common = useTranslations("common");
@@ -62,28 +63,53 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!isLoading && !isAuthenticated) router.replace("/login");
   }, [isAuthenticated, isLoading, router]);
 
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setMobileOpen(false);
+      menuTrigger.current?.focus();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen]);
+
   const signOut = async () => {
     await logout();
     router.replace("/login");
     router.refresh();
   };
 
+  const themeButton = (
+    <button className="nav-link" type="button" onClick={toggleTheme}>
+      {theme === "dark" ? (
+        <Sun size={19} aria-hidden />
+      ) : (
+        <Moon size={19} aria-hidden />
+      )}
+      {common("theme")}
+    </button>
+  );
+  const signOutButton = (
+    <button className="nav-link" type="button" onClick={signOut}>
+      <LogOut size={19} aria-hidden />
+      {t("logout")}
+    </button>
+  );
+
   return (
     <div className="app-layout">
+      <a className="skip-link" href="#main-content">
+        {common("skipToContent")}
+      </a>
       <aside className="sidebar">
         <Brand />
         <nav className="sidebar-nav" aria-label={t("mainNavigation")}>
           <Nav />
         </nav>
         <div className="sidebar-footer">
-          <button className="nav-link" type="button" onClick={toggleTheme}>
-            {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
-            {common("theme")}
-          </button>
-          <button className="nav-link" type="button" onClick={signOut}>
-            <LogOut size={19} />
-            {t("logout")}
-          </button>
+          {themeButton}
+          {signOutButton}
           {wallet ? <UserProfileMenu wallet={wallet} /> : null}
         </div>
       </aside>
@@ -91,28 +117,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="mobile-topbar">
           <Brand />
           <button
+            ref={menuTrigger}
             className="icon-button"
             type="button"
-            aria-label={common("menu")}
+            aria-label={common(mobileOpen ? "closeMenu" : "openMenu")}
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-nav"
             onClick={() => setMobileOpen((value) => !value)}
           >
-            {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+            {mobileOpen ? (
+              <X size={20} aria-hidden />
+            ) : (
+              <Menu size={20} aria-hidden />
+            )}
           </button>
         </header>
         {mobileOpen ? (
-          <nav className="mobile-nav" aria-label={t("mainNavigation")}>
+          <nav
+            id="mobile-nav"
+            className="mobile-nav"
+            aria-label={t("mainNavigation")}
+          >
             <Nav close={() => setMobileOpen(false)} />
-            <button className="nav-link" type="button" onClick={toggleTheme}>
-              {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
-              {common("theme")}
-            </button>
-            <button className="nav-link" type="button" onClick={signOut}>
-              <LogOut size={19} />
-              {t("logout")}
-            </button>
+            {themeButton}
+            {signOutButton}
           </nav>
         ) : null}
-        <main className="content">{children}</main>
+        <main className="content" id="main-content" tabIndex={-1}>
+          {children}
+        </main>
       </div>
     </div>
   );

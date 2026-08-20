@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 import { ShieldCheck, X } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { StatusBadge } from "@/app/_components/activity/status-badge";
 import { ModalDialog } from "@/app/_components/design-system/modal-dialog";
 import type { ActivityEntry } from "@/app/_domain/inventory";
@@ -31,17 +31,14 @@ export function ActivityDetailModal({
   onClose: () => void;
 }) {
   const t = useTranslations("activity.details");
-  const locale = useLocale();
+  const format = useFormatter();
   const closeButton = useRef<HTMLButtonElement>(null);
 
   if (!entry) return null;
   const detail = entry.detail;
   const versionLabel = detail.version === 1 ? t("version1") : t("version2");
   const formatDate = (value: Date) =>
-    new Intl.DateTimeFormat(locale, {
-      dateStyle: "medium",
-      timeStyle: "medium",
-    }).format(value);
+    format.dateTime(value, { dateStyle: "medium", timeStyle: "medium" });
 
   return (
     <ModalDialog

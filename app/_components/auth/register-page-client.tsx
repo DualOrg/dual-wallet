@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { LoaderCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { AuthMethods } from "@/app/_components/auth/auth-methods";
-import { Alert } from "@/app/_components/design-system/alert";
 import { Button } from "@/app/_components/design-system/button";
 import { Field } from "@/app/_components/design-system/field";
 
@@ -16,6 +15,7 @@ export function RegisterPageClient() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [mismatch, setMismatch] = useState(false);
+  const confirmField = useRef<HTMLInputElement>(null);
   return (
     <>
       <p className="page-eyebrow">{t("eyebrow")}</p>
@@ -30,10 +30,11 @@ export function RegisterPageClient() {
               event.preventDefault();
               const invalid = password !== confirm;
               setMismatch(invalid);
-              if (!invalid) auth.emailRegister(email, password, nickname);
+              // Failed submission keeps the values and lands on the field.
+              if (invalid) confirmField.current?.focus();
+              else auth.emailRegister(email, password, nickname);
             }}
           >
-            {mismatch ? <Alert>{t("passwordMismatch")}</Alert> : null}
             <Field
               name="nickname"
               label={t("name")}
@@ -63,18 +64,23 @@ export function RegisterPageClient() {
               required
             />
             <Field
+              ref={confirmField}
               type="password"
               name="confirm"
               label={t("confirmPassword")}
               value={confirm}
-              onChange={(event) => setConfirm(event.target.value)}
+              error={mismatch ? t("passwordMismatch") : undefined}
+              onChange={(event) => {
+                setMismatch(false);
+                setConfirm(event.target.value);
+              }}
               minLength={8}
               autoComplete="new-password"
               required
             />
             <Button block type="submit" disabled={Boolean(auth.pending)}>
               {auth.pending === "email" ? (
-                <LoaderCircle size={18} className="animate-spin" />
+                <LoaderCircle size={18} className="animate-spin" aria-hidden />
               ) : null}
               {t(
                 auth.pending === "email" ? "creatingAccount" : "createAccount",

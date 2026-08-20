@@ -10,6 +10,9 @@ jest.mock("@/app/_components/inventory/object-visual", () => ({
 
 jest.mock("next-intl", () => ({
   useLocale: () => "en",
+  useFormatter: () => ({
+    dateTime: (value: Date) => value.toISOString(),
+  }),
   useTranslations:
     () =>
     (key: string): string =>

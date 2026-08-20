@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Settings } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { Truncated } from "@/app/_components/design-system/truncated";
 import type { ViewerWallet } from "@/app/_domain/wallet";
 import { shortAccountAddress } from "@/app/_domain/wallet";
 
@@ -50,7 +51,7 @@ export function UserProfileMenu({ wallet }: { wallet: ViewerWallet }) {
         <span className="avatar">{initials}</span>
         <span className="account-copy">
           <strong>{name}</strong>
-          <span title={wallet.account.address}>{accountAddress}</span>
+          <Truncated value={wallet.account.address} short={accountAddress} />
         </span>
       </button>
 
@@ -70,7 +71,12 @@ export function UserProfileMenu({ wallet }: { wallet: ViewerWallet }) {
           <dl className="account-profile-details">
             <div>
               <dt>{t("smartAccount")}</dt>
-              <dd title={wallet.account.address}>{accountAddress}</dd>
+              <dd>
+                <Truncated
+                  value={wallet.account.address}
+                  short={accountAddress}
+                />
+              </dd>
             </div>
             <div>
               <dt>{t("controller")}</dt>

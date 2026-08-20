@@ -1,16 +1,17 @@
 "use client";
 
-import type { ReactElement, ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
-  cloneElement,
-  isValidElement,
+  createContext,
   useCallback,
+  useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { Info, MoreHorizontal, X, Zap } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { ModalDialog } from "@/app/_components/design-system/modal-dialog";
 import { ObjectVisual } from "@/app/_components/inventory/object-visual";
 import {
@@ -90,7 +91,13 @@ function CustomJsonSection({
     <section className="object-detail-section">
       <h3>{title}</h3>
       {hasData ? (
-        <pre className="json-view" aria-label={title}>
+        // A scrollable region needs to be reachable by keyboard.
+        <pre
+          className="json-view"
+          role="region"
+          aria-label={title}
+          tabIndex={0}
+        >
           {safeJson(value)}
         </pre>
       ) : (
@@ -123,10 +130,21 @@ function StandardObjectFace({ item }: { item: ObjectDetailModel }) {
   );
 }
 
-interface ObjectActionSlotContext {
+export interface ObjectActionSlotContext {
   requestedAction?: ExternalFaceActionRequest;
   onRequestedActionCompleted?: (actionId: string) => void;
   onCancel?: () => void;
+}
+
+/**
+ * The slot context reaches the actions panel through context rather than
+ * cloneElement, so the panel keeps a stable identity and does not lose what the
+ * user entered — or the completion it just reported — when the object refetches.
+ */
+const ObjectActionSlot = createContext<ObjectActionSlotContext>({});
+
+export function useObjectActionSlot() {
+  return useContext(ObjectActionSlot);
 }
 
 export function ObjectDetail({
@@ -142,7 +160,7 @@ export function ObjectDetail({
   bridgeEnabled?: boolean;
   bridgeActions?: string[];
 }) {
-  const locale = useLocale();
+  const format = useFormatter();
   const t = useTranslations("object");
   const common = useTranslations("common");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -154,7 +172,7 @@ export function ObjectDetail({
   const actionButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const actionInProgress = useRef(false);
-  const [pendingBridgeAction, setPendingBridgeAction] = useState<
+  const pendingBridgeAction = useRef<
     | {
         resolve: (result: ExternalFaceActionResult) => void;
         reject: (error: Error) => void;
@@ -164,10 +182,7 @@ export function ObjectDetail({
   const [requestedAction, setRequestedAction] =
     useState<ExternalFaceActionRequest>();
   const date = (value: Date) =>
-    new Intl.DateTimeFormat(locale, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(value);
+    format.dateTime(value, { dateStyle: "medium", timeStyle: "short" });
   const metadata: Array<[string, unknown]> = [
     [t("name"), item.name],
     [t("descriptionLabel"), item.description || common("notAvailable")],
@@ -195,8 +210,7 @@ export function ObjectDetail({
   const hasInlineHtmlDisplay =
     item.display?.kind === "document" &&
     item.display.mediaType.toLowerCase().startsWith("text/html");
-  const canHandleBridgeActions =
-    isValidElement(actions) && typeof actions.type !== "string";
+  const canHandleBridgeActions = Boolean(actions);
   const readBridgeAttributes = useCallback(
     () => readExternalFaceAttributes(item.id),
     [item.id],
@@ -214,7 +228,7 @@ export function ObjectDetail({
       try {
         await verifyExternalFaceAction(item.id, request.name);
         return new Promise<ExternalFaceActionResult>((resolve, reject) => {
-          setPendingBridgeAction({ resolve, reject });
+          pendingBridgeAction.current = { resolve, reject };
           setRequestedAction(request);
           setMenuOpen(false);
           setModalView("actions");
@@ -227,71 +241,74 @@ export function ObjectDetail({
     [item.id],
   );
 
-  const completeBridgeAction = useCallback(
-    (actionId: string) => {
-      pendingBridgeAction?.resolve({
-        status: "completed",
-        action_id: actionId,
-      });
-      setPendingBridgeAction(undefined);
-      setRequestedAction(undefined);
-      setModalView(null);
-    },
-    [pendingBridgeAction],
-  );
+  const completeBridgeAction = useCallback((actionId: string) => {
+    pendingBridgeAction.current?.resolve({
+      status: "completed",
+      action_id: actionId,
+    });
+    pendingBridgeAction.current = undefined;
+    actionInProgress.current = false;
+    setRequestedAction(undefined);
+    setModalView(null);
+  }, []);
 
   const cancelBridgeAction = useCallback(() => {
-    pendingBridgeAction?.reject(
+    pendingBridgeAction.current?.reject(
       new ExternalFaceBridgeError(
         "user_cancelled",
         "The action request was cancelled.",
       ),
     );
-    setPendingBridgeAction(undefined);
+    pendingBridgeAction.current = undefined;
+    actionInProgress.current = false;
     setRequestedAction(undefined);
-  }, [pendingBridgeAction]);
+  }, []);
 
   const closeModal = useCallback(() => {
     if (modalView === "actions") cancelBridgeAction();
     setModalView(null);
   }, [cancelBridgeAction, modalView]);
 
-  const renderedActions = canHandleBridgeActions
-    ? cloneElement(actions as ReactElement<ObjectActionSlotContext>, {
-        requestedAction,
-        onRequestedActionCompleted: requestedAction
-          ? completeBridgeAction
-          : undefined,
-        onCancel: closeModal,
-      })
-    : actions;
-
   useEffect(() => {
     if (!menuOpen) return;
     const closeMenu = (event: PointerEvent) => {
       if (!menu.current?.contains(event.target as Node)) setMenuOpen(false);
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setMenuOpen(false);
+      moreButton.current?.focus();
+    };
     document.addEventListener("pointerdown", closeMenu);
-    return () => document.removeEventListener("pointerdown", closeMenu);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", closeMenu);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [menuOpen]);
 
   useEffect(
     () => () => {
-      pendingBridgeAction?.reject(
+      pendingBridgeAction.current?.reject(
         new ExternalFaceBridgeError(
           "bridge_closed",
           "The Viewer closed the action request.",
         ),
       );
     },
-    [pendingBridgeAction],
+    [],
   );
 
-  useEffect(() => {
-    if (!pendingBridgeAction && !requestedAction) {
-      actionInProgress.current = false;
-    }
-  }, [pendingBridgeAction, requestedAction]);
+  const slotContext = useMemo<ObjectActionSlotContext>(
+    () => ({
+      requestedAction,
+      onRequestedActionCompleted: requestedAction
+        ? completeBridgeAction
+        : undefined,
+      onCancel: closeModal,
+    }),
+    [closeModal, completeBridgeAction, requestedAction],
+  );
 
   const showDetails = () => {
     setMenuOpen(false);
@@ -330,6 +347,8 @@ export function ObjectDetail({
               <div
                 id="object-options-popover"
                 className="wallet-pass-menu-popover"
+                aria-label={t("optionsMenu")}
+                role="group"
               >
                 <button type="button" onClick={showDetails}>
                   <Info size={18} aria-hidden />
@@ -428,7 +447,9 @@ export function ObjectDetail({
               </>
             ) : (
               <section className="object-pass-detail-actions">
-                {renderedActions}
+                <ObjectActionSlot.Provider value={slotContext}>
+                  {actions}
+                </ObjectActionSlot.Provider>
               </section>
             )}
           </div>

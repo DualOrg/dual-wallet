@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useState, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import {
   AlertTriangle,
   LayoutGrid,
@@ -15,6 +15,8 @@ import { EmptyState } from "@/app/_components/design-system/empty-state";
 import { PageHeader } from "@/app/_components/design-system/page-header";
 import { ObjectCard } from "@/app/_components/inventory/object-card";
 import { useInventory } from "@/app/_hooks/data";
+import { useErrorMessage } from "@/app/_hooks/use-error-message";
+import { useDebouncedInput, useUrlFilters } from "@/app/_hooks/use-url-filters";
 import { useSession } from "@/app/_providers/session-provider";
 
 type InventoryView = "grid" | "list";
@@ -50,14 +52,21 @@ function setInventoryView(view: InventoryView) {
 export function InventoryPageClient() {
   const t = useTranslations("inventory");
   const common = useTranslations("common");
+  const errorMessage = useErrorMessage();
   const { wallet, isAuthenticated } = useSession();
-  const [search, setSearch] = useState("");
+  const { filter, setFilters } = useUrlFilters();
+  const search = filter("q");
+  const commitSearch = useCallback(
+    (value: string) => setFilters({ q: value }),
+    [setFilters],
+  );
+  const [searchDraft, setSearchDraft] = useDebouncedInput(search, commitSearch);
   const view = useSyncExternalStore(
     subscribeToInventoryView,
     getInventoryView,
     getServerInventoryView,
   );
-  const query = useInventory(useDeferredValue(search), wallet?.account.address);
+  const query = useInventory(search, wallet?.account.address);
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
   return (
     <>
@@ -76,8 +85,8 @@ export function InventoryPageClient() {
             id="inventory-search"
             className="input"
             type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            value={searchDraft}
+            onChange={(event) => setSearchDraft(event.target.value)}
             placeholder={t("searchPlaceholder")}
           />
         </div>
@@ -106,17 +115,24 @@ export function InventoryPageClient() {
           </button>
         </div>
       </div>
+      <p className="sr-only" role="status">
+        {query.isPending
+          ? t("loadingObjects")
+          : query.isError
+            ? t("errorTitle")
+            : t("resultCount", { count: items.length })}
+      </p>
       {query.isPending ? (
-        <div className={`inventory-grid is-${view}`}>
-          <div className="card skeleton" />
-          <div className="card skeleton" />
-          <div className="card skeleton" />
+        <div className={`inventory-grid is-${view}`} aria-busy>
+          <div className="card skeleton" aria-hidden />
+          <div className="card skeleton" aria-hidden />
+          <div className="card skeleton" aria-hidden />
         </div>
       ) : query.isError ? (
         <EmptyState
           icon={AlertTriangle}
           title={t("errorTitle")}
-          description={query.error.message}
+          description={errorMessage(query.error)}
           action={
             <Button variant="secondary" onClick={() => query.refetch()}>
               {common("tryAgain")}
@@ -148,7 +164,11 @@ export function InventoryPageClient() {
                 disabled={query.isFetchingNextPage}
               >
                 {query.isFetchingNextPage ? (
-                  <LoaderCircle size={17} className="animate-spin" />
+                  <LoaderCircle
+                    size={17}
+                    className="animate-spin"
+                    aria-hidden
+                  />
                 ) : null}
                 {t(query.isFetchingNextPage ? "loadingMore" : "loadMore")}
               </Button>
