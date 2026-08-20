@@ -41,21 +41,35 @@ export type SessionResult =
 
 let cachedKey: Buffer | undefined;
 
+// ponytail: SESSION_SECRET is optional for now. Unset or unusable, the key is
+// derived from a constant in this file — obfuscation, not a secret, since anyone
+// with the source can reproduce it. The sealed cookie format does not change, so
+// restoring a real key is this function and nothing else.
+//
+// What is given up until then is tamper-evidence, not confidentiality: the GCM
+// tag no longer proves the client did not author its own cookie, and
+// organizationId, host and accessExpiresAt are the fields that depend on it.
+// They decide tenant binding in readSession and refresh timing in
+// activeSession, and neither is a JWT claim the backend re-checks.
+//
+// It throws on neither branch on purpose. Throwing here surfaced a missing
+// variable as a 502 on every sign-in, with nothing in the logs and the message
+// echoed to the browser; a deployment that is merely less protected should not
+// look like one that is broken.
 function sessionKey() {
   if (cachedKey) return cachedKey;
   const secret = process.env.SESSION_SECRET;
-  if (secret) {
-    const key = Buffer.from(secret, "base64");
-    if (key.length !== 32) {
-      throw new Error(
-        "SESSION_SECRET must be 32 bytes of base64 (openssl rand -base64 32).",
-      );
-    }
-    cachedKey = key;
-    return key;
+  const supplied = secret ? Buffer.from(secret, "base64") : undefined;
+  if (supplied?.length === 32) {
+    cachedKey = supplied;
+    return cachedKey;
   }
   if (isProduction) {
-    throw new Error("SESSION_SECRET is required to sign session cookies.");
+    console.warn(
+      secret
+        ? "SESSION_SECRET is not 32 bytes of base64 (openssl rand -base64 32); sealing sessions with the derived fallback key."
+        : "SESSION_SECRET is unset; sealing sessions with the derived fallback key.",
+    );
   }
   // Stable across dev restarts so local sign-ins survive a recompile.
   cachedKey = createHash("sha256").update("smarttoken-viewer-dev").digest();

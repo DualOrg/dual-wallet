@@ -121,3 +121,36 @@ test("a rejected refresh token ends the session", async () => {
     status: "expired",
   });
 });
+
+// A deployment with no SESSION_SECRET has to seal a session anyway. Throwing
+// here turned one missing variable into a 502 on every sign-in — email, passkey
+// and EOA alike, since all of them end in establishSession — with nothing in the
+// logs and the thrown message echoed to the browser.
+test("production without SESSION_SECRET seals the session and says so", async () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousSecret = process.env.SESSION_SECRET;
+  delete process.env.SESSION_SECRET;
+  (process.env as Record<string, string>).NODE_ENV = "production";
+  const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+  try {
+    jest.resetModules();
+    const prod = await import("@/api/server-session");
+    const response = NextResponse.json({});
+
+    expect(prod.establishSession(response, login(), tenant, "email")).toBe(
+      true,
+    );
+    expect(
+      response.cookies.get("__Host-smarttoken_viewer")?.value,
+    ).toBeTruthy();
+    // Silently weaker is how this went unnoticed for a whole deployment.
+    expect(warn).toHaveBeenCalled();
+  } finally {
+    warn.mockRestore();
+    (process.env as Record<string, string>).NODE_ENV = previousNodeEnv!;
+    if (previousSecret !== undefined)
+      process.env.SESSION_SECRET = previousSecret;
+    jest.resetModules();
+  }
+});

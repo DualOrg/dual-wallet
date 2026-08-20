@@ -153,6 +153,9 @@ make wallet-prod API_URL=https://api.example.com VIEWER_BASE_DOMAIN=viewer.examp
 
 The session is a sealed cookie rather than process-local state, so instances no
 longer have to be pinned to one. `MAX_INSTANCES` still defaults to 1; raise it
-when you have picked a ceiling. `SESSION_SECRET` must be set in production and
-stable across deploys, since changing it signs every wallet out. Wildcard tenant DNS/TLS routing for `*.wallet.dual.network` remains
+when you have picked a ceiling. `SESSION_SECRET` is optional for now: unset, sessions are
+sealed with a key derived from a constant in the source, which is obfuscation
+rather than a secret. Set it — 32 bytes of base64, `openssl rand -base64 32` —
+to get real tamper-evidence back, and keep it stable across deploys, since
+changing it signs every wallet out. Wildcard tenant DNS/TLS routing for `*.wallet.dual.network` remains
 an infrastructure concern and is not changed by these targets.
