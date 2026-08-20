@@ -1,10 +1,14 @@
 import "server-only";
 
-import { createHash, randomBytes } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from "node:crypto";
 import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
+import type { NextResponse } from "next/server";
 import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
-import type { Wallet } from "@/api/web-sdk/models/Wallet";
 import { SESSION_COOKIE_NAME } from "@/api/settings";
 import type { TenantContext } from "@/api/tenant";
 import { tenantFromRequest } from "@/api/tenant";
@@ -16,41 +20,77 @@ import type { ViewerWallet } from "@/app/_domain/wallet";
 
 const isProduction = process.env.NODE_ENV === "production";
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const REFRESH_MARGIN_MS = 30_000;
 
-interface StoredSession {
+// The session lives entirely in the cookie. Holding it in process memory loses
+// every signed-in wallet whenever the container is replaced or a request lands
+// on a second instance, which on a scale-to-zero platform is routine.
+interface SessionState {
   accessToken: string;
   refreshToken: string;
   accessExpiresAt: number;
-  sessionExpiresAt: number;
-  tenant: TenantContext;
-  wallet: ViewerWallet;
+  organizationId: string;
+  host: string;
   authenticationMethod: AuthenticationMethod;
 }
 
-interface SessionHandle {
-  credential: string;
-  record: StoredSession;
+export type SessionResult =
+  | { status: "active"; state: SessionState; rotated: boolean }
+  | { status: "expired" }
+  | { status: "unavailable"; state: SessionState };
+
+let cachedKey: Buffer | undefined;
+
+function sessionKey() {
+  if (cachedKey) return cachedKey;
+  const secret = process.env.SESSION_SECRET;
+  if (secret) {
+    const key = Buffer.from(secret, "base64");
+    if (key.length !== 32) {
+      throw new Error(
+        "SESSION_SECRET must be 32 bytes of base64 (openssl rand -base64 32).",
+      );
+    }
+    cachedKey = key;
+    return key;
+  }
+  if (isProduction) {
+    throw new Error("SESSION_SECRET is required to sign session cookies.");
+  }
+  // Stable across dev restarts so local sign-ins survive a recompile.
+  cachedKey = createHash("sha256").update("smarttoken-viewer-dev").digest();
+  return cachedKey;
 }
 
-const globalSessions = globalThis as typeof globalThis & {
-  __smarttokenViewerSessions?: Map<string, StoredSession>;
-  __smarttokenViewerRefreshes?: Map<string, Promise<StoredSession | undefined>>;
-};
+function seal(state: SessionState) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", sessionKey(), iv);
+  const body = Buffer.concat([
+    cipher.update(JSON.stringify(state), "utf8"),
+    cipher.final(),
+  ]);
+  return Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64url");
+}
 
-const sessions =
-  globalSessions.__smarttokenViewerSessions ?? new Map<string, StoredSession>();
-const inflightRefreshes =
-  globalSessions.__smarttokenViewerRefreshes ??
-  new Map<string, Promise<StoredSession | undefined>>();
-
-// Route handlers are bundled independently. Keep one store per Node process so
-// a session created by the login route is visible to the session and proxy
-// routes in the standalone runtime.
-globalSessions.__smarttokenViewerSessions = sessions;
-globalSessions.__smarttokenViewerRefreshes = inflightRefreshes;
-
-function keyFor(credential: string) {
-  return createHash("sha256").update(credential).digest("base64url");
+function unseal(value: string): SessionState | undefined {
+  try {
+    const raw = Buffer.from(value, "base64url");
+    if (raw.length <= 28) return undefined;
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      sessionKey(),
+      raw.subarray(0, 12),
+    );
+    decipher.setAuthTag(raw.subarray(12, 28));
+    const json = Buffer.concat([
+      decipher.update(raw.subarray(28)),
+      decipher.final(),
+    ]).toString("utf8");
+    return JSON.parse(json) as SessionState;
+  } catch {
+    // Tampered, truncated, or sealed with a retired key.
+    return undefined;
+  }
 }
 
 function jwtExpiry(token: string, fallbackMs: number) {
@@ -69,24 +109,15 @@ function jwtExpiry(token: string, fallbackMs: number) {
   }
 }
 
-function createRecord(
-  login: LoginOut,
-  tenant: TenantContext,
-  authenticationMethod: AuthenticationMethod,
-): StoredSession {
-  return {
-    accessToken: login.accessToken,
-    refreshToken: login.refreshToken,
-    accessExpiresAt: jwtExpiry(login.accessToken, 4 * 60 * 1000),
-    sessionExpiresAt: jwtExpiry(login.refreshToken, THIRTY_DAYS_MS),
-    tenant,
-    wallet: toViewerWallet(login.wallet),
-    authenticationMethod,
-  };
+function isAuthRejection(error: unknown) {
+  return (
+    error instanceof ResponseError &&
+    (error.response.status === 401 || error.response.status === 403)
+  );
 }
 
-function setCookie(response: NextResponse, credential: string) {
-  response.cookies.set(SESSION_COOKIE_NAME, credential, {
+export function writeSession(response: NextResponse, state: SessionState) {
+  response.cookies.set(SESSION_COOKIE_NAME, seal(state), {
     httpOnly: true,
     secure: isProduction,
     sameSite: "strict",
@@ -124,123 +155,94 @@ export function establishSession(
   } catch {
     return false;
   }
-  const credential = randomBytes(32).toString("base64url");
-  sessions.set(
-    keyFor(credential),
-    createRecord(login, tenant, authenticationMethod),
-  );
-  setCookie(response, credential);
+  writeSession(response, {
+    accessToken: login.accessToken,
+    refreshToken: login.refreshToken,
+    accessExpiresAt: jwtExpiry(login.accessToken, 4 * 60 * 1000),
+    organizationId: tenant.organizationId,
+    host: tenant.host,
+    authenticationMethod,
+  });
   return true;
 }
 
-export function terminateSession(request: NextRequest) {
-  const credential = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-  if (credential) sessions.delete(keyFor(credential));
-}
-
-export function requestSession(
-  request: NextRequest,
-): SessionHandle | undefined {
-  const credential = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+export function readSession(request: NextRequest): SessionState | undefined {
+  const cookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   const tenant = tenantFromRequest(request);
-  if (!credential || !tenant) return undefined;
-  const key = keyFor(credential);
-  const record = sessions.get(key);
+  if (!cookie || !tenant) return undefined;
+  const state = unseal(cookie);
   if (
-    !record ||
-    record.sessionExpiresAt <= Date.now() ||
-    record.tenant.host !== tenant.host ||
-    record.tenant.organizationId !== tenant.organizationId
+    !state ||
+    state.host !== tenant.host ||
+    state.organizationId !== tenant.organizationId
   ) {
-    sessions.delete(key);
     return undefined;
   }
-  return { credential, record };
+  return state;
 }
 
-async function refreshSession(
-  handle: SessionHandle,
-  force = false,
-): Promise<StoredSession | undefined> {
-  if (!force && handle.record.accessExpiresAt > Date.now() + 30_000) {
-    return handle.record;
-  }
-
-  const key = keyFor(handle.credential);
-  const running = inflightRefreshes.get(key);
-  if (running) return running;
-
-  const refresh = (async () => {
-    try {
-      const result = await getWalletsApi(
-        handle.record.refreshToken,
-      ).refreshToken({
-        cache: "no-store",
-      });
-      const next: StoredSession = {
-        ...handle.record,
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken || handle.record.refreshToken,
-        accessExpiresAt: jwtExpiry(result.accessToken, 4 * 60 * 1000),
-        sessionExpiresAt: result.refreshToken
-          ? jwtExpiry(result.refreshToken, THIRTY_DAYS_MS)
-          : handle.record.sessionExpiresAt,
-      };
-      sessions.set(key, next);
-      return next;
-    } catch {
-      sessions.delete(key);
-      return undefined;
-    }
-  })();
-
-  inflightRefreshes.set(key, refresh);
-  try {
-    return await refresh;
-  } finally {
-    inflightRefreshes.delete(key);
-  }
-}
-
-export async function accessTokenForRequest(
+// ponytail: no cross-request single-flight. Each request renews its own copy;
+// if the API ever starts invalidating rotated refresh tokens, parallel requests
+// will need the renewal narrowed to /api/session alone.
+export async function activeSession(
   request: NextRequest,
   force = false,
-) {
-  const handle = requestSession(request);
-  if (!handle) return undefined;
-  const record = await refreshSession(handle, force);
-  return record?.accessToken;
-}
-
-export async function refreshCurrentWallet(request: NextRequest) {
-  const handle = requestSession(request);
-  if (!handle) return undefined;
-  const record = await refreshSession(handle);
-  if (!record) return undefined;
+): Promise<SessionResult | undefined> {
+  const state = readSession(request);
+  if (!state) return undefined;
+  if (!force && state.accessExpiresAt > Date.now() + REFRESH_MARGIN_MS) {
+    return { status: "active", state, rotated: false };
+  }
   try {
-    const wallet = await getWalletsApi(record.accessToken).getWallet({
+    const result = await getWalletsApi(state.refreshToken).refreshToken({
       cache: "no-store",
     });
-    record.wallet = toViewerWallet(wallet);
-    sessions.set(keyFor(handle.credential), record);
-    return record.wallet;
+    return {
+      status: "active",
+      rotated: true,
+      state: {
+        ...state,
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken || state.refreshToken,
+        accessExpiresAt: jwtExpiry(result.accessToken, 4 * 60 * 1000),
+      },
+    };
   } catch (error) {
-    if (
-      error instanceof ResponseError &&
-      (error.response.status === 401 || error.response.status === 403)
-    ) {
-      sessions.delete(keyFor(handle.credential));
-      return undefined;
-    }
-    return record.wallet;
+    // Only a rejected refresh token ends the session. A timeout or a 500
+    // upstream must not sign the wallet out.
+    return isAuthRejection(error)
+      ? { status: "expired" }
+      : { status: "unavailable", state };
   }
 }
 
-export function updateStoredWallet(request: NextRequest, wallet: Wallet) {
-  const handle = requestSession(request);
-  if (!handle) return;
-  handle.record.wallet = toViewerWallet(wallet);
-  sessions.set(keyFor(handle.credential), handle.record);
+export async function currentWallet(
+  request: NextRequest,
+): Promise<
+  | { status: "active"; wallet: ViewerWallet; state: SessionState }
+  | { status: "expired" }
+  | { status: "unavailable" }
+> {
+  const session = await activeSession(request);
+  if (!session) return { status: "expired" };
+  if (session.status !== "active") {
+    return session.status === "expired"
+      ? { status: "expired" }
+      : { status: "unavailable" };
+  }
+  try {
+    const wallet = await getWalletsApi(session.state.accessToken).getWallet({
+      cache: "no-store",
+    });
+    return {
+      status: "active",
+      wallet: toViewerWallet(wallet),
+      state: session.state,
+    };
+  } catch (error) {
+    if (isAuthRejection(error)) return { status: "expired" };
+    return { status: "unavailable" };
+  }
 }
 
 export function upstreamUrl(path: string, search = "") {
@@ -268,19 +270,38 @@ export async function authenticatedUpstreamFetch(
   request: NextRequest,
   url: URL,
   init: RequestInit,
-) {
+): Promise<{ response: Response; state?: SessionState; expired: boolean }> {
   const requestWithToken = (token: string) => {
     const headers = new Headers(init.headers);
     headers.set("Authorization", `Bearer ${token}`);
     return { ...init, headers };
   };
 
-  const token = await accessTokenForRequest(request);
-  if (!token) return new Response(null, { status: 401 });
-  let response = await fetch(url, requestWithToken(token));
-  if (response.status === 401) {
-    const refreshed = await accessTokenForRequest(request, true);
-    if (refreshed) response = await fetch(url, requestWithToken(refreshed));
+  const session = await activeSession(request);
+  if (!session || session.status === "expired") {
+    return { response: new Response(null, { status: 401 }), expired: true };
   }
-  return response;
+  if (session.status === "unavailable") {
+    return {
+      response: new Response(null, { status: 503 }),
+      state: session.state,
+      expired: false,
+    };
+  }
+
+  let state = session.state;
+  let response = await fetch(url, requestWithToken(state.accessToken));
+  if (response.status === 401) {
+    const retry = await activeSession(request, true);
+    if (!retry || retry.status !== "active") {
+      return {
+        response,
+        state: retry?.status === "unavailable" ? retry.state : undefined,
+        expired: retry?.status !== "unavailable",
+      };
+    }
+    state = retry.state;
+    response = await fetch(url, requestWithToken(state.accessToken));
+  }
+  return { response, state, expired: false };
 }

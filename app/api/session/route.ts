@@ -2,13 +2,14 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import {
   clearSessionCookie,
-  refreshCurrentWallet,
-  requestSession,
+  currentWallet,
+  writeSession,
 } from "@/api/server-session";
 
 export async function GET(request: NextRequest) {
-  const session = requestSession(request);
-  if (!session) {
+  const result = await currentWallet(request);
+
+  if (result.status === "expired") {
     const response = NextResponse.json(
       { authenticated: false },
       { status: 401 },
@@ -17,22 +18,23 @@ export async function GET(request: NextRequest) {
     return response;
   }
 
-  const wallet = await refreshCurrentWallet(request);
-  if (!wallet) {
-    const response = NextResponse.json(
-      { authenticated: false },
-      { status: 401 },
+  // A failed renewal that the API did not reject leaves the session intact, so
+  // report "unavailable" and let the client keep the wallet it already has.
+  if (result.status === "unavailable") {
+    return NextResponse.json(
+      { message: "Session unavailable." },
+      { status: 503 },
     );
-    clearSessionCookie(response);
-    return response;
   }
 
-  return NextResponse.json(
+  const response = NextResponse.json(
     {
       authenticated: true,
-      authenticationMethod: session.record.authenticationMethod,
-      wallet,
+      authenticationMethod: result.state.authenticationMethod,
+      wallet: result.wallet,
     },
     { headers: { "Cache-Control": "private, no-store" } },
   );
+  writeSession(response, result.state);
+  return response;
 }

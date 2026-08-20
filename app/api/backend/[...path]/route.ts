@@ -6,8 +6,8 @@ import {
   authenticatedUpstreamFetch,
   clearSessionCookie,
   copyUpstreamHeaders,
-  terminateSession,
   upstreamUrl,
+  writeSession,
 } from "@/api/server-session";
 import { MAX_BFF_BODY_BYTES } from "@/api/settings";
 
@@ -55,7 +55,11 @@ async function proxy(
   }
 
   try {
-    const upstream = await authenticatedUpstreamFetch(
+    const {
+      response: upstream,
+      state,
+      expired,
+    } = await authenticatedUpstreamFetch(
       request,
       upstreamUrl(path.join("/"), request.nextUrl.search),
       {
@@ -71,14 +75,15 @@ async function proxy(
       headers: copyUpstreamHeaders(upstream),
     });
     response.headers.set("Cache-Control", "private, no-store");
-    if (upstream.status === 401) clearSessionCookie(response);
+    // Renewed tokens only survive if they ride back out on this response.
+    if (state) writeSession(response, state);
     if (
-      request.method === "DELETE" &&
-      upstream.ok &&
-      path[0] === "wallets" &&
-      path[1] === "me"
+      expired ||
+      (request.method === "DELETE" &&
+        upstream.ok &&
+        path[0] === "wallets" &&
+        path[1] === "me")
     ) {
-      terminateSession(request);
       clearSessionCookie(response);
     }
     return response;

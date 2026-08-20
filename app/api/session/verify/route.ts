@@ -7,7 +7,7 @@ import {
   requiredString,
   tenantRequired,
 } from "@/api/request";
-import { refreshCurrentWallet, requestSession } from "@/api/server-session";
+import { currentWallet, writeSession } from "@/api/server-session";
 import { tenantFromRequest } from "@/api/tenant";
 import { getWalletsApi } from "@/api/web-sdk-client";
 
@@ -15,11 +15,18 @@ export async function POST(request: NextRequest) {
   const invalidOrigin = mutationGuard(request);
   if (invalidOrigin) return invalidOrigin;
   if (!tenantFromRequest(request)) return tenantRequired();
-  const session = requestSession(request);
-  if (!session) {
+  // The email comes from the API rather than the cookie so it cannot go stale.
+  const current = await currentWallet(request);
+  if (current.status === "expired") {
     return NextResponse.json(
       { message: "Sign in to verify this account." },
       { status: 401 },
+    );
+  }
+  if (current.status === "unavailable") {
+    return NextResponse.json(
+      { message: "The smart object service is temporarily unavailable." },
+      { status: 503 },
     );
   }
   const body = await readJsonRecord(request);
@@ -33,17 +40,19 @@ export async function POST(request: NextRequest) {
 
   try {
     await getWalletsApi().verifyWallet(
-      { verifyIn: { code, email: session.record.wallet.email } },
+      { verifyIn: { code, email: current.wallet.email } },
       { cache: "no-store" },
     );
-    const wallet = await refreshCurrentWallet(request);
-    if (!wallet?.activated) {
+    const verified = await currentWallet(request);
+    if (verified.status !== "active" || !verified.wallet.activated) {
       return NextResponse.json(
         { message: "This code does not belong to the current account." },
         { status: 403 },
       );
     }
-    return NextResponse.json({ ok: true, wallet });
+    const response = NextResponse.json({ ok: true, wallet: verified.wallet });
+    writeSession(response, verified.state);
+    return response;
   } catch (error) {
     return apiErrorResponse(
       error,

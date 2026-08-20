@@ -1,20 +1,27 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import {
-  accessTokenForRequest,
+  activeSession,
   copyUpstreamHeaders,
   upstreamUrl,
+  writeSession,
 } from "@/api/server-session";
 import { mutationGuard } from "@/api/request";
 
 export async function POST(request: NextRequest) {
   const invalidOrigin = mutationGuard(request);
   if (invalidOrigin) return invalidOrigin;
-  const accessToken = await accessTokenForRequest(request);
-  if (!accessToken) {
+  const session = await activeSession(request);
+  if (!session || session.status === "expired") {
     return NextResponse.json(
       { message: "Sign in to request a new code." },
       { status: 401 },
+    );
+  }
+  if (session.status === "unavailable") {
+    return NextResponse.json(
+      { message: "The smart object service is temporarily unavailable." },
+      { status: 503 },
     );
   }
 
@@ -23,7 +30,7 @@ export async function POST(request: NextRequest) {
   const upstream = await fetch(upstreamUrl("auth/verification-code"), {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${session.state.accessToken}`,
       "Content-Type": "application/json",
     },
     body: "{}",
@@ -34,5 +41,6 @@ export async function POST(request: NextRequest) {
     headers: copyUpstreamHeaders(upstream),
   });
   response.headers.set("Cache-Control", "private, no-store");
+  writeSession(response, session.state);
   return response;
 }
