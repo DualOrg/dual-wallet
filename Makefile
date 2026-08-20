@@ -2,6 +2,10 @@ SHELL := /bin/bash
 
 ENV ?= dev
 REGION ?= europe-west6
+# Still 'dual-viewer' because that is the name of the live Cloud Run service.
+# Changing it here does not rename that service: the next deploy would create a
+# second one and leave the wallet.dual.network mapping on the old one. Rename in
+# the console first, then change this.
 SERVICE ?= dual-viewer
 PROJECT_ID ?= $(if $(filter prod,$(ENV)),YOUR_GCP_PROD_PROJECT,YOUR_GCP_DEV_PROJECT)
 IMAGE ?= eu.gcr.io/$(PROJECT_ID)/$(SERVICE):latest
@@ -12,7 +16,7 @@ NEXT_PUBLIC_APP_URL ?= https://wallet.dual.network
 NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS ?= https://faces.dual.network
 NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS ?= dual.dpp@1=https://faces.dual.network/dpp/v1/
 
-.PHONY: help install dev build check test sdk-sync deploy-config-check image-build image-push deploy deploy-dev deploy-prod viewer viewer-dev viewer-prod
+.PHONY: help install dev build check test sdk-sync deploy-config-check image-build image-push deploy deploy-dev deploy-prod wallet wallet-dev wallet-prod
 
 help:
 	@echo "Local commands:"
@@ -23,8 +27,8 @@ help:
 	@echo "  make test          Run unit tests"
 	@echo "  make sdk-sync      Synchronize the generated web SDK"
 	@echo "Deployment commands:"
-	@echo "  make viewer-dev    Build, push, and deploy Cloud Run service 'dual-viewer' to dev"
-	@echo "  make viewer-prod   Build, push, and deploy Cloud Run service 'dual-viewer' to prod"
+	@echo "  make wallet-dev    Build, push, and deploy Cloud Run service '$(SERVICE)' to dev"
+	@echo "  make wallet-prod   Build, push, and deploy Cloud Run service '$(SERVICE)' to prod"
 	@echo "  make image-build   Build the deployment image for ENV=$(ENV)"
 	@echo "  make image-push    Push the deployment image for ENV=$(ENV)"
 	@echo "  make deploy        Deploy the existing image for ENV=$(ENV)"
@@ -71,6 +75,8 @@ image-build: deploy-config-check
 image-push: deploy-config-check
 	docker push "$(IMAGE)"
 
+# --max-instances stays 1: the session store is process-local, so a second
+# instance signs users out at random. Introduce a shared store before raising it.
 deploy: deploy-config-check
 	gcloud run deploy "$(SERVICE)" \
 		--project "$(PROJECT_ID)" \
@@ -86,10 +92,10 @@ deploy-dev: deploy
 deploy-prod: ENV=prod
 deploy-prod: deploy
 
-viewer: image-build image-push deploy
+wallet: image-build image-push deploy
 
-viewer-dev: ENV=dev
-viewer-dev: viewer
+wallet-dev: ENV=dev
+wallet-dev: wallet
 
-viewer-prod: ENV=prod
-viewer-prod: viewer
+wallet-prod: ENV=prod
+wallet-prod: wallet

@@ -124,10 +124,10 @@ App:
 
 ```bash
 # YOUR_GCP_DEV_PROJECT
-make viewer-dev
+make wallet-dev
 
 # YOUR_GCP_PROD_PROJECT
-make viewer-prod
+make wallet-prod
 ```
 
 The defaults are `API_URL=https://api.dual.network`,
@@ -146,7 +146,7 @@ public variables into the browser bundle. Override any value on the command
 line when required, for example:
 
 ```bash
-make viewer-prod API_URL=https://api.example.com VIEWER_BASE_DOMAIN=viewer.example.com NEXT_PUBLIC_APP_URL=https://viewer.example.com NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS=https://faces.example.com NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS=dual.dpp@1=https://faces.example.com/dpp/v1/
+make wallet-prod API_URL=https://api.example.com VIEWER_BASE_DOMAIN=viewer.example.com NEXT_PUBLIC_APP_URL=https://viewer.example.com NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS=https://faces.example.com NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS=dual.dpp@1=https://faces.example.com/dpp/v1/
 ```
 
 Deployment is capped at one Cloud Run instance while sessions use the current
