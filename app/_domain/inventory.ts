@@ -25,6 +25,10 @@ export interface ObjectPresentation {
   interactive: boolean;
   revision: string;
   config?: object;
+  // Validated in the adapter from config.theme.colors.surface. Painted behind
+  // the face so the reserved box matches it while loading and wherever the
+  // frame letterboxes, instead of flashing the page background through.
+  surface?: string;
 }
 
 export interface InventoryObject extends ObjectDetail {

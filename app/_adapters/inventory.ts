@@ -37,6 +37,23 @@ function publicConfig(value: ObjectDisplay["config"]): object | undefined {
     : undefined;
 }
 
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+// The face's own surface colour, so the host can paint the box it reserves to
+// match. Publisher-authored, so it reaches a style property only as a literal
+// hex triple/quad; any other string would let configuration smuggle arbitrary
+// CSS into the page.
+function surfaceColour(config?: object) {
+  const value = record(record(record(config)?.theme)?.colors)?.surface;
+  return typeof value === "string" && /^#[0-9a-fA-F]{3,8}$/.test(value)
+    ? value
+    : undefined;
+}
+
 function toObjectPresentation(
   objectId: string,
   contentRevision: string,
@@ -48,6 +65,7 @@ function toObjectPresentation(
     : undefined;
   const expectedPath = `/public/objects/${objectId}/display/${value.variant}`;
   const config = publicConfig(value.config);
+  const surface = surfaceColour(config);
   if (
     value.href === expectedPath &&
     ["text/html", "image/svg+xml"].includes(value.mediaType)
@@ -60,6 +78,7 @@ function toObjectPresentation(
       interactive: value.interactive,
       revision: value.revision,
       config,
+      surface,
     };
   }
   const assetUrl = safeAssetUrl(value.href);
@@ -78,6 +97,7 @@ function toObjectPresentation(
       interactive: value.interactive,
       revision: value.revision,
       config,
+      surface,
     };
   }
   if (
@@ -92,6 +112,7 @@ function toObjectPresentation(
       interactive: false,
       revision: value.revision,
       config,
+      surface,
     };
   }
   return undefined;

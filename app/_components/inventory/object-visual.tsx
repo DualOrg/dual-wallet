@@ -21,7 +21,14 @@ const DOCUMENT_POLICY = [
   "form-action 'none'",
 ].join("; ");
 
-const EXTERNAL_DOCUMENT_SANDBOX = "allow-forms allow-same-origin allow-scripts";
+// allow-popups lets a face offer an outbound link; without it both window.open
+// and target="_blank" are silently inert. The escape variant keeps the opened
+// tab from inheriting this sandbox. Neither grants authority over this page:
+// the frame is already cross-origin and already scripts, and
+// allow-top-navigation stays absent, so a face can open a new top-level
+// context but never navigate ours.
+const EXTERNAL_DOCUMENT_SANDBOX =
+  "allow-forms allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox";
 
 function sandboxedDocument(source: string) {
   return `<meta http-equiv="Content-Security-Policy" content="${DOCUMENT_POLICY}">${source}`;
@@ -125,11 +132,14 @@ export function ObjectVisual({
     <div
       className="object-image"
       ref={container}
-      style={
-        display?.aspectRatio
+      style={{
+        ...(display?.aspectRatio
           ? { aspectRatio: display.aspectRatio.replace("/", " / ") }
-          : undefined
-      }
+          : undefined),
+        ...(display?.surface
+          ? { backgroundColor: display.surface }
+          : undefined),
+      }}
     >
       {display?.kind === "external-document" ? (
         <iframe

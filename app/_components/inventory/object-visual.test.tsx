@@ -23,8 +23,11 @@ describe("ObjectVisual", () => {
     );
     expect(frame.hasAttribute("srcdoc")).toBe(false);
     expect(frame.getAttribute("sandbox")).toBe(
-      "allow-forms allow-same-origin allow-scripts",
+      "allow-forms allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox",
     );
+    // A face may open a new top-level context so its outbound links work, but
+    // must never be able to navigate ours.
+    expect(frame.getAttribute("sandbox")).not.toContain("allow-top-navigation");
     expect(frame.classList).not.toContain("is-inert");
     expect(frame.getAttribute("tabindex")).toBeNull();
     expect(frame.getAttribute("aria-hidden")).toBeNull();
