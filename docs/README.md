@@ -10,3 +10,5 @@
 - [External-face integration and change guide](./external-face-integration.md)
 - [Dedicated applications, authentication, and shared packages](./dedicated-applications.md)
 - [Publisher object-view demo](./publisher-demo/README.md)
+- Specs:
+  - [Wallet branding contract](./specs/2026-08-20-wallet-branding-design.md)
