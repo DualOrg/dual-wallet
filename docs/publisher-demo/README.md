@@ -8,14 +8,14 @@ The `Digital Vouchers` organization (`000000000000000000000001`) owns five demo 
 
 `0xd1AEb264fd240879da9e0c344c0b0DF5BF3AbbF5`
 
-| Demo             | Face                       | Template                   | Object                     | Public Viewer                                                                          |
-| ---------------- | -------------------------- | -------------------------- | -------------------------- | -------------------------------------------------------------------------------------- |
-| Product passport | `6a7b2300a7cd3da77bd5dc43` | `6a7b2355a7cd3da77bd5dc46` | `6a7b237fa7cd3da77bd5dc49` | [Aurelia S7 Chronograph](https://wallet.dual.network/objects/6a7b237fa7cd3da77bd5dc49) |
-| Battery passport | `6a7b2300a7cd3da77bd5dc44` | `6a7b2355a7cd3da77bd5dc47` | `6a7b23a8a7cd3da77bd5dc4e` | [NovaCell B24](https://wallet.dual.network/objects/6a7b23a8a7cd3da77bd5dc4e)           |
-| Collectible card | `6a7b2300a7cd3da77bd5dc45` | `6a7b2356a7cd3da77bd5dc48` | `6a7b23a8a7cd3da77bd5dc53` | [Aetherwing Sentinel](https://wallet.dual.network/objects/6a7b23a8a7cd3da77bd5dc53)    |
-| Interactive DPP  | `6a7b5893e4c541acd669e130` | `6a7b58b7e4c541acd669e131` | `6a7b58e0e4c541acd669e132` | [Cirrus One Travel Case](https://wallet.dual.network/objects/6a7b58e0e4c541acd669e132) |
+| Demo             | Face                       | Template                   | Object                     | Public Viewer                                                                        |
+| ---------------- | -------------------------- | -------------------------- | -------------------------- | ------------------------------------------------------------------------------------ |
+| Product passport | `6a7b2300a7cd3da77bd5dc43` | `6a7b2355a7cd3da77bd5dc46` | `6a7b237fa7cd3da77bd5dc49` | [Aurelia S7 Chronograph](https://view.dual.network/objects/6a7b237fa7cd3da77bd5dc49) |
+| Battery passport | `6a7b2300a7cd3da77bd5dc44` | `6a7b2355a7cd3da77bd5dc47` | `6a7b23a8a7cd3da77bd5dc4e` | [NovaCell B24](https://view.dual.network/objects/6a7b23a8a7cd3da77bd5dc4e)           |
+| Collectible card | `6a7b2300a7cd3da77bd5dc45` | `6a7b2356a7cd3da77bd5dc48` | `6a7b23a8a7cd3da77bd5dc53` | [Aetherwing Sentinel](https://view.dual.network/objects/6a7b23a8a7cd3da77bd5dc53)    |
+| Interactive DPP  | `6a7b5893e4c541acd669e130` | `6a7b58b7e4c541acd669e131` | `6a7b58e0e4c541acd669e132` | [Cirrus One Travel Case](https://view.dual.network/objects/6a7b58e0e4c541acd669e132) |
 
-The URL-backed BKVS DPP face `6a7c0b5b2d715b526f859e0d` is assigned to template `6a7c0b5c2d715b526f859e0e`. It loads [BKVS DPP v0.4.1](https://storage.googleapis.com/bkvs-test/dpp/v0.4.1/index.html). Object `6a7c0cff44f9df7689e3745b` was minted and transferred to the Viewer wallet; open it in the [public Viewer](https://wallet.dual.network/objects/6a7c0cff44f9df7689e3745b).
+The URL-backed BKVS DPP face `6a7c0b5b2d715b526f859e0d` is assigned to template `6a7c0b5c2d715b526f859e0e`. It loads [BKVS DPP v0.4.1](https://storage.googleapis.com/bkvs-test/dpp/v0.4.1/index.html). Object `6a7c0cff44f9df7689e3745b` was minted and transferred to the Viewer wallet; open it in the [public Viewer](https://view.dual.network/objects/6a7c0cff44f9df7689e3745b).
 
 The complete identifiers, mint actions, transfer actions, canonical links, and short links are in [`manifest.json`](./manifest.json).
 

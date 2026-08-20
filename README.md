@@ -48,8 +48,7 @@ Development also allows `http://localhost:4100` and `http://127.0.0.1:4100`. Vie
 - Email verification and resend
 - Forgot/reset password
 - Kernel smart-account inventory, object details and versioned action logs
-- Public object previews and share links using the API's filtered public projection
-- External face `card` views in inventory/public pages and `detail` views on authenticated object pages
+- External face `card` views in inventory and `detail` views on object pages
 - Profile/language updates and account deletion
 
 Operator and admin surfaces are intentionally outside this app shell and can be added as a separate role-gated area later.

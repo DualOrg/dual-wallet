@@ -54,10 +54,9 @@ remains. Keep the guides synchronized with architectural changes.
   - `/verify`: wallet/account verification using the delivered code.
   - `/forgot-password`: request a password reset.
   - `/reset-password`: consume the reset token and set a new password.
-- Public object routes:
-  - `/objects/[objectId]`: canonical anonymous object view using only the public
-    object projection and no authenticated bridge.
-  - `/o/[objectId]`: redirect-only short alias for the canonical public URL.
+- The anonymous public object view lives in the sibling `../viewer`
+  repository. This app serves no public object route; it keeps only the
+  display proxy that its own authenticated faces load through.
 - Authorized routes:
   - `/inventory`: the current wallet's SmartToken objects, with loading, empty,
     error, pagination, filtering, and responsive card/list states.
@@ -398,7 +397,7 @@ documents it links. Keep that guide synchronized with the code and tests.
   `capabilities/` owns named operations and injected handlers. A new backend
   integration adds a capability module without teaching transport about the
   use case.
-- Public object pages never initialize the authenticated bridge. Inventory
+- Inventory
   cards may receive only the reviewed minimized card projection and
   non-privileged card capability; they receive no private/custom fields,
   content or state hashes, signer/session data, private-attribute handler, or

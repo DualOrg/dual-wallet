@@ -23,9 +23,8 @@ activity, settings, sharing, or external-face behavior.
 
 - Authenticated routes are `/inventory`, `/inventory/[objectId]`, `/activity`,
   and `/settings`.
-- Public object viewing is owned by `/objects/[objectId]`; `/o/[objectId]` is a
-  redirect-only short alias. Public pages never depend on a Viewer session or
-  silently fall back to an authenticated response.
+- Public object viewing is owned by the sibling `../viewer` application. This
+  app has no anonymous object route and must not regain one.
 - Authentication and recovery routes remain public and redirect an already
   authenticated user to inventory.
 - Filters, sorting, and other non-sensitive state that a user may reasonably
