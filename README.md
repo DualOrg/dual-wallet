@@ -119,8 +119,10 @@ handlers. A Google Cloud Storage bucket such as `dual-viewer` can host static
 assets, but it cannot host this application by itself.
 
 The Makefile deploys the standalone Docker image as the Cloud Run service
-`dual-viewer`, following the same registry and region convention as Console
-App:
+`dual-wallet`, following the same registry and region convention as Console
+App. That service does not exist yet: Cloud Run cannot rename, so the first
+deploy creates it alongside the old `dual-viewer`. Move the
+`wallet.dual.network` domain mapping over and delete `dual-viewer` afterwards.
 
 ```bash
 # YOUR_GCP_DEV_PROJECT

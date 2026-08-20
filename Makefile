@@ -2,11 +2,13 @@ SHELL := /bin/bash
 
 ENV ?= dev
 REGION ?= europe-west6
-# Still 'dual-viewer' because that is the name of the live Cloud Run service.
-# Changing it here does not rename that service: the next deploy would create a
-# second one and leave the wallet.dual.network mapping on the old one. Rename in
-# the console first, then change this.
-SERVICE ?= dual-viewer
+# Cloud Run has no rename: deploying this creates a NEW service, so the first
+# deploy under this name needs the domain mapping moved by hand.
+#   1. make wallet-prod                      (creates dual-wallet, verify its URL)
+#   2. move the wallet.dual.network mapping from dual-viewer to dual-wallet
+#   3. delete the dual-viewer service
+# IMAGE derives from SERVICE, so this also starts a new image repository.
+SERVICE ?= dual-wallet
 PROJECT_ID ?= $(if $(filter prod,$(ENV)),YOUR_GCP_PROD_PROJECT,YOUR_GCP_DEV_PROJECT)
 IMAGE ?= eu.gcr.io/$(PROJECT_ID)/$(SERVICE):latest
 
