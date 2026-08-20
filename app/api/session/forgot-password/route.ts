@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await getWalletsApi().resetPassword(
-      { resetPasswordIn: { email, orgId: tenant.organizationId } },
+      { resetPasswordIn: { email, organizationId: tenant.organizationId } },
       { cache: "no-store" },
     );
     return NextResponse.json({ ok: true });

@@ -22,22 +22,16 @@ import { mapValues } from '../runtime';
 export interface ResetCodeIn {
     /**
      * Email address to receive password reset code
-     * @type {string}
-     * @memberof ResetCodeIn
      */
     email?: string;
     /**
      * Phone number in E.164 format to receive password reset code
-     * @type {string}
-     * @memberof ResetCodeIn
      */
     phoneNumber?: string;
     /**
      * Organization ID is requested (if applicable)
-     * @type {string}
-     * @memberof ResetCodeIn
      */
-    orgId?: string;
+    organizationId?: string;
 }
 
 /**
@@ -59,7 +53,7 @@ export function ResetCodeInFromJSONTyped(json: any, ignoreDiscriminator: boolean
         
         'email': json['email'] == null ? undefined : json['email'],
         'phoneNumber': json['phone_number'] == null ? undefined : json['phone_number'],
-        'orgId': json['org_id'] == null ? undefined : json['org_id'],
+        'organizationId': json['organization_id'] == null ? undefined : json['organization_id'],
     };
 }
 
@@ -76,7 +70,7 @@ export function ResetCodeInToJSONTyped(value?: ResetCodeIn | null, ignoreDiscrim
         
         'email': value['email'],
         'phone_number': value['phoneNumber'],
-        'org_id': value['orgId'],
+        'organization_id': value['organizationId'],
     };
 }
 

@@ -22,22 +22,16 @@ import { mapValues } from '../runtime';
 export interface ResetPasswordIn {
     /**
      * Email address associated with the account for password reset
-     * @type {string}
-     * @memberof ResetPasswordIn
      */
     email?: string;
     /**
      * Phone number in E.164 format associated with the account for password reset
-     * @type {string}
-     * @memberof ResetPasswordIn
      */
     phoneNumber?: string;
     /**
      * Organization ID is requested (if applicable)
-     * @type {string}
-     * @memberof ResetPasswordIn
      */
-    orgId?: string;
+    organizationId?: string;
 }
 
 /**
@@ -59,7 +53,7 @@ export function ResetPasswordInFromJSONTyped(json: any, ignoreDiscriminator: boo
         
         'email': json['email'] == null ? undefined : json['email'],
         'phoneNumber': json['phone_number'] == null ? undefined : json['phone_number'],
-        'orgId': json['org_id'] == null ? undefined : json['org_id'],
+        'organizationId': json['organization_id'] == null ? undefined : json['organization_id'],
     };
 }
 
@@ -76,7 +70,7 @@ export function ResetPasswordInToJSONTyped(value?: ResetPasswordIn | null, ignor
         
         'email': value['email'],
         'phone_number': value['phoneNumber'],
-        'org_id': value['orgId'],
+        'organization_id': value['organizationId'],
     };
 }
 
