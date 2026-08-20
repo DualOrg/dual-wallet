@@ -43,10 +43,10 @@ Two paths. The public read lives under the existing `/public/**` prefix because
 the gateway authorizes per path and method, and every other anonymous read in
 the contract already follows that convention.
 
-| Path | Method | Security | Source file |
-| --- | --- | --- | --- |
-| `/public/organizations/{organizationId}/branding` | `GET` | `security: []` | `routes/organizations/public/organizations@{organizationId}@branding.yaml` |
-| `/organizations/{organizationId}/branding` | `PUT` | `bearer-auth`, `api-key-auth` | `routes/organizations/organizations@{organizationId}@branding.yaml` |
+| Path                                              | Method | Security                      | Source file                                                                |
+| ------------------------------------------------- | ------ | ----------------------------- | -------------------------------------------------------------------------- |
+| `/public/organizations/{organizationId}/branding` | `GET`  | `security: []`                | `routes/organizations/public/organizations@{organizationId}@branding.yaml` |
+| `/organizations/{organizationId}/branding`        | `PUT`  | `bearer-auth`, `api-key-auth` | `routes/organizations/organizations@{organizationId}@branding.yaml`        |
 
 `operationId`: `GetOrganizationBrandingPublic` and `SetOrganizationBranding`.
 
@@ -141,12 +141,12 @@ Identical to the read schema except that the three asset fields are ids rather
 than URLs:
 
 ```yaml
-  logo_asset_id:
-    type: string
-  logo_dark_asset_id:
-    type: string
-  favicon_asset_id:
-    type: string
+logo_asset_id:
+  type: string
+logo_dark_asset_id:
+  type: string
+favicon_asset_id:
+  type: string
 ```
 
 `when_modified` is server-owned and absent from the write payload.
@@ -178,16 +178,16 @@ A path in OpenAPI is not reachable through the public gateway. Add to
 `smarttoken/etc/{dev,cloud,prod}/gateway-schema.yaml`:
 
 ```yaml
-      - path: public/organizations/:organizationId/branding
-        method: GET
-        auth: []
-        resource: organizations.public.read
-      - path: "/organizations/:organizationId/branding"
-        method: PUT
-        auth:
-          - jwt
-          - api-key
-        resource: organizations.branding.update
+- path: public/organizations/:organizationId/branding
+  method: GET
+  auth: []
+  resource: organizations.public.read
+- path: "/organizations/:organizationId/branding"
+  method: PUT
+  auth:
+    - jwt
+    - api-key
+  resource: organizations.branding.update
 ```
 
 The write entry mirrors the existing `PATCH /organizations/:organizationId`
@@ -231,6 +231,7 @@ nothing in practice.
 
 `app/layout.tsx` renders a single `<style>` element into the document head:
 
+<!-- prettier-ignore -->
 ```css
 :root{--brand:#0a5fd4;--action-primary:#0a5fd4}
 .dark{--brand:#6ba8ff}
