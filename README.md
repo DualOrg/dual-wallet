@@ -151,7 +151,8 @@ line when required, for example:
 make wallet-prod API_URL=https://api.example.com VIEWER_BASE_DOMAIN=viewer.example.com NEXT_PUBLIC_APP_URL=https://viewer.example.com NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS=https://faces.example.com NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS=dual.dpp@1=https://faces.example.com/dpp/v1/
 ```
 
-Deployment is capped at one Cloud Run instance while sessions use the current
-process-local store. Introduce a shared session store before allowing multiple
-instances. Wildcard tenant DNS/TLS routing for `*.wallet.dual.network` remains
+The session is a sealed cookie rather than process-local state, so instances no
+longer have to be pinned to one. `MAX_INSTANCES` still defaults to 1; raise it
+when you have picked a ceiling. `SESSION_SECRET` must be set in production and
+stable across deploys, since changing it signs every wallet out. Wildcard tenant DNS/TLS routing for `*.wallet.dual.network` remains
 an infrastructure concern and is not changed by these targets.

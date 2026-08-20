@@ -12,6 +12,10 @@ SERVICE ?= dual-wallet
 PROJECT_ID ?= $(if $(filter prod,$(ENV)),YOUR_GCP_PROD_PROJECT,YOUR_GCP_DEV_PROJECT)
 IMAGE ?= eu.gcr.io/$(PROJECT_ID)/$(SERVICE):latest
 
+# The session is a sealed cookie, not process-local state, so instances no
+# longer have to be pinned to 1. Left at 1 until someone picks a ceiling.
+MAX_INSTANCES ?= 1
+
 API_URL ?= https://api.dual.network
 VIEWER_BASE_DOMAIN ?= wallet.dual.network
 NEXT_PUBLIC_APP_URL ?= https://wallet.dual.network
@@ -61,6 +65,7 @@ deploy-config-check:
 	@test -n "$(API_URL)" || (echo "API_URL is required" >&2; exit 1)
 	@test -n "$(VIEWER_BASE_DOMAIN)" || (echo "VIEWER_BASE_DOMAIN is required" >&2; exit 1)
 	@test -n "$(NEXT_PUBLIC_APP_URL)" || (echo "NEXT_PUBLIC_APP_URL is required" >&2; exit 1)
+	@test -n "$(MAX_INSTANCES)" || (echo "MAX_INSTANCES is required" >&2; exit 1)
 	@test -n "$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS)" || (echo "NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS is required" >&2; exit 1)
 	@test -n "$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS)" || (echo "NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS is required" >&2; exit 1)
 
@@ -77,15 +82,13 @@ image-build: deploy-config-check
 image-push: deploy-config-check
 	docker push "$(IMAGE)"
 
-# --max-instances stays 1: the session store is process-local, so a second
-# instance signs users out at random. Introduce a shared store before raising it.
 deploy: deploy-config-check
 	gcloud run deploy "$(SERVICE)" \
 		--project "$(PROJECT_ID)" \
 		--region "$(REGION)" \
 		--image "$(IMAGE)" \
 		--allow-unauthenticated \
-		--max-instances 1 \
+		--max-instances $(MAX_INSTANCES) \
 		--update-env-vars "^|^API_URL=$(API_URL)|VIEWER_BASE_DOMAIN=$(VIEWER_BASE_DOMAIN)|NEXT_PUBLIC_APP_URL=$(NEXT_PUBLIC_APP_URL)|NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS=$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS)|NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS=$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS)"
 
 deploy-dev: ENV=dev
