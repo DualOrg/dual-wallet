@@ -10,6 +10,7 @@ import {
   connectEoa,
   emailLogin,
   emailRegister,
+  otpLogin,
   loginWithPasskey,
   registerWithPasskey,
   type AuthResult,
@@ -56,6 +57,8 @@ export function useAuthActions() {
     clearError: mutation.reset,
     emailLogin: (email: string, password: string) =>
       run("email", () => emailLogin(email, password)),
+    otpLogin: (email: string, otp: string) =>
+      run("email", () => otpLogin(email, otp)),
     emailRegister: (email: string, password: string, nickname: string) =>
       run("email", () => emailRegister(email, password, nickname)),
     eoa: () => run("wallet", connectEoa),

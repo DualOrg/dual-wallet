@@ -5,6 +5,7 @@ import { tenantFromRequest } from "@/api/tenant";
 import {
   apiErrorResponse,
   mutationGuard,
+  optionalString,
   readJsonRecord,
   requiredString,
   tenantRequired,
@@ -19,10 +20,14 @@ export async function POST(request: NextRequest) {
   if (!tenant) return tenantRequired();
   const body = await readJsonRecord(request);
   const email = body && requiredString(body, "email", 320);
-  const password = body && requiredString(body, "password", 255);
-  if (!email || !password) {
+  // A password and a one-time code are alternatives, not a pair: the code is
+  // what someone signs in with when they cannot use the password, so requiring
+  // both would close the door this exists to open.
+  const password = body ? optionalString(body, "password", 255) : undefined;
+  const otp = body ? optionalString(body, "otp", 64) : undefined;
+  if (!email || (!password && !otp)) {
     return NextResponse.json(
-      { message: "Email and password are required." },
+      { message: "Email and either a password or a sign-in code are required." },
       { status: 400 },
     );
   }
@@ -34,6 +39,7 @@ export async function POST(request: NextRequest) {
           organizationId: tenant.organizationId,
           email,
           password,
+          otp,
         },
       },
       { cache: "no-store" },

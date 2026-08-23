@@ -44,6 +44,15 @@ export function emailLogin(email: string, password: string) {
   });
 }
 
+// otpLogin signs in with the one-time code from a sign-in mail, which is the
+// way in when the password is the thing that cannot be used.
+export function otpLogin(email: string, otp: string) {
+  return requestJson<AuthResult>("/api/session/login", {
+    method: "POST",
+    body: JSON.stringify({ email, otp }),
+  });
+}
+
 export function emailRegister(
   email: string,
   password: string,

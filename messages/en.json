@@ -110,6 +110,15 @@
     "resent": "A new verification code is on its way.",
     "success": "Your account is verified."
   },
+  "otp": {
+    "title": "Sign in with your code",
+    "description": "Enter the address you signed up with and the code from your email.",
+    "fromLink": "Signing you in from your email link.",
+    "code": "Sign-in code",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "back": "Back to sign in"
+  },
   "recovery": {
     "title": "Reset your password",
     "description": "Enter your email and we’ll send a secure reset link if an account exists.",
