@@ -22,32 +22,22 @@ import { mapValues } from '../runtime';
 export interface ActionPermit {
     /**
      * 
-     * @type {string}
-     * @memberof ActionPermit
      */
     commitment: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionPermit
      */
     actionType: string;
     /**
      * 
-     * @type {number}
-     * @memberof ActionPermit
      */
     nonce: number;
     /**
      * 
-     * @type {string}
-     * @memberof ActionPermit
      */
     recipient?: string;
     /**
      * 
-     * @type {number}
-     * @memberof ActionPermit
      */
     deadline?: number;
 }
@@ -57,7 +47,7 @@ export interface ActionPermit {
  */
 export function instanceOfActionPermit(value: object): value is ActionPermit {
     if (!('commitment' in value) || value['commitment'] === undefined) return false;
-    if ((!('actionType' in value) && !('action_type' in value)) || (value['actionType'] === undefined && value['action_type'] === undefined)) return false;
+    if ((!('actionType' in (value as Record<string, any>)) && !('action_type' in (value as Record<string, any>))) || ((value as Record<string, any>)['actionType'] === undefined && (value as Record<string, any>)['action_type'] === undefined)) return false;
     if (!('nonce' in value) || value['nonce'] === undefined) return false;
     return true;
 }

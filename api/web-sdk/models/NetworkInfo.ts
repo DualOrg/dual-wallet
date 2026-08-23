@@ -22,26 +22,18 @@ import { mapValues } from '../runtime';
 export interface NetworkInfo {
     /**
      * The current status of the network (e.g., "operational", "degraded", "maintenance").
-     * @type {string}
-     * @memberof NetworkInfo
      */
     status: string;
     /**
      * The current version of the network protocol or software.
-     * @type {string}
-     * @memberof NetworkInfo
      */
     version?: string;
     /**
      * The duration for which the network has been operational without interruption.
-     * @type {string}
-     * @memberof NetworkInfo
      */
     uptime?: string;
     /**
      * The timestamp of the last update to the network information.
-     * @type {Date}
-     * @memberof NetworkInfo
      */
     lastUpdated?: Date;
 }

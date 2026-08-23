@@ -22,8 +22,6 @@ import { mapValues } from '../runtime';
 export interface MemberUpdate {
     /**
      * 
-     * @type {string}
-     * @memberof MemberUpdate
      */
     roleName: string;
 }
@@ -32,7 +30,7 @@ export interface MemberUpdate {
  * Check if a given object implements the MemberUpdate interface.
  */
 export function instanceOfMemberUpdate(value: object): value is MemberUpdate {
-    if ((!('roleName' in value) && !('role_name' in value)) || (value['roleName'] === undefined && value['role_name'] === undefined)) return false;
+    if ((!('roleName' in (value as Record<string, any>)) && !('role_name' in (value as Record<string, any>))) || ((value as Record<string, any>)['roleName'] === undefined && (value as Record<string, any>)['role_name'] === undefined)) return false;
     return true;
 }
 

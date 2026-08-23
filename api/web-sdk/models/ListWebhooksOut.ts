@@ -30,14 +30,10 @@ import {
 export interface ListWebhooksOut {
     /**
      * Array of webhook configurations associated with the account or organization.
-     * @type {Array<Webhook>}
-     * @memberof ListWebhooksOut
      */
     webhooks: Array<Webhook>;
     /**
      * Pagination token for retrieving the next set of webhooks.
-     * @type {string}
-     * @memberof ListWebhooksOut
      */
     next?: string;
 }

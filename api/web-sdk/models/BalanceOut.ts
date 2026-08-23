@@ -22,8 +22,6 @@ import { mapValues } from '../runtime';
 export interface BalanceOut {
     /**
      * The current balance of the organization in the smallest currency unit (e.g., cents)
-     * @type {string}
-     * @memberof BalanceOut
      */
     amount: string;
 }

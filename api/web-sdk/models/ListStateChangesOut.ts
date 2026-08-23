@@ -30,14 +30,10 @@ import {
 export interface ListStateChangesOut {
     /**
      * Array of state changes.
-     * @type {Array<StateChange>}
-     * @memberof ListStateChangesOut
      */
     stateChanges: Array<StateChange>;
     /**
      * Pagination token for the next set of results, if any.
-     * @type {string}
-     * @memberof ListStateChangesOut
      */
     next?: string;
 }
@@ -46,7 +42,7 @@ export interface ListStateChangesOut {
  * Check if a given object implements the ListStateChangesOut interface.
  */
 export function instanceOfListStateChangesOut(value: object): value is ListStateChangesOut {
-    if ((!('stateChanges' in value) && !('state_changes' in value)) || (value['stateChanges'] === undefined && value['state_changes'] === undefined)) return false;
+    if ((!('stateChanges' in (value as Record<string, any>)) && !('state_changes' in (value as Record<string, any>))) || ((value as Record<string, any>)['stateChanges'] === undefined && (value as Record<string, any>)['state_changes'] === undefined)) return false;
     return true;
 }
 

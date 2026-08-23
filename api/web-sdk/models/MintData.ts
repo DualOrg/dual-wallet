@@ -23,49 +23,53 @@ import {
 } from './Metadata';
 
 /**
- * 
+ * Initial object state overrides applied at mint time
  * @export
- * @interface PublicTemplateObject
+ * @interface MintData
  */
-export interface PublicTemplateObject {
+export interface MintData {
     /**
-     * 
+     * Metadata information for the object
      */
-    metadata: Metadata;
+    metadata?: Metadata;
     /**
      * Custom properties of the object
      */
     custom?: object;
+    /**
+     * System properties of the object
+     */
+    system?: object;
 }
 
 /**
- * Check if a given object implements the PublicTemplateObject interface.
+ * Check if a given object implements the MintData interface.
  */
-export function instanceOfPublicTemplateObject(value: object): value is PublicTemplateObject {
-    if (!('metadata' in value) || value['metadata'] === undefined) return false;
+export function instanceOfMintData(value: object): value is MintData {
     return true;
 }
 
-export function PublicTemplateObjectFromJSON(json: any): PublicTemplateObject {
-    return PublicTemplateObjectFromJSONTyped(json, false);
+export function MintDataFromJSON(json: any): MintData {
+    return MintDataFromJSONTyped(json, false);
 }
 
-export function PublicTemplateObjectFromJSONTyped(json: any, ignoreDiscriminator: boolean): PublicTemplateObject {
+export function MintDataFromJSONTyped(json: any, ignoreDiscriminator: boolean): MintData {
     if (json == null) {
         return json;
     }
     return {
         
-        'metadata': MetadataFromJSON(json['metadata']),
+        'metadata': json['metadata'] == null ? undefined : MetadataFromJSON(json['metadata']),
         'custom': json['custom'] == null ? undefined : json['custom'],
+        'system': json['system'] == null ? undefined : json['system'],
     };
 }
 
-export function PublicTemplateObjectToJSON(json: any): PublicTemplateObject {
-    return PublicTemplateObjectToJSONTyped(json, false);
+export function MintDataToJSON(json: any): MintData {
+    return MintDataToJSONTyped(json, false);
 }
 
-export function PublicTemplateObjectToJSONTyped(value?: PublicTemplateObject | null, ignoreDiscriminator: boolean = false): any {
+export function MintDataToJSONTyped(value?: MintData | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -74,6 +78,7 @@ export function PublicTemplateObjectToJSONTyped(value?: PublicTemplateObject | n
         
         'metadata': MetadataToJSON(value['metadata']),
         'custom': value['custom'],
+        'system': value['system'],
     };
 }
 

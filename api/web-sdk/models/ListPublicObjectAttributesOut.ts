@@ -30,14 +30,10 @@ import {
 export interface ListPublicObjectAttributesOut {
     /**
      * Public attributes in normalized key order.
-     * @type {Array<PublicObjectAttribute>}
-     * @memberof ListPublicObjectAttributesOut
      */
     attributes: Array<PublicObjectAttribute>;
     /**
      * Cursor for the next page, when more public attributes are available.
-     * @type {string}
-     * @memberof ListPublicObjectAttributesOut
      */
     next?: string;
 }

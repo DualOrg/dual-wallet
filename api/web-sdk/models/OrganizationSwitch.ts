@@ -22,8 +22,6 @@ import { mapValues } from '../runtime';
 export interface OrganizationSwitch {
     /**
      * Unique identifier of the organization to switch to
-     * @type {string}
-     * @memberof OrganizationSwitch
      */
     id: string;
 }

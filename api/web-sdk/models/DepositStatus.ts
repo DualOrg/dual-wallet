@@ -21,7 +21,7 @@
 export const DepositStatus = {
     Pending: 'pending',
     Completed: 'completed',
-    Failed: 'failed'
+    Failed: 'failed',
 } as const;
 export type DepositStatus = typeof DepositStatus[keyof typeof DepositStatus];
 

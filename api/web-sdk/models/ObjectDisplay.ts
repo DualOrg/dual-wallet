@@ -33,20 +33,14 @@ import {
 export interface ObjectDisplay {
     /**
      * Face used to produce this display.
-     * @type {string}
-     * @memberof ObjectDisplay
      */
     faceId: string;
     /**
      * 
-     * @type {DisplayVariant}
-     * @memberof ObjectDisplay
      */
     variant: DisplayVariant;
     /**
      * Media type served by href.
-     * @type {string}
-     * @memberof ObjectDisplay
      */
     mediaType: string;
     /**
@@ -54,34 +48,24 @@ export interface ObjectDisplay {
      * URL-backed face view, existing query parameters are preserved and the
      * backend adds `object_id` and the requested `variant`.
      * 
-     * @type {string}
-     * @memberof ObjectDisplay
      */
     href: string;
     /**
      * Cache revision that changes when the assigned face changes.
-     * @type {string}
-     * @memberof ObjectDisplay
      */
     revision: string;
     /**
      * Recommended width/height ratio for layout reservation.
-     * @type {string}
-     * @memberof ObjectDisplay
      */
     aspectRatio?: string;
     /**
      * Whether the representation is intended to accept user interaction.
-     * @type {boolean}
-     * @memberof ObjectDisplay
      */
     interactive: boolean;
     /**
      * Public, non-executable configuration declared by the selected face view.
      * It must not contain credentials, secrets, tokens, or capability grants.
      * 
-     * @type {{ [key: string]: any; }}
-     * @memberof ObjectDisplay
      */
     config?: { [key: string]: any; };
 }
@@ -92,9 +76,9 @@ export interface ObjectDisplay {
  * Check if a given object implements the ObjectDisplay interface.
  */
 export function instanceOfObjectDisplay(value: object): value is ObjectDisplay {
-    if ((!('faceId' in value) && !('face_id' in value)) || (value['faceId'] === undefined && value['face_id'] === undefined)) return false;
+    if ((!('faceId' in (value as Record<string, any>)) && !('face_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['faceId'] === undefined && (value as Record<string, any>)['face_id'] === undefined)) return false;
     if (!('variant' in value) || value['variant'] === undefined) return false;
-    if ((!('mediaType' in value) && !('media_type' in value)) || (value['mediaType'] === undefined && value['media_type'] === undefined)) return false;
+    if ((!('mediaType' in (value as Record<string, any>)) && !('media_type' in (value as Record<string, any>))) || ((value as Record<string, any>)['mediaType'] === undefined && (value as Record<string, any>)['media_type'] === undefined)) return false;
     if (!('href' in value) || value['href'] === undefined) return false;
     if (!('revision' in value) || value['revision'] === undefined) return false;
     if (!('interactive' in value) || value['interactive'] === undefined) return false;

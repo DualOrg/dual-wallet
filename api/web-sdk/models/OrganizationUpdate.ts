@@ -30,20 +30,14 @@ import {
 export interface OrganizationUpdate {
     /**
      * 
-     * @type {string}
-     * @memberof OrganizationUpdate
      */
     name?: string;
     /**
      * 
-     * @type {string}
-     * @memberof OrganizationUpdate
      */
     description?: string;
     /**
      * 
-     * @type {Asset}
-     * @memberof OrganizationUpdate
      */
     image?: Asset;
 }

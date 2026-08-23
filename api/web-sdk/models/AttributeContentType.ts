@@ -20,7 +20,7 @@
  */
 export const AttributeContentType = {
     AttributeContentTypeText: 'text',
-    AttributeContentTypeJSON: 'json'
+    AttributeContentTypeJSON: 'json',
 } as const;
 export type AttributeContentType = typeof AttributeContentType[keyof typeof AttributeContentType];
 

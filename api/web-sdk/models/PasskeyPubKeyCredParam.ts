@@ -22,16 +22,12 @@ import { mapValues } from '../runtime';
 export interface PasskeyPubKeyCredParam {
     /**
      * 
-     * @type {PasskeyPubKeyCredParamTypeEnum}
-     * @memberof PasskeyPubKeyCredParam
      */
     type: PasskeyPubKeyCredParamTypeEnum;
     /**
      * COSE algorithm identifier.
      * -7 = ES256 (P-256 / WebAuthn passkey, the only supported value).
      * 
-     * @type {number}
-     * @memberof PasskeyPubKeyCredParam
      */
     alg: number;
 }
@@ -41,7 +37,7 @@ export interface PasskeyPubKeyCredParam {
  * @export
  */
 export const PasskeyPubKeyCredParamTypeEnum = {
-    PublicKey: 'public-key'
+    PublicKey: 'public-key',
 } as const;
 export type PasskeyPubKeyCredParamTypeEnum = typeof PasskeyPubKeyCredParamTypeEnum[keyof typeof PasskeyPubKeyCredParamTypeEnum];
 

@@ -20,8 +20,7 @@
  */
 export const ProviderType = {
     Ipfs: 'ipfs',
-    S3: 's3',
-    Gcs: 'gcs'
+    Gcs: 'gcs',
 } as const;
 export type ProviderType = typeof ProviderType[keyof typeof ProviderType];
 

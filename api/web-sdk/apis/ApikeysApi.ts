@@ -36,16 +36,31 @@ import {
 } from '../models/ModelError';
 
 export interface CreateApiKeyRequest {
+    /**
+     * 
+     */
     apiKeyCreate: ApiKeyCreate;
 }
 
 export interface DeleteApiKeyRequest {
+    /**
+     * The unique identifier of the API key to retrieve.
+     */
     keyId: string;
 }
 
 export interface ListApiKeysRequest {
+    /**
+     * Filter the list of keys by name.
+     */
     name?: string;
+    /**
+     * Maximum number of keys to return in the response.
+     */
     limit?: number;
+    /**
+     * Pagination token to retrieve the next page of keys.
+     */
     next?: string;
 }
 

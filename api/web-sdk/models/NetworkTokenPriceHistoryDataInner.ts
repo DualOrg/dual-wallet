@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface NetworkTokenPriceHistoryDataInner {
     /**
      * The timestamp of the price data point.
-     * @type {Date}
-     * @memberof NetworkTokenPriceHistoryDataInner
      */
     when: Date;
     /**
      * The price of the network token at the given timestamp.
-     * @type {string}
-     * @memberof NetworkTokenPriceHistoryDataInner
      */
     price: string;
 }
@@ -53,7 +49,7 @@ export function NetworkTokenPriceHistoryDataInnerFromJSONTyped(json: any, ignore
     }
     return {
         
-        'when': (new Date(json['when'])),
+        'when': (json['when'] == null ? json['when'] : new Date(json['when'])),
         'price': json['price'],
     };
 }
@@ -69,7 +65,7 @@ export function NetworkTokenPriceHistoryDataInnerToJSONTyped(value?: NetworkToke
 
     return {
         
-        'when': value['when'].toISOString(),
+        'when': value['when'] == null ? value['when'] : value['when'].toISOString(),
         'price': value['price'],
     };
 }

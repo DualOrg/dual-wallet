@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface Transfer {
     /**
      * 
-     * @type {string}
-     * @memberof Transfer
      */
     id: string;
     /**
      * 
-     * @type {string}
-     * @memberof Transfer
      */
     to: string;
 }

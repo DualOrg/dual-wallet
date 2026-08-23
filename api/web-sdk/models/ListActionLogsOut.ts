@@ -30,14 +30,10 @@ import {
 export interface ListActionLogsOut {
     /**
      * Array of action log entries returned in the response
-     * @type {Array<ActionLog>}
-     * @memberof ListActionLogsOut
      */
     actionLogs: Array<ActionLog>;
     /**
      * Pagination token for retrieving the next set of action logs
-     * @type {string}
-     * @memberof ListActionLogsOut
      */
     next?: string;
 }
@@ -46,7 +42,7 @@ export interface ListActionLogsOut {
  * Check if a given object implements the ListActionLogsOut interface.
  */
 export function instanceOfListActionLogsOut(value: object): value is ListActionLogsOut {
-    if ((!('actionLogs' in value) && !('action_logs' in value)) || (value['actionLogs'] === undefined && value['action_logs'] === undefined)) return false;
+    if ((!('actionLogs' in (value as Record<string, any>)) && !('action_logs' in (value as Record<string, any>))) || ((value as Record<string, any>)['actionLogs'] === undefined && (value as Record<string, any>)['action_logs'] === undefined)) return false;
     return true;
 }
 

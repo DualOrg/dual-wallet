@@ -44,74 +44,50 @@ import {
 export interface Deposit {
     /**
      * Unique identifier for the deposit
-     * @type {string}
-     * @memberof Deposit
      */
     id: string;
     /**
      * Organization identifier associated with the deposit
-     * @type {string}
-     * @memberof Deposit
      */
     orgId: string;
     /**
      * Identifier of the user who initiated the deposit.
-     * @type {string}
-     * @memberof Deposit
      */
     sender: string;
     /**
      * Amount of the deposit.
-     * @type {string}
-     * @memberof Deposit
      */
     amount: string;
     /**
      * 
-     * @type {DepositToken}
-     * @memberof Deposit
      */
     token: DepositToken;
     /**
      * Token address for the deposit.
-     * @type {string}
-     * @memberof Deposit
      */
     tokenAddress: string;
     /**
      * 
-     * @type {Network}
-     * @memberof Deposit
      */
     network: Network;
     /**
      * Transaction hash for the deposit.
-     * @type {string}
-     * @memberof Deposit
      */
     txHash: string;
     /**
      * Block number for the deposit.
-     * @type {number}
-     * @memberof Deposit
      */
     blockNum: number;
     /**
      * 
-     * @type {DepositStatus}
-     * @memberof Deposit
      */
     status: DepositStatus;
     /**
      * Timestamp of when the deposit was created.
-     * @type {Date}
-     * @memberof Deposit
      */
     whenCreated: Date;
     /**
      * Timestamp of the last modification to the deposit.
-     * @type {Date}
-     * @memberof Deposit
      */
     whenModified: Date;
 }
@@ -123,17 +99,17 @@ export interface Deposit {
  */
 export function instanceOfDeposit(value: object): value is Deposit {
     if (!('id' in value) || value['id'] === undefined) return false;
-    if ((!('orgId' in value) && !('org_id' in value)) || (value['orgId'] === undefined && value['org_id'] === undefined)) return false;
+    if ((!('orgId' in (value as Record<string, any>)) && !('org_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['orgId'] === undefined && (value as Record<string, any>)['org_id'] === undefined)) return false;
     if (!('sender' in value) || value['sender'] === undefined) return false;
     if (!('amount' in value) || value['amount'] === undefined) return false;
     if (!('token' in value) || value['token'] === undefined) return false;
-    if ((!('tokenAddress' in value) && !('token_address' in value)) || (value['tokenAddress'] === undefined && value['token_address'] === undefined)) return false;
+    if ((!('tokenAddress' in (value as Record<string, any>)) && !('token_address' in (value as Record<string, any>))) || ((value as Record<string, any>)['tokenAddress'] === undefined && (value as Record<string, any>)['token_address'] === undefined)) return false;
     if (!('network' in value) || value['network'] === undefined) return false;
-    if ((!('txHash' in value) && !('tx_hash' in value)) || (value['txHash'] === undefined && value['tx_hash'] === undefined)) return false;
-    if ((!('blockNum' in value) && !('block_num' in value)) || (value['blockNum'] === undefined && value['block_num'] === undefined)) return false;
+    if ((!('txHash' in (value as Record<string, any>)) && !('tx_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['txHash'] === undefined && (value as Record<string, any>)['tx_hash'] === undefined)) return false;
+    if ((!('blockNum' in (value as Record<string, any>)) && !('block_num' in (value as Record<string, any>))) || ((value as Record<string, any>)['blockNum'] === undefined && (value as Record<string, any>)['block_num'] === undefined)) return false;
     if (!('status' in value) || value['status'] === undefined) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
-    if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
+    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
     return true;
 }
 
@@ -157,8 +133,8 @@ export function DepositFromJSONTyped(json: any, ignoreDiscriminator: boolean): D
         'txHash': json['tx_hash'],
         'blockNum': json['block_num'],
         'status': DepositStatusFromJSON(json['status']),
-        'whenCreated': (new Date(json['when_created'])),
-        'whenModified': (new Date(json['when_modified'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
+        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
     };
 }
 
@@ -183,8 +159,8 @@ export function DepositToJSONTyped(value?: Deposit | null, ignoreDiscriminator: 
         'tx_hash': value['txHash'],
         'block_num': value['blockNum'],
         'status': DepositStatusToJSON(value['status']),
-        'when_created': value['whenCreated'].toISOString(),
-        'when_modified': value['whenModified'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
+        'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
     };
 }
 

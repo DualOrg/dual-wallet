@@ -22,22 +22,16 @@ import { mapValues } from '../runtime';
 export interface RequestOTPCodeIn {
     /**
      * Email address to receive the one-time password
-     * @type {string}
-     * @memberof RequestOTPCodeIn
      */
     email?: string;
     /**
      * Phone number in E.164 format to receive the one-time password
-     * @type {string}
-     * @memberof RequestOTPCodeIn
      */
     phoneNumber?: string;
     /**
      * Organization ID is requested (if applicable)
-     * @type {string}
-     * @memberof RequestOTPCodeIn
      */
-    orgId?: string;
+    organizationId?: string;
 }
 
 /**
@@ -59,7 +53,7 @@ export function RequestOTPCodeInFromJSONTyped(json: any, ignoreDiscriminator: bo
         
         'email': json['email'] == null ? undefined : json['email'],
         'phoneNumber': json['phone_number'] == null ? undefined : json['phone_number'],
-        'orgId': json['org_id'] == null ? undefined : json['org_id'],
+        'organizationId': json['organization_id'] == null ? undefined : json['organization_id'],
     };
 }
 
@@ -76,7 +70,7 @@ export function RequestOTPCodeInToJSONTyped(value?: RequestOTPCodeIn | null, ign
         
         'email': value['email'],
         'phone_number': value['phoneNumber'],
-        'org_id': value['orgId'],
+        'organization_id': value['organizationId'],
     };
 }
 

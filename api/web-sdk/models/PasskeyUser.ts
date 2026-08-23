@@ -22,20 +22,14 @@ import { mapValues } from '../runtime';
 export interface PasskeyUser {
     /**
      * base64url-encoded opaque user handle (not displayed to the user).
-     * @type {string}
-     * @memberof PasskeyUser
      */
     id: string;
     /**
      * Unique username / email for the account (used as identifier).
-     * @type {string}
-     * @memberof PasskeyUser
      */
     name: string;
     /**
      * Human-readable display name shown in browser / OS passkey UI.
-     * @type {string}
-     * @memberof PasskeyUser
      */
     displayName: string;
 }

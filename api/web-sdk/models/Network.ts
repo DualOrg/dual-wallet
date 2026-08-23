@@ -26,7 +26,7 @@ export const Network = {
     Fantom: 'fantom',
     Optimism: 'optimism',
     Arbitrum: 'arbitrum',
-    Blockv: 'blockv'
+    Blockv: 'blockv',
 } as const;
 export type Network = typeof Network[keyof typeof Network];
 

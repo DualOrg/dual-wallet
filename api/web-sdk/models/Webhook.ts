@@ -30,68 +30,46 @@ import {
 export interface Webhook {
     /**
      * Unique ID for the webhook.
-     * @type {string}
-     * @memberof Webhook
      */
     id: string;
     /**
      * Descriptive name of the webhook.
-     * @type {string}
-     * @memberof Webhook
      */
     name: string;
     /**
      * 
-     * @type {WebhookType}
-     * @memberof Webhook
      */
     type: WebhookType;
     /**
      * Wallet ID that owns the webhook.
-     * @type {string}
-     * @memberof Webhook
      */
     walletId: string;
     /**
      * URL endpoint where webhook events are sent.
-     * @type {string}
-     * @memberof Webhook
      */
     url: string;
     /**
      * Whether the webhook is active.
-     * @type {boolean}
-     * @memberof Webhook
      */
     isActive: boolean;
     /**
      * List of addresses being tracked, null if not an address activity webhook.
-     * @type {Array<string>}
-     * @memberof Webhook
      */
     addresses?: Array<string>;
     /**
      * List of templates being tracked, null if not a template activity webhook.
-     * @type {Array<string>}
-     * @memberof Webhook
      */
     templateIds?: Array<string>;
     /**
      * List of actions being tracked, null if not an action activity webhook.
-     * @type {Array<string>}
-     * @memberof Webhook
      */
     actions?: Array<string>;
     /**
      * When the webhook was created.
-     * @type {Date}
-     * @memberof Webhook
      */
     whenCreated: Date;
     /**
      * When the webhook was last modified.
-     * @type {Date}
-     * @memberof Webhook
      */
     whenModified: Date;
 }
@@ -105,11 +83,11 @@ export function instanceOfWebhook(value: object): value is Webhook {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('type' in value) || value['type'] === undefined) return false;
-    if ((!('walletId' in value) && !('wallet_id' in value)) || (value['walletId'] === undefined && value['wallet_id'] === undefined)) return false;
+    if ((!('walletId' in (value as Record<string, any>)) && !('wallet_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['walletId'] === undefined && (value as Record<string, any>)['wallet_id'] === undefined)) return false;
     if (!('url' in value) || value['url'] === undefined) return false;
-    if ((!('isActive' in value) && !('is_active' in value)) || (value['isActive'] === undefined && value['is_active'] === undefined)) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
-    if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
+    if ((!('isActive' in (value as Record<string, any>)) && !('is_active' in (value as Record<string, any>))) || ((value as Record<string, any>)['isActive'] === undefined && (value as Record<string, any>)['is_active'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
+    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
     return true;
 }
 
@@ -132,8 +110,8 @@ export function WebhookFromJSONTyped(json: any, ignoreDiscriminator: boolean): W
         'addresses': json['addresses'] == null ? undefined : json['addresses'],
         'templateIds': json['template_ids'] == null ? undefined : json['template_ids'],
         'actions': json['actions'] == null ? undefined : json['actions'],
-        'whenCreated': (new Date(json['when_created'])),
-        'whenModified': (new Date(json['when_modified'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
+        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
     };
 }
 
@@ -157,8 +135,8 @@ export function WebhookToJSONTyped(value?: Webhook | null, ignoreDiscriminator: 
         'addresses': value['addresses'],
         'template_ids': value['templateIds'],
         'actions': value['actions'],
-        'when_created': value['whenCreated'].toISOString(),
-        'when_modified': value['whenModified'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
+        'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
     };
 }
 

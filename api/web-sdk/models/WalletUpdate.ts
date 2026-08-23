@@ -37,44 +37,30 @@ import {
 export interface WalletUpdate {
     /**
      * User's preferred display name or alias
-     * @type {string}
-     * @memberof WalletUpdate
      */
     nickname?: string;
     /**
      * User's email address for authentication and communications
-     * @type {string}
-     * @memberof WalletUpdate
      */
     email?: string;
     /**
      * User's phone number in E.164 international format for verification or notifications
-     * @type {string}
-     * @memberof WalletUpdate
      */
     phoneNumber?: string;
     /**
      * User's preferred language setting for the interface and communications
-     * @type {Language}
-     * @memberof WalletUpdate
      */
     language?: Language;
     /**
      * User's account password (stored securely and never returned in responses)
-     * @type {string}
-     * @memberof WalletUpdate
      */
     password?: string;
     /**
      * 
-     * @type {Asset}
-     * @memberof WalletUpdate
      */
     avatar?: Asset;
     /**
      * Indicates whether the user is in the onboarding process
-     * @type {boolean}
-     * @memberof WalletUpdate
      */
     onboarding?: boolean;
 }

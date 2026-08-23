@@ -37,38 +37,26 @@ import {
 export interface EoaIn {
     /**
      * 
-     * @type {EoaAuth}
-     * @memberof EoaIn
      */
     auth: EoaAuth;
     /**
      * Organization ID to scope the wallet to.
-     * @type {string}
-     * @memberof EoaIn
      */
     organizationId?: string;
     /**
      * Display name for the wallet, alphanumeric, max 255 chars.
-     * @type {string}
-     * @memberof EoaIn
      */
     nickname?: string;
     /**
      * Optional email for notifications and recovery.
-     * @type {string}
-     * @memberof EoaIn
      */
     email?: string;
     /**
      * Optional phone number in E.164 format.
-     * @type {string}
-     * @memberof EoaIn
      */
     phoneNumber?: string;
     /**
      * 
-     * @type {Language}
-     * @memberof EoaIn
      */
     language?: Language;
 }

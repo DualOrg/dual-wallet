@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface ObjectsStatsOut {
     /**
      * Total number of objects
-     * @type {number}
-     * @memberof ObjectsStatsOut
      */
     total: number;
     /**
      * Objects broken down by template
-     * @type {{ [key: string]: number; }}
-     * @memberof ObjectsStatsOut
      */
     byTemplate: { [key: string]: number; };
 }
@@ -39,7 +35,7 @@ export interface ObjectsStatsOut {
  */
 export function instanceOfObjectsStatsOut(value: object): value is ObjectsStatsOut {
     if (!('total' in value) || value['total'] === undefined) return false;
-    if ((!('byTemplate' in value) && !('by_template' in value)) || (value['byTemplate'] === undefined && value['by_template'] === undefined)) return false;
+    if ((!('byTemplate' in (value as Record<string, any>)) && !('by_template' in (value as Record<string, any>))) || ((value as Record<string, any>)['byTemplate'] === undefined && (value as Record<string, any>)['by_template'] === undefined)) return false;
     return true;
 }
 

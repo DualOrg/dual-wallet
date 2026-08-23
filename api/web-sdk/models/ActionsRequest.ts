@@ -121,99 +121,67 @@ import {
 export interface ActionsRequest {
     /**
      * 
-     * @type {string}
-     * @memberof ActionsRequest
      */
     alias?: string;
     /**
      * Optional secret for permit-based authorization.
      * 
-     * @type {string}
-     * @memberof ActionsRequest
      */
     permitSecret?: string;
     /**
      * 
-     * @type {Mint}
-     * @memberof ActionsRequest
      */
     mint?: Mint;
     /**
      * 
-     * @type {Transfer}
-     * @memberof ActionsRequest
      */
     transfer?: Transfer;
     /**
      * 
-     * @type {Drop}
-     * @memberof ActionsRequest
      */
     drop?: Drop;
     /**
      * 
-     * @type {Pickup}
-     * @memberof ActionsRequest
      */
     pickup?: Pickup;
     /**
      * 
-     * @type {Redeem}
-     * @memberof ActionsRequest
      */
     redeem?: Redeem;
     /**
      * 
-     * @type {Burn}
-     * @memberof ActionsRequest
      */
     burn?: Burn;
     /**
      * 
-     * @type {Update}
-     * @memberof ActionsRequest
      */
     update?: Update;
     /**
      * 
-     * @type {ClaimOwnership}
-     * @memberof ActionsRequest
      */
     claimOwnership?: ClaimOwnership;
     /**
      * 
-     * @type {Connect}
-     * @memberof ActionsRequest
      */
     connect?: Connect;
     /**
      * 
-     * @type {Disconnect}
-     * @memberof ActionsRequest
      */
     disconnect?: Disconnect;
     /**
      * 
-     * @type {Remote}
-     * @memberof ActionsRequest
      */
     remote?: Remote;
     /**
      * 
-     * @type {Permit}
-     * @memberof ActionsRequest
      */
     permit?: Permit;
     /**
      * 
-     * @type {SetAttributes}
-     * @memberof ActionsRequest
      */
     setAttributes?: SetAttributes;
     /**
      * 
-     * @type {DeleteAttributes}
-     * @memberof ActionsRequest
      */
     deleteAttributes?: DeleteAttributes;
 }

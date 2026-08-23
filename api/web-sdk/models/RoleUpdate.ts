@@ -30,14 +30,10 @@ import {
 export interface RoleUpdate {
     /**
      * Updated description for the role
-     * @type {string}
-     * @memberof RoleUpdate
      */
     description?: string;
     /**
      * Updated list of permissions for the role
-     * @type {Array<Permission>}
-     * @memberof RoleUpdate
      */
     permissions: Array<Permission>;
 }

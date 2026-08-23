@@ -37,72 +37,50 @@ import {
 export interface Face {
     /**
      * Unique identifier for the face
-     * @type {string}
-     * @memberof Face
      */
     id: string;
     /**
      * Name of the face.
-     * @type {string}
-     * @memberof Face
      */
     name: string;
     /**
      * Renderer used for inline view content.
-     * @type {FaceRendererEnum}
-     * @memberof Face
      */
     renderer?: FaceRendererEnum;
     /**
      * Renderer-specific configuration available while rendering all views.
-     * @type {{ [key: string]: any; }}
-     * @memberof Face
      */
     rendererConfig?: { [key: string]: any; };
     /**
      * Variant-specific authoring definitions for this face.
-     * @type {Array<FaceView>}
-     * @memberof Face
      */
     views?: Array<FaceView>;
     /**
      * Legacy v1 default-view URL. Use views[].url instead.
-     * @type {string}
-     * @memberof Face
      * @deprecated
      */
     url?: string;
     /**
      * Legacy v1 default-view source. Use views[].content instead.
      * 
-     * @type {string}
-     * @memberof Face
      * @deprecated
      */
     content?: string;
     /**
      * Legacy v1 renderer configuration. Use renderer_config instead.
-     * @type {{ [key: string]: any; }}
-     * @memberof Face
      * @deprecated
      */
     config?: { [key: string]: any; };
     /**
      * List of resources required or utilized by the face.
-     * @type {Array<Asset>}
-     * @memberof Face
      */
     assets?: Array<Asset>;
     /**
      * Timestamp of when the face was created.
-     * @type {Date}
-     * @memberof Face
      */
     whenCreated: Date;
     /**
      * Timestamp of the last modification to the face.
-     * @type {Date}
-     * @memberof Face
      */
     whenModified: Date;
 }
@@ -112,7 +90,7 @@ export interface Face {
  * @export
  */
 export const FaceRendererEnum = {
-    GoTemplate: 'go-template'
+    GoTemplate: 'go-template',
 } as const;
 export type FaceRendererEnum = typeof FaceRendererEnum[keyof typeof FaceRendererEnum];
 
@@ -123,8 +101,8 @@ export type FaceRendererEnum = typeof FaceRendererEnum[keyof typeof FaceRenderer
 export function instanceOfFace(value: object): value is Face {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
-    if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
+    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
     return true;
 }
 
@@ -147,8 +125,8 @@ export function FaceFromJSONTyped(json: any, ignoreDiscriminator: boolean): Face
         'content': json['content'] == null ? undefined : json['content'],
         'config': json['config'] == null ? undefined : json['config'],
         'assets': json['assets'] == null ? undefined : ((json['assets'] as Array<any>).map(AssetFromJSON)),
-        'whenCreated': (new Date(json['when_created'])),
-        'whenModified': (new Date(json['when_modified'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
+        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
     };
 }
 
@@ -172,8 +150,8 @@ export function FaceToJSONTyped(value?: Face | null, ignoreDiscriminator: boolea
         'content': value['content'],
         'config': value['config'],
         'assets': value['assets'] == null ? undefined : ((value['assets'] as Array<any>).map(AssetToJSON)),
-        'when_created': value['whenCreated'].toISOString(),
-        'when_modified': value['whenModified'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
+        'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
     };
 }
 

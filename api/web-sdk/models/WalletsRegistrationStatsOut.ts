@@ -30,8 +30,6 @@ import {
 export interface WalletsRegistrationStatsOut {
     /**
      * List of registration statistics over time
-     * @type {Array<TimeSeriesDataPoint>}
-     * @memberof WalletsRegistrationStatsOut
      */
     data: Array<TimeSeriesDataPoint>;
 }

@@ -22,20 +22,14 @@ import { mapValues } from '../runtime';
 export interface DeleteAttributes {
     /**
      * 
-     * @type {string}
-     * @memberof DeleteAttributes
      */
     id: string;
     /**
      * Optional optimistic-concurrency precondition for the target object.
-     * @type {number}
-     * @memberof DeleteAttributes
      */
     expectedObjectNonce?: number;
     /**
      * 
-     * @type {Set<string>}
-     * @memberof DeleteAttributes
      */
     keys: Set<string>;
 }

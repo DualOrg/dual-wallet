@@ -30,58 +30,40 @@ import {
 export interface Session {
     /**
      * Unique identifier for the smart object
-     * @type {string}
-     * @memberof Session
      */
     id: string;
     /**
      * bytes32 hex (0x-prefixed) PermissionId stored in the kernel's ValidationManager.
      * Use this to reference the session key on-chain.
      * 
-     * @type {string}
-     * @memberof Session
      */
     permissionId: string;
     /**
      * Hex-encoded X coordinate of the session key's P-256 public key.
-     * @type {string}
-     * @memberof Session
      */
     sessionPubkeyX: string;
     /**
      * Hex-encoded Y coordinate of the session key's P-256 public key.
-     * @type {string}
-     * @memberof Session
      */
     sessionPubkeyY: string;
     /**
      * 
-     * @type {SessionPermissions}
-     * @memberof Session
      */
     permissions?: SessionPermissions;
     /**
      * Top-level expiry mirroring permissions.valid_until for convenience.
-     * @type {Date}
-     * @memberof Session
      */
     validUntil: Date;
     /**
      * Current lifecycle state of the session key.
-     * @type {SessionStatusEnum}
-     * @memberof Session
      */
     status: SessionStatusEnum;
     /**
      * Transaction hash of the UserOp that installed this session key on-chain.
-     * @type {string}
-     * @memberof Session
      */
     txHash?: string;
     /**
      * Timestamp when the session was created.
-     * @type {Date}
-     * @memberof Session
      */
     whenCreated: Date;
 }
@@ -93,7 +75,7 @@ export interface Session {
 export const SessionStatusEnum = {
     Active: 'active',
     Expired: 'expired',
-    Revoked: 'revoked'
+    Revoked: 'revoked',
 } as const;
 export type SessionStatusEnum = typeof SessionStatusEnum[keyof typeof SessionStatusEnum];
 
@@ -103,12 +85,12 @@ export type SessionStatusEnum = typeof SessionStatusEnum[keyof typeof SessionSta
  */
 export function instanceOfSession(value: object): value is Session {
     if (!('id' in value) || value['id'] === undefined) return false;
-    if ((!('permissionId' in value) && !('permission_id' in value)) || (value['permissionId'] === undefined && value['permission_id'] === undefined)) return false;
-    if ((!('sessionPubkeyX' in value) && !('session_pubkey_x' in value)) || (value['sessionPubkeyX'] === undefined && value['session_pubkey_x'] === undefined)) return false;
-    if ((!('sessionPubkeyY' in value) && !('session_pubkey_y' in value)) || (value['sessionPubkeyY'] === undefined && value['session_pubkey_y'] === undefined)) return false;
-    if ((!('validUntil' in value) && !('valid_until' in value)) || (value['validUntil'] === undefined && value['valid_until'] === undefined)) return false;
+    if ((!('permissionId' in (value as Record<string, any>)) && !('permission_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['permissionId'] === undefined && (value as Record<string, any>)['permission_id'] === undefined)) return false;
+    if ((!('sessionPubkeyX' in (value as Record<string, any>)) && !('session_pubkey_x' in (value as Record<string, any>))) || ((value as Record<string, any>)['sessionPubkeyX'] === undefined && (value as Record<string, any>)['session_pubkey_x'] === undefined)) return false;
+    if ((!('sessionPubkeyY' in (value as Record<string, any>)) && !('session_pubkey_y' in (value as Record<string, any>))) || ((value as Record<string, any>)['sessionPubkeyY'] === undefined && (value as Record<string, any>)['session_pubkey_y'] === undefined)) return false;
+    if ((!('validUntil' in (value as Record<string, any>)) && !('valid_until' in (value as Record<string, any>))) || ((value as Record<string, any>)['validUntil'] === undefined && (value as Record<string, any>)['valid_until'] === undefined)) return false;
     if (!('status' in value) || value['status'] === undefined) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
     return true;
 }
 
@@ -127,10 +109,10 @@ export function SessionFromJSONTyped(json: any, ignoreDiscriminator: boolean): S
         'sessionPubkeyX': json['session_pubkey_x'],
         'sessionPubkeyY': json['session_pubkey_y'],
         'permissions': json['permissions'] == null ? undefined : SessionPermissionsFromJSON(json['permissions']),
-        'validUntil': (new Date(json['valid_until'])),
+        'validUntil': (json['valid_until'] == null ? json['valid_until'] : new Date(json['valid_until'])),
         'status': json['status'],
         'txHash': json['tx_hash'] == null ? undefined : json['tx_hash'],
-        'whenCreated': (new Date(json['when_created'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
     };
 }
 
@@ -150,10 +132,10 @@ export function SessionToJSONTyped(value?: Session | null, ignoreDiscriminator: 
         'session_pubkey_x': value['sessionPubkeyX'],
         'session_pubkey_y': value['sessionPubkeyY'],
         'permissions': SessionPermissionsToJSON(value['permissions']),
-        'valid_until': value['validUntil'].toISOString(),
+        'valid_until': value['validUntil'] == null ? value['validUntil'] : value['validUntil'].toISOString(),
         'status': value['status'],
         'tx_hash': value['txHash'],
-        'when_created': value['whenCreated'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
     };
 }
 

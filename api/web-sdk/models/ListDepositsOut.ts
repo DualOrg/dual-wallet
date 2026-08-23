@@ -30,14 +30,10 @@ import {
 export interface ListDepositsOut {
     /**
      * Array of deposits.
-     * @type {Array<Deposit>}
-     * @memberof ListDepositsOut
      */
     deposits: Array<Deposit>;
     /**
      * Pagination token for the next set of results, if any.
-     * @type {string}
-     * @memberof ListDepositsOut
      */
     next?: string;
 }

@@ -37,8 +37,11 @@ export interface InventoryObject extends ObjectDetail {
 
 export type ActivityStatus = "pending" | "completed" | "failed";
 export type ActivityVersion = 1 | 2;
+// Mirrors AuthBundleTypeEnum in the generated SDK. "internal" is an unsigned
+// protocol action created only by trusted backend migrations — no controller
+// signed it, so it has no counterpart among the client-side signing methods.
 export type ActivityAuthenticationType =
-  "eoa" | "webauthn" | "session_key" | "personal_sign";
+  "eoa" | "webauthn" | "session_key" | "personal_sign" | "internal";
 
 export interface ActivityParameters {
   id?: string;

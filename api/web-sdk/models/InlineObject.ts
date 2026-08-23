@@ -22,8 +22,6 @@ import { mapValues } from '../runtime';
 export interface InlineObject {
     /**
      * Unique identifier of the created resource
-     * @type {string}
-     * @memberof InlineObject
      */
     id: string;
 }

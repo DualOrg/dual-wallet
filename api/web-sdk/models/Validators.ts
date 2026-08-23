@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface Validators {
     /**
      * Type of validator
-     * @type {ValidatorsTypeEnum}
-     * @memberof Validators
      */
     type: ValidatorsTypeEnum;
     /**
      * URL of the validator
-     * @type {string}
-     * @memberof Validators
      */
     url?: string;
 }
@@ -39,7 +35,7 @@ export interface Validators {
  * @export
  */
 export const ValidatorsTypeEnum = {
-    Http: 'http'
+    Http: 'http',
 } as const;
 export type ValidatorsTypeEnum = typeof ValidatorsTypeEnum[keyof typeof ValidatorsTypeEnum];
 

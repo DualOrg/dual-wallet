@@ -37,16 +37,12 @@ import {
 export interface ExecuteRequest {
     /**
      * The blockchain action to be executed
-     * @type {ActionsRequest}
-     * @memberof ExecuteRequest
      */
     action: ActionsRequest;
     /**
      * Unique number to prevent replay attacks. Must be the current nonce
      * for the wallet — fetch from the object or wallet state before signing.
      * 
-     * @type {number}
-     * @memberof ExecuteRequest
      */
     nonce: number;
     /**
@@ -65,8 +61,6 @@ export interface ExecuteRequest {
      * Custodial callers may omit this field; eventbus asks base to sign with
      * the wallet's stored controller and persists the resulting auth bundle.
      * 
-     * @type {AuthBundle}
-     * @memberof ExecuteRequest
      */
     auth?: AuthBundle;
 }

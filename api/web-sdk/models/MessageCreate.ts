@@ -51,86 +51,58 @@ import {
 export interface MessageCreate {
     /**
      * Organization that owns the notification. Required for organization-scoped internal producers; public handlers derive it from the authenticated caller.
-     * @type {string}
-     * @memberof MessageCreate
      */
     orgId?: string;
     /**
      * 
-     * @type {string}
-     * @memberof MessageCreate
      */
     templateId?: string;
     /**
      * 
-     * @type {ActionType}
-     * @memberof MessageCreate
      */
     actionType: ActionType;
     /**
      * Explicit delivery system. Producers should set this instead of relying on recipient-shape inference.
-     * @type {System}
-     * @memberof MessageCreate
      */
     system?: System;
     /**
      * 
-     * @type {string}
-     * @memberof MessageCreate
      */
     to: string;
     /**
      * 
-     * @type {object}
-     * @memberof MessageCreate
      */
     values?: object;
     /**
      * 
-     * @type {boolean}
-     * @memberof MessageCreate
      */
     isPush?: boolean;
     /**
      * 
-     * @type {boolean}
-     * @memberof MessageCreate
      */
     sync?: boolean;
     /**
      * The time at which the message should be sent.
-     * @type {Date}
-     * @memberof MessageCreate
      */
     scheduledAt?: Date;
     /**
      * 
-     * @type {Language}
-     * @memberof MessageCreate
      */
     language?: Language;
     /**
      * 
-     * @type {string}
-     * @memberof MessageCreate
      */
     title?: string;
     /**
      * 
-     * @type {string}
-     * @memberof MessageCreate
      */
     content?: string;
     /**
      * Required when content is provided directly.
-     * @type {ContentType}
-     * @memberof MessageCreate
      */
     contentType?: ContentType;
     /**
      * 
-     * @type {Date}
-     * @memberof MessageCreate
      */
     whenCreated?: Date;
 }
@@ -141,7 +113,7 @@ export interface MessageCreate {
  * Check if a given object implements the MessageCreate interface.
  */
 export function instanceOfMessageCreate(value: object): value is MessageCreate {
-    if ((!('actionType' in value) && !('action_type' in value)) || (value['actionType'] === undefined && value['action_type'] === undefined)) return false;
+    if ((!('actionType' in (value as Record<string, any>)) && !('action_type' in (value as Record<string, any>))) || ((value as Record<string, any>)['actionType'] === undefined && (value as Record<string, any>)['action_type'] === undefined)) return false;
     if (!('to' in value) || value['to'] === undefined) return false;
     return true;
 }

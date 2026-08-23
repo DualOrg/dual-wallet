@@ -30,130 +30,88 @@ import {
 export interface StateChange {
     /**
      * 
-     * @type {string}
-     * @memberof StateChange
      */
     id: string;
     /**
      * 
-     * @type {string}
-     * @memberof StateChange
      */
     walletId?: string;
     /**
      * 
-     * @type {string}
-     * @memberof StateChange
      */
     objectId: string;
     /**
      * 
-     * @type {string}
-     * @memberof StateChange
      */
     actionId: string;
     /**
      * The name of the action
-     * @type {string}
-     * @memberof StateChange
      */
     actionName: string;
     /**
      * 
-     * @type {ChangeType}
-     * @memberof StateChange
      */
     changeType: ChangeType;
     /**
      * Canonical signed mutation for attribute actions. Other internal object
      * update payloads may be redacted from API responses.
      * 
-     * @type {object}
-     * @memberof StateChange
      */
     change?: object;
     /**
      * The previous state
-     * @type {string}
-     * @memberof StateChange
      */
     prevStateHash: string;
     /**
      * The new state
-     * @type {string}
-     * @memberof StateChange
      */
     nextStateHash: string;
     /**
      * The previous integrity hash
-     * @type {string}
-     * @memberof StateChange
      */
     prevIntegrityHash: string;
     /**
      * The new integrity hash
-     * @type {string}
-     * @memberof StateChange
      */
     nextIntegrityHash: string;
     /**
      * The previous nonce
-     * @type {number}
-     * @memberof StateChange
      */
     prevNonce: number;
     /**
      * The next nonce
-     * @type {number}
-     * @memberof StateChange
      */
     nextNonce: number;
     /**
      * previous object content hash - metadata, assets, location, custom
-     * @type {string}
-     * @memberof StateChange
      */
     prevContentHash: string;
     /**
      * object content hash - metadata, assets, location, custom
-     * @type {string}
-     * @memberof StateChange
      */
     nextContentHash: string;
     /**
      * The previous owner ID
-     * @type {string}
-     * @memberof StateChange
      */
     prevOwner: string;
     /**
      * The new owner ID
-     * @type {string}
-     * @memberof StateChange
      */
     currentOwner: string;
     /**
      * Merkle proof for the object's data integrity
-     * @type {Array<string>}
-     * @memberof StateChange
      */
     merkleProof: Array<string>;
     /**
      * ID of the batch this state change is part of
-     * @type {string}
-     * @memberof StateChange
      */
     batchId: string;
     /**
      * L1 transaction hash associated with this state change
-     * @type {string}
-     * @memberof StateChange
      */
     l1TxHash?: string;
     /**
      * The time the change was created
-     * @type {Date}
-     * @memberof StateChange
      */
     whenCreated: Date;
 }
@@ -165,23 +123,23 @@ export interface StateChange {
  */
 export function instanceOfStateChange(value: object): value is StateChange {
     if (!('id' in value) || value['id'] === undefined) return false;
-    if ((!('objectId' in value) && !('object_id' in value)) || (value['objectId'] === undefined && value['object_id'] === undefined)) return false;
-    if ((!('actionId' in value) && !('action_id' in value)) || (value['actionId'] === undefined && value['action_id'] === undefined)) return false;
-    if ((!('actionName' in value) && !('action_name' in value)) || (value['actionName'] === undefined && value['action_name'] === undefined)) return false;
-    if ((!('changeType' in value) && !('change_type' in value)) || (value['changeType'] === undefined && value['change_type'] === undefined)) return false;
-    if ((!('prevStateHash' in value) && !('prev_state_hash' in value)) || (value['prevStateHash'] === undefined && value['prev_state_hash'] === undefined)) return false;
-    if ((!('nextStateHash' in value) && !('next_state_hash' in value)) || (value['nextStateHash'] === undefined && value['next_state_hash'] === undefined)) return false;
-    if ((!('prevIntegrityHash' in value) && !('prev_integrity_hash' in value)) || (value['prevIntegrityHash'] === undefined && value['prev_integrity_hash'] === undefined)) return false;
-    if ((!('nextIntegrityHash' in value) && !('next_integrity_hash' in value)) || (value['nextIntegrityHash'] === undefined && value['next_integrity_hash'] === undefined)) return false;
-    if ((!('prevNonce' in value) && !('prev_nonce' in value)) || (value['prevNonce'] === undefined && value['prev_nonce'] === undefined)) return false;
-    if ((!('nextNonce' in value) && !('next_nonce' in value)) || (value['nextNonce'] === undefined && value['next_nonce'] === undefined)) return false;
-    if ((!('prevContentHash' in value) && !('prev_content_hash' in value)) || (value['prevContentHash'] === undefined && value['prev_content_hash'] === undefined)) return false;
-    if ((!('nextContentHash' in value) && !('next_content_hash' in value)) || (value['nextContentHash'] === undefined && value['next_content_hash'] === undefined)) return false;
-    if ((!('prevOwner' in value) && !('prev_owner' in value)) || (value['prevOwner'] === undefined && value['prev_owner'] === undefined)) return false;
-    if ((!('currentOwner' in value) && !('current_owner' in value)) || (value['currentOwner'] === undefined && value['current_owner'] === undefined)) return false;
-    if ((!('merkleProof' in value) && !('merkle_proof' in value)) || (value['merkleProof'] === undefined && value['merkle_proof'] === undefined)) return false;
-    if ((!('batchId' in value) && !('batch_id' in value)) || (value['batchId'] === undefined && value['batch_id'] === undefined)) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
+    if ((!('objectId' in (value as Record<string, any>)) && !('object_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['objectId'] === undefined && (value as Record<string, any>)['object_id'] === undefined)) return false;
+    if ((!('actionId' in (value as Record<string, any>)) && !('action_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['actionId'] === undefined && (value as Record<string, any>)['action_id'] === undefined)) return false;
+    if ((!('actionName' in (value as Record<string, any>)) && !('action_name' in (value as Record<string, any>))) || ((value as Record<string, any>)['actionName'] === undefined && (value as Record<string, any>)['action_name'] === undefined)) return false;
+    if ((!('changeType' in (value as Record<string, any>)) && !('change_type' in (value as Record<string, any>))) || ((value as Record<string, any>)['changeType'] === undefined && (value as Record<string, any>)['change_type'] === undefined)) return false;
+    if ((!('prevStateHash' in (value as Record<string, any>)) && !('prev_state_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['prevStateHash'] === undefined && (value as Record<string, any>)['prev_state_hash'] === undefined)) return false;
+    if ((!('nextStateHash' in (value as Record<string, any>)) && !('next_state_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['nextStateHash'] === undefined && (value as Record<string, any>)['next_state_hash'] === undefined)) return false;
+    if ((!('prevIntegrityHash' in (value as Record<string, any>)) && !('prev_integrity_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['prevIntegrityHash'] === undefined && (value as Record<string, any>)['prev_integrity_hash'] === undefined)) return false;
+    if ((!('nextIntegrityHash' in (value as Record<string, any>)) && !('next_integrity_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['nextIntegrityHash'] === undefined && (value as Record<string, any>)['next_integrity_hash'] === undefined)) return false;
+    if ((!('prevNonce' in (value as Record<string, any>)) && !('prev_nonce' in (value as Record<string, any>))) || ((value as Record<string, any>)['prevNonce'] === undefined && (value as Record<string, any>)['prev_nonce'] === undefined)) return false;
+    if ((!('nextNonce' in (value as Record<string, any>)) && !('next_nonce' in (value as Record<string, any>))) || ((value as Record<string, any>)['nextNonce'] === undefined && (value as Record<string, any>)['next_nonce'] === undefined)) return false;
+    if ((!('prevContentHash' in (value as Record<string, any>)) && !('prev_content_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['prevContentHash'] === undefined && (value as Record<string, any>)['prev_content_hash'] === undefined)) return false;
+    if ((!('nextContentHash' in (value as Record<string, any>)) && !('next_content_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['nextContentHash'] === undefined && (value as Record<string, any>)['next_content_hash'] === undefined)) return false;
+    if ((!('prevOwner' in (value as Record<string, any>)) && !('prev_owner' in (value as Record<string, any>))) || ((value as Record<string, any>)['prevOwner'] === undefined && (value as Record<string, any>)['prev_owner'] === undefined)) return false;
+    if ((!('currentOwner' in (value as Record<string, any>)) && !('current_owner' in (value as Record<string, any>))) || ((value as Record<string, any>)['currentOwner'] === undefined && (value as Record<string, any>)['current_owner'] === undefined)) return false;
+    if ((!('merkleProof' in (value as Record<string, any>)) && !('merkle_proof' in (value as Record<string, any>))) || ((value as Record<string, any>)['merkleProof'] === undefined && (value as Record<string, any>)['merkle_proof'] === undefined)) return false;
+    if ((!('batchId' in (value as Record<string, any>)) && !('batch_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['batchId'] === undefined && (value as Record<string, any>)['batch_id'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
     return true;
 }
 
@@ -215,7 +173,7 @@ export function StateChangeFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'merkleProof': json['merkle_proof'],
         'batchId': json['batch_id'],
         'l1TxHash': json['l1_tx_hash'] == null ? undefined : json['l1_tx_hash'],
-        'whenCreated': (new Date(json['when_created'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
     };
 }
 
@@ -250,7 +208,7 @@ export function StateChangeToJSONTyped(value?: StateChange | null, ignoreDiscrim
         'merkle_proof': value['merkleProof'],
         'batch_id': value['batchId'],
         'l1_tx_hash': value['l1TxHash'],
-        'when_created': value['whenCreated'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
     };
 }
 

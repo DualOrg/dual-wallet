@@ -22,56 +22,38 @@ import { mapValues } from '../runtime';
 export interface NetworkConfig {
     /**
      * The L2 RPC endpoint URL for the network.
-     * @type {string}
-     * @memberof NetworkConfig
      */
     l2Rpc: string;
     /**
      * The L2 explorer URL for the network.
-     * @type {string}
-     * @memberof NetworkConfig
      */
     l2Explorer: string;
     /**
      * The L3 explorer URL for the network.
-     * @type {string}
-     * @memberof NetworkConfig
      */
     l3Explorer: string;
     /**
      * The staking contract address on the network.
-     * @type {string}
-     * @memberof NetworkConfig
      */
     staking: string;
     /**
      * The deposits contract address on the network.
-     * @type {string}
-     * @memberof NetworkConfig
      */
     deposits: string;
     /**
      * The batch registry contract address on the network.
-     * @type {string}
-     * @memberof NetworkConfig
      */
     batchRegistry: string;
     /**
      * The DAO contract address on the network.
-     * @type {string}
-     * @memberof NetworkConfig
      */
     dao: string;
     /**
      * The bridged NFTs contract address on the network.
-     * @type {string}
-     * @memberof NetworkConfig
      */
     bridgedNfts: string;
     /**
      * The fee dispatcher contract address authorized to send fees on the network.
-     * @type {string}
-     * @memberof NetworkConfig
      */
     feesDispatcher: string;
 }
@@ -80,15 +62,15 @@ export interface NetworkConfig {
  * Check if a given object implements the NetworkConfig interface.
  */
 export function instanceOfNetworkConfig(value: object): value is NetworkConfig {
-    if ((!('l2Rpc' in value) && !('l2_rpc' in value)) || (value['l2Rpc'] === undefined && value['l2_rpc'] === undefined)) return false;
-    if ((!('l2Explorer' in value) && !('l2_explorer' in value)) || (value['l2Explorer'] === undefined && value['l2_explorer'] === undefined)) return false;
-    if ((!('l3Explorer' in value) && !('l3_explorer' in value)) || (value['l3Explorer'] === undefined && value['l3_explorer'] === undefined)) return false;
+    if ((!('l2Rpc' in (value as Record<string, any>)) && !('l2_rpc' in (value as Record<string, any>))) || ((value as Record<string, any>)['l2Rpc'] === undefined && (value as Record<string, any>)['l2_rpc'] === undefined)) return false;
+    if ((!('l2Explorer' in (value as Record<string, any>)) && !('l2_explorer' in (value as Record<string, any>))) || ((value as Record<string, any>)['l2Explorer'] === undefined && (value as Record<string, any>)['l2_explorer'] === undefined)) return false;
+    if ((!('l3Explorer' in (value as Record<string, any>)) && !('l3_explorer' in (value as Record<string, any>))) || ((value as Record<string, any>)['l3Explorer'] === undefined && (value as Record<string, any>)['l3_explorer'] === undefined)) return false;
     if (!('staking' in value) || value['staking'] === undefined) return false;
     if (!('deposits' in value) || value['deposits'] === undefined) return false;
-    if ((!('batchRegistry' in value) && !('batch_registry' in value)) || (value['batchRegistry'] === undefined && value['batch_registry'] === undefined)) return false;
+    if ((!('batchRegistry' in (value as Record<string, any>)) && !('batch_registry' in (value as Record<string, any>))) || ((value as Record<string, any>)['batchRegistry'] === undefined && (value as Record<string, any>)['batch_registry'] === undefined)) return false;
     if (!('dao' in value) || value['dao'] === undefined) return false;
-    if ((!('bridgedNfts' in value) && !('bridged_nfts' in value)) || (value['bridgedNfts'] === undefined && value['bridged_nfts'] === undefined)) return false;
-    if ((!('feesDispatcher' in value) && !('fees_dispatcher' in value)) || (value['feesDispatcher'] === undefined && value['fees_dispatcher'] === undefined)) return false;
+    if ((!('bridgedNfts' in (value as Record<string, any>)) && !('bridged_nfts' in (value as Record<string, any>))) || ((value as Record<string, any>)['bridgedNfts'] === undefined && (value as Record<string, any>)['bridged_nfts'] === undefined)) return false;
+    if ((!('feesDispatcher' in (value as Record<string, any>)) && !('fees_dispatcher' in (value as Record<string, any>))) || ((value as Record<string, any>)['feesDispatcher'] === undefined && (value as Record<string, any>)['fees_dispatcher'] === undefined)) return false;
     return true;
 }
 

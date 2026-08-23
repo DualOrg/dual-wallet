@@ -30,8 +30,6 @@ import {
 export interface ObjectsCreationStatsOut {
     /**
      * List of object creation statistics over time
-     * @type {Array<TimeSeriesDataPoint>}
-     * @memberof ObjectsCreationStatsOut
      */
     data: Array<TimeSeriesDataPoint>;
 }

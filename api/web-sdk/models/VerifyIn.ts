@@ -22,20 +22,14 @@ import { mapValues } from '../runtime';
 export interface VerifyIn {
     /**
      * Email address associated with the account being verified
-     * @type {string}
-     * @memberof VerifyIn
      */
     email?: string;
     /**
      * Phone number in E.164 format associated with the account being verified
-     * @type {string}
-     * @memberof VerifyIn
      */
     phoneNumber?: string;
     /**
      * Verification code sent to the user's email or phone
-     * @type {string}
-     * @memberof VerifyIn
      */
     code: string;
 }

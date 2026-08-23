@@ -37,26 +37,18 @@ import {
 export interface Account {
     /**
      * The canonical Kernel smart-account execution address.
-     * @type {string}
-     * @memberof Account
      */
     address: string;
     /**
      * The execution account type. All platform accounts execute through a smart wallet.
-     * @type {AccountTypeEnum}
-     * @memberof Account
      */
     type: AccountTypeEnum;
     /**
      * The credential or key authorized to control the smart account.
-     * @type {AccountController}
-     * @memberof Account
      */
     controller: AccountController;
     /**
      * Counterfactual Kernel deployment metadata for the execution account.
-     * @type {SmartAccount}
-     * @memberof Account
      */
     smartAccount: SmartAccount;
 }
@@ -66,7 +58,7 @@ export interface Account {
  * @export
  */
 export const AccountTypeEnum = {
-    SmartWallet: 'SMART_WALLET'
+    SmartWallet: 'SMART_WALLET',
 } as const;
 export type AccountTypeEnum = typeof AccountTypeEnum[keyof typeof AccountTypeEnum];
 
@@ -80,7 +72,7 @@ export function instanceOfAccount(value: object): value is Account {
     if (value['type'] !== 'SMART_WALLET') return false;
     
     if (!('controller' in value) || value['controller'] === undefined) return false;
-    if ((!('smartAccount' in value) && !('smart_account' in value)) || (value['smartAccount'] === undefined && value['smart_account'] === undefined)) return false;
+    if ((!('smartAccount' in (value as Record<string, any>)) && !('smart_account' in (value as Record<string, any>))) || ((value as Record<string, any>)['smartAccount'] === undefined && (value as Record<string, any>)['smart_account'] === undefined)) return false;
     return true;
 }
 

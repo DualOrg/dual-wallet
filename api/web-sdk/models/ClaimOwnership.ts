@@ -22,8 +22,6 @@ import { mapValues } from '../runtime';
 export interface ClaimOwnership {
     /**
      * 
-     * @type {string}
-     * @memberof ClaimOwnership
      */
     id: string;
 }

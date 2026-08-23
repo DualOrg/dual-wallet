@@ -25,8 +25,6 @@ export interface EoaAuth {
      * exact value passed to eth_personal_sign as the message. The server
      * consumes this challenge after one successful use (replay protection).
      * 
-     * @type {string}
-     * @memberof EoaAuth
      */
     challenge: string;
     /**
@@ -34,8 +32,6 @@ export interface EoaAuth {
      * eth_personal_sign(challenge, privateKey). The server runs ecrecover
      * to derive the signer's Ethereum address.
      * 
-     * @type {string}
-     * @memberof EoaAuth
      */
     signature: string;
 }

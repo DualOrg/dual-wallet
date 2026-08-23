@@ -121,95 +121,212 @@ import {
 } from '../models/WalletsTotalStatsOut';
 
 export interface ConnectEoaRequest {
+    /**
+     * 
+     */
     eoaIn: EoaIn;
 }
 
 export interface DeleteWalletByIdRequest {
+    /**
+     * Unique identifier of the target wallet
+     */
     id: string;
 }
 
 export interface GetWalletByIdRequest {
+    /**
+     * Unique identifier of the target wallet
+     */
     id: string;
 }
 
 export interface GetWalletsRegistrationStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
     interval?: GetWalletsRegistrationStatsIntervalEnum;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetWalletsRegistrationStatsTimeRangeEnum;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Filter statistics by activation status
+     */
     activated?: boolean;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface GetWalletsStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetWalletsStatsTimeRangeEnum;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface GetWalletsTotalStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
     interval?: GetWalletsTotalStatsIntervalEnum;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetWalletsTotalStatsTimeRangeEnum;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface LoginWalletRequest {
+    /**
+     * 
+     */
     loginIn: LoginIn;
 }
 
 export interface PasskeyLoginOptionsRequest {
+    /**
+     * 
+     */
     body?: object;
 }
 
 export interface PasskeyLoginVerifyRequest {
+    /**
+     * 
+     */
     passkeyLoginVerifyIn: PasskeyLoginVerifyIn;
 }
 
 export interface PasskeyRegisterVerifyRequest {
+    /**
+     * 
+     */
     passkeyRegisterVerifyIn: PasskeyRegisterVerifyIn;
 }
 
 export interface RegisterWalletRequest {
+    /**
+     * 
+     */
     walletCreate: WalletCreate;
 }
 
 export interface RequestOTPCodeRequest {
+    /**
+     * 
+     */
     requestOTPCodeIn: RequestOTPCodeIn;
 }
 
 export interface RequestVerificationCodeRequest {
+    /**
+     * 
+     */
     resetCodeIn: ResetCodeIn;
 }
 
 export interface ResetPasswordRequest {
+    /**
+     * 
+     */
     resetPasswordIn: ResetPasswordIn;
 }
 
 export interface SetNewPasswordRequest {
+    /**
+     * 
+     */
     setNewPasswordIn: SetNewPasswordIn;
 }
 
 export interface UpdateWalletRequest {
+    /**
+     * 
+     */
     walletUpdate: WalletUpdate;
 }
 
 export interface UpdateWalletByIdRequest {
+    /**
+     * Unique identifier of the target wallet
+     */
     id: string;
+    /**
+     * 
+     */
     walletUpdate: WalletUpdate;
 }
 
 export interface VerifyWalletRequest {
+    /**
+     * 
+     */
     verifyIn: VerifyIn;
 }
 
@@ -805,6 +922,104 @@ export class WalletsApi extends runtime.BaseAPI {
      */
     async loginWallet(requestParameters: LoginWalletRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LoginOut> {
         const response = await this.loginWalletRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for logout without sending the request
+     */
+    async logoutRequestOpts(): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearer-auth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/auth/logout`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * End the session the presented refresh token belongs to. The refresh token stops rotating immediately, so the session cannot be continued.  Present the refresh token, not the access token — the session is identified by the token family the refresh token names. Any access token already issued for the session stays valid until it expires, so a client should discard both tokens after calling this.  Logging out a session that is already revoked or expired succeeds, so a client retrying a failed logout does not have to special-case it. 
+     * Log out the current session
+     */
+    async logoutRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
+        const requestOptions = await this.logoutRequestOpts();
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse<any>(response);
+    }
+
+    /**
+     * End the session the presented refresh token belongs to. The refresh token stops rotating immediately, so the session cannot be continued.  Present the refresh token, not the access token — the session is identified by the token family the refresh token names. Any access token already issued for the session stays valid until it expires, so a client should discard both tokens after calling this.  Logging out a session that is already revoked or expired succeeds, so a client retrying a failed logout does not have to special-case it. 
+     * Log out the current session
+     */
+    async logout(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
+        const response = await this.logoutRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for logoutAll without sending the request
+     */
+    async logoutAllRequestOpts(): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearer-auth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/auth/logout-all`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * End every session belonging to the authenticated wallet, on every device. Use it after a suspected compromise, or to sign out a lost device.  Unlike the single-session logout this is authenticated with the access token, because it revokes sessions rather than acting on one. Access tokens already issued stay valid until they expire; only refreshing is stopped. 
+     * Log out every session
+     */
+    async logoutAllRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
+        const requestOptions = await this.logoutAllRequestOpts();
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse<any>(response);
+    }
+
+    /**
+     * End every session belonging to the authenticated wallet, on every device. Use it after a suspected compromise, or to sign out a lost device.  Unlike the single-session logout this is authenticated with the access token, because it revokes sessions rather than acting on one. Access tokens already issued stay valid until they expire; only refreshing is stopped. 
+     * Log out every session
+     */
+    async logoutAll(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
+        const response = await this.logoutAllRaw(initOverrides);
         return await response.value();
     }
 
@@ -1472,7 +1687,7 @@ export const GetWalletsRegistrationStatsIntervalEnum = {
     Day: 'day',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetWalletsRegistrationStatsIntervalEnum = typeof GetWalletsRegistrationStatsIntervalEnum[keyof typeof GetWalletsRegistrationStatsIntervalEnum];
 /**
@@ -1483,7 +1698,7 @@ export const GetWalletsRegistrationStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetWalletsRegistrationStatsTimeRangeEnum = typeof GetWalletsRegistrationStatsTimeRangeEnum[keyof typeof GetWalletsRegistrationStatsTimeRangeEnum];
 /**
@@ -1494,7 +1709,7 @@ export const GetWalletsStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetWalletsStatsTimeRangeEnum = typeof GetWalletsStatsTimeRangeEnum[keyof typeof GetWalletsStatsTimeRangeEnum];
 /**
@@ -1505,7 +1720,7 @@ export const GetWalletsTotalStatsIntervalEnum = {
     Day: 'day',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetWalletsTotalStatsIntervalEnum = typeof GetWalletsTotalStatsIntervalEnum[keyof typeof GetWalletsTotalStatsIntervalEnum];
 /**
@@ -1516,6 +1731,6 @@ export const GetWalletsTotalStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetWalletsTotalStatsTimeRangeEnum = typeof GetWalletsTotalStatsTimeRangeEnum[keyof typeof GetWalletsTotalStatsTimeRangeEnum];

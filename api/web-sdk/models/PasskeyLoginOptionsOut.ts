@@ -32,36 +32,26 @@ import {
 export interface PasskeyLoginOptionsOut {
     /**
      * base64url-encoded 32-byte random challenge (single-use, 60 s TTL).
-     * @type {string}
-     * @memberof PasskeyLoginOptionsOut
      */
     challenge: string;
     /**
      * Relying party ID. Must match the origin's effective domain.
-     * @type {string}
-     * @memberof PasskeyLoginOptionsOut
      */
     rpId: string;
     /**
      * User verification requirement. Defaults to "required" — the authenticator
      * must perform biometric or PIN verification before releasing the key.
      * 
-     * @type {PasskeyLoginOptionsOutUserVerificationEnum}
-     * @memberof PasskeyLoginOptionsOut
      */
     userVerification?: PasskeyLoginOptionsOutUserVerificationEnum;
     /**
      * Ceremony timeout in milliseconds (browser hint, not enforced server-side).
-     * @type {number}
-     * @memberof PasskeyLoginOptionsOut
      */
     timeout?: number;
     /**
      * Optional list of credential descriptors to restrict which credentials can respond.
      * Omit (or send empty array) to use discoverable (resident) credentials.
      * 
-     * @type {Array<PasskeyAllowCredential>}
-     * @memberof PasskeyLoginOptionsOut
      */
     allowCredentials?: Array<PasskeyAllowCredential>;
 }
@@ -73,7 +63,7 @@ export interface PasskeyLoginOptionsOut {
 export const PasskeyLoginOptionsOutUserVerificationEnum = {
     Required: 'required',
     Preferred: 'preferred',
-    Discouraged: 'discouraged'
+    Discouraged: 'discouraged',
 } as const;
 export type PasskeyLoginOptionsOutUserVerificationEnum = typeof PasskeyLoginOptionsOutUserVerificationEnum[keyof typeof PasskeyLoginOptionsOutUserVerificationEnum];
 

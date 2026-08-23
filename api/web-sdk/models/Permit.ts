@@ -22,38 +22,26 @@ import { mapValues } from '../runtime';
 export interface Permit {
     /**
      * 
-     * @type {string}
-     * @memberof Permit
      */
     id: string;
     /**
      * 
-     * @type {string}
-     * @memberof Permit
      */
     scope: string;
     /**
      * 
-     * @type {string}
-     * @memberof Permit
      */
     commitment: string;
     /**
      * 
-     * @type {number}
-     * @memberof Permit
      */
     nonce?: number;
     /**
      * 
-     * @type {string}
-     * @memberof Permit
      */
     recipient?: string;
     /**
      * 
-     * @type {Date}
-     * @memberof Permit
      */
     deadline?: Date;
 }

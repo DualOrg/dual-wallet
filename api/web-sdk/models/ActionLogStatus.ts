@@ -21,7 +21,7 @@
 export const ActionLogStatus = {
     Pending: 'pending',
     Completed: 'completed',
-    Failed: 'failed'
+    Failed: 'failed',
 } as const;
 export type ActionLogStatus = typeof ActionLogStatus[keyof typeof ActionLogStatus];
 

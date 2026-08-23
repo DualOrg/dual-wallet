@@ -30,8 +30,6 @@ import {
 export interface NetworkTokenPriceHistory {
     /**
      * List of historical price data points for the network token.
-     * @type {Array<NetworkTokenPriceHistoryDataInner>}
-     * @memberof NetworkTokenPriceHistory
      */
     data: Array<NetworkTokenPriceHistoryDataInner>;
 }

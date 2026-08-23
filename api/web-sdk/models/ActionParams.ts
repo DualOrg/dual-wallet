@@ -22,38 +22,26 @@ import { mapValues } from '../runtime';
 export interface ActionParams {
     /**
      * 
-     * @type {string}
-     * @memberof ActionParams
      */
     id?: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionParams
      */
     templateId?: string;
     /**
      * 
-     * @type {number}
-     * @memberof ActionParams
      */
     num?: number;
     /**
      * 
-     * @type {string}
-     * @memberof ActionParams
      */
     to?: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionParams
      */
     permitSecret?: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionParams
      */
     dataHash?: string;
 }

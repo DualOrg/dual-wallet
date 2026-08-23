@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface PasskeyRp {
     /**
      * Relying party ID (must match the origin's effective domain).
-     * @type {string}
-     * @memberof PasskeyRp
      */
     id: string;
     /**
      * Human-readable relying party name shown in browser UI.
-     * @type {string}
-     * @memberof PasskeyRp
      */
     name: string;
 }

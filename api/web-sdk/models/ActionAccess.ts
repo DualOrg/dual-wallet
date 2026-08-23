@@ -22,38 +22,26 @@ import { mapValues } from '../runtime';
 export interface ActionAccess {
     /**
      * Type of access control for the action
-     * @type {ActionAccessTypeEnum}
-     * @memberof ActionAccess
      */
     type: ActionAccessTypeEnum;
     /**
      * List of addresses allowed to perform the action (for whitelist access type)
-     * @type {Array<string>}
-     * @memberof ActionAccess
      */
     whitelist?: Array<string>;
     /**
      * Tokens required to perform the action (for token access type)
-     * @type {{ [key: string]: number; }}
-     * @memberof ActionAccess
      */
     token?: { [key: string]: number; };
     /**
      * 
-     * @type {string}
-     * @memberof ActionAccess
      */
     objectId?: string;
     /**
      * Merkle root for the access control
-     * @type {string}
-     * @memberof ActionAccess
      */
     merkleRoot?: string;
     /**
      * Merkle proof for the access control
-     * @type {Array<string>}
-     * @memberof ActionAccess
      */
     merkleProof?: Array<string>;
 }
@@ -66,7 +54,7 @@ export const ActionAccessTypeEnum = {
     Public: 'public',
     Private: 'private',
     Whitelist: 'whitelist',
-    Token: 'token'
+    Token: 'token',
 } as const;
 export type ActionAccessTypeEnum = typeof ActionAccessTypeEnum[keyof typeof ActionAccessTypeEnum];
 

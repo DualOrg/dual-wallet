@@ -36,19 +36,61 @@ import {
 } from '../models/ModelError';
 
 export interface ListDepositsRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListDepositsOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Transaction hash of the deposit.
+     */
     txHash?: string;
+    /**
+     * Token used for the deposit.
+     */
     token?: DepositToken;
+    /**
+     * Token address for the deposit.
+     */
     tokenAddress?: string;
+    /**
+     * 
+     */
     status?: DepositStatus;
+    /**
+     * Filter objects created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter objects created after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter objects created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
@@ -171,6 +213,6 @@ export class PaymentsApi extends runtime.BaseAPI {
  */
 export const ListDepositsOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListDepositsOrderEnum = typeof ListDepositsOrderEnum[keyof typeof ListDepositsOrderEnum];

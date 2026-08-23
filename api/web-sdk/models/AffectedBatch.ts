@@ -22,20 +22,14 @@ import { mapValues } from '../runtime';
 export interface AffectedBatch {
     /**
      * 
-     * @type {string}
-     * @memberof AffectedBatch
      */
     id: string;
     /**
      * 
-     * @type {number}
-     * @memberof AffectedBatch
      */
     sequence: number;
     /**
      * 
-     * @type {string}
-     * @memberof AffectedBatch
      */
     hash: string;
 }

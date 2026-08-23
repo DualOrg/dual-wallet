@@ -25,7 +25,7 @@
 export const AccountCustody = {
     Custodial: 'custodial',
     SelfCustodial: 'self-custodial',
-    Mpc: 'mpc'
+    Mpc: 'mpc',
 } as const;
 export type AccountCustody = typeof AccountCustody[keyof typeof AccountCustody];
 

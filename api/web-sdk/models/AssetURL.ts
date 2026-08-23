@@ -22,8 +22,6 @@ import { mapValues } from '../runtime';
 export interface AssetURL {
     /**
      * 
-     * @type {string}
-     * @memberof AssetURL
      */
     url: string;
 }

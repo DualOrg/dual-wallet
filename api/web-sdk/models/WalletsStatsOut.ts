@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface WalletsStatsOut {
     /**
      * Total number of users
-     * @type {number}
-     * @memberof WalletsStatsOut
      */
     total: number;
     /**
      * Number of active users in the specified time range
-     * @type {number}
-     * @memberof WalletsStatsOut
      */
     active: number;
 }

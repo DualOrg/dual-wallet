@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface MemberCreate {
     /**
      * 
-     * @type {string}
-     * @memberof MemberCreate
      */
     email: string;
     /**
      * 
-     * @type {string}
-     * @memberof MemberCreate
      */
     roleName: string;
 }
@@ -39,7 +35,7 @@ export interface MemberCreate {
  */
 export function instanceOfMemberCreate(value: object): value is MemberCreate {
     if (!('email' in value) || value['email'] === undefined) return false;
-    if ((!('roleName' in value) && !('role_name' in value)) || (value['roleName'] === undefined && value['role_name'] === undefined)) return false;
+    if ((!('roleName' in (value as Record<string, any>)) && !('role_name' in (value as Record<string, any>))) || ((value as Record<string, any>)['roleName'] === undefined && (value as Record<string, any>)['role_name'] === undefined)) return false;
     return true;
 }
 

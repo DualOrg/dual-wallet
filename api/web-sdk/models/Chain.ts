@@ -22,8 +22,6 @@ import { mapValues } from '../runtime';
 export interface Chain {
     /**
      * Indicates whether ownership has been claimed on the chain.
-     * @type {boolean}
-     * @memberof Chain
      */
     ownershipClaimed: boolean;
 }
@@ -32,7 +30,7 @@ export interface Chain {
  * Check if a given object implements the Chain interface.
  */
 export function instanceOfChain(value: object): value is Chain {
-    if ((!('ownershipClaimed' in value) && !('ownership_claimed' in value)) || (value['ownershipClaimed'] === undefined && value['ownership_claimed'] === undefined)) return false;
+    if ((!('ownershipClaimed' in (value as Record<string, any>)) && !('ownership_claimed' in (value as Record<string, any>))) || ((value as Record<string, any>)['ownershipClaimed'] === undefined && (value as Record<string, any>)['ownership_claimed'] === undefined)) return false;
     return true;
 }
 

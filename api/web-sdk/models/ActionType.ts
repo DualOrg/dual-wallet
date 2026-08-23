@@ -26,7 +26,7 @@ export const ActionType = {
     Otp: 'otp',
     OrgInvite: 'org_invite',
     Custom: 'custom',
-    Internal: 'internal'
+    Internal: 'internal',
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 

@@ -30,32 +30,22 @@ import {
 export interface Metadata {
     /**
      * Name of the object
-     * @type {string}
-     * @memberof Metadata
      */
     name?: string;
     /**
      * Description of the object
-     * @type {string}
-     * @memberof Metadata
      */
     description?: string;
     /**
      * Category of the object
-     * @type {string}
-     * @memberof Metadata
      */
     category?: string;
     /**
      * 
-     * @type {Asset}
-     * @memberof Metadata
      */
     image?: Asset;
     /**
      * Edition number of the object
-     * @type {number}
-     * @memberof Metadata
      */
     edition?: number;
 }

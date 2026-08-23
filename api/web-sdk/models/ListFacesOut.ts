@@ -30,14 +30,10 @@ import {
 export interface ListFacesOut {
     /**
      * Array of face objects.
-     * @type {Array<Face>}
-     * @memberof ListFacesOut
      */
     faces: Array<Face>;
     /**
      * Pagination token for the next set of results, if any.
-     * @type {string}
-     * @memberof ListFacesOut
      */
     next?: string;
 }

@@ -22,32 +22,22 @@ import { mapValues } from '../runtime';
 export interface LoginIn {
     /**
      * Optional organization ID for scoping the login request, if applicable
-     * @type {string}
-     * @memberof LoginIn
      */
     organizationId?: string;
     /**
      * User's email address for authentication, must be a valid email format
-     * @type {string}
-     * @memberof LoginIn
      */
     email?: string;
     /**
      * User's phone number in E.164 international format (e.g., +12125551234) as an alternative authentication identifier
-     * @type {string}
-     * @memberof LoginIn
      */
     phoneNumber?: string;
     /**
      * User's account password for standard authentication
-     * @type {string}
-     * @memberof LoginIn
      */
     password?: string;
     /**
      * One-time password or verification code for multi-factor authentication or passwordless login
-     * @type {string}
-     * @memberof LoginIn
      */
     otp?: string;
 }

@@ -22,26 +22,18 @@ import { mapValues } from '../runtime';
 export interface Crud {
     /**
      * 
-     * @type {boolean}
-     * @memberof Crud
      */
     read: boolean;
     /**
      * 
-     * @type {boolean}
-     * @memberof Crud
      */
     create: boolean;
     /**
      * 
-     * @type {boolean}
-     * @memberof Crud
      */
     update: boolean;
     /**
      * 
-     * @type {boolean}
-     * @memberof Crud
      */
     _delete: boolean;
 }
@@ -53,7 +45,7 @@ export function instanceOfCrud(value: object): value is Crud {
     if (!('read' in value) || value['read'] === undefined) return false;
     if (!('create' in value) || value['create'] === undefined) return false;
     if (!('update' in value) || value['update'] === undefined) return false;
-    if ((!('_delete' in value) && !('delete' in value)) || (value['_delete'] === undefined && value['delete'] === undefined)) return false;
+    if ((!('_delete' in (value as Record<string, any>)) && !('delete' in (value as Record<string, any>))) || ((value as Record<string, any>)['_delete'] === undefined && (value as Record<string, any>)['delete'] === undefined)) return false;
     return true;
 }
 

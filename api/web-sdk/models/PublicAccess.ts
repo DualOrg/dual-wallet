@@ -22,8 +22,6 @@ import { mapValues } from '../runtime';
 export interface PublicAccess {
     /**
      * 
-     * @type {Array<string>}
-     * @memberof PublicAccess
      */
     custom?: Array<string>;
 }

@@ -30,38 +30,26 @@ import {
 export interface StakingOperation {
     /**
      * Unique identifier for the deposit
-     * @type {string}
-     * @memberof StakingOperation
      */
     id: string;
     /**
      * Address of the staking user.
-     * @type {string}
-     * @memberof StakingOperation
      */
     address: string;
     /**
      * Amount of DUAL staked by the user (wei).
-     * @type {string}
-     * @memberof StakingOperation
      */
     amount: string;
     /**
      * Transaction hash of the staking operation.
-     * @type {string}
-     * @memberof StakingOperation
      */
     txHash: string;
     /**
      * 
-     * @type {StakingOperationType}
-     * @memberof StakingOperation
      */
     type: StakingOperationType;
     /**
      * Timestamp of when the deposit was created.
-     * @type {Date}
-     * @memberof StakingOperation
      */
     whenCreated: Date;
 }
@@ -75,9 +63,9 @@ export function instanceOfStakingOperation(value: object): value is StakingOpera
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('address' in value) || value['address'] === undefined) return false;
     if (!('amount' in value) || value['amount'] === undefined) return false;
-    if ((!('txHash' in value) && !('tx_hash' in value)) || (value['txHash'] === undefined && value['tx_hash'] === undefined)) return false;
+    if ((!('txHash' in (value as Record<string, any>)) && !('tx_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['txHash'] === undefined && (value as Record<string, any>)['tx_hash'] === undefined)) return false;
     if (!('type' in value) || value['type'] === undefined) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
     return true;
 }
 
@@ -96,7 +84,7 @@ export function StakingOperationFromJSONTyped(json: any, ignoreDiscriminator: bo
         'amount': json['amount'],
         'txHash': json['tx_hash'],
         'type': StakingOperationTypeFromJSON(json['type']),
-        'whenCreated': (new Date(json['when_created'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
     };
 }
 
@@ -116,7 +104,7 @@ export function StakingOperationToJSONTyped(value?: StakingOperation | null, ign
         'amount': value['amount'],
         'tx_hash': value['txHash'],
         'type': StakingOperationTypeToJSON(value['type']),
-        'when_created': value['whenCreated'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
     };
 }
 

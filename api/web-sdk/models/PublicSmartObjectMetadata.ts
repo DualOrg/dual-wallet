@@ -30,32 +30,22 @@ import {
 export interface PublicSmartObjectMetadata {
     /**
      * Name of the smart object
-     * @type {string}
-     * @memberof PublicSmartObjectMetadata
      */
     name: string;
     /**
      * Description of the smart object
-     * @type {string}
-     * @memberof PublicSmartObjectMetadata
      */
     description: string;
     /**
      * URL to the image representing the smart object
-     * @type {string}
-     * @memberof PublicSmartObjectMetadata
      */
     image: string;
     /**
      * List of attributes associated with the smart object
-     * @type {Array<PublicSmartObjectMetadataAttributesInner>}
-     * @memberof PublicSmartObjectMetadata
      */
     attributes: Array<PublicSmartObjectMetadataAttributesInner>;
     /**
      * External URL related to the smart object
-     * @type {string}
-     * @memberof PublicSmartObjectMetadata
      */
     externalUrl: string;
 }
@@ -68,7 +58,7 @@ export function instanceOfPublicSmartObjectMetadata(value: object): value is Pub
     if (!('description' in value) || value['description'] === undefined) return false;
     if (!('image' in value) || value['image'] === undefined) return false;
     if (!('attributes' in value) || value['attributes'] === undefined) return false;
-    if ((!('externalUrl' in value) && !('external_url' in value)) || (value['externalUrl'] === undefined && value['external_url'] === undefined)) return false;
+    if ((!('externalUrl' in (value as Record<string, any>)) && !('external_url' in (value as Record<string, any>))) || ((value as Record<string, any>)['externalUrl'] === undefined && (value as Record<string, any>)['external_url'] === undefined)) return false;
     return true;
 }
 

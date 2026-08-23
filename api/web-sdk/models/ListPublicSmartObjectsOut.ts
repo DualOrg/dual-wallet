@@ -51,34 +51,24 @@ import {
 export interface ListPublicSmartObjectsOut {
     /**
      * Public object data paired with resolved display descriptors when include=display.
-     * @type {Array<PublicObjectView>}
-     * @memberof ListPublicSmartObjectsOut
      */
     items?: Array<PublicObjectView>;
     /**
      * Legacy v1 object array retained during migration to items.
-     * @type {Array<PublicSmartObject>}
-     * @memberof ListPublicSmartObjectsOut
      * @deprecated
      */
     objects: Array<PublicSmartObject>;
     /**
      * Legacy v1 face projection. Use include=display and items[].display.
-     * @type {Array<ObjectFaces>}
-     * @memberof ListPublicSmartObjectsOut
      * @deprecated
      */
     faces?: Array<ObjectFaces>;
     /**
      * Array of object actions.
-     * @type {Array<ObjectActions>}
-     * @memberof ListPublicSmartObjectsOut
      */
     actions?: Array<ObjectActions>;
     /**
      * Pagination token for the next set of results, if any.
-     * @type {string}
-     * @memberof ListPublicSmartObjectsOut
      */
     next?: string;
 }

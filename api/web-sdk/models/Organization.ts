@@ -44,62 +44,42 @@ import {
 export interface Organization {
     /**
      * Unique identifier for the organization
-     * @type {string}
-     * @memberof Organization
      */
     id: string;
     /**
      * Fully Qualified Domain Name associated with the organization
-     * @type {string}
-     * @memberof Organization
      */
     fqdn: string;
     /**
      * Unique identifier for the organization's owner
-     * @type {string}
-     * @memberof Organization
      */
     ownerId?: string;
     /**
      * Human-readable name of the organization
-     * @type {string}
-     * @memberof Organization
      */
     name: string;
     /**
      * Organization's logo or profile image
-     * @type {Asset}
-     * @memberof Organization
      */
     image?: Asset;
     /**
      * List of members belonging to this organization
-     * @type {Array<Member>}
-     * @memberof Organization
      */
     members?: Array<Member>;
     /**
      * List of roles defined within this organization
-     * @type {Array<Role>}
-     * @memberof Organization
      */
     roles?: Array<Role>;
     /**
      * Optional detailed description of the organization's purpose and activities
-     * @type {string}
-     * @memberof Organization
      */
     description?: string;
     /**
      * Timestamp when the organization was created
-     * @type {Date}
-     * @memberof Organization
      */
     whenCreated: Date;
     /**
      * Timestamp when the organization was last modified
-     * @type {Date}
-     * @memberof Organization
      */
     whenModified: Date;
 }
@@ -111,8 +91,8 @@ export function instanceOfOrganization(value: object): value is Organization {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('fqdn' in value) || value['fqdn'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
-    if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
+    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
     return true;
 }
 
@@ -134,8 +114,8 @@ export function OrganizationFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'members': json['members'] == null ? undefined : ((json['members'] as Array<any>).map(MemberFromJSON)),
         'roles': json['roles'] == null ? undefined : ((json['roles'] as Array<any>).map(RoleFromJSON)),
         'description': json['description'] == null ? undefined : json['description'],
-        'whenCreated': (new Date(json['when_created'])),
-        'whenModified': (new Date(json['when_modified'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
+        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
     };
 }
 
@@ -158,8 +138,8 @@ export function OrganizationToJSONTyped(value?: Organization | null, ignoreDiscr
         'members': value['members'] == null ? undefined : ((value['members'] as Array<any>).map(MemberToJSON)),
         'roles': value['roles'] == null ? undefined : ((value['roles'] as Array<any>).map(RoleToJSON)),
         'description': value['description'],
-        'when_created': value['whenCreated'].toISOString(),
-        'when_modified': value['whenModified'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
+        'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
     };
 }
 

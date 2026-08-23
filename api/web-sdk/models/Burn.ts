@@ -22,8 +22,6 @@ import { mapValues } from '../runtime';
 export interface Burn {
     /**
      * 
-     * @type {string}
-     * @memberof Burn
      */
     id: string;
 }

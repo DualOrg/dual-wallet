@@ -22,20 +22,14 @@ import { mapValues } from '../runtime';
 export interface Update {
     /**
      * 
-     * @type {string}
-     * @memberof Update
      */
     id: string;
     /**
      * 
-     * @type {{ [key: string]: any; }}
-     * @memberof Update
      */
     data?: { [key: string]: any; };
     /**
      * 
-     * @type {string}
-     * @memberof Update
      */
     secret?: string;
 }

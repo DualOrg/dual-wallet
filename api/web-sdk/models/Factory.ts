@@ -22,32 +22,22 @@ import { mapValues } from '../runtime';
 export interface Factory {
     /**
      * 
-     * @type {number}
-     * @memberof Factory
      */
     maxSupply: number;
     /**
      * 
-     * @type {number}
-     * @memberof Factory
      */
     mintedCount: number;
     /**
      * 
-     * @type {Date}
-     * @memberof Factory
      */
     startTime?: Date;
     /**
      * 
-     * @type {Date}
-     * @memberof Factory
      */
     endTime?: Date;
     /**
      * 
-     * @type {Array<string>}
-     * @memberof Factory
      */
     whitelist?: Array<string>;
 }
@@ -56,8 +46,8 @@ export interface Factory {
  * Check if a given object implements the Factory interface.
  */
 export function instanceOfFactory(value: object): value is Factory {
-    if ((!('maxSupply' in value) && !('max_supply' in value)) || (value['maxSupply'] === undefined && value['max_supply'] === undefined)) return false;
-    if ((!('mintedCount' in value) && !('minted_count' in value)) || (value['mintedCount'] === undefined && value['minted_count'] === undefined)) return false;
+    if ((!('maxSupply' in (value as Record<string, any>)) && !('max_supply' in (value as Record<string, any>))) || ((value as Record<string, any>)['maxSupply'] === undefined && (value as Record<string, any>)['max_supply'] === undefined)) return false;
+    if ((!('mintedCount' in (value as Record<string, any>)) && !('minted_count' in (value as Record<string, any>))) || ((value as Record<string, any>)['mintedCount'] === undefined && (value as Record<string, any>)['minted_count'] === undefined)) return false;
     return true;
 }
 

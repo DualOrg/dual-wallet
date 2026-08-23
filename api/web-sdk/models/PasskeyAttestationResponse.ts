@@ -22,22 +22,16 @@ import { mapValues } from '../runtime';
 export interface PasskeyAttestationResponse {
     /**
      * base64url-encoded clientDataJSON bytes.
-     * @type {string}
-     * @memberof PasskeyAttestationResponse
      */
     clientDataJSON: string;
     /**
      * base64url-encoded CBOR-encoded attestationObject. Contains authData
      * which holds the new credential's public key (P-256 x/y coordinates).
      * 
-     * @type {string}
-     * @memberof PasskeyAttestationResponse
      */
     attestationObject: string;
     /**
      * Authenticator transport hints reported by the browser.
-     * @type {Array<PasskeyAttestationResponseTransportsEnum>}
-     * @memberof PasskeyAttestationResponse
      */
     transports?: Array<PasskeyAttestationResponseTransportsEnum>;
 }
@@ -51,7 +45,7 @@ export const PasskeyAttestationResponseTransportsEnum = {
     Hybrid: 'hybrid',
     Internal: 'internal',
     Nfc: 'nfc',
-    Usb: 'usb'
+    Usb: 'usb',
 } as const;
 export type PasskeyAttestationResponseTransportsEnum = typeof PasskeyAttestationResponseTransportsEnum[keyof typeof PasskeyAttestationResponseTransportsEnum];
 

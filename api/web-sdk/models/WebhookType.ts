@@ -21,7 +21,7 @@
 export const WebhookType = {
     AddressActivity: 'address_activity',
     TemplateActivity: 'template_activity',
-    ActionActivity: 'action_activity'
+    ActionActivity: 'action_activity',
 } as const;
 export type WebhookType = typeof WebhookType[keyof typeof WebhookType];
 

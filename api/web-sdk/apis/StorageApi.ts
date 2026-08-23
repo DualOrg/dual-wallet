@@ -46,40 +46,109 @@ import {
 } from '../models/StorageAsset';
 
 export interface CreateAssetRequest {
+    /**
+     * 
+     */
     provider: ProviderType;
+    /**
+     * 
+     */
     folder: FolderType;
+    /**
+     * The key of the asset in the storage provider.
+     */
     key: string;
+    /**
+     * 
+     */
     file: Blob;
+    /**
+     * Whether the asset is public or not.
+     */
     isPublic?: boolean;
+    /**
+     * The tag of the asset.
+     */
     tag?: string;
 }
 
 export interface DeleteAssetRequest {
+    /**
+     * Unique identifier of the asset
+     */
     assetId: string;
 }
 
 export interface DownloadAssetRequest {
+    /**
+     * Unique identifier of the asset
+     */
     assetId: string;
+    /**
+     * If true, returns the asset URL instead of redirecting to it
+     */
     noRedirect?: boolean;
 }
 
 export interface GetAssetRequest {
+    /**
+     * Unique identifier of the asset
+     */
     assetId: string;
 }
 
 export interface ListAssetsRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by their name or title
+     */
     name?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListAssetsOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * 
+     */
     type?: string;
+    /**
+     * 
+     */
     folder?: string;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
@@ -499,6 +568,6 @@ export class StorageApi extends runtime.BaseAPI {
  */
 export const ListAssetsOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListAssetsOrderEnum = typeof ListAssetsOrderEnum[keyof typeof ListAssetsOrderEnum];

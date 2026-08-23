@@ -22,26 +22,18 @@ import { mapValues } from '../runtime';
 export interface FactoryUpdate {
     /**
      * 
-     * @type {number}
-     * @memberof FactoryUpdate
      */
     maxSupply?: number;
     /**
      * 
-     * @type {Date}
-     * @memberof FactoryUpdate
      */
     startTime?: Date;
     /**
      * 
-     * @type {Date}
-     * @memberof FactoryUpdate
      */
     endTime?: Date;
     /**
      * 
-     * @type {Array<string>}
-     * @memberof FactoryUpdate
      */
     whitelist?: Array<string>;
 }

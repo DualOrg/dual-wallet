@@ -22,20 +22,14 @@ import { mapValues } from '../runtime';
 export interface Location {
     /**
      * Latitude coordinate in decimal degrees
-     * @type {number}
-     * @memberof Location
      */
     latitude: number;
     /**
      * Longitude coordinate in decimal degrees
-     * @type {number}
-     * @memberof Location
      */
     longitude: number;
     /**
      * Geohash string for efficient location-based queries
-     * @type {string}
-     * @memberof Location
      */
     geoHash: string;
 }
@@ -46,7 +40,7 @@ export interface Location {
 export function instanceOfLocation(value: object): value is Location {
     if (!('latitude' in value) || value['latitude'] === undefined) return false;
     if (!('longitude' in value) || value['longitude'] === undefined) return false;
-    if ((!('geoHash' in value) && !('geo_hash' in value)) || (value['geoHash'] === undefined && value['geo_hash'] === undefined)) return false;
+    if ((!('geoHash' in (value as Record<string, any>)) && !('geo_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['geoHash'] === undefined && (value as Record<string, any>)['geo_hash'] === undefined)) return false;
     return true;
 }
 

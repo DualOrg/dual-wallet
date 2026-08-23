@@ -30,20 +30,14 @@ import {
 export interface RoleCreate {
     /**
      * Name for the new role
-     * @type {string}
-     * @memberof RoleCreate
      */
     name: string;
     /**
      * Optional description explaining the purpose of the role
-     * @type {string}
-     * @memberof RoleCreate
      */
     description?: string;
     /**
      * List of permissions to be assigned to the role
-     * @type {Array<Permission>}
-     * @memberof RoleCreate
      */
     permissions: Array<Permission>;
 }

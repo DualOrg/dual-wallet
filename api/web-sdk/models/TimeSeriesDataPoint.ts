@@ -22,32 +22,22 @@ import { mapValues } from '../runtime';
 export interface TimeSeriesDataPoint {
     /**
      * 
-     * @type {string}
-     * @memberof TimeSeriesDataPoint
      */
     id?: string;
     /**
      * Key for this data point
-     * @type {string}
-     * @memberof TimeSeriesDataPoint
      */
     key?: string;
     /**
      * Timestamp for this data point
-     * @type {Date}
-     * @memberof TimeSeriesDataPoint
      */
     when?: Date;
     /**
      * Count value for this data point
-     * @type {number}
-     * @memberof TimeSeriesDataPoint
      */
     count?: number;
     /**
      * 
-     * @type {string}
-     * @memberof TimeSeriesDataPoint
      */
     amount?: string;
 }

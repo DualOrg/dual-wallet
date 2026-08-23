@@ -30,14 +30,10 @@ import {
 export interface ListMessagesOut {
     /**
      * Array of support message objects.
-     * @type {Array<SupportMessage>}
-     * @memberof ListMessagesOut
      */
     messages: Array<SupportMessage>;
     /**
      * Pagination token for the next set of results, if any.
-     * @type {string}
-     * @memberof ListMessagesOut
      */
     next?: string;
 }

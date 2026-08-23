@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface PublicSmartObjectMetadataAttributesInner {
     /**
      * Type of the trait
-     * @type {string}
-     * @memberof PublicSmartObjectMetadataAttributesInner
      */
     traitType?: string;
     /**
      * Value of the trait
-     * @type {string}
-     * @memberof PublicSmartObjectMetadataAttributesInner
      */
     value?: string;
 }

@@ -51,74 +51,50 @@ import {
 export interface TemplateMessage {
     /**
      * 
-     * @type {string}
-     * @memberof TemplateMessage
      */
     id: string;
     /**
      * 
-     * @type {string}
-     * @memberof TemplateMessage
      */
     name: string;
     /**
      * 
-     * @type {Language}
-     * @memberof TemplateMessage
      */
     language: Language;
     /**
      * 
-     * @type {System}
-     * @memberof TemplateMessage
      */
     system: System;
     /**
      * 
-     * @type {ActionType}
-     * @memberof TemplateMessage
      */
     actionType: ActionType;
     /**
      * 
-     * @type {string}
-     * @memberof TemplateMessage
      */
     title?: string;
     /**
      * 
-     * @type {string}
-     * @memberof TemplateMessage
      */
     project?: string;
     /**
      * 
-     * @type {string}
-     * @memberof TemplateMessage
      */
     content: string;
     /**
      * 
-     * @type {ContentType}
-     * @memberof TemplateMessage
      */
     contentType: ContentType;
     /**
      * 
-     * @type {{ [key: string]: string; }}
-     * @memberof TemplateMessage
      */
     values?: { [key: string]: string; };
     /**
      * 
-     * @type {Date}
-     * @memberof TemplateMessage
      */
     whenModified: Date;
     /**
      * 
-     * @type {Date}
-     * @memberof TemplateMessage
      */
     whenCreated: Date;
 }
@@ -133,11 +109,11 @@ export function instanceOfTemplateMessage(value: object): value is TemplateMessa
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('language' in value) || value['language'] === undefined) return false;
     if (!('system' in value) || value['system'] === undefined) return false;
-    if ((!('actionType' in value) && !('action_type' in value)) || (value['actionType'] === undefined && value['action_type'] === undefined)) return false;
+    if ((!('actionType' in (value as Record<string, any>)) && !('action_type' in (value as Record<string, any>))) || ((value as Record<string, any>)['actionType'] === undefined && (value as Record<string, any>)['action_type'] === undefined)) return false;
     if (!('content' in value) || value['content'] === undefined) return false;
-    if ((!('contentType' in value) && !('content_type' in value)) || (value['contentType'] === undefined && value['content_type'] === undefined)) return false;
-    if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
+    if ((!('contentType' in (value as Record<string, any>)) && !('content_type' in (value as Record<string, any>))) || ((value as Record<string, any>)['contentType'] === undefined && (value as Record<string, any>)['content_type'] === undefined)) return false;
+    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
     return true;
 }
 
@@ -161,8 +137,8 @@ export function TemplateMessageFromJSONTyped(json: any, ignoreDiscriminator: boo
         'content': json['content'],
         'contentType': ContentTypeFromJSON(json['content_type']),
         'values': json['values'] == null ? undefined : json['values'],
-        'whenModified': (new Date(json['when_modified'])),
-        'whenCreated': (new Date(json['when_created'])),
+        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
     };
 }
 
@@ -187,8 +163,8 @@ export function TemplateMessageToJSONTyped(value?: TemplateMessage | null, ignor
         'content': value['content'],
         'content_type': ContentTypeToJSON(value['contentType']),
         'values': value['values'],
-        'when_modified': value['whenModified'].toISOString(),
-        'when_created': value['whenCreated'].toISOString(),
+        'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
     };
 }
 

@@ -25,22 +25,16 @@ import { mapValues } from '../runtime';
 export interface FaceView {
     /**
      * Intended display context for the view.
-     * @type {FaceViewVariantEnum}
-     * @memberof FaceView
      */
     variant: FaceViewVariantEnum;
     /**
      * Media type produced by the view.
-     * @type {FaceViewMediaTypeEnum}
-     * @memberof FaceView
      */
     mediaType: FaceViewMediaTypeEnum;
     /**
      * Renderer source for this view. For the go-template renderer this is an
      * html/template document whose placeholders are resolved from object data.
      * 
-     * @type {string}
-     * @memberof FaceView
      */
     content?: string;
     /**
@@ -48,20 +42,14 @@ export interface FaceView {
      * Resolved object display descriptors preserve existing query parameters and
      * add `object_id` plus the requested `variant` for the remote application.
      * 
-     * @type {string}
-     * @memberof FaceView
      */
     url?: string;
     /**
      * Recommended width/height ratio for layout reservation.
-     * @type {string}
-     * @memberof FaceView
      */
     aspectRatio?: string;
     /**
      * Whether the representation is intended to accept user interaction.
-     * @type {boolean}
-     * @memberof FaceView
      */
     interactive?: boolean;
     /**
@@ -70,8 +58,6 @@ export interface FaceView {
      * authenticated bridge context. It must not contain renderer source,
      * credentials, secrets, tokens, or capability grants.
      * 
-     * @type {{ [key: string]: any; }}
-     * @memberof FaceView
      */
     config?: { [key: string]: any; };
 }
@@ -84,7 +70,7 @@ export const FaceViewVariantEnum = {
     Default: 'default',
     Card: 'card',
     Detail: 'detail',
-    Share: 'share'
+    Share: 'share',
 } as const;
 export type FaceViewVariantEnum = typeof FaceViewVariantEnum[keyof typeof FaceViewVariantEnum];
 
@@ -96,7 +82,7 @@ export const FaceViewMediaTypeEnum = {
     ImageSvgxml: 'image/svg+xml',
     ImagePng: 'image/png',
     ImageJpeg: 'image/jpeg',
-    ImageWebp: 'image/webp'
+    ImageWebp: 'image/webp',
 } as const;
 export type FaceViewMediaTypeEnum = typeof FaceViewMediaTypeEnum[keyof typeof FaceViewMediaTypeEnum];
 
@@ -106,7 +92,7 @@ export type FaceViewMediaTypeEnum = typeof FaceViewMediaTypeEnum[keyof typeof Fa
  */
 export function instanceOfFaceView(value: object): value is FaceView {
     if (!('variant' in value) || value['variant'] === undefined) return false;
-    if ((!('mediaType' in value) && !('media_type' in value)) || (value['mediaType'] === undefined && value['media_type'] === undefined)) return false;
+    if ((!('mediaType' in (value as Record<string, any>)) && !('media_type' in (value as Record<string, any>))) || ((value as Record<string, any>)['mediaType'] === undefined && (value as Record<string, any>)['media_type'] === undefined)) return false;
     return true;
 }
 

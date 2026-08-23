@@ -15,11 +15,6 @@
 
 import * as runtime from '../runtime';
 import {
-    type InlineObject,
-    InlineObjectFromJSON,
-    InlineObjectToJSON,
-} from '../models/InlineObject';
-import {
     type ListWebhookEventsOut,
     ListWebhookEventsOutFromJSON,
     ListWebhookEventsOutToJSON,
@@ -45,6 +40,11 @@ import {
     WebhookCreateToJSON,
 } from '../models/WebhookCreate';
 import {
+    type WebhookCreateOut,
+    WebhookCreateOutFromJSON,
+    WebhookCreateOutToJSON,
+} from '../models/WebhookCreateOut';
+import {
     type WebhookType,
     WebhookTypeFromJSON,
     WebhookTypeToJSON,
@@ -56,57 +56,168 @@ import {
 } from '../models/WebhookUpdate';
 
 export interface CreateWebhookRequest {
+    /**
+     * 
+     */
     webhookCreate: WebhookCreate;
 }
 
 export interface DeleteWebhookRequest {
+    /**
+     * Unique identifier of the webhook
+     */
     webhookId: string;
 }
 
 export interface GetWebhookRequest {
+    /**
+     * Unique identifier of the webhook
+     */
     webhookId: string;
 }
 
 export interface ListWebhookEventsRequest {
+    /**
+     * Unique identifier of the webhook
+     */
     webhookId: string;
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListWebhookEventsOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Filter events by webhook ID
+     */
     webhookId2?: string;
+    /**
+     * Filter events by organization ID
+     */
     orgId?: string;
+    /**
+     * Filter events by webhook type
+     */
     type?: WebhookType;
+    /**
+     * Filter events by their status
+     */
     status?: string;
+    /**
+     * Filter events created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter events created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * Filter events created on or after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter events created on or before this date and time
+     */
     whenCreated$lte?: Date;
 }
 
 export interface ListWebhooksRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by their name or title
+     */
     name?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListWebhooksOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Filter webhooks by their type
+     */
     type?: WebhookType;
+    /**
+     * Filter webhooks by template ID
+     */
     templateId?: string;
+    /**
+     * Filter webhooks by action name
+     */
     action?: string;
+    /**
+     * Filter webhooks by blockchain address
+     */
     address?: string;
+    /**
+     * Filter webhooks by their active status
+     */
     isActive?: boolean;
+    /**
+     * Filter webhooks by wallet ID
+     */
     walletId?: string;
+    /**
+     * Filter webhooks created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter webhooks created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * Filter webhooks created on or after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter webhooks created on or before this date and time
+     */
     whenCreated$lte?: Date;
 }
 
 export interface UpdateWebhookRequest {
+    /**
+     * Unique identifier of the webhook
+     */
     webhookId: string;
+    /**
+     * 
+     */
     webhookUpdate: WebhookUpdate;
 }
 
@@ -160,18 +271,18 @@ export class WebhooksApi extends runtime.BaseAPI {
      * Register a new webhook with the system.
      * Create a new webhook
      */
-    async createWebhookRaw(requestParameters: CreateWebhookRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<InlineObject>> {
+    async createWebhookRaw(requestParameters: CreateWebhookRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WebhookCreateOut>> {
         const requestOptions = await this.createWebhookRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => InlineObjectFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => WebhookCreateOutFromJSON(jsonValue));
     }
 
     /**
      * Register a new webhook with the system.
      * Create a new webhook
      */
-    async createWebhook(requestParameters: CreateWebhookRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<InlineObject> {
+    async createWebhook(requestParameters: CreateWebhookRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WebhookCreateOut> {
         const response = await this.createWebhookRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -604,7 +715,7 @@ export class WebhooksApi extends runtime.BaseAPI {
  */
 export const ListWebhookEventsOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListWebhookEventsOrderEnum = typeof ListWebhookEventsOrderEnum[keyof typeof ListWebhookEventsOrderEnum];
 /**
@@ -612,6 +723,6 @@ export type ListWebhookEventsOrderEnum = typeof ListWebhookEventsOrderEnum[keyof
  */
 export const ListWebhooksOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListWebhooksOrderEnum = typeof ListWebhooksOrderEnum[keyof typeof ListWebhooksOrderEnum];

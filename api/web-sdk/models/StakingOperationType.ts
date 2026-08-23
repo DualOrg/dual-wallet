@@ -23,7 +23,7 @@ export const StakingOperationType = {
     Unstake: 'unstake',
     Reward: 'reward',
     FeeDispatch: 'fee_dispatch',
-    Other: 'other'
+    Other: 'other',
 } as const;
 export type StakingOperationType = typeof StakingOperationType[keyof typeof StakingOperationType];
 

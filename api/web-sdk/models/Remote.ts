@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface Remote {
     /**
      * 
-     * @type {string}
-     * @memberof Remote
      */
     id: string;
     /**
      * 
-     * @type {{ [key: string]: any; }}
-     * @memberof Remote
      */
     data?: { [key: string]: any; };
 }

@@ -30,20 +30,14 @@ import {
 export interface SetAttributes {
     /**
      * 
-     * @type {string}
-     * @memberof SetAttributes
      */
     id: string;
     /**
      * Optional optimistic-concurrency precondition for the target object.
-     * @type {number}
-     * @memberof SetAttributes
      */
     expectedObjectNonce?: number;
     /**
      * 
-     * @type {Array<AttributeInput>}
-     * @memberof SetAttributes
      */
     attributes: Array<AttributeInput>;
 }

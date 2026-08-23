@@ -51,56 +51,38 @@ import {
 export interface TemplateMessageUpdate {
     /**
      * 
-     * @type {string}
-     * @memberof TemplateMessageUpdate
      */
     name?: string;
     /**
      * 
-     * @type {Language}
-     * @memberof TemplateMessageUpdate
      */
     language?: Language;
     /**
      * 
-     * @type {System}
-     * @memberof TemplateMessageUpdate
      */
     system?: System;
     /**
      * 
-     * @type {ActionType}
-     * @memberof TemplateMessageUpdate
      */
     actionType?: ActionType;
     /**
      * 
-     * @type {string}
-     * @memberof TemplateMessageUpdate
      */
     title?: string;
     /**
      * 
-     * @type {string}
-     * @memberof TemplateMessageUpdate
      */
     project?: string;
     /**
      * 
-     * @type {string}
-     * @memberof TemplateMessageUpdate
      */
     content?: string;
     /**
      * 
-     * @type {ContentType}
-     * @memberof TemplateMessageUpdate
      */
     contentType?: ContentType;
     /**
      * 
-     * @type {{ [key: string]: string; }}
-     * @memberof TemplateMessageUpdate
      */
     values?: { [key: string]: string; };
 }

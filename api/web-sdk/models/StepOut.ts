@@ -22,20 +22,14 @@ import { mapValues } from '../runtime';
 export interface StepOut {
     /**
      * 
-     * @type {string}
-     * @memberof StepOut
      */
     action: string;
     /**
      * 
-     * @type {string}
-     * @memberof StepOut
      */
     error?: string;
     /**
      * 
-     * @type {object}
-     * @memberof StepOut
      */
     output?: object;
 }

@@ -22,26 +22,18 @@ import { mapValues } from '../runtime';
 export interface AffectedActionLog {
     /**
      * 
-     * @type {string}
-     * @memberof AffectedActionLog
      */
     id: string;
     /**
      * 
-     * @type {string}
-     * @memberof AffectedActionLog
      */
     hash: string;
     /**
      * Name of the affected action log
-     * @type {string}
-     * @memberof AffectedActionLog
      */
     name: string;
     /**
      * Alias of the affected action log
-     * @type {string}
-     * @memberof AffectedActionLog
      */
     alias?: string;
 }

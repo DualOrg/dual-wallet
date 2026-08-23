@@ -176,309 +176,1003 @@ import {
 } from '../models/WalletsTotalStatsOut';
 
 export interface GetActionExecutionStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
     interval?: GetActionExecutionStatsIntervalEnum;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetActionExecutionStatsTimeRangeEnum;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter statistics by action name
+     */
     actionName?: string;
+    /**
+     * Filter statistics by signer account name
+     */
     signer?: string;
 }
 
 export interface GetActionFeesStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
     interval?: GetActionFeesStatsIntervalEnum;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetActionFeesStatsTimeRangeEnum;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter statistics by action name
+     */
     actionName?: string;
+    /**
+     * Filter statistics by signer account name
+     */
     signer?: string;
 }
 
 export interface GetActionsStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetActionsStatsTimeRangeEnum;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter statistics by action name
+     */
     actionName?: string;
+    /**
+     * Filter statistics by signer account name
+     */
     signer?: string;
 }
 
 export interface GetBatchRequest {
+    /**
+     * Unique identifier of the transaction batch
+     */
     batchId: string;
 }
 
 export interface GetCheckpointRequest {
+    /**
+     * Unique identifier of the transaction checkpoint
+     */
     checkpointId: string;
 }
 
 export interface GetNetworkStakingInfoRequest {
+    /**
+     * Filter by specific address involved in staking (optional).
+     */
     address?: string;
 }
 
 export interface GetNetworkTokenPriceHistoryRequest {
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetNetworkTokenPriceHistoryTimeRangeEnum;
 }
 
 export interface GetObjectByIdPublicRequest {
+    /**
+     * 
+     */
     objectId: string;
 }
 
 export interface GetObjectCreationStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
     interval?: GetObjectCreationStatsIntervalEnum;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetObjectCreationStatsTimeRangeEnum;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter statistics by template ID
+     */
     templateId?: string;
-    signer?: string;
+    /**
+     * Filter statistics by the owner's address. Objects record ownership as an
+     * address, which is why this is an address rather than a signer name, and
+     * it is the field the service itself applies to narrow an aggregate to an
+     * end-user session's own objects.
+     * 
+     */
+    owner?: string;
 }
 
 export interface GetObjectMetadataByIdPublicRequest {
+    /**
+     * 
+     */
+    objectId: string;
+}
+
+export interface GetObjectMetadataByIdPublicLegacyRequest {
+    /**
+     * 
+     */
     objectId: string;
 }
 
 export interface GetObjectStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetObjectStatsTimeRangeEnum;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter statistics by template ID
+     */
     templateId?: string;
-    walletId?: string;
+    /**
+     * Filter statistics by the owner's address. Objects record ownership as an
+     * address, which is why this is an address rather than a wallet id, and it
+     * is the field the service itself applies to narrow an aggregate to an
+     * end-user session's own objects.
+     * 
+     */
+    owner?: string;
 }
 
 export interface GetStakingOperationsStatsRequest {
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
     interval?: GetStakingOperationsStatsIntervalEnum;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetStakingOperationsStatsTimeRangeEnum;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface GetStakingOperationsTotalRequest {
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
     interval?: GetStakingOperationsTotalIntervalEnum;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Filter by staking operation type.
+     */
     type?: StakingOperationType;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface GetTemplatePublicRequest {
+    /**
+     * Unique identifier of the template
+     */
     templateId: string;
 }
 
 export interface GetWalletsRegistrationStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
     interval?: GetWalletsRegistrationStatsIntervalEnum;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetWalletsRegistrationStatsTimeRangeEnum;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Filter statistics by activation status
+     */
     activated?: boolean;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface GetWalletsStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetWalletsStatsTimeRangeEnum;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface GetWalletsTotalStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
     interval?: GetWalletsTotalStatsIntervalEnum;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetWalletsTotalStatsTimeRangeEnum;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface ListActionLogsRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListActionLogsOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Filter logs by action ID
+     */
     actionId?: string;
+    /**
+     * Filter logs by transaction hash
+     */
     hash?: string;
+    /**
+     * Filter logs by batch ID
+     */
     batchId?: string;
+    /**
+     * Filter logs by wallet ID
+     */
     walletId?: string;
+    /**
+     * Filter logs by object ID
+     */
     objectId?: string;
+    /**
+     * Filter by the execution identity committed by the action log. The migrated account contains the legacy signer for version 1 and the Kernel account for version 2.
+     */
     account?: string;
+    /**
+     * Filter logs by execution status
+     */
     status?: string;
+    /**
+     * Filter logs created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter logs created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * Filter logs created on or after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter logs created on or before this date and time
+     */
     whenCreated$lte?: Date;
 }
 
 export interface ListBatchesRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListBatchesOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Filter batches by sequencer ID
+     */
     sequence?: number;
+    /**
+     * Filter batches by action ID
+     */
     actionId?: string;
+    /**
+     * Filter batches by batch ID
+     */
     batchId?: string;
+    /**
+     * Filter batches by transaction hash
+     */
     hash?: string;
+    /**
+     * Filter batches by processing status
+     */
     status?: string;
+    /**
+     * Filter batches by signer address
+     */
     signer?: string;
+    /**
+     * Filter batches created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter batches created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * Filter batches created on or after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter batches created on or before this date and time
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter batches modified after this date and time
+     */
     whenModified$gt?: Date;
+    /**
+     * Filter batches modified before this date and time
+     */
     whenModified$lt?: Date;
+    /**
+     * Filter batches modified on or after this date and time
+     */
     whenModified$gte?: Date;
+    /**
+     * Filter batches modified on or before this date and time
+     */
     whenModified$lte?: Date;
+    /**
+     * Filter batches whose challenge window ends after this date and time
+     */
     challengeWindowEnd$gt?: Date;
+    /**
+     * Filter batches whose challenge window ends before this date and time
+     */
     challengeWindowEnd$lt?: Date;
+    /**
+     * Filter batches whose challenge window ends on or after this date and time
+     */
     challengeWindowEnd$gte?: Date;
+    /**
+     * Filter batches whose challenge window ends on or before this date and time
+     */
     challengeWindowEnd$lte?: Date;
 }
 
 export interface ListCheckpointsRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListCheckpointsOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Filter checkpoints by transaction hash
+     */
     hash?: string;
+    /**
+     * Filter checkpoints by processing status
+     */
     status?: string;
+    /**
+     * Filter checkpoints by signer address
+     */
     signer?: string;
+    /**
+     * Filter checkpoints created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter checkpoints created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * Filter checkpoints created on or after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter checkpoints created on or before this date and time
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter checkpoints modified after this date and time
+     */
     whenModified$gt?: Date;
+    /**
+     * Filter checkpoints modified before this date and time
+     */
     whenModified$lt?: Date;
+    /**
+     * Filter checkpoints modified on or after this date and time
+     */
     whenModified$gte?: Date;
+    /**
+     * Filter checkpoints modified on or before this date and time
+     */
     whenModified$lte?: Date;
 }
 
 export interface ListObjectAttributesPublicRequest {
+    /**
+     * 
+     */
     objectId: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Return only public attributes in this category.
+     */
     category?: string;
 }
 
 export interface ListObjectsPublicRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListObjectsPublicOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Legacy v1 flag. Use include=display instead.
+     * @deprecated
+     */
     faces?: boolean;
+    /**
+     * Optional related representations to resolve for each object.
+     */
     include?: Array<ListObjectsPublicIncludeEnum>;
+    /**
+     * Display context resolved when include contains display.
+     */
     displayVariant?: ListObjectsPublicDisplayVariantEnum;
+    /**
+     * Optional flag for action objects
+     */
     actions?: boolean;
+    /**
+     * Filter by the owner's address
+     */
     owner?: string;
+    /**
+     * Optional flag for dropped items
+     */
     dropped?: boolean;
+    /**
+     * Geographical hash for location-based filtering
+     */
     geoHash?: string;
+    /**
+     * Filter by the collection ID
+     */
     templateId?: string;
+    /**
+     * Filter objects created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter objects created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * Filter objects created on or after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter objects created on or before this date and time
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter objects modified after this date and time
+     */
     whenModified$gt?: Date;
+    /**
+     * Filter objects modified before this date and time
+     */
     whenModified$lt?: Date;
+    /**
+     * Filter objects modified on or after this date and time
+     */
     whenModified$gte?: Date;
+    /**
+     * Filter objects modified on or before this date and time
+     */
     whenModified$lte?: Date;
 }
 
 export interface ListStakingOperationsRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListStakingOperationsOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Address involved in the staking operation.
+     */
     address?: string;
+    /**
+     * Transaction hash of the deposit.
+     */
     txHash?: string;
+    /**
+     * Type of staking operation.
+     */
     type?: StakingOperationType;
+    /**
+     * Filter objects created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter objects created after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter objects created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface ListStateChangesRequest {
+    /**
+     * 
+     */
     objectId: string;
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListStateChangesOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * 
+     */
     walletId?: string;
+    /**
+     * 
+     */
     actionId?: string;
+    /**
+     * 
+     */
     batchId?: string;
+    /**
+     * 
+     */
     changeType?: string;
+    /**
+     * 
+     */
     actionType?: string;
+    /**
+     * 
+     */
     nonce$gt?: number;
+    /**
+     * 
+     */
     nonce$lt?: number;
+    /**
+     * 
+     */
     prevStateRoot?: string;
+    /**
+     * 
+     */
     nextStateRoot?: string;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface ListTemplatesPublicRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Filter resources by their name or title
+     */
     name?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListTemplatesPublicOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Filter templates created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter templates created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * Filter templates created on or after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter templates created on or before this date and time
+     */
     whenCreated$lte?: Date;
 }
 
 export interface RenderObjectDisplayByIdPublicRequest {
+    /**
+     * 
+     */
     objectId: string;
+    /**
+     * 
+     */
     variant: DisplayVariant;
 }
 
 export interface RenderObjectViewByIdPublicRequest {
+    /**
+     * 
+     */
     objectId: string;
 }
 
@@ -1216,8 +1910,8 @@ export class ExplorerApi extends runtime.BaseAPI {
             queryParameters['template_id'] = requestParameters['templateId'];
         }
 
-        if (requestParameters['signer'] != null) {
-            queryParameters['signer'] = requestParameters['signer'];
+        if (requestParameters['owner'] != null) {
+            queryParameters['owner'] = requestParameters['owner'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -1313,6 +2007,56 @@ export class ExplorerApi extends runtime.BaseAPI {
     }
 
     /**
+     * Creates request options for getObjectMetadataByIdPublicLegacy without sending the request
+     * @deprecated
+     */
+    async getObjectMetadataByIdPublicLegacyRequestOpts(requestParameters: GetObjectMetadataByIdPublicLegacyRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['objectId'] == null) {
+            throw new runtime.RequiredError(
+                'objectId',
+                'Required parameter "objectId" was null or undefined when calling getObjectMetadataByIdPublicLegacy().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/public/metadata/{objectId}`;
+        urlPath = urlPath.replace('{objectId}', encodeURIComponent(String(requestParameters['objectId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Deprecated compatibility alias for `/public/objects/{objectId}/metadata`. 
+     * Get public object metadata (legacy path)
+     * @deprecated
+     */
+    async getObjectMetadataByIdPublicLegacyRaw(requestParameters: GetObjectMetadataByIdPublicLegacyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PublicSmartObjectMetadata>> {
+        const requestOptions = await this.getObjectMetadataByIdPublicLegacyRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PublicSmartObjectMetadataFromJSON(jsonValue));
+    }
+
+    /**
+     * Deprecated compatibility alias for `/public/objects/{objectId}/metadata`. 
+     * Get public object metadata (legacy path)
+     * @deprecated
+     */
+    async getObjectMetadataByIdPublicLegacy(requestParameters: GetObjectMetadataByIdPublicLegacyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PublicSmartObjectMetadata> {
+        const response = await this.getObjectMetadataByIdPublicLegacyRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for getObjectStats without sending the request
      */
     async getObjectStatsRequestOpts(requestParameters: GetObjectStatsRequest): Promise<runtime.RequestOpts> {
@@ -1346,8 +2090,8 @@ export class ExplorerApi extends runtime.BaseAPI {
             queryParameters['template_id'] = requestParameters['templateId'];
         }
 
-        if (requestParameters['walletId'] != null) {
-            queryParameters['wallet_id'] = requestParameters['walletId'];
+        if (requestParameters['owner'] != null) {
+            queryParameters['owner'] = requestParameters['owner'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -2808,7 +3552,7 @@ export const GetActionExecutionStatsIntervalEnum = {
     Day: 'day',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetActionExecutionStatsIntervalEnum = typeof GetActionExecutionStatsIntervalEnum[keyof typeof GetActionExecutionStatsIntervalEnum];
 /**
@@ -2819,7 +3563,7 @@ export const GetActionExecutionStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetActionExecutionStatsTimeRangeEnum = typeof GetActionExecutionStatsTimeRangeEnum[keyof typeof GetActionExecutionStatsTimeRangeEnum];
 /**
@@ -2830,7 +3574,7 @@ export const GetActionFeesStatsIntervalEnum = {
     Day: 'day',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetActionFeesStatsIntervalEnum = typeof GetActionFeesStatsIntervalEnum[keyof typeof GetActionFeesStatsIntervalEnum];
 /**
@@ -2841,7 +3585,7 @@ export const GetActionFeesStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetActionFeesStatsTimeRangeEnum = typeof GetActionFeesStatsTimeRangeEnum[keyof typeof GetActionFeesStatsTimeRangeEnum];
 /**
@@ -2852,7 +3596,7 @@ export const GetActionsStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetActionsStatsTimeRangeEnum = typeof GetActionsStatsTimeRangeEnum[keyof typeof GetActionsStatsTimeRangeEnum];
 /**
@@ -2863,7 +3607,7 @@ export const GetNetworkTokenPriceHistoryTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetNetworkTokenPriceHistoryTimeRangeEnum = typeof GetNetworkTokenPriceHistoryTimeRangeEnum[keyof typeof GetNetworkTokenPriceHistoryTimeRangeEnum];
 /**
@@ -2874,7 +3618,7 @@ export const GetObjectCreationStatsIntervalEnum = {
     Day: 'day',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetObjectCreationStatsIntervalEnum = typeof GetObjectCreationStatsIntervalEnum[keyof typeof GetObjectCreationStatsIntervalEnum];
 /**
@@ -2885,7 +3629,7 @@ export const GetObjectCreationStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetObjectCreationStatsTimeRangeEnum = typeof GetObjectCreationStatsTimeRangeEnum[keyof typeof GetObjectCreationStatsTimeRangeEnum];
 /**
@@ -2896,7 +3640,7 @@ export const GetObjectStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetObjectStatsTimeRangeEnum = typeof GetObjectStatsTimeRangeEnum[keyof typeof GetObjectStatsTimeRangeEnum];
 /**
@@ -2907,7 +3651,7 @@ export const GetStakingOperationsStatsIntervalEnum = {
     Day: 'day',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetStakingOperationsStatsIntervalEnum = typeof GetStakingOperationsStatsIntervalEnum[keyof typeof GetStakingOperationsStatsIntervalEnum];
 /**
@@ -2918,7 +3662,7 @@ export const GetStakingOperationsStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetStakingOperationsStatsTimeRangeEnum = typeof GetStakingOperationsStatsTimeRangeEnum[keyof typeof GetStakingOperationsStatsTimeRangeEnum];
 /**
@@ -2929,7 +3673,7 @@ export const GetStakingOperationsTotalIntervalEnum = {
     Day: 'day',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetStakingOperationsTotalIntervalEnum = typeof GetStakingOperationsTotalIntervalEnum[keyof typeof GetStakingOperationsTotalIntervalEnum];
 /**
@@ -2940,7 +3684,7 @@ export const GetWalletsRegistrationStatsIntervalEnum = {
     Day: 'day',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetWalletsRegistrationStatsIntervalEnum = typeof GetWalletsRegistrationStatsIntervalEnum[keyof typeof GetWalletsRegistrationStatsIntervalEnum];
 /**
@@ -2951,7 +3695,7 @@ export const GetWalletsRegistrationStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetWalletsRegistrationStatsTimeRangeEnum = typeof GetWalletsRegistrationStatsTimeRangeEnum[keyof typeof GetWalletsRegistrationStatsTimeRangeEnum];
 /**
@@ -2962,7 +3706,7 @@ export const GetWalletsStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetWalletsStatsTimeRangeEnum = typeof GetWalletsStatsTimeRangeEnum[keyof typeof GetWalletsStatsTimeRangeEnum];
 /**
@@ -2973,7 +3717,7 @@ export const GetWalletsTotalStatsIntervalEnum = {
     Day: 'day',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetWalletsTotalStatsIntervalEnum = typeof GetWalletsTotalStatsIntervalEnum[keyof typeof GetWalletsTotalStatsIntervalEnum];
 /**
@@ -2984,7 +3728,7 @@ export const GetWalletsTotalStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetWalletsTotalStatsTimeRangeEnum = typeof GetWalletsTotalStatsTimeRangeEnum[keyof typeof GetWalletsTotalStatsTimeRangeEnum];
 /**
@@ -2992,7 +3736,7 @@ export type GetWalletsTotalStatsTimeRangeEnum = typeof GetWalletsTotalStatsTimeR
  */
 export const ListActionLogsOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListActionLogsOrderEnum = typeof ListActionLogsOrderEnum[keyof typeof ListActionLogsOrderEnum];
 /**
@@ -3000,7 +3744,7 @@ export type ListActionLogsOrderEnum = typeof ListActionLogsOrderEnum[keyof typeo
  */
 export const ListBatchesOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListBatchesOrderEnum = typeof ListBatchesOrderEnum[keyof typeof ListBatchesOrderEnum];
 /**
@@ -3008,7 +3752,7 @@ export type ListBatchesOrderEnum = typeof ListBatchesOrderEnum[keyof typeof List
  */
 export const ListCheckpointsOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListCheckpointsOrderEnum = typeof ListCheckpointsOrderEnum[keyof typeof ListCheckpointsOrderEnum];
 /**
@@ -3016,14 +3760,14 @@ export type ListCheckpointsOrderEnum = typeof ListCheckpointsOrderEnum[keyof typ
  */
 export const ListObjectsPublicOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListObjectsPublicOrderEnum = typeof ListObjectsPublicOrderEnum[keyof typeof ListObjectsPublicOrderEnum];
 /**
  * @export
  */
 export const ListObjectsPublicIncludeEnum = {
-    Display: 'display'
+    Display: 'display',
 } as const;
 export type ListObjectsPublicIncludeEnum = typeof ListObjectsPublicIncludeEnum[keyof typeof ListObjectsPublicIncludeEnum];
 /**
@@ -3032,7 +3776,7 @@ export type ListObjectsPublicIncludeEnum = typeof ListObjectsPublicIncludeEnum[k
 export const ListObjectsPublicDisplayVariantEnum = {
     Card: 'card',
     Detail: 'detail',
-    Share: 'share'
+    Share: 'share',
 } as const;
 export type ListObjectsPublicDisplayVariantEnum = typeof ListObjectsPublicDisplayVariantEnum[keyof typeof ListObjectsPublicDisplayVariantEnum];
 /**
@@ -3040,7 +3784,7 @@ export type ListObjectsPublicDisplayVariantEnum = typeof ListObjectsPublicDispla
  */
 export const ListStakingOperationsOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListStakingOperationsOrderEnum = typeof ListStakingOperationsOrderEnum[keyof typeof ListStakingOperationsOrderEnum];
 /**
@@ -3048,7 +3792,7 @@ export type ListStakingOperationsOrderEnum = typeof ListStakingOperationsOrderEn
  */
 export const ListStateChangesOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListStateChangesOrderEnum = typeof ListStateChangesOrderEnum[keyof typeof ListStateChangesOrderEnum];
 /**
@@ -3056,6 +3800,6 @@ export type ListStateChangesOrderEnum = typeof ListStateChangesOrderEnum[keyof t
  */
 export const ListTemplatesPublicOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListTemplatesPublicOrderEnum = typeof ListTemplatesPublicOrderEnum[keyof typeof ListTemplatesPublicOrderEnum];

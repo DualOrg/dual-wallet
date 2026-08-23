@@ -22,26 +22,18 @@ import { mapValues } from '../runtime';
 export interface SessionPermissions {
     /**
      * Earliest time the session key may be used. Omit for immediately valid.
-     * @type {Date}
-     * @memberof SessionPermissions
      */
     validAfter?: Date;
     /**
      * Expiry time after which the session key is rejected by the kernel.
-     * @type {Date}
-     * @memberof SessionPermissions
      */
     validUntil?: Date;
     /**
      * Maximum native token spend (wei, decimal string). Omit for no limit.
-     * @type {string}
-     * @memberof SessionPermissions
      */
     spendLimit?: string;
     /**
      * Contract addresses this session key may call. Empty means unrestricted.
-     * @type {Array<string>}
-     * @memberof SessionPermissions
      */
     allowedTargets?: Array<string>;
 }

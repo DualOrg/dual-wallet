@@ -22,8 +22,6 @@ import { mapValues } from '../runtime';
 export interface Pickup {
     /**
      * 
-     * @type {string}
-     * @memberof Pickup
      */
     id: string;
 }

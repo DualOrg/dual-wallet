@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface TemplateActionAccess {
     /**
      * Type of access
-     * @type {TemplateActionAccessTypeEnum}
-     * @memberof TemplateActionAccess
      */
     type: TemplateActionAccessTypeEnum;
     /**
      * 
-     * @type {{ [key: string]: number; }}
-     * @memberof TemplateActionAccess
      */
     tokens?: { [key: string]: number; };
 }
@@ -42,7 +38,7 @@ export const TemplateActionAccessTypeEnum = {
     Public: 'public',
     Private: 'private',
     Whitelist: 'whitelist',
-    Token: 'token'
+    Token: 'token',
 } as const;
 export type TemplateActionAccessTypeEnum = typeof TemplateActionAccessTypeEnum[keyof typeof TemplateActionAccessTypeEnum];
 

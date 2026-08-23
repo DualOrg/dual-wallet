@@ -30,14 +30,10 @@ import {
 export interface WalletsTotalStatsOut {
     /**
      * Total number of users
-     * @type {number}
-     * @memberof WalletsTotalStatsOut
      */
     total: number;
     /**
      * List of statistics over time
-     * @type {Array<TimeSeriesDataPoint>}
-     * @memberof WalletsTotalStatsOut
      */
     data: Array<TimeSeriesDataPoint>;
 }

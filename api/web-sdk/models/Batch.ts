@@ -44,154 +44,108 @@ import {
 export interface Batch {
     /**
      * Unique identifier for the batch
-     * @type {string}
-     * @memberof Batch
      */
     id: string;
     /**
      * Sequence number of the batch in the processing order
-     * @type {number}
-     * @memberof Batch
      */
     sequence: number;
     /**
      * Cryptographic hash of the batch content
-     * @type {string}
-     * @memberof Batch
      */
     hash: string;
     /**
      * Hash of the previous batch in the sequence
-     * @type {string}
-     * @memberof Batch
      */
     prevHash?: string;
     /**
      * SMT integrity root for the batch
-     * @type {string}
-     * @memberof Batch
      */
     integrityRoot: string;
     /**
      * Previous SMT integrity root for the batch
-     * @type {string}
-     * @memberof Batch
      */
     prevIntegrityRoot: string;
     /**
      * Blockchain address that submitted the batch
-     * @type {string}
-     * @memberof Batch
      */
     sender: string;
     /**
      * Transaction hash of the batch on the blockchain
-     * @type {string}
-     * @memberof Batch
      */
     l2TxHash?: string;
     /**
      * Finalization transaction hash of the batch on the blockchain
-     * @type {string}
-     * @memberof Batch
      */
     l2FinalizationTxHash?: string;
     /**
      * Commitment hash for the batch
-     * @type {string}
-     * @memberof Batch
      */
     commitment: string;
     /**
      * Hash of all actions included in the batch
-     * @type {string}
-     * @memberof Batch
      */
     actionsHash: string;
     /**
      * List of action identifiers included in this batch
-     * @type {Array<AffectedActionLog>}
-     * @memberof Batch
      */
     affectedActions: Array<AffectedActionLog>;
     /**
      * Total number of actions processed in this batch
-     * @type {number}
-     * @memberof Batch
      */
     actionsCount: number;
     /**
      * 
-     * @type {string}
-     * @memberof Batch
      */
     totalFee?: string;
     /**
      * 
-     * @type {string}
-     * @memberof Batch
      */
     totalFeeWei?: string;
     /**
      * Version number of the batch format
-     * @type {number}
-     * @memberof Batch
      */
     version: number;
     /**
      * IPFS URL where the batch data is stored
-     * @type {string}
-     * @memberof Batch
      */
     ipfsUrl?: string;
     /**
      * Current processing status of the batch
-     * @type {BatchStatus}
-     * @memberof Batch
      */
     status: BatchStatus;
     /**
      * 
-     * @type {Proof}
-     * @memberof Batch
      */
     proof?: Proof;
     /**
      * Identifier of the proof for this batch
-     * @type {string}
-     * @memberof Batch
      */
     proofId?: string;
     /**
      * Error message if batch processing failed
-     * @type {string}
-     * @memberof Batch
      */
     error?: string;
     /**
      * Timestamp when the challenge window ends for this batch
-     * @type {Date}
-     * @memberof Batch
      */
     challengeWindowEnd?: Date;
     /**
      * Timestamp when the batch processing was completed
-     * @type {Date}
-     * @memberof Batch
      */
     whenCompleted?: Date;
     /**
      * Timestamp when the batch was last modified
-     * @type {Date}
-     * @memberof Batch
      */
     whenModified?: Date;
     /**
      * Timestamp when the batch was created
-     * @type {Date}
-     * @memberof Batch
      */
     whenCreated: Date;
+    /**
+     * Creation time in Unix seconds, as committed to by the batch commitment. Written once when the batch is built and never updated; the commitment preimage reads this rather than when_created, so that re-rendering or re-importing the human-facing timestamp cannot change a committed hash.
+     */
+    whenCreatedUnix?: number;
 }
 
 
@@ -203,16 +157,16 @@ export function instanceOfBatch(value: object): value is Batch {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('sequence' in value) || value['sequence'] === undefined) return false;
     if (!('hash' in value) || value['hash'] === undefined) return false;
-    if ((!('integrityRoot' in value) && !('integrity_root' in value)) || (value['integrityRoot'] === undefined && value['integrity_root'] === undefined)) return false;
-    if ((!('prevIntegrityRoot' in value) && !('prev_integrity_root' in value)) || (value['prevIntegrityRoot'] === undefined && value['prev_integrity_root'] === undefined)) return false;
+    if ((!('integrityRoot' in (value as Record<string, any>)) && !('integrity_root' in (value as Record<string, any>))) || ((value as Record<string, any>)['integrityRoot'] === undefined && (value as Record<string, any>)['integrity_root'] === undefined)) return false;
+    if ((!('prevIntegrityRoot' in (value as Record<string, any>)) && !('prev_integrity_root' in (value as Record<string, any>))) || ((value as Record<string, any>)['prevIntegrityRoot'] === undefined && (value as Record<string, any>)['prev_integrity_root'] === undefined)) return false;
     if (!('sender' in value) || value['sender'] === undefined) return false;
     if (!('commitment' in value) || value['commitment'] === undefined) return false;
-    if ((!('actionsHash' in value) && !('actions_hash' in value)) || (value['actionsHash'] === undefined && value['actions_hash'] === undefined)) return false;
-    if ((!('affectedActions' in value) && !('affected_actions' in value)) || (value['affectedActions'] === undefined && value['affected_actions'] === undefined)) return false;
-    if ((!('actionsCount' in value) && !('actions_count' in value)) || (value['actionsCount'] === undefined && value['actions_count'] === undefined)) return false;
+    if ((!('actionsHash' in (value as Record<string, any>)) && !('actions_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['actionsHash'] === undefined && (value as Record<string, any>)['actions_hash'] === undefined)) return false;
+    if ((!('affectedActions' in (value as Record<string, any>)) && !('affected_actions' in (value as Record<string, any>))) || ((value as Record<string, any>)['affectedActions'] === undefined && (value as Record<string, any>)['affected_actions'] === undefined)) return false;
+    if ((!('actionsCount' in (value as Record<string, any>)) && !('actions_count' in (value as Record<string, any>))) || ((value as Record<string, any>)['actionsCount'] === undefined && (value as Record<string, any>)['actions_count'] === undefined)) return false;
     if (!('version' in value) || value['version'] === undefined) return false;
     if (!('status' in value) || value['status'] === undefined) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
     return true;
 }
 
@@ -250,7 +204,8 @@ export function BatchFromJSONTyped(json: any, ignoreDiscriminator: boolean): Bat
         'challengeWindowEnd': json['challenge_window_end'] == null ? undefined : (new Date(json['challenge_window_end'])),
         'whenCompleted': json['when_completed'] == null ? undefined : (new Date(json['when_completed'])),
         'whenModified': json['when_modified'] == null ? undefined : (new Date(json['when_modified'])),
-        'whenCreated': (new Date(json['when_created'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
+        'whenCreatedUnix': json['when_created_unix'] == null ? undefined : json['when_created_unix'],
     };
 }
 
@@ -289,7 +244,8 @@ export function BatchToJSONTyped(value?: Batch | null, ignoreDiscriminator: bool
         'challenge_window_end': value['challengeWindowEnd'] == null ? value['challengeWindowEnd'] : value['challengeWindowEnd'].toISOString(),
         'when_completed': value['whenCompleted'] == null ? value['whenCompleted'] : value['whenCompleted'].toISOString(),
         'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
-        'when_created': value['whenCreated'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
+        'when_created_unix': value['whenCreatedUnix'],
     };
 }
 

@@ -22,50 +22,34 @@ import { mapValues } from '../runtime';
 export interface AffectedObject {
     /**
      * 
-     * @type {string}
-     * @memberof AffectedObject
      */
     id: string;
     /**
      * 
-     * @type {string}
-     * @memberof AffectedObject
      */
     templateId: string;
     /**
      * 
-     * @type {string}
-     * @memberof AffectedObject
      */
     prevStateHash: string;
     /**
      * 
-     * @type {string}
-     * @memberof AffectedObject
      */
     nextStateHash: string;
     /**
      * 
-     * @type {string}
-     * @memberof AffectedObject
      */
     prevIntegrityHash: string;
     /**
      * 
-     * @type {string}
-     * @memberof AffectedObject
      */
     integrityHash: string;
     /**
      * 
-     * @type {string}
-     * @memberof AffectedObject
      */
     stateChangeId: string;
     /**
      * Type of change applied to the object
-     * @type {string}
-     * @memberof AffectedObject
      */
     changeType: string;
 }
@@ -75,13 +59,13 @@ export interface AffectedObject {
  */
 export function instanceOfAffectedObject(value: object): value is AffectedObject {
     if (!('id' in value) || value['id'] === undefined) return false;
-    if ((!('templateId' in value) && !('template_id' in value)) || (value['templateId'] === undefined && value['template_id'] === undefined)) return false;
-    if ((!('prevStateHash' in value) && !('prev_state_hash' in value)) || (value['prevStateHash'] === undefined && value['prev_state_hash'] === undefined)) return false;
-    if ((!('nextStateHash' in value) && !('next_state_hash' in value)) || (value['nextStateHash'] === undefined && value['next_state_hash'] === undefined)) return false;
-    if ((!('prevIntegrityHash' in value) && !('prev_integrity_hash' in value)) || (value['prevIntegrityHash'] === undefined && value['prev_integrity_hash'] === undefined)) return false;
-    if ((!('integrityHash' in value) && !('integrity_hash' in value)) || (value['integrityHash'] === undefined && value['integrity_hash'] === undefined)) return false;
-    if ((!('stateChangeId' in value) && !('state_change_id' in value)) || (value['stateChangeId'] === undefined && value['state_change_id'] === undefined)) return false;
-    if ((!('changeType' in value) && !('change_type' in value)) || (value['changeType'] === undefined && value['change_type'] === undefined)) return false;
+    if ((!('templateId' in (value as Record<string, any>)) && !('template_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['templateId'] === undefined && (value as Record<string, any>)['template_id'] === undefined)) return false;
+    if ((!('prevStateHash' in (value as Record<string, any>)) && !('prev_state_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['prevStateHash'] === undefined && (value as Record<string, any>)['prev_state_hash'] === undefined)) return false;
+    if ((!('nextStateHash' in (value as Record<string, any>)) && !('next_state_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['nextStateHash'] === undefined && (value as Record<string, any>)['next_state_hash'] === undefined)) return false;
+    if ((!('prevIntegrityHash' in (value as Record<string, any>)) && !('prev_integrity_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['prevIntegrityHash'] === undefined && (value as Record<string, any>)['prev_integrity_hash'] === undefined)) return false;
+    if ((!('integrityHash' in (value as Record<string, any>)) && !('integrity_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['integrityHash'] === undefined && (value as Record<string, any>)['integrity_hash'] === undefined)) return false;
+    if ((!('stateChangeId' in (value as Record<string, any>)) && !('state_change_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['stateChangeId'] === undefined && (value as Record<string, any>)['state_change_id'] === undefined)) return false;
+    if ((!('changeType' in (value as Record<string, any>)) && !('change_type' in (value as Record<string, any>))) || ((value as Record<string, any>)['changeType'] === undefined && (value as Record<string, any>)['change_type'] === undefined)) return false;
     return true;
 }
 

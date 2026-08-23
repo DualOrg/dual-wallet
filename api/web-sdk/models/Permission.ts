@@ -30,14 +30,10 @@ import {
 export interface Permission {
     /**
      * 
-     * @type {PermissionResourceEnum}
-     * @memberof Permission
      */
     resource: PermissionResourceEnum;
     /**
      * 
-     * @type {Crud}
-     * @memberof Permission
      */
     crud: Crud;
 }
@@ -68,7 +64,7 @@ export const PermissionResourceEnum = {
     Storage: 'storage',
     Templates: 'templates',
     Wallets: 'wallets',
-    Webhooks: 'webhooks'
+    Webhooks: 'webhooks',
 } as const;
 export type PermissionResourceEnum = typeof PermissionResourceEnum[keyof typeof PermissionResourceEnum];
 

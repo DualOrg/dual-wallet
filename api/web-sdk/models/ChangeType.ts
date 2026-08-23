@@ -21,7 +21,7 @@
 export const ChangeType = {
     Create: 'create',
     Update: 'update',
-    Delete: 'delete'
+    Delete: 'delete',
 } as const;
 export type ChangeType = typeof ChangeType[keyof typeof ChangeType];
 

@@ -111,117 +111,282 @@ import {
 } from '../models/WalletCreate';
 
 export interface ConfirmInviteRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
+    /**
+     * The invite token.
+     */
     token: string;
+    /**
+     * The member ID.
+     */
     memberId: string;
 }
 
 export interface CreateMemberRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
+    /**
+     * 
+     */
     memberCreate: MemberCreate;
 }
 
 export interface CreateOrganizationRequest {
+    /**
+     * 
+     */
     organizationCreate: OrganizationCreate;
 }
 
 export interface CreateRoleRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
+    /**
+     * 
+     */
     roleCreate: RoleCreate;
 }
 
 export interface DeleteMemberRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
+    /**
+     * Unique identifier of the organization member
+     */
     memberId: string;
 }
 
 export interface DeleteOrganizationRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
 }
 
 export interface DeleteRoleRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
+    /**
+     * Unique identifier of the organization role
+     */
     roleId: string;
 }
 
 export interface GetDefaultRoleRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
 }
 
 export interface GetMemberRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
+    /**
+     * Unique identifier of the organization member
+     */
     memberId: string;
 }
 
 export interface GetMemberRoleRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
 }
 
 export interface GetOrganizationRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
 }
 
 export interface GetRoleRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
+    /**
+     * Unique identifier of the organization role
+     */
     roleId: string;
 }
 
 export interface ListMembersRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by their name or title
+     */
     name?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListMembersOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * filter by invite status
+     */
     status?: string;
 }
 
 export interface ListOrganizationsRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by their name or title
+     */
     name?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListOrganizationsOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Filter organizations by role name.
+     */
     roleName?: string;
+    /**
+     * 
+     */
     all?: boolean;
 }
 
 export interface ListRolesRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by their name or title
+     */
     name?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListRolesOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
 }
 
 export interface RegisterOrganizationWalletRequest {
+    /**
+     * 
+     */
     walletCreate: WalletCreate;
 }
 
 export interface SwitchOrganizationRequest {
+    /**
+     * 
+     */
     organizationSwitch: OrganizationSwitch;
 }
 
 export interface UpdateMemberRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
+    /**
+     * Unique identifier of the organization member
+     */
     memberId: string;
+    /**
+     * 
+     */
     memberUpdate: MemberUpdate;
 }
 
 export interface UpdateOrganizationRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
+    /**
+     * 
+     */
     organizationUpdate: OrganizationUpdate;
 }
 
 export interface UpdateRoleRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
+    /**
+     * Unique identifier of the organization role
+     */
     roleId: string;
+    /**
+     * 
+     */
     roleUpdate: RoleUpdate;
 }
 
@@ -1603,7 +1768,7 @@ export class OrganizationsApi extends runtime.BaseAPI {
  */
 export const ListMembersOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListMembersOrderEnum = typeof ListMembersOrderEnum[keyof typeof ListMembersOrderEnum];
 /**
@@ -1611,7 +1776,7 @@ export type ListMembersOrderEnum = typeof ListMembersOrderEnum[keyof typeof List
  */
 export const ListOrganizationsOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListOrganizationsOrderEnum = typeof ListOrganizationsOrderEnum[keyof typeof ListOrganizationsOrderEnum];
 /**
@@ -1619,6 +1784,6 @@ export type ListOrganizationsOrderEnum = typeof ListOrganizationsOrderEnum[keyof
  */
 export const ListRolesOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListRolesOrderEnum = typeof ListRolesOrderEnum[keyof typeof ListRolesOrderEnum];

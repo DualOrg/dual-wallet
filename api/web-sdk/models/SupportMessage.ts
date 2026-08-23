@@ -30,38 +30,26 @@ import {
 export interface SupportMessage {
     /**
      * Unique identifier for the support message
-     * @type {string}
-     * @memberof SupportMessage
      */
     id: string;
     /**
      * Identifier of the wallet/user who created the support message
-     * @type {string}
-     * @memberof SupportMessage
      */
     walletId: string;
     /**
      * Main content body of the support message
-     * @type {string}
-     * @memberof SupportMessage
      */
     content: string;
     /**
      * Optional attachments or assets associated with the support message
-     * @type {Array<Asset>}
-     * @memberof SupportMessage
      */
     assets?: Array<Asset>;
     /**
      * Timestamp when the support message was last modified
-     * @type {Date}
-     * @memberof SupportMessage
      */
     whenModified: Date;
     /**
      * Timestamp when the support message was created
-     * @type {Date}
-     * @memberof SupportMessage
      */
     whenCreated: Date;
 }
@@ -71,10 +59,10 @@ export interface SupportMessage {
  */
 export function instanceOfSupportMessage(value: object): value is SupportMessage {
     if (!('id' in value) || value['id'] === undefined) return false;
-    if ((!('walletId' in value) && !('wallet_id' in value)) || (value['walletId'] === undefined && value['wallet_id'] === undefined)) return false;
+    if ((!('walletId' in (value as Record<string, any>)) && !('wallet_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['walletId'] === undefined && (value as Record<string, any>)['wallet_id'] === undefined)) return false;
     if (!('content' in value) || value['content'] === undefined) return false;
-    if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
+    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
     return true;
 }
 
@@ -92,8 +80,8 @@ export function SupportMessageFromJSONTyped(json: any, ignoreDiscriminator: bool
         'walletId': json['wallet_id'],
         'content': json['content'],
         'assets': json['assets'] == null ? undefined : ((json['assets'] as Array<any>).map(AssetFromJSON)),
-        'whenModified': (new Date(json['when_modified'])),
-        'whenCreated': (new Date(json['when_created'])),
+        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
     };
 }
 
@@ -112,8 +100,8 @@ export function SupportMessageToJSONTyped(value?: SupportMessage | null, ignoreD
         'wallet_id': value['walletId'],
         'content': value['content'],
         'assets': value['assets'] == null ? undefined : ((value['assets'] as Array<any>).map(AssetToJSON)),
-        'when_modified': value['whenModified'].toISOString(),
-        'when_created': value['whenCreated'].toISOString(),
+        'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
     };
 }
 

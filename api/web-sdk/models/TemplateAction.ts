@@ -37,38 +37,26 @@ import {
 export interface TemplateAction {
     /**
      * Name of the action
-     * @type {TemplateActionNameEnum}
-     * @memberof TemplateAction
      */
     name: TemplateActionNameEnum;
     /**
      * Optional alias for the action
-     * @type {string}
-     * @memberof TemplateAction
      */
     alias?: string;
     /**
      * 
-     * @type {TemplateActionAccess}
-     * @memberof TemplateAction
      */
     access?: TemplateActionAccess;
     /**
      * 
-     * @type {Array<Validators>}
-     * @memberof TemplateAction
      */
     validators?: Array<Validators>;
     /**
      * Configuration for the action
-     * @type {object}
-     * @memberof TemplateAction
      */
     config?: object;
     /**
      * URL for the action, if applicable
-     * @type {string}
-     * @memberof TemplateAction
      */
     url?: string;
 }
@@ -89,7 +77,7 @@ export const TemplateActionNameEnum = {
     Connect: 'connect',
     Remote: 'remote',
     SetAttributes: 'set_attributes',
-    DeleteAttributes: 'delete_attributes'
+    DeleteAttributes: 'delete_attributes',
 } as const;
 export type TemplateActionNameEnum = typeof TemplateActionNameEnum[keyof typeof TemplateActionNameEnum];
 

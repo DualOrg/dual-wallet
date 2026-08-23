@@ -30,14 +30,10 @@ import {
 export interface ExecuteResult {
     /**
      * Unique identifier of the executed action
-     * @type {string}
-     * @memberof ExecuteResult
      */
     actionId: string;
     /**
      * Array of execution steps performed during the action processing
-     * @type {Array<StepOut>}
-     * @memberof ExecuteResult
      */
     steps: Array<StepOut>;
 }
@@ -46,7 +42,7 @@ export interface ExecuteResult {
  * Check if a given object implements the ExecuteResult interface.
  */
 export function instanceOfExecuteResult(value: object): value is ExecuteResult {
-    if ((!('actionId' in value) && !('action_id' in value)) || (value['actionId'] === undefined && value['action_id'] === undefined)) return false;
+    if ((!('actionId' in (value as Record<string, any>)) && !('action_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['actionId'] === undefined && (value as Record<string, any>)['action_id'] === undefined)) return false;
     if (!('steps' in value) || value['steps'] === undefined) return false;
     return true;
 }

@@ -22,254 +22,170 @@ import { mapValues } from '../runtime';
 export interface NetworkTokenMarketData {
     /**
      * Current price of the network token in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     currentPrice?: { [key: string]: number; };
     /**
-     * 
-     * @type {any}
-     * @memberof NetworkTokenMarketData
+     * Total value locked.
      */
     totalValueLocked?: any | null;
     /**
      * Market cap to TVL ratio.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     mcapToTvlRatio?: number;
     /**
      * Fully diluted valuation to TVL ratio.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     fdvToTvlRatio?: number;
     /**
-     * 
-     * @type {any}
-     * @memberof NetworkTokenMarketData
+     * Return on investment data.
      */
     roi?: any | null;
     /**
      * All-time high prices in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     ath?: { [key: string]: number; };
     /**
      * All-time high change percentages in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     athChangePercentage?: { [key: string]: number; };
     /**
      * All-time high dates in various currencies.
-     * @type {{ [key: string]: string; }}
-     * @memberof NetworkTokenMarketData
      */
     athDate?: { [key: string]: string; };
     /**
      * All-time low prices in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     atl?: { [key: string]: number; };
     /**
      * All-time low change percentages in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     atlChangePercentage?: { [key: string]: number; };
     /**
      * All-time low dates in various currencies.
-     * @type {{ [key: string]: string; }}
-     * @memberof NetworkTokenMarketData
      */
     atlDate?: { [key: string]: string; };
     /**
      * Market capitalization in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     marketCap?: { [key: string]: number; };
     /**
      * Market capitalization rank.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     marketCapRank?: number;
     /**
      * Fully diluted valuation in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     fullyDilutedValuation?: { [key: string]: number; };
     /**
      * Total trading volume in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     totalVolume?: { [key: string]: number; };
     /**
      * Highest price in the last 24 hours in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     high24h?: { [key: string]: number; };
     /**
      * Lowest price in the last 24 hours in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     low24h?: { [key: string]: number; };
     /**
      * Price change in the last 24 hours.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     priceChange24h?: number;
     /**
      * Price change percentage in the last 24 hours.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     priceChangePercentage24h?: number;
     /**
      * Price change percentage in the last 7 days.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     priceChangePercentage7d?: number;
     /**
      * Price change percentage in the last 14 days.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     priceChangePercentage14d?: number;
     /**
      * Price change percentage in the last 30 days.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     priceChangePercentage30d?: number;
     /**
      * Price change percentage in the last 60 days.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     priceChangePercentage60d?: number;
     /**
      * Price change percentage in the last 200 days.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     priceChangePercentage200d?: number;
     /**
      * Price change percentage in the last year.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     priceChangePercentage1y?: number;
     /**
      * Market cap change in the last 24 hours.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     marketCapChange24h?: number;
     /**
      * Market cap change percentage in the last 24 hours.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     marketCapChangePercentage24h?: number;
     /**
      * Price change in the last 24 hours in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     priceChange24hInCurrency?: { [key: string]: number; };
     /**
      * Price change percentage in the last hour in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     priceChangePercentage1hInCurrency?: { [key: string]: number; };
     /**
      * Price change percentage in the last 24 hours in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     priceChangePercentage24hInCurrency?: { [key: string]: number; };
     /**
      * Price change percentage in the last 7 days in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     priceChangePercentage7dInCurrency?: { [key: string]: number; };
     /**
      * Price change percentage in the last 14 days in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     priceChangePercentage14dInCurrency?: { [key: string]: number; };
     /**
      * Price change percentage in the last 30 days in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     priceChangePercentage30dInCurrency?: { [key: string]: number; };
     /**
      * Price change percentage in the last 60 days in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     priceChangePercentage60dInCurrency?: { [key: string]: number; };
     /**
      * Price change percentage in the last 200 days in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     priceChangePercentage200dInCurrency?: { [key: string]: number; };
     /**
      * Price change percentage in the last year in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     priceChangePercentage1yInCurrency?: { [key: string]: number; };
     /**
      * Market cap change in the last 24 hours in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     marketCapChange24hInCurrency?: { [key: string]: number; };
     /**
      * Market cap change percentage in the last 24 hours in various currencies.
-     * @type {{ [key: string]: number; }}
-     * @memberof NetworkTokenMarketData
      */
     marketCapChangePercentage24hInCurrency?: { [key: string]: number; };
     /**
      * Total supply of the network token.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     totalSupply?: number;
     /**
      * Maximum supply of the network token.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     maxSupply?: number;
     /**
      * Circulating supply of the network token.
-     * @type {number}
-     * @memberof NetworkTokenMarketData
      */
     circulatingSupply?: number;
     /**
      * Last updated timestamp.
-     * @type {string}
-     * @memberof NetworkTokenMarketData
      */
     lastUpdated?: string;
 }
@@ -292,10 +208,10 @@ export function NetworkTokenMarketDataFromJSONTyped(json: any, ignoreDiscriminat
     return {
         
         'currentPrice': json['current_price'] == null ? undefined : json['current_price'],
-        'totalValueLocked': json['total_value_locked'] == null ? undefined : json['total_value_locked'],
+        'totalValueLocked': json['total_value_locked'] === undefined ? undefined : json['total_value_locked'] === null ? null : json['total_value_locked'],
         'mcapToTvlRatio': json['mcap_to_tvl_ratio'] == null ? undefined : json['mcap_to_tvl_ratio'],
         'fdvToTvlRatio': json['fdv_to_tvl_ratio'] == null ? undefined : json['fdv_to_tvl_ratio'],
-        'roi': json['roi'] == null ? undefined : json['roi'],
+        'roi': json['roi'] === undefined ? undefined : json['roi'] === null ? null : json['roi'],
         'ath': json['ath'] == null ? undefined : json['ath'],
         'athChangePercentage': json['ath_change_percentage'] == null ? undefined : json['ath_change_percentage'],
         'athDate': json['ath_date'] == null ? undefined : json['ath_date'],

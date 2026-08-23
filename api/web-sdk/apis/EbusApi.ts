@@ -81,87 +81,261 @@ import {
 } from '../models/PrepareExecuteRequest';
 
 export interface ExecuteActionRequest {
+    /**
+     * 
+     */
     executeRequest: ExecuteRequest;
 }
 
 export interface GetActionExecutionStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
     interval?: GetActionExecutionStatsIntervalEnum;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetActionExecutionStatsTimeRangeEnum;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter statistics by action name
+     */
     actionName?: string;
+    /**
+     * Filter statistics by signer account name
+     */
     signer?: string;
 }
 
 export interface GetActionFeesStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
     interval?: GetActionFeesStatsIntervalEnum;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetActionFeesStatsTimeRangeEnum;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter statistics by action name
+     */
     actionName?: string;
+    /**
+     * Filter statistics by signer account name
+     */
     signer?: string;
 }
 
 export interface GetActionsStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetActionsStatsTimeRangeEnum;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter statistics by action name
+     */
     actionName?: string;
+    /**
+     * Filter statistics by signer account name
+     */
     signer?: string;
 }
 
 export interface GetAuthNonceRequest {
+    /**
+     * The wallet address to retrieve the nonce for. If not provided, the nonce for the authenticated wallet will be returned.
+     */
     address: string;
 }
 
 export interface GetOrganizationBalanceRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
 }
 
 export interface GetOrganizationBalanceHistoryRequest {
+    /**
+     * Unique identifier of the organization
+     */
     organizationId: string;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
     interval?: GetOrganizationBalanceHistoryIntervalEnum;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetOrganizationBalanceHistoryTimeRangeEnum;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface ListActionLogsRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListActionLogsOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Filter logs by action ID
+     */
     actionId?: string;
+    /**
+     * Filter logs by transaction hash
+     */
     hash?: string;
+    /**
+     * Filter logs by batch ID
+     */
     batchId?: string;
+    /**
+     * Filter logs by wallet ID
+     */
     walletId?: string;
+    /**
+     * Filter logs by object ID
+     */
     objectId?: string;
+    /**
+     * Filter by the execution identity committed by the action log. The migrated account contains the legacy signer for version 1 and the Kernel account for version 2.
+     */
     account?: string;
+    /**
+     * Filter logs by execution status
+     */
     status?: string;
+    /**
+     * Filter logs created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter logs created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * Filter logs created on or after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter logs created on or before this date and time
+     */
     whenCreated$lte?: Date;
 }
 
 export interface PrepareActionRequest {
+    /**
+     * 
+     */
     prepareExecuteRequest: PrepareExecuteRequest;
 }
 
@@ -921,7 +1095,7 @@ export const GetActionExecutionStatsIntervalEnum = {
     Day: 'day',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetActionExecutionStatsIntervalEnum = typeof GetActionExecutionStatsIntervalEnum[keyof typeof GetActionExecutionStatsIntervalEnum];
 /**
@@ -932,7 +1106,7 @@ export const GetActionExecutionStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetActionExecutionStatsTimeRangeEnum = typeof GetActionExecutionStatsTimeRangeEnum[keyof typeof GetActionExecutionStatsTimeRangeEnum];
 /**
@@ -943,7 +1117,7 @@ export const GetActionFeesStatsIntervalEnum = {
     Day: 'day',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetActionFeesStatsIntervalEnum = typeof GetActionFeesStatsIntervalEnum[keyof typeof GetActionFeesStatsIntervalEnum];
 /**
@@ -954,7 +1128,7 @@ export const GetActionFeesStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetActionFeesStatsTimeRangeEnum = typeof GetActionFeesStatsTimeRangeEnum[keyof typeof GetActionFeesStatsTimeRangeEnum];
 /**
@@ -965,7 +1139,7 @@ export const GetActionsStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetActionsStatsTimeRangeEnum = typeof GetActionsStatsTimeRangeEnum[keyof typeof GetActionsStatsTimeRangeEnum];
 /**
@@ -976,7 +1150,7 @@ export const GetOrganizationBalanceHistoryIntervalEnum = {
     Day: 'day',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetOrganizationBalanceHistoryIntervalEnum = typeof GetOrganizationBalanceHistoryIntervalEnum[keyof typeof GetOrganizationBalanceHistoryIntervalEnum];
 /**
@@ -987,7 +1161,7 @@ export const GetOrganizationBalanceHistoryTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetOrganizationBalanceHistoryTimeRangeEnum = typeof GetOrganizationBalanceHistoryTimeRangeEnum[keyof typeof GetOrganizationBalanceHistoryTimeRangeEnum];
 /**
@@ -995,6 +1169,6 @@ export type GetOrganizationBalanceHistoryTimeRangeEnum = typeof GetOrganizationB
  */
 export const ListActionLogsOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListActionLogsOrderEnum = typeof ListActionLogsOrderEnum[keyof typeof ListActionLogsOrderEnum];

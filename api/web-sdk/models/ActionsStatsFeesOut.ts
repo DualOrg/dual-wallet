@@ -30,44 +30,30 @@ import {
 export interface ActionsStatsFeesOut {
     /**
      * 
-     * @type {string}
-     * @memberof ActionsStatsFeesOut
      */
     totalFee: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionsStatsFeesOut
      */
     totalFeeWei: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionsStatsFeesOut
      */
     baseFee: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionsStatsFeesOut
      */
     baseFeeWei: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionsStatsFeesOut
      */
     dynamicFee: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionsStatsFeesOut
      */
     dynamicFeeWei: string;
     /**
      * 
-     * @type {Array<FeesTimeData>}
-     * @memberof ActionsStatsFeesOut
      */
     byName?: Array<FeesTimeData>;
 }
@@ -76,12 +62,12 @@ export interface ActionsStatsFeesOut {
  * Check if a given object implements the ActionsStatsFeesOut interface.
  */
 export function instanceOfActionsStatsFeesOut(value: object): value is ActionsStatsFeesOut {
-    if ((!('totalFee' in value) && !('total_fee' in value)) || (value['totalFee'] === undefined && value['total_fee'] === undefined)) return false;
-    if ((!('totalFeeWei' in value) && !('total_fee_wei' in value)) || (value['totalFeeWei'] === undefined && value['total_fee_wei'] === undefined)) return false;
-    if ((!('baseFee' in value) && !('base_fee' in value)) || (value['baseFee'] === undefined && value['base_fee'] === undefined)) return false;
-    if ((!('baseFeeWei' in value) && !('base_fee_wei' in value)) || (value['baseFeeWei'] === undefined && value['base_fee_wei'] === undefined)) return false;
-    if ((!('dynamicFee' in value) && !('dynamic_fee' in value)) || (value['dynamicFee'] === undefined && value['dynamic_fee'] === undefined)) return false;
-    if ((!('dynamicFeeWei' in value) && !('dynamic_fee_wei' in value)) || (value['dynamicFeeWei'] === undefined && value['dynamic_fee_wei'] === undefined)) return false;
+    if ((!('totalFee' in (value as Record<string, any>)) && !('total_fee' in (value as Record<string, any>))) || ((value as Record<string, any>)['totalFee'] === undefined && (value as Record<string, any>)['total_fee'] === undefined)) return false;
+    if ((!('totalFeeWei' in (value as Record<string, any>)) && !('total_fee_wei' in (value as Record<string, any>))) || ((value as Record<string, any>)['totalFeeWei'] === undefined && (value as Record<string, any>)['total_fee_wei'] === undefined)) return false;
+    if ((!('baseFee' in (value as Record<string, any>)) && !('base_fee' in (value as Record<string, any>))) || ((value as Record<string, any>)['baseFee'] === undefined && (value as Record<string, any>)['base_fee'] === undefined)) return false;
+    if ((!('baseFeeWei' in (value as Record<string, any>)) && !('base_fee_wei' in (value as Record<string, any>))) || ((value as Record<string, any>)['baseFeeWei'] === undefined && (value as Record<string, any>)['base_fee_wei'] === undefined)) return false;
+    if ((!('dynamicFee' in (value as Record<string, any>)) && !('dynamic_fee' in (value as Record<string, any>))) || ((value as Record<string, any>)['dynamicFee'] === undefined && (value as Record<string, any>)['dynamic_fee'] === undefined)) return false;
+    if ((!('dynamicFeeWei' in (value as Record<string, any>)) && !('dynamic_fee_wei' in (value as Record<string, any>))) || ((value as Record<string, any>)['dynamicFeeWei'] === undefined && (value as Record<string, any>)['dynamic_fee_wei'] === undefined)) return false;
     return true;
 }
 

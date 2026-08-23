@@ -30,14 +30,10 @@ import {
 export interface OrganizationSwitchOut {
     /**
      * JSON Web Token (JWT) for authenticating subsequent API requests in the context of the switched organization
-     * @type {string}
-     * @memberof OrganizationSwitchOut
      */
     accessToken: string;
     /**
      * 
-     * @type {Organization}
-     * @memberof OrganizationSwitchOut
      */
     organization: Organization;
 }
@@ -46,7 +42,7 @@ export interface OrganizationSwitchOut {
  * Check if a given object implements the OrganizationSwitchOut interface.
  */
 export function instanceOfOrganizationSwitchOut(value: object): value is OrganizationSwitchOut {
-    if ((!('accessToken' in value) && !('access_token' in value)) || (value['accessToken'] === undefined && value['access_token'] === undefined)) return false;
+    if ((!('accessToken' in (value as Record<string, any>)) && !('access_token' in (value as Record<string, any>))) || ((value as Record<string, any>)['accessToken'] === undefined && (value as Record<string, any>)['access_token'] === undefined)) return false;
     if (!('organization' in value) || value['organization'] === undefined) return false;
     return true;
 }

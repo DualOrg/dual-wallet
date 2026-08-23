@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface ConfirmInviteOut {
     /**
      * 
-     * @type {string}
-     * @memberof ConfirmInviteOut
      */
     accessToken: string;
     /**
      * 
-     * @type {string}
-     * @memberof ConfirmInviteOut
      */
     refreshToken: string;
 }
@@ -38,8 +34,8 @@ export interface ConfirmInviteOut {
  * Check if a given object implements the ConfirmInviteOut interface.
  */
 export function instanceOfConfirmInviteOut(value: object): value is ConfirmInviteOut {
-    if ((!('accessToken' in value) && !('access_token' in value)) || (value['accessToken'] === undefined && value['access_token'] === undefined)) return false;
-    if ((!('refreshToken' in value) && !('refresh_token' in value)) || (value['refreshToken'] === undefined && value['refresh_token'] === undefined)) return false;
+    if ((!('accessToken' in (value as Record<string, any>)) && !('access_token' in (value as Record<string, any>))) || ((value as Record<string, any>)['accessToken'] === undefined && (value as Record<string, any>)['access_token'] === undefined)) return false;
+    if ((!('refreshToken' in (value as Record<string, any>)) && !('refresh_token' in (value as Record<string, any>))) || ((value as Record<string, any>)['refreshToken'] === undefined && (value as Record<string, any>)['refresh_token'] === undefined)) return false;
     return true;
 }
 

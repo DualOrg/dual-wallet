@@ -30,14 +30,10 @@ import {
 export interface ListRolesOut {
     /**
      * Pagination token for retrieving the next set of roles
-     * @type {string}
-     * @memberof ListRolesOut
      */
     next?: string;
     /**
      * List of role entities returned in the response
-     * @type {Array<Role>}
-     * @memberof ListRolesOut
      */
     roles: Array<Role>;
 }

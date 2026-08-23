@@ -66,46 +66,133 @@ import {
 } from '../models/TokenCirculatingSupplyInfo';
 
 export interface GetNetworkStakingInfoRequest {
+    /**
+     * Filter by specific address involved in staking (optional).
+     */
     address?: string;
 }
 
 export interface GetNetworkTokenPriceHistoryRequest {
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetNetworkTokenPriceHistoryTimeRangeEnum;
 }
 
 export interface GetStakingOperationsStatsRequest {
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
     interval?: GetStakingOperationsStatsIntervalEnum;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetStakingOperationsStatsTimeRangeEnum;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface GetStakingOperationsTotalRequest {
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
     interval?: GetStakingOperationsTotalIntervalEnum;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Filter by staking operation type.
+     */
     type?: StakingOperationType;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface ListStakingOperationsRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListStakingOperationsOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Address involved in the staking operation.
+     */
     address?: string;
+    /**
+     * Transaction hash of the deposit.
+     */
     txHash?: string;
+    /**
+     * Type of staking operation.
+     */
     type?: StakingOperationType;
+    /**
+     * Filter objects created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter objects created after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter objects created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
@@ -591,7 +678,7 @@ export const GetNetworkTokenPriceHistoryTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetNetworkTokenPriceHistoryTimeRangeEnum = typeof GetNetworkTokenPriceHistoryTimeRangeEnum[keyof typeof GetNetworkTokenPriceHistoryTimeRangeEnum];
 /**
@@ -602,7 +689,7 @@ export const GetStakingOperationsStatsIntervalEnum = {
     Day: 'day',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetStakingOperationsStatsIntervalEnum = typeof GetStakingOperationsStatsIntervalEnum[keyof typeof GetStakingOperationsStatsIntervalEnum];
 /**
@@ -613,7 +700,7 @@ export const GetStakingOperationsStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetStakingOperationsStatsTimeRangeEnum = typeof GetStakingOperationsStatsTimeRangeEnum[keyof typeof GetStakingOperationsStatsTimeRangeEnum];
 /**
@@ -624,7 +711,7 @@ export const GetStakingOperationsTotalIntervalEnum = {
     Day: 'day',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetStakingOperationsTotalIntervalEnum = typeof GetStakingOperationsTotalIntervalEnum[keyof typeof GetStakingOperationsTotalIntervalEnum];
 /**
@@ -632,6 +719,6 @@ export type GetStakingOperationsTotalIntervalEnum = typeof GetStakingOperationsT
  */
 export const ListStakingOperationsOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListStakingOperationsOrderEnum = typeof ListStakingOperationsOrderEnum[keyof typeof ListStakingOperationsOrderEnum];

@@ -41,28 +41,70 @@ import {
 } from '../models/SupportMessage';
 
 export interface GetSupportMessageRequest {
+    /**
+     * Unique identifier of the message
+     */
     messageId: string;
 }
 
 export interface ListSupportMessagesRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListSupportMessagesOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Filter support messages by wallet ID
+     */
     walletId?: string;
+    /**
+     * Filter messages created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter messages created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * Filter messages created on or after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter messages created on or before this date and time
+     */
     whenCreated$lte?: Date;
 }
 
 export interface RequestAccessRequest {
+    /**
+     * 
+     */
     requestAccessIn: RequestAccessIn;
 }
 
 export interface SendSupportMessageRequest {
+    /**
+     * 
+     */
     supportMessage: SupportMessage;
 }
 
@@ -342,6 +384,6 @@ export class SupportApi extends runtime.BaseAPI {
  */
 export const ListSupportMessagesOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListSupportMessagesOrderEnum = typeof ListSupportMessagesOrderEnum[keyof typeof ListSupportMessagesOrderEnum];

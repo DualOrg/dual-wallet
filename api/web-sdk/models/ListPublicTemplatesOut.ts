@@ -30,14 +30,10 @@ import {
 export interface ListPublicTemplatesOut {
     /**
      * Array of template objects.
-     * @type {Array<PublicTemplate>}
-     * @memberof ListPublicTemplatesOut
      */
     templates: Array<PublicTemplate>;
     /**
      * Pagination token for the next set of results, if any.
-     * @type {string}
-     * @memberof ListPublicTemplatesOut
      */
     next?: string;
 }

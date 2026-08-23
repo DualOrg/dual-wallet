@@ -30,14 +30,10 @@ import {
 export interface ListBatchesOut {
     /**
      * 
-     * @type {Array<Batch>}
-     * @memberof ListBatchesOut
      */
     batches: Array<Batch>;
     /**
      * The next page token. This will be empty if there are no more pages.
-     * @type {string}
-     * @memberof ListBatchesOut
      */
     next?: string;
 }

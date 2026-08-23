@@ -30,14 +30,10 @@ import {
 export interface ListApiKeysOut {
     /**
      * List of API keys.
-     * @type {Array<ApiKey>}
-     * @memberof ListApiKeysOut
      */
     keys: Array<ApiKey>;
     /**
      * Pagination token to retrieve the next page of keys.
-     * @type {string}
-     * @memberof ListApiKeysOut
      */
     next?: string;
 }

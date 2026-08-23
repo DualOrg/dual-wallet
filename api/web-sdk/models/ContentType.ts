@@ -20,7 +20,7 @@
  */
 export const ContentType = {
     Text: 'text',
-    Html: 'html'
+    Html: 'html',
 } as const;
 export type ContentType = typeof ContentType[keyof typeof ContentType];
 

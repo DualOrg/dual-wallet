@@ -22,50 +22,34 @@ import { mapValues } from '../runtime';
 export interface Asset {
     /**
      * Unique identifier for the asset
-     * @type {string}
-     * @memberof Asset
      */
     id: string;
     /**
      * Human-readable name of the asset
-     * @type {string}
-     * @memberof Asset
      */
     name?: string;
     /**
      * unique key for the asset
-     * @type {string}
-     * @memberof Asset
      */
     key?: string;
     /**
      * MIME type of the asset (e.g., image/jpeg, application/pdf)
-     * @type {string}
-     * @memberof Asset
      */
     type?: string;
     /**
      * Public URL where the asset can be accessed
-     * @type {string}
-     * @memberof Asset
      */
     url: string;
     /**
      * Cryptographic hash of the asset content for integrity verification
-     * @type {string}
-     * @memberof Asset
      */
     hash?: string;
     /**
      * Whether the asset is publicly accessible without authentication
-     * @type {boolean}
-     * @memberof Asset
      */
     isPublic?: boolean;
     /**
      * Timestamp when the asset was uploaded
-     * @type {Date}
-     * @memberof Asset
      */
     whenCreated?: Date;
 }

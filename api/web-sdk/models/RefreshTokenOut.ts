@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface RefreshTokenOut {
     /**
      * New JWT access token generated from a valid refresh token
-     * @type {string}
-     * @memberof RefreshTokenOut
      */
     accessToken: string;
     /**
      * Rotated refresh token that replaces the presented one; clients that support rotation must store it and discard the old token.
-     * @type {string}
-     * @memberof RefreshTokenOut
      */
     refreshToken?: string;
 }
@@ -38,7 +34,7 @@ export interface RefreshTokenOut {
  * Check if a given object implements the RefreshTokenOut interface.
  */
 export function instanceOfRefreshTokenOut(value: object): value is RefreshTokenOut {
-    if ((!('accessToken' in value) && !('access_token' in value)) || (value['accessToken'] === undefined && value['access_token'] === undefined)) return false;
+    if ((!('accessToken' in (value as Record<string, any>)) && !('access_token' in (value as Record<string, any>))) || ((value as Record<string, any>)['accessToken'] === undefined && (value as Record<string, any>)['access_token'] === undefined)) return false;
     return true;
 }
 

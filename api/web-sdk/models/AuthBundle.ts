@@ -26,9 +26,8 @@ export interface AuthBundle {
      * - webauthn: passkey smart-account controller (P-256 assertion)
      * - session_key: separately authorized ephemeral controller
      * - personal_sign: secp256k1 smart-account controller over the Ethereum-wrapped digest
+     * - internal: unsigned protocol action created only by trusted backend migrations
      * 
-     * @type {AuthBundleTypeEnum}
-     * @memberof AuthBundle
      */
     type: AuthBundleTypeEnum;
     /**
@@ -36,24 +35,18 @@ export interface AuthBundle {
      * independently reconstructs the EIP-712 digest. A WebAuthn assertion must
      * contain that digest as its exact clientDataJSON challenge.
      * 
-     * @type {string}
-     * @memberof AuthBundle
      */
     challenge?: string;
     /**
      * Hex-encoded 65-byte secp256k1 signature (r || s || v). `eoa` signs the
      * raw EIP-712 hash; `personal_sign` signs its Ethereum message wrapper.
      * 
-     * @type {string}
-     * @memberof AuthBundle
      */
     signature?: string;
     /**
      * base64url-encoded credential ID returned by navigator.credentials.get().
      * Used to look up the stored (pubkey_x, pubkey_y) for verification.
      * 
-     * @type {string}
-     * @memberof AuthBundle
      */
     credentialId?: string;
     /**
@@ -61,24 +54,18 @@ export interface AuthBundle {
      * extracted from the COSE-encoded attestationObject.
      * Required only on first connect (registration). Omit on subsequent connects.
      * 
-     * @type {string}
-     * @memberof AuthBundle
      */
     pubkeyX?: string;
     /**
      * [type=passkey, REGISTER] Hex-encoded Y coordinate of the P-256 public key.
      * Required only on first connect (registration). Omit on subsequent connects.
      * 
-     * @type {string}
-     * @memberof AuthBundle
      */
     pubkeyY?: string;
     /**
      * base64url-encoded authenticatorData from the WebAuthn assertion.
      * Action verification requires the UP and UV flags.
      * 
-     * @type {string}
-     * @memberof AuthBundle
      */
     authenticatorData?: string;
     /**
@@ -86,8 +73,6 @@ export interface AuthBundle {
      * Action verification requires type == "webauthn.get" and exact equality
      * between its challenge and the reconstructed action digest.
      * 
-     * @type {string}
-     * @memberof AuthBundle
      */
     clientDataJson?: string;
     /**
@@ -95,14 +80,10 @@ export interface AuthBundle {
      * messageHash = sha256(authenticatorData || sha256(clientDataJSON))
      * signature = (r, s) over messageHash
      * 
-     * @type {string}
-     * @memberof AuthBundle
      */
     signatureR?: string;
     /**
      * hex-encoded s component of the P-256 signature.
-     * @type {string}
-     * @memberof AuthBundle
      */
     signatureS?: string;
 }
@@ -115,7 +96,8 @@ export const AuthBundleTypeEnum = {
     Eoa: 'eoa',
     Webauthn: 'webauthn',
     SessionKey: 'session_key',
-    PersonalSign: 'personal_sign'
+    PersonalSign: 'personal_sign',
+    Internal: 'internal',
 } as const;
 export type AuthBundleTypeEnum = typeof AuthBundleTypeEnum[keyof typeof AuthBundleTypeEnum];
 

@@ -30,14 +30,10 @@ import {
 export interface StakingOperationsStats {
     /**
      * Total number of staking operations
-     * @type {number}
-     * @memberof StakingOperationsStats
      */
     total: number;
     /**
      * List of staking operations statistics over time
-     * @type {Array<TimeSeriesDataPoint>}
-     * @memberof StakingOperationsStats
      */
     data: Array<TimeSeriesDataPoint>;
 }

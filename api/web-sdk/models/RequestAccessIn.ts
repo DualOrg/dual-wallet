@@ -22,26 +22,18 @@ import { mapValues } from '../runtime';
 export interface RequestAccessIn {
     /**
      * Full name of the user requesting access.
-     * @type {string}
-     * @memberof RequestAccessIn
      */
     fullName: string;
     /**
      * Email address of the user requesting access.
-     * @type {string}
-     * @memberof RequestAccessIn
      */
     email: string;
     /**
      * Description of the project or reason for requesting access.
-     * @type {string}
-     * @memberof RequestAccessIn
      */
     projectDescription: string;
     /**
      * Any additional information that may be relevant to the access request.
-     * @type {string}
-     * @memberof RequestAccessIn
      */
     additionalInfo?: string;
 }
@@ -50,9 +42,9 @@ export interface RequestAccessIn {
  * Check if a given object implements the RequestAccessIn interface.
  */
 export function instanceOfRequestAccessIn(value: object): value is RequestAccessIn {
-    if ((!('fullName' in value) && !('full_name' in value)) || (value['fullName'] === undefined && value['full_name'] === undefined)) return false;
+    if ((!('fullName' in (value as Record<string, any>)) && !('full_name' in (value as Record<string, any>))) || ((value as Record<string, any>)['fullName'] === undefined && (value as Record<string, any>)['full_name'] === undefined)) return false;
     if (!('email' in value) || value['email'] === undefined) return false;
-    if ((!('projectDescription' in value) && !('project_description' in value)) || (value['projectDescription'] === undefined && value['project_description'] === undefined)) return false;
+    if ((!('projectDescription' in (value as Record<string, any>)) && !('project_description' in (value as Record<string, any>))) || ((value as Record<string, any>)['projectDescription'] === undefined && (value as Record<string, any>)['project_description'] === undefined)) return false;
     return true;
 }
 

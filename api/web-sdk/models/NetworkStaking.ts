@@ -22,89 +22,61 @@ import { mapValues } from '../runtime';
 export interface NetworkStaking {
     /**
      * Address of the staking contract.
-     * @type {string}
-     * @memberof NetworkStaking
      */
     contractAddress?: string;
     /**
      * Total amount of DUAL staked in the contract (principal only, wei).
-     * @type {string}
-     * @memberof NetworkStaking
      */
     totalStaked?: string;
     /**
      * Cumulative gross reward DUAL received over the contract's lifetime (wei) — fees via the FeeDispatcher plus owner bonuses, counted once at receipt and never reduced. Analytics only.
      * 
-     * @type {string}
-     * @memberof NetworkStaking
      */
     lifetimeRewardsReceived?: string;
     /**
      * Lifetime rewards claimed by stakers (wei).
-     * @type {string}
-     * @memberof NetworkStaking
      */
     lifetimeRewardsClaimed?: string;
     /**
      * Rewards committed to streams and not yet claimed by stakers (wei). The authoritative live-outstanding reward balance.
      * 
-     * @type {string}
-     * @memberof NetworkStaking
      */
     committedRewards?: string;
     /**
      * Total supply of xDUAL tokens (wei).
-     * @type {string}
-     * @memberof NetworkStaking
      */
     totalSupply?: string;
     /**
      * Global cumulative fee rewards per xDUAL token (scaled by 1e18).
-     * @type {string}
-     * @memberof NetworkStaking
      */
     rewardPerToken?: string;
     /**
      * DUAL distributed to stakers per second during the active reward period (wei).
-     * @type {string}
-     * @memberof NetworkStaking
      */
     rewardRate?: string;
     /**
      * Address of the FeeDispatcher authorized to send fees to the contract.
-     * @type {string}
-     * @memberof NetworkStaking
      */
     feeDispatcher?: string;
     /**
      * Unix timestamp (seconds) of the last reward-per-token accumulator update.
-     * @type {number}
-     * @memberof NetworkStaking
      */
     lastUpdateTime?: number;
     /**
      * Unix timestamp (seconds) at which the current reward stream finishes.
-     * @type {number}
-     * @memberof NetworkStaking
      */
     periodFinish?: number;
     /**
      * Length of each reward streaming period in seconds.
-     * @type {number}
-     * @memberof NetworkStaking
      */
     rewardsDuration?: number;
     /**
      * DUAL parked but not yet notified into the active stream (wei). When the `address` query parameter is supplied, this field instead contains the caller-specific claimable reward preview (wei).
      * 
-     * @type {string}
-     * @memberof NetworkStaking
      */
     pendingRewards?: string;
     /**
      * Whether staking is currently paused.
-     * @type {boolean}
-     * @memberof NetworkStaking
      */
     isPaused?: boolean;
 }

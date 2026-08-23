@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface Redeem {
     /**
      * 
-     * @type {string}
-     * @memberof Redeem
      */
     id: string;
     /**
      * 
-     * @type {string}
-     * @memberof Redeem
      */
     templateId?: string;
 }

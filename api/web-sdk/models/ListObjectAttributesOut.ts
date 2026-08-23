@@ -30,8 +30,6 @@ import {
 export interface ListObjectAttributesOut {
     /**
      * 
-     * @type {Array<ObjectAttribute>}
-     * @memberof ListObjectAttributesOut
      */
     attributes: Array<ObjectAttribute>;
 }

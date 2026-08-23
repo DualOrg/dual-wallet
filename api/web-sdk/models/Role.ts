@@ -30,38 +30,26 @@ import {
 export interface Role {
     /**
      * Unique identifier for the role
-     * @type {string}
-     * @memberof Role
      */
     id: string;
     /**
      * Human-readable name of the role
-     * @type {string}
-     * @memberof Role
      */
     name: string;
     /**
      * Optional detailed description of the role's purpose and scope
-     * @type {string}
-     * @memberof Role
      */
     description?: string;
     /**
      * List of permissions assigned to this role
-     * @type {Array<Permission>}
-     * @memberof Role
      */
     permissions: Array<Permission>;
     /**
      * Timestamp when the role was created
-     * @type {Date}
-     * @memberof Role
      */
     whenCreated: Date;
     /**
      * Timestamp when the role was last modified
-     * @type {Date}
-     * @memberof Role
      */
     whenModified: Date;
 }
@@ -73,8 +61,8 @@ export function instanceOfRole(value: object): value is Role {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('permissions' in value) || value['permissions'] === undefined) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
-    if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
+    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
     return true;
 }
 
@@ -92,8 +80,8 @@ export function RoleFromJSONTyped(json: any, ignoreDiscriminator: boolean): Role
         'name': json['name'],
         'description': json['description'] == null ? undefined : json['description'],
         'permissions': ((json['permissions'] as Array<any>).map(PermissionFromJSON)),
-        'whenCreated': (new Date(json['when_created'])),
-        'whenModified': (new Date(json['when_modified'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
+        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
     };
 }
 
@@ -112,8 +100,8 @@ export function RoleToJSONTyped(value?: Role | null, ignoreDiscriminator: boolea
         'name': value['name'],
         'description': value['description'],
         'permissions': ((value['permissions'] as Array<any>).map(PermissionToJSON)),
-        'when_created': value['whenCreated'].toISOString(),
-        'when_modified': value['whenModified'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
+        'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
     };
 }
 

@@ -40,56 +40,38 @@ import {
 export interface PasskeyRegisterVerifyIn {
     /**
      * base64url-encoded credential ID (returned by the browser).
-     * @type {string}
-     * @memberof PasskeyRegisterVerifyIn
      */
     id: string;
     /**
      * base64url-encoded raw credential ID (identical to id).
-     * @type {string}
-     * @memberof PasskeyRegisterVerifyIn
      */
     rawId: string;
     /**
      * 
-     * @type {PasskeyAttestationResponse}
-     * @memberof PasskeyRegisterVerifyIn
      */
     response: PasskeyAttestationResponse;
     /**
      * Always "public-key".
-     * @type {PasskeyRegisterVerifyInTypeEnum}
-     * @memberof PasskeyRegisterVerifyIn
      */
     type: PasskeyRegisterVerifyInTypeEnum;
     /**
      * Organization ID to scope the new wallet to.
-     * @type {string}
-     * @memberof PasskeyRegisterVerifyIn
      */
     organizationId: string;
     /**
      * Display name for the wallet.
-     * @type {string}
-     * @memberof PasskeyRegisterVerifyIn
      */
     nickname?: string;
     /**
      * Optional email for notifications and recovery.
-     * @type {string}
-     * @memberof PasskeyRegisterVerifyIn
      */
     email?: string;
     /**
      * Optional phone number in E.164 format.
-     * @type {string}
-     * @memberof PasskeyRegisterVerifyIn
      */
     phoneNumber?: string;
     /**
      * 
-     * @type {Language}
-     * @memberof PasskeyRegisterVerifyIn
      */
     language?: Language;
 }
@@ -99,7 +81,7 @@ export interface PasskeyRegisterVerifyIn {
  * @export
  */
 export const PasskeyRegisterVerifyInTypeEnum = {
-    PublicKey: 'public-key'
+    PublicKey: 'public-key',
 } as const;
 export type PasskeyRegisterVerifyInTypeEnum = typeof PasskeyRegisterVerifyInTypeEnum[keyof typeof PasskeyRegisterVerifyInTypeEnum];
 
@@ -114,7 +96,7 @@ export function instanceOfPasskeyRegisterVerifyIn(value: object): value is Passk
     if (!('type' in value) || value['type'] === undefined) return false;
     if (value['type'] !== 'public-key') return false;
     
-    if ((!('organizationId' in value) && !('organization_id' in value)) || (value['organizationId'] === undefined && value['organization_id'] === undefined)) return false;
+    if ((!('organizationId' in (value as Record<string, any>)) && !('organization_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['organizationId'] === undefined && (value as Record<string, any>)['organization_id'] === undefined)) return false;
     return true;
 }
 

@@ -22,44 +22,30 @@ import { mapValues } from '../runtime';
 export interface SmartAccount {
     /**
      * Chain on which this Kernel deployment recipe is configured.
-     * @type {number}
-     * @memberof SmartAccount
      */
     chainId: number;
     /**
      * Kernel factory used by the counterfactual CREATE2 derivation.
-     * @type {string}
-     * @memberof SmartAccount
      */
     factory: string;
     /**
      * Kernel implementation used by the ERC-1967 proxy.
-     * @type {string}
-     * @memberof SmartAccount
      */
     implementation: string;
     /**
      * Per-controller Kernel account index.
-     * @type {number}
-     * @memberof SmartAccount
      */
     index: number;
     /**
      * Root validator installed when the Kernel account is deployed.
-     * @type {string}
-     * @memberof SmartAccount
      */
     validator: string;
     /**
      * Root signature validator scheme.
-     * @type {SmartAccountValidatorTypeEnum}
-     * @memberof SmartAccount
      */
     validatorType: SmartAccountValidatorTypeEnum;
     /**
      * Kernel account version used by the deployment recipe.
-     * @type {string}
-     * @memberof SmartAccount
      */
     version: string;
 }
@@ -70,7 +56,7 @@ export interface SmartAccount {
  */
 export const SmartAccountValidatorTypeEnum = {
     Ecdsa: 'ECDSA',
-    Webauthn: 'WEBAUTHN'
+    Webauthn: 'WEBAUTHN',
 } as const;
 export type SmartAccountValidatorTypeEnum = typeof SmartAccountValidatorTypeEnum[keyof typeof SmartAccountValidatorTypeEnum];
 
@@ -79,12 +65,12 @@ export type SmartAccountValidatorTypeEnum = typeof SmartAccountValidatorTypeEnum
  * Check if a given object implements the SmartAccount interface.
  */
 export function instanceOfSmartAccount(value: object): value is SmartAccount {
-    if ((!('chainId' in value) && !('chain_id' in value)) || (value['chainId'] === undefined && value['chain_id'] === undefined)) return false;
+    if ((!('chainId' in (value as Record<string, any>)) && !('chain_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['chainId'] === undefined && (value as Record<string, any>)['chain_id'] === undefined)) return false;
     if (!('factory' in value) || value['factory'] === undefined) return false;
     if (!('implementation' in value) || value['implementation'] === undefined) return false;
     if (!('index' in value) || value['index'] === undefined) return false;
     if (!('validator' in value) || value['validator'] === undefined) return false;
-    if ((!('validatorType' in value) && !('validator_type' in value)) || (value['validatorType'] === undefined && value['validator_type'] === undefined)) return false;
+    if ((!('validatorType' in (value as Record<string, any>)) && !('validator_type' in (value as Record<string, any>))) || ((value as Record<string, any>)['validatorType'] === undefined && (value as Record<string, any>)['validator_type'] === undefined)) return false;
     if (!('version' in value) || value['version'] === undefined) return false;
     return true;
 }

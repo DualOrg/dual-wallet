@@ -30,34 +30,26 @@ import {
 export interface AttributeInput {
     /**
      * Case-insensitive attribute key. The service trims and lowercases it.
-     * @type {string}
-     * @memberof AttributeInput
      */
     key: string;
     /**
+     * Arbitrary JSON value. Binary data must be represented as base64 or as an
+     * immutable content-addressed reference.
      * 
-     * @type {any}
-     * @memberof AttributeInput
      */
     value: any | null;
     /**
      * Optional category used to group or classify the attribute.
-     * @type {string}
-     * @memberof AttributeInput
      */
     category?: string;
     /**
      * Optional format of the attribute value.
-     * @type {AttributeContentType}
-     * @memberof AttributeInput
      */
     contentType?: AttributeContentType;
     /**
      * Whether this attribute may be returned by public object endpoints and
      * exposed to public face rendering. Omitted attributes remain private.
      * 
-     * @type {boolean}
-     * @memberof AttributeInput
      */
     _public?: boolean;
 }

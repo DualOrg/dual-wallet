@@ -30,20 +30,14 @@ import {
 export interface ApiKeyCreate {
     /**
      * Descriptive name of the API key.
-     * @type {string}
-     * @memberof ApiKeyCreate
      */
     name: string;
     /**
      * Time-to-live for the API key in hours.
-     * @type {number}
-     * @memberof ApiKeyCreate
      */
     ttlHours?: number;
     /**
      * 
-     * @type {Array<Permission>}
-     * @memberof ApiKeyCreate
      */
     permissions: Array<Permission>;
 }

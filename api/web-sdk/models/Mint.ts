@@ -14,6 +14,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { MintData } from './MintData';
+import {
+    MintDataFromJSON,
+    MintDataFromJSONTyped,
+    MintDataToJSON,
+    MintDataToJSONTyped,
+} from './MintData';
+
 /**
  * 
  * @export
@@ -22,35 +30,27 @@ import { mapValues } from '../runtime';
 export interface Mint {
     /**
      * 
-     * @type {string}
-     * @memberof Mint
      */
     templateId: string;
     /**
      * 
-     * @type {number}
-     * @memberof Mint
      */
     num: number;
     /**
      * 
-     * @type {string}
-     * @memberof Mint
      */
     to?: string;
     /**
      * 
-     * @type {{ [key: string]: any; }}
-     * @memberof Mint
      */
-    data?: { [key: string]: any; };
+    data?: MintData;
 }
 
 /**
  * Check if a given object implements the Mint interface.
  */
 export function instanceOfMint(value: object): value is Mint {
-    if ((!('templateId' in value) && !('template_id' in value)) || (value['templateId'] === undefined && value['template_id'] === undefined)) return false;
+    if ((!('templateId' in (value as Record<string, any>)) && !('template_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['templateId'] === undefined && (value as Record<string, any>)['template_id'] === undefined)) return false;
     if (!('num' in value) || value['num'] === undefined) return false;
     return true;
 }
@@ -68,7 +68,7 @@ export function MintFromJSONTyped(json: any, ignoreDiscriminator: boolean): Mint
         'templateId': json['template_id'],
         'num': json['num'],
         'to': json['to'] == null ? undefined : json['to'],
-        'data': json['data'] == null ? undefined : json['data'],
+        'data': json['data'] == null ? undefined : MintDataFromJSON(json['data']),
     };
 }
 
@@ -86,7 +86,7 @@ export function MintToJSONTyped(value?: Mint | null, ignoreDiscriminator: boolea
         'template_id': value['templateId'],
         'num': value['num'],
         'to': value['to'],
-        'data': value['data'],
+        'data': MintDataToJSON(value['data']),
     };
 }
 

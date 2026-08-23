@@ -22,8 +22,6 @@ import { mapValues } from '../runtime';
 export interface BalanceHistoryOut {
     /**
      * 
-     * @type {Array<BalanceHistoryOut>}
-     * @memberof BalanceHistoryOut
      */
     history: Array<BalanceHistoryOut>;
 }

@@ -44,50 +44,34 @@ import {
 export interface PublicTemplate {
     /**
      * Unique identifier for the template
-     * @type {string}
-     * @memberof PublicTemplate
      */
     id: string;
     /**
      * Name of the object
-     * @type {string}
-     * @memberof PublicTemplate
      */
     name: string;
     /**
      * Reference to the object schema
-     * @type {PublicTemplateObject}
-     * @memberof PublicTemplate
      */
     object: PublicTemplateObject;
     /**
      * Reference to the factory schema
-     * @type {Factory}
-     * @memberof PublicTemplate
      */
     factory?: Factory;
     /**
      * Available actions that can be performed on objects created from this template
-     * @type {Array<TemplateAction>}
-     * @memberof PublicTemplate
      */
     actions: Array<TemplateAction>;
     /**
      * Face identifier for the visual representation of objects created from this template
-     * @type {string}
-     * @memberof PublicTemplate
      */
     faceId?: string;
     /**
      * Timestamp of when the object was created
-     * @type {Date}
-     * @memberof PublicTemplate
      */
     whenCreated: Date;
     /**
      * Timestamp of when the object was last modified
-     * @type {Date}
-     * @memberof PublicTemplate
      */
     whenModified: Date;
 }
@@ -100,8 +84,8 @@ export function instanceOfPublicTemplate(value: object): value is PublicTemplate
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('object' in value) || value['object'] === undefined) return false;
     if (!('actions' in value) || value['actions'] === undefined) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
-    if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
+    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
     return true;
 }
 
@@ -121,8 +105,8 @@ export function PublicTemplateFromJSONTyped(json: any, ignoreDiscriminator: bool
         'factory': json['factory'] == null ? undefined : FactoryFromJSON(json['factory']),
         'actions': ((json['actions'] as Array<any>).map(TemplateActionFromJSON)),
         'faceId': json['face_id'] == null ? undefined : json['face_id'],
-        'whenCreated': (new Date(json['when_created'])),
-        'whenModified': (new Date(json['when_modified'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
+        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
     };
 }
 
@@ -143,8 +127,8 @@ export function PublicTemplateToJSONTyped(value?: PublicTemplate | null, ignoreD
         'factory': FactoryToJSON(value['factory']),
         'actions': ((value['actions'] as Array<any>).map(TemplateActionToJSON)),
         'face_id': value['faceId'],
-        'when_created': value['whenCreated'].toISOString(),
-        'when_modified': value['whenModified'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
+        'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
     };
 }
 

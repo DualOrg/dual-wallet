@@ -30,44 +30,30 @@ import {
 export interface ApiKey {
     /**
      * Unique identifier for the API key.
-     * @type {string}
-     * @memberof ApiKey
      */
     id: string;
     /**
      * Descriptive name of the API key.
-     * @type {string}
-     * @memberof ApiKey
      */
     name: string;
     /**
      * Expiration timestamp of the API key, if applicable.
-     * @type {Date}
-     * @memberof ApiKey
      */
     expiresAt: Date;
     /**
      * 
-     * @type {Array<Permission>}
-     * @memberof ApiKey
      */
     permissions: Array<Permission>;
     /**
      * Timestamp of when the API key was created.
-     * @type {Date}
-     * @memberof ApiKey
      */
     whenCreated: Date;
     /**
      * Timestamp of when the API key was last modified.
-     * @type {Date}
-     * @memberof ApiKey
      */
     whenModified: Date;
     /**
      * Timestamp of when the API key was last used to authenticate a request.
-     * @type {Date}
-     * @memberof ApiKey
      */
     lastUsedAt?: Date;
 }
@@ -78,10 +64,10 @@ export interface ApiKey {
 export function instanceOfApiKey(value: object): value is ApiKey {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
-    if ((!('expiresAt' in value) && !('expires_at' in value)) || (value['expiresAt'] === undefined && value['expires_at'] === undefined)) return false;
+    if ((!('expiresAt' in (value as Record<string, any>)) && !('expires_at' in (value as Record<string, any>))) || ((value as Record<string, any>)['expiresAt'] === undefined && (value as Record<string, any>)['expires_at'] === undefined)) return false;
     if (!('permissions' in value) || value['permissions'] === undefined) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
-    if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
+    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
     return true;
 }
 
@@ -97,10 +83,10 @@ export function ApiKeyFromJSONTyped(json: any, ignoreDiscriminator: boolean): Ap
         
         'id': json['id'],
         'name': json['name'],
-        'expiresAt': (new Date(json['expires_at'])),
+        'expiresAt': (json['expires_at'] == null ? json['expires_at'] : new Date(json['expires_at'])),
         'permissions': ((json['permissions'] as Array<any>).map(PermissionFromJSON)),
-        'whenCreated': (new Date(json['when_created'])),
-        'whenModified': (new Date(json['when_modified'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
+        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
         'lastUsedAt': json['last_used_at'] == null ? undefined : (new Date(json['last_used_at'])),
     };
 }
@@ -118,10 +104,10 @@ export function ApiKeyToJSONTyped(value?: ApiKey | null, ignoreDiscriminator: bo
         
         'id': value['id'],
         'name': value['name'],
-        'expires_at': value['expiresAt'].toISOString(),
+        'expires_at': value['expiresAt'] == null ? value['expiresAt'] : value['expiresAt'].toISOString(),
         'permissions': ((value['permissions'] as Array<any>).map(PermissionToJSON)),
-        'when_created': value['whenCreated'].toISOString(),
-        'when_modified': value['whenModified'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
+        'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
         'last_used_at': value['lastUsedAt'] == null ? value['lastUsedAt'] : value['lastUsedAt'].toISOString(),
     };
 }

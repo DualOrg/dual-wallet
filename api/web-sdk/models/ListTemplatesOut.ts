@@ -30,14 +30,10 @@ import {
 export interface ListTemplatesOut {
     /**
      * Array of template objects.
-     * @type {Array<Template>}
-     * @memberof ListTemplatesOut
      */
     templates: Array<Template>;
     /**
      * Pagination token for the next set of results, if any.
-     * @type {string}
-     * @memberof ListTemplatesOut
      */
     next?: string;
 }

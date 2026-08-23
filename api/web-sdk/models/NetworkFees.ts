@@ -22,44 +22,30 @@ import { mapValues } from '../runtime';
 export interface NetworkFees {
     /**
      * Current price of the network token.
-     * @type {string}
-     * @memberof NetworkFees
      */
     tokenPrice: string;
     /**
      * Base fee for actions in the eBus system.
-     * @type {string}
-     * @memberof NetworkFees
      */
     baseFee: string;
     /**
      * Base fee for ERC20 token actions in the eBus system.
-     * @type {string}
-     * @memberof NetworkFees
      */
     baseFeeWei: string;
     /**
      * Dynamic fee component based on current network conditions.
-     * @type {string}
-     * @memberof NetworkFees
      */
     dynamicFee: string;
     /**
      * Dynamic fee component for ERC20 token actions based on current network conditions.
-     * @type {string}
-     * @memberof NetworkFees
      */
     dynamicFeeWei: string;
     /**
      * Total fee calculated as the sum of base and dynamic fees.
-     * @type {string}
-     * @memberof NetworkFees
      */
     totalFee: string;
     /**
      * Total fee for ERC20 token actions calculated as the sum of base and dynamic fees
-     * @type {string}
-     * @memberof NetworkFees
      */
     totalFeeWei: string;
 }
@@ -68,13 +54,13 @@ export interface NetworkFees {
  * Check if a given object implements the NetworkFees interface.
  */
 export function instanceOfNetworkFees(value: object): value is NetworkFees {
-    if ((!('tokenPrice' in value) && !('token_price' in value)) || (value['tokenPrice'] === undefined && value['token_price'] === undefined)) return false;
-    if ((!('baseFee' in value) && !('base_fee' in value)) || (value['baseFee'] === undefined && value['base_fee'] === undefined)) return false;
-    if ((!('baseFeeWei' in value) && !('base_fee_wei' in value)) || (value['baseFeeWei'] === undefined && value['base_fee_wei'] === undefined)) return false;
-    if ((!('dynamicFee' in value) && !('dynamic_fee' in value)) || (value['dynamicFee'] === undefined && value['dynamic_fee'] === undefined)) return false;
-    if ((!('dynamicFeeWei' in value) && !('dynamic_fee_wei' in value)) || (value['dynamicFeeWei'] === undefined && value['dynamic_fee_wei'] === undefined)) return false;
-    if ((!('totalFee' in value) && !('total_fee' in value)) || (value['totalFee'] === undefined && value['total_fee'] === undefined)) return false;
-    if ((!('totalFeeWei' in value) && !('total_fee_wei' in value)) || (value['totalFeeWei'] === undefined && value['total_fee_wei'] === undefined)) return false;
+    if ((!('tokenPrice' in (value as Record<string, any>)) && !('token_price' in (value as Record<string, any>))) || ((value as Record<string, any>)['tokenPrice'] === undefined && (value as Record<string, any>)['token_price'] === undefined)) return false;
+    if ((!('baseFee' in (value as Record<string, any>)) && !('base_fee' in (value as Record<string, any>))) || ((value as Record<string, any>)['baseFee'] === undefined && (value as Record<string, any>)['base_fee'] === undefined)) return false;
+    if ((!('baseFeeWei' in (value as Record<string, any>)) && !('base_fee_wei' in (value as Record<string, any>))) || ((value as Record<string, any>)['baseFeeWei'] === undefined && (value as Record<string, any>)['base_fee_wei'] === undefined)) return false;
+    if ((!('dynamicFee' in (value as Record<string, any>)) && !('dynamic_fee' in (value as Record<string, any>))) || ((value as Record<string, any>)['dynamicFee'] === undefined && (value as Record<string, any>)['dynamic_fee'] === undefined)) return false;
+    if ((!('dynamicFeeWei' in (value as Record<string, any>)) && !('dynamic_fee_wei' in (value as Record<string, any>))) || ((value as Record<string, any>)['dynamicFeeWei'] === undefined && (value as Record<string, any>)['dynamic_fee_wei'] === undefined)) return false;
+    if ((!('totalFee' in (value as Record<string, any>)) && !('total_fee' in (value as Record<string, any>))) || ((value as Record<string, any>)['totalFee'] === undefined && (value as Record<string, any>)['total_fee'] === undefined)) return false;
+    if ((!('totalFeeWei' in (value as Record<string, any>)) && !('total_fee_wei' in (value as Record<string, any>))) || ((value as Record<string, any>)['totalFeeWei'] === undefined && (value as Record<string, any>)['total_fee_wei'] === undefined)) return false;
     return true;
 }
 

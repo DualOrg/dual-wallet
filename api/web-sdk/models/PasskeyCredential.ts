@@ -22,28 +22,20 @@ import { mapValues } from '../runtime';
 export interface PasskeyCredential {
     /**
      * base64url-encoded credential ID as returned by the authenticator.
-     * @type {string}
-     * @memberof PasskeyCredential
      */
     credentialId: string;
     /**
      * keccak256 hash of the authenticatorId (hex, 0x-prefixed).
      * Used to locate the public key in on-chain WebAuthnPublicKeyRegistered event logs.
      * 
-     * @type {string}
-     * @memberof PasskeyCredential
      */
     authenticatorIdHash: string;
     /**
      * Hex-encoded X coordinate of the P-256 public key. Required for assertion verification and on-chain install.
-     * @type {string}
-     * @memberof PasskeyCredential
      */
     pubkeyX: string;
     /**
      * Hex-encoded Y coordinate of the P-256 public key. Required for assertion verification and on-chain install.
-     * @type {string}
-     * @memberof PasskeyCredential
      */
     pubkeyY: string;
 }
@@ -52,10 +44,10 @@ export interface PasskeyCredential {
  * Check if a given object implements the PasskeyCredential interface.
  */
 export function instanceOfPasskeyCredential(value: object): value is PasskeyCredential {
-    if ((!('credentialId' in value) && !('credential_id' in value)) || (value['credentialId'] === undefined && value['credential_id'] === undefined)) return false;
-    if ((!('authenticatorIdHash' in value) && !('authenticator_id_hash' in value)) || (value['authenticatorIdHash'] === undefined && value['authenticator_id_hash'] === undefined)) return false;
-    if ((!('pubkeyX' in value) && !('pubkey_x' in value)) || (value['pubkeyX'] === undefined && value['pubkey_x'] === undefined)) return false;
-    if ((!('pubkeyY' in value) && !('pubkey_y' in value)) || (value['pubkeyY'] === undefined && value['pubkey_y'] === undefined)) return false;
+    if ((!('credentialId' in (value as Record<string, any>)) && !('credential_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['credentialId'] === undefined && (value as Record<string, any>)['credential_id'] === undefined)) return false;
+    if ((!('authenticatorIdHash' in (value as Record<string, any>)) && !('authenticator_id_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['authenticatorIdHash'] === undefined && (value as Record<string, any>)['authenticator_id_hash'] === undefined)) return false;
+    if ((!('pubkeyX' in (value as Record<string, any>)) && !('pubkey_x' in (value as Record<string, any>))) || ((value as Record<string, any>)['pubkeyX'] === undefined && (value as Record<string, any>)['pubkey_x'] === undefined)) return false;
+    if ((!('pubkeyY' in (value as Record<string, any>)) && !('pubkey_y' in (value as Record<string, any>))) || ((value as Record<string, any>)['pubkeyY'] === undefined && (value as Record<string, any>)['pubkey_y'] === undefined)) return false;
     return true;
 }
 

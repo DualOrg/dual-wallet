@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface Connect {
     /**
      * 
-     * @type {string}
-     * @memberof Connect
      */
     id: string;
     /**
      * 
-     * @type {string}
-     * @memberof Connect
      */
     to: string;
 }

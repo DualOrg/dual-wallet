@@ -24,32 +24,24 @@ export interface PasskeyAssertionResponse {
      * base64url-encoded clientDataJSON. The server verifies:
      * type == "webauthn.get", origin matches, challenge matches.
      * 
-     * @type {string}
-     * @memberof PasskeyAssertionResponse
      */
     clientDataJSON: string;
     /**
      * base64url-encoded authenticatorData. The server verifies:
      * rpIdHash == sha256(rpId), UP flag set, UV flag set.
      * 
-     * @type {string}
-     * @memberof PasskeyAssertionResponse
      */
     authenticatorData: string;
     /**
      * base64url-encoded DER-encoded P-256 (ES256) signature over
      * sha256(authenticatorData || sha256(clientDataJSON)).
      * 
-     * @type {string}
-     * @memberof PasskeyAssertionResponse
      */
     signature: string;
     /**
      * base64url-encoded user handle stored by the authenticator (may be absent
      * for non-discoverable credentials).
      * 
-     * @type {string}
-     * @memberof PasskeyAssertionResponse
      */
     userHandle?: string;
 }

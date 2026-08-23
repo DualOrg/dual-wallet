@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface ObjectActions {
     /**
      * The ID of the template
-     * @type {string}
-     * @memberof ObjectActions
      */
     templateId: string;
     /**
      * List of actions associated with the template
-     * @type {Array<string>}
-     * @memberof ObjectActions
      */
     actions: Array<string>;
 }
@@ -38,7 +34,7 @@ export interface ObjectActions {
  * Check if a given object implements the ObjectActions interface.
  */
 export function instanceOfObjectActions(value: object): value is ObjectActions {
-    if ((!('templateId' in value) && !('template_id' in value)) || (value['templateId'] === undefined && value['template_id'] === undefined)) return false;
+    if ((!('templateId' in (value as Record<string, any>)) && !('template_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['templateId'] === undefined && (value as Record<string, any>)['template_id'] === undefined)) return false;
     if (!('actions' in value) || value['actions'] === undefined) return false;
     return true;
 }

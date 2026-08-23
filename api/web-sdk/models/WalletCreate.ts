@@ -37,44 +37,30 @@ import {
 export interface WalletCreate {
     /**
      * Organization ID to associate the wallet
-     * @type {string}
-     * @memberof WalletCreate
      */
     organizationId?: string;
     /**
      * User's preferred display name or alias, limited to alphanumeric characters with maximum length of 255 characters
-     * @type {string}
-     * @memberof WalletCreate
      */
     nickname?: string;
     /**
      * User's email address for authentication and communications, must be a valid email format
-     * @type {string}
-     * @memberof WalletCreate
      */
     email?: string;
     /**
      * User's phone number in E.164 international format (e.g., +12125551234) for verification or notifications
-     * @type {string}
-     * @memberof WalletCreate
      */
     phoneNumber?: string;
     /**
      * User's preferred language setting for the application interface and communications
-     * @type {Language}
-     * @memberof WalletCreate
      */
     language?: Language;
     /**
      * User's profile picture or avatar image asset
-     * @type {Asset}
-     * @memberof WalletCreate
      */
     avatar?: Asset;
     /**
      * User's account password, will be securely hashed and never returned in responses
-     * @type {string}
-     * @memberof WalletCreate
      */
     password?: string;
 }

@@ -22,8 +22,6 @@ import { mapValues } from '../runtime';
 export interface Disconnect {
     /**
      * 
-     * @type {string}
-     * @memberof Disconnect
      */
     id: string;
 }

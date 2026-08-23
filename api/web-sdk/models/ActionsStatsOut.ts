@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface ActionsStatsOut {
     /**
      * Total number of action calls
-     * @type {number}
-     * @memberof ActionsStatsOut
      */
     total: number;
     /**
      * Action calls broken down by action name
-     * @type {{ [key: string]: number; }}
-     * @memberof ActionsStatsOut
      */
     byName?: { [key: string]: number; };
 }

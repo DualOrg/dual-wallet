@@ -51,68 +51,46 @@ import {
 export interface Template {
     /**
      * Unique identifier for the template
-     * @type {string}
-     * @memberof Template
      */
     id: string;
     /**
      * ID of the owner of the object
-     * @type {string}
-     * @memberof Template
      */
     owner?: string;
     /**
      * Name of the object
-     * @type {string}
-     * @memberof Template
      */
     name: string;
     /**
      * Fully Qualified Domain Name (FQDN) of the object
-     * @type {string}
-     * @memberof Template
      */
     fqdn: string;
     /**
      * Reference to the object schema
-     * @type {TemplateObject}
-     * @memberof Template
      */
     object: TemplateObject;
     /**
      * Reference to the factory schema
-     * @type {Factory}
-     * @memberof Template
      */
     factory?: Factory;
     /**
      * 
-     * @type {PublicAccess}
-     * @memberof Template
      */
     publicAccess?: PublicAccess;
     /**
      * Available actions that can be performed on objects created from this template
-     * @type {Array<TemplateAction>}
-     * @memberof Template
      */
     actions: Array<TemplateAction>;
     /**
      * Face identifier for the visual representation of objects created from this template
-     * @type {string}
-     * @memberof Template
      */
     faceId?: string;
     /**
      * Timestamp of when the object was created
-     * @type {Date}
-     * @memberof Template
      */
     whenCreated: Date;
     /**
      * Timestamp of when the object was last modified
-     * @type {Date}
-     * @memberof Template
      */
     whenModified: Date;
 }
@@ -126,8 +104,8 @@ export function instanceOfTemplate(value: object): value is Template {
     if (!('fqdn' in value) || value['fqdn'] === undefined) return false;
     if (!('object' in value) || value['object'] === undefined) return false;
     if (!('actions' in value) || value['actions'] === undefined) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
-    if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
+    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
     return true;
 }
 
@@ -150,8 +128,8 @@ export function TemplateFromJSONTyped(json: any, ignoreDiscriminator: boolean): 
         'publicAccess': json['public_access'] == null ? undefined : PublicAccessFromJSON(json['public_access']),
         'actions': ((json['actions'] as Array<any>).map(TemplateActionFromJSON)),
         'faceId': json['face_id'] == null ? undefined : json['face_id'],
-        'whenCreated': (new Date(json['when_created'])),
-        'whenModified': (new Date(json['when_modified'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
+        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
     };
 }
 
@@ -175,8 +153,8 @@ export function TemplateToJSONTyped(value?: Template | null, ignoreDiscriminator
         'public_access': PublicAccessToJSON(value['publicAccess']),
         'actions': ((value['actions'] as Array<any>).map(TemplateActionToJSON)),
         'face_id': value['faceId'],
-        'when_created': value['whenCreated'].toISOString(),
-        'when_modified': value['whenModified'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
+        'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
     };
 }
 

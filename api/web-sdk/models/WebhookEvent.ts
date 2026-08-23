@@ -44,62 +44,42 @@ import {
 export interface WebhookEvent {
     /**
      * Unique ID for the webhook.
-     * @type {string}
-     * @memberof WebhookEvent
      */
     id: string;
     /**
      * Unique identifier for the webhook.
-     * @type {string}
-     * @memberof WebhookEvent
      */
     webhookId: string;
     /**
      * 
-     * @type {WebhookType}
-     * @memberof WebhookEvent
      */
     type: WebhookType;
     /**
      * The actual event payload.
-     * @type {string}
-     * @memberof WebhookEvent
      */
     payload: string;
     /**
      * The signature of the event.
-     * @type {string}
-     * @memberof WebhookEvent
      */
     signature: string;
     /**
      * The URL that the event was sent to.
-     * @type {string}
-     * @memberof WebhookEvent
      */
     url: string;
     /**
      * 
-     * @type {WebhookEventStatus}
-     * @memberof WebhookEvent
      */
     status: WebhookEventStatus;
     /**
      * 
-     * @type {GeneralError}
-     * @memberof WebhookEvent
      */
     error?: GeneralError;
     /**
      * The date and time the event was last modified.
-     * @type {Date}
-     * @memberof WebhookEvent
      */
     whenModified?: Date;
     /**
      * The date and time the event was created.
-     * @type {Date}
-     * @memberof WebhookEvent
      */
     whenCreated: Date;
 }
@@ -111,13 +91,13 @@ export interface WebhookEvent {
  */
 export function instanceOfWebhookEvent(value: object): value is WebhookEvent {
     if (!('id' in value) || value['id'] === undefined) return false;
-    if ((!('webhookId' in value) && !('webhook_id' in value)) || (value['webhookId'] === undefined && value['webhook_id'] === undefined)) return false;
+    if ((!('webhookId' in (value as Record<string, any>)) && !('webhook_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['webhookId'] === undefined && (value as Record<string, any>)['webhook_id'] === undefined)) return false;
     if (!('type' in value) || value['type'] === undefined) return false;
     if (!('payload' in value) || value['payload'] === undefined) return false;
     if (!('signature' in value) || value['signature'] === undefined) return false;
     if (!('url' in value) || value['url'] === undefined) return false;
     if (!('status' in value) || value['status'] === undefined) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
     return true;
 }
 
@@ -140,7 +120,7 @@ export function WebhookEventFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'status': WebhookEventStatusFromJSON(json['status']),
         'error': json['error'] == null ? undefined : GeneralErrorFromJSON(json['error']),
         'whenModified': json['when_modified'] == null ? undefined : (new Date(json['when_modified'])),
-        'whenCreated': (new Date(json['when_created'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
     };
 }
 
@@ -164,7 +144,7 @@ export function WebhookEventToJSONTyped(value?: WebhookEvent | null, ignoreDiscr
         'status': WebhookEventStatusToJSON(value['status']),
         'error': GeneralErrorToJSON(value['error']),
         'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
-        'when_created': value['whenCreated'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
     };
 }
 

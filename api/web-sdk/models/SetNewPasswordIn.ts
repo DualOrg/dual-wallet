@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface SetNewPasswordIn {
     /**
      * Security token received via email or SMS that authorizes the password change
-     * @type {string}
-     * @memberof SetNewPasswordIn
      */
     token: string;
     /**
      * New password for the user account
-     * @type {string}
-     * @memberof SetNewPasswordIn
      */
     newPassword: string;
 }
@@ -39,7 +35,7 @@ export interface SetNewPasswordIn {
  */
 export function instanceOfSetNewPasswordIn(value: object): value is SetNewPasswordIn {
     if (!('token' in value) || value['token'] === undefined) return false;
-    if ((!('newPassword' in value) && !('new_password' in value)) || (value['newPassword'] === undefined && value['new_password'] === undefined)) return false;
+    if ((!('newPassword' in (value as Record<string, any>)) && !('new_password' in (value as Record<string, any>))) || ((value as Record<string, any>)['newPassword'] === undefined && (value as Record<string, any>)['new_password'] === undefined)) return false;
     return true;
 }
 

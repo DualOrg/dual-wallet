@@ -51,56 +51,38 @@ import {
 export interface TemplateMessageCreate {
     /**
      * 
-     * @type {string}
-     * @memberof TemplateMessageCreate
      */
     name: string;
     /**
      * 
-     * @type {Language}
-     * @memberof TemplateMessageCreate
      */
     language?: Language;
     /**
      * 
-     * @type {System}
-     * @memberof TemplateMessageCreate
      */
     system: System;
     /**
      * 
-     * @type {ActionType}
-     * @memberof TemplateMessageCreate
      */
     actionType: ActionType;
     /**
      * 
-     * @type {string}
-     * @memberof TemplateMessageCreate
      */
     title: string;
     /**
      * 
-     * @type {string}
-     * @memberof TemplateMessageCreate
      */
     project?: string;
     /**
      * 
-     * @type {string}
-     * @memberof TemplateMessageCreate
      */
     content: string;
     /**
      * 
-     * @type {ContentType}
-     * @memberof TemplateMessageCreate
      */
     contentType: ContentType;
     /**
      * 
-     * @type {{ [key: string]: string; }}
-     * @memberof TemplateMessageCreate
      */
     values?: { [key: string]: string; };
 }
@@ -113,10 +95,10 @@ export interface TemplateMessageCreate {
 export function instanceOfTemplateMessageCreate(value: object): value is TemplateMessageCreate {
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('system' in value) || value['system'] === undefined) return false;
-    if ((!('actionType' in value) && !('action_type' in value)) || (value['actionType'] === undefined && value['action_type'] === undefined)) return false;
+    if ((!('actionType' in (value as Record<string, any>)) && !('action_type' in (value as Record<string, any>))) || ((value as Record<string, any>)['actionType'] === undefined && (value as Record<string, any>)['action_type'] === undefined)) return false;
     if (!('title' in value) || value['title'] === undefined) return false;
     if (!('content' in value) || value['content'] === undefined) return false;
-    if ((!('contentType' in value) && !('content_type' in value)) || (value['contentType'] === undefined && value['content_type'] === undefined)) return false;
+    if ((!('contentType' in (value as Record<string, any>)) && !('content_type' in (value as Record<string, any>))) || ((value as Record<string, any>)['contentType'] === undefined && (value as Record<string, any>)['content_type'] === undefined)) return false;
     return true;
 }
 

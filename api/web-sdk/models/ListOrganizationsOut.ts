@@ -30,14 +30,10 @@ import {
 export interface ListOrganizationsOut {
     /**
      * Pagination token for retrieving the next set of organizations
-     * @type {string}
-     * @memberof ListOrganizationsOut
      */
     next?: string;
     /**
      * List of organization entities returned in the response
-     * @type {Array<Organization>}
-     * @memberof ListOrganizationsOut
      */
     organizations: Array<Organization>;
 }

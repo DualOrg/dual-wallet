@@ -21,7 +21,7 @@
 export const DisplayVariant = {
     Card: 'card',
     Detail: 'detail',
-    Share: 'share'
+    Share: 'share',
 } as const;
 export type DisplayVariant = typeof DisplayVariant[keyof typeof DisplayVariant];
 

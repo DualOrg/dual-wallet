@@ -25,7 +25,7 @@ export const Language = {
     De: 'de',
     It: 'it',
     Pt: 'pt',
-    Ru: 'ru'
+    Ru: 'ru',
 } as const;
 export type Language = typeof Language[keyof typeof Language];
 

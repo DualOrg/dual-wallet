@@ -27,7 +27,7 @@ export const BatchStatus = {
     Nfts: 'nfts',
     Settling: 'settling',
     Finalized: 'finalized',
-    Failed: 'failed'
+    Failed: 'failed',
 } as const;
 export type BatchStatus = typeof BatchStatus[keyof typeof BatchStatus];
 

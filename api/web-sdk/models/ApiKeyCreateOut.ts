@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface ApiKeyCreateOut {
     /**
      * Unique identifier for the API key.
-     * @type {string}
-     * @memberof ApiKeyCreateOut
      */
     id: string;
     /**
      * The secret key value.
-     * @type {string}
-     * @memberof ApiKeyCreateOut
      */
     secret: string;
 }

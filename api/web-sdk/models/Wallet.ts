@@ -58,92 +58,62 @@ import {
 export interface Wallet {
     /**
      * Unique identifier for the user/account
-     * @type {string}
-     * @memberof Wallet
      */
     id: string;
     /**
      * User's preferred display name or alias
-     * @type {string}
-     * @memberof Wallet
      */
     nickname?: string;
     /**
      * User's email address for communications and account recovery
-     * @type {string}
-     * @memberof Wallet
      */
     email?: string;
     /**
      * User's contact phone number, may be used for SMS verification or notifications
-     * @type {string}
-     * @memberof Wallet
      */
     phoneNumber?: string;
     /**
      * 
-     * @type {Asset}
-     * @memberof Wallet
      */
     avatar?: Asset;
     /**
      * User's preferred language for the interface and communications
-     * @type {Language}
-     * @memberof Wallet
      */
     language: Language;
     /**
      * Fully Qualified Domain Name associated with the user account
-     * @type {string}
-     * @memberof Wallet
      */
     fqdn: string;
     /**
      * Indicates whether the user has completed the activation process
-     * @type {boolean}
-     * @memberof Wallet
      */
     activated: boolean;
     /**
      * Indicates whether the account has been disabled by an administrator or automated process
-     * @type {boolean}
-     * @memberof Wallet
      */
     disabled: boolean;
     /**
      * Reference to the user's account wallet information
-     * @type {Account}
-     * @memberof Wallet
      */
     account: Account;
     /**
      * WebAuthn credential bound to this wallet. Absent if the wallet was not registered via passkey.
-     * @type {PasskeyCredential}
-     * @memberof Wallet
      */
     passkey?: PasskeyCredential;
     /**
      * Active ERC-7579 session keys authorized by this wallet's passkey.
-     * @type {Array<Session>}
-     * @memberof Wallet
      */
     sessions?: Array<Session>;
     /**
      * Indicates whether the user is in the onboarding process
-     * @type {boolean}
-     * @memberof Wallet
      */
     onboarding?: boolean;
     /**
      * Timestamp of when the user account was initially created
-     * @type {Date}
-     * @memberof Wallet
      */
     whenCreated: Date;
     /**
      * Timestamp of when the user account was last modified
-     * @type {Date}
-     * @memberof Wallet
      */
     whenModified: Date;
 }
@@ -160,8 +130,8 @@ export function instanceOfWallet(value: object): value is Wallet {
     if (!('activated' in value) || value['activated'] === undefined) return false;
     if (!('disabled' in value) || value['disabled'] === undefined) return false;
     if (!('account' in value) || value['account'] === undefined) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
-    if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
+    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
     return true;
 }
 
@@ -188,8 +158,8 @@ export function WalletFromJSONTyped(json: any, ignoreDiscriminator: boolean): Wa
         'passkey': json['passkey'] == null ? undefined : PasskeyCredentialFromJSON(json['passkey']),
         'sessions': json['sessions'] == null ? undefined : ((json['sessions'] as Array<any>).map(SessionFromJSON)),
         'onboarding': json['onboarding'] == null ? undefined : json['onboarding'],
-        'whenCreated': (new Date(json['when_created'])),
-        'whenModified': (new Date(json['when_modified'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
+        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
     };
 }
 
@@ -217,8 +187,8 @@ export function WalletToJSONTyped(value?: Wallet | null, ignoreDiscriminator: bo
         'passkey': PasskeyCredentialToJSON(value['passkey']),
         'sessions': value['sessions'] == null ? undefined : ((value['sessions'] as Array<any>).map(SessionToJSON)),
         'onboarding': value['onboarding'],
-        'when_created': value['whenCreated'].toISOString(),
-        'when_modified': value['whenModified'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
+        'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
     };
 }
 

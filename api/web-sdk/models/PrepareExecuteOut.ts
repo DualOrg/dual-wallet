@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface PrepareExecuteOut {
     /**
      * Current replay-protection nonce for the authenticated wallet.
-     * @type {number}
-     * @memberof PrepareExecuteOut
      */
     nonce: number;
     /**
      * Base64url-encoded EIP-712 action hash to use as the WebAuthn challenge.
-     * @type {string}
-     * @memberof PrepareExecuteOut
      */
     challenge: string;
 }

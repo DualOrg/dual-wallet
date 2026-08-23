@@ -51,38 +51,26 @@ import {
 export interface TemplateUpdate {
     /**
      * 
-     * @type {TemplateObjectUpdate}
-     * @memberof TemplateUpdate
      */
     object?: TemplateObjectUpdate;
     /**
      * 
-     * @type {FactoryUpdate}
-     * @memberof TemplateUpdate
      */
     factory?: FactoryUpdate;
     /**
      * Array of actions that can be performed on the template.
-     * @type {Array<TemplateAction>}
-     * @memberof TemplateUpdate
      */
     actions?: Array<TemplateAction>;
     /**
      * 
-     * @type {PublicAccess}
-     * @memberof TemplateUpdate
      */
     publicAccess?: PublicAccess;
     /**
      * 
-     * @type {string}
-     * @memberof TemplateUpdate
      */
     faceId?: string;
     /**
      * Timestamp of when the object was last modified
-     * @type {Date}
-     * @memberof TemplateUpdate
      */
     whenModified?: Date;
 }

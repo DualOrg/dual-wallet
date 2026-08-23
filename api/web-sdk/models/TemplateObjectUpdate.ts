@@ -37,20 +37,14 @@ import {
 export interface TemplateObjectUpdate {
     /**
      * Custom properties of the object
-     * @type {object}
-     * @memberof TemplateObjectUpdate
      */
     custom?: object;
     /**
      * 
-     * @type {Metadata}
-     * @memberof TemplateObjectUpdate
      */
     metadata?: Metadata;
     /**
      * 
-     * @type {Array<Asset>}
-     * @memberof TemplateObjectUpdate
      */
     assets?: Array<Asset>;
 }

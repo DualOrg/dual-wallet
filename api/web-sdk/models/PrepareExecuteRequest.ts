@@ -30,8 +30,6 @@ import {
 export interface PrepareExecuteRequest {
     /**
      * The blockchain action that will be executed after signing.
-     * @type {ActionsRequest}
-     * @memberof PrepareExecuteRequest
      */
     action: ActionsRequest;
 }

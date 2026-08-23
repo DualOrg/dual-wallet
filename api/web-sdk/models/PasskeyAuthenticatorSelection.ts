@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface PasskeyAuthenticatorSelection {
     /**
      * Whether user verification (biometric/PIN) is required.
-     * @type {PasskeyAuthenticatorSelectionUserVerificationEnum}
-     * @memberof PasskeyAuthenticatorSelection
      */
     userVerification?: PasskeyAuthenticatorSelectionUserVerificationEnum;
     /**
      * Whether the credential must be a discoverable (resident) key.
-     * @type {PasskeyAuthenticatorSelectionResidentKeyEnum}
-     * @memberof PasskeyAuthenticatorSelection
      */
     residentKey?: PasskeyAuthenticatorSelectionResidentKeyEnum;
 }
@@ -41,7 +37,7 @@ export interface PasskeyAuthenticatorSelection {
 export const PasskeyAuthenticatorSelectionUserVerificationEnum = {
     Required: 'required',
     Preferred: 'preferred',
-    Discouraged: 'discouraged'
+    Discouraged: 'discouraged',
 } as const;
 export type PasskeyAuthenticatorSelectionUserVerificationEnum = typeof PasskeyAuthenticatorSelectionUserVerificationEnum[keyof typeof PasskeyAuthenticatorSelectionUserVerificationEnum];
 
@@ -51,7 +47,7 @@ export type PasskeyAuthenticatorSelectionUserVerificationEnum = typeof PasskeyAu
 export const PasskeyAuthenticatorSelectionResidentKeyEnum = {
     Required: 'required',
     Preferred: 'preferred',
-    Discouraged: 'discouraged'
+    Discouraged: 'discouraged',
 } as const;
 export type PasskeyAuthenticatorSelectionResidentKeyEnum = typeof PasskeyAuthenticatorSelectionResidentKeyEnum[keyof typeof PasskeyAuthenticatorSelectionResidentKeyEnum];
 

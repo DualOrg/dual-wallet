@@ -37,60 +37,42 @@ import {
 export interface FaceUpdate {
     /**
      * Name of the face.
-     * @type {string}
-     * @memberof FaceUpdate
      */
     name?: string;
     /**
      * Renderer used for inline view content.
-     * @type {FaceUpdateRendererEnum}
-     * @memberof FaceUpdate
      */
     renderer?: FaceUpdateRendererEnum;
     /**
      * Renderer-specific configuration available while rendering all views.
-     * @type {{ [key: string]: any; }}
-     * @memberof FaceUpdate
      */
     rendererConfig?: { [key: string]: any; };
     /**
      * Variant-specific authoring definitions for this face.
-     * @type {Array<FaceView>}
-     * @memberof FaceUpdate
      */
     views?: Array<FaceView>;
     /**
      * Legacy v1 default-view URL. Use views[].url instead.
-     * @type {string}
-     * @memberof FaceUpdate
      * @deprecated
      */
     url?: string;
     /**
      * Legacy v1 default-view source. Use views[].content instead.
      * 
-     * @type {string}
-     * @memberof FaceUpdate
      * @deprecated
      */
     content?: string;
     /**
      * Legacy v1 renderer configuration. Use renderer_config instead.
-     * @type {{ [key: string]: any; }}
-     * @memberof FaceUpdate
      * @deprecated
      */
     config?: { [key: string]: any; };
     /**
      * List of resources required or utilized by the face.
-     * @type {Array<Asset>}
-     * @memberof FaceUpdate
      */
     assets?: Array<Asset>;
     /**
      * Timestamp of the last modification to the face.
-     * @type {Date}
-     * @memberof FaceUpdate
      */
     whenModified?: Date;
 }
@@ -100,7 +82,7 @@ export interface FaceUpdate {
  * @export
  */
 export const FaceUpdateRendererEnum = {
-    GoTemplate: 'go-template'
+    GoTemplate: 'go-template',
 } as const;
 export type FaceUpdateRendererEnum = typeof FaceUpdateRendererEnum[keyof typeof FaceUpdateRendererEnum];
 

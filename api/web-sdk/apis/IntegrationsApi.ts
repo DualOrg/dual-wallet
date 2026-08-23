@@ -21,7 +21,15 @@ import {
 } from '../models/ModelError';
 
 export interface GetObjectPkpassRequest {
+    /**
+     * 
+     */
     objectId: string;
+    /**
+     * Authentication token (JWT or API key). Required if not provided in the Authorization header.
+     * iOS Safari does not support Authorization headers when navigating directly to the URL, so the token can be provided as a query parameter for this endpoint.
+     * 
+     */
     token?: string;
 }
 

@@ -30,14 +30,10 @@ import {
 export interface ListNotificationTemplatesOut {
     /**
      * Array of template objects.
-     * @type {Array<TemplateMessage>}
-     * @memberof ListNotificationTemplatesOut
      */
     templates: Array<TemplateMessage>;
     /**
      * Pagination token for the next set of results, if any.
-     * @type {string}
-     * @memberof ListNotificationTemplatesOut
      */
     next?: string;
 }

@@ -30,14 +30,10 @@ import {
 export interface ListCheckpointsOut {
     /**
      * 
-     * @type {Array<Checkpoint>}
-     * @memberof ListCheckpointsOut
      */
     checkpoints: Array<Checkpoint>;
     /**
      * The next page token. This will be empty if there are no more pages.
-     * @type {string}
-     * @memberof ListCheckpointsOut
      */
     next?: string;
 }

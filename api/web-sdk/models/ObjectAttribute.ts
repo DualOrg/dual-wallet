@@ -30,74 +30,50 @@ import {
 export interface ObjectAttribute {
     /**
      * 
-     * @type {string}
-     * @memberof ObjectAttribute
      */
     id: string;
     /**
      * 
-     * @type {string}
-     * @memberof ObjectAttribute
      */
     objectId: string;
     /**
      * 
-     * @type {string}
-     * @memberof ObjectAttribute
      */
     key: string;
     /**
-     * 
-     * @type {any}
-     * @memberof ObjectAttribute
+     * Current arbitrary JSON value.
      */
     value: any | null;
     /**
      * Optional category used to group or classify the attribute.
-     * @type {string}
-     * @memberof ObjectAttribute
      */
     category?: string;
     /**
      * Optional format of the attribute value.
-     * @type {AttributeContentType}
-     * @memberof ObjectAttribute
      */
     contentType?: AttributeContentType;
     /**
      * Whether this attribute is included in the public object projection and face render context.
-     * @type {boolean}
-     * @memberof ObjectAttribute
      */
     _public: boolean;
     /**
      * SHA-256 of the RFC 8785 canonical category, content type, public visibility, and value envelope.
-     * @type {string}
-     * @memberof ObjectAttribute
      */
     valueHash: string;
     /**
      * 
-     * @type {string}
-     * @memberof ObjectAttribute
      */
     actionId: string;
     /**
      * Object nonce produced by the state change that last modified this attribute.
-     * @type {number}
-     * @memberof ObjectAttribute
      */
     objectNonce: number;
     /**
      * 
-     * @type {Date}
-     * @memberof ObjectAttribute
      */
     whenCreated: Date;
     /**
      * 
-     * @type {Date}
-     * @memberof ObjectAttribute
      */
     whenModified: Date;
 }
@@ -109,15 +85,15 @@ export interface ObjectAttribute {
  */
 export function instanceOfObjectAttribute(value: object): value is ObjectAttribute {
     if (!('id' in value) || value['id'] === undefined) return false;
-    if ((!('objectId' in value) && !('object_id' in value)) || (value['objectId'] === undefined && value['object_id'] === undefined)) return false;
+    if ((!('objectId' in (value as Record<string, any>)) && !('object_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['objectId'] === undefined && (value as Record<string, any>)['object_id'] === undefined)) return false;
     if (!('key' in value) || value['key'] === undefined) return false;
     if (!('value' in value) || value['value'] === undefined) return false;
-    if ((!('_public' in value) && !('public' in value)) || (value['_public'] === undefined && value['public'] === undefined)) return false;
-    if ((!('valueHash' in value) && !('value_hash' in value)) || (value['valueHash'] === undefined && value['value_hash'] === undefined)) return false;
-    if ((!('actionId' in value) && !('action_id' in value)) || (value['actionId'] === undefined && value['action_id'] === undefined)) return false;
-    if ((!('objectNonce' in value) && !('object_nonce' in value)) || (value['objectNonce'] === undefined && value['object_nonce'] === undefined)) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
-    if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
+    if ((!('_public' in (value as Record<string, any>)) && !('public' in (value as Record<string, any>))) || ((value as Record<string, any>)['_public'] === undefined && (value as Record<string, any>)['public'] === undefined)) return false;
+    if ((!('valueHash' in (value as Record<string, any>)) && !('value_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['valueHash'] === undefined && (value as Record<string, any>)['value_hash'] === undefined)) return false;
+    if ((!('actionId' in (value as Record<string, any>)) && !('action_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['actionId'] === undefined && (value as Record<string, any>)['action_id'] === undefined)) return false;
+    if ((!('objectNonce' in (value as Record<string, any>)) && !('object_nonce' in (value as Record<string, any>))) || ((value as Record<string, any>)['objectNonce'] === undefined && (value as Record<string, any>)['object_nonce'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
+    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
     return true;
 }
 
@@ -141,8 +117,8 @@ export function ObjectAttributeFromJSONTyped(json: any, ignoreDiscriminator: boo
         'valueHash': json['value_hash'],
         'actionId': json['action_id'],
         'objectNonce': json['object_nonce'],
-        'whenCreated': (new Date(json['when_created'])),
-        'whenModified': (new Date(json['when_modified'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
+        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
     };
 }
 
@@ -167,8 +143,8 @@ export function ObjectAttributeToJSONTyped(value?: ObjectAttribute | null, ignor
         'value_hash': value['valueHash'],
         'action_id': value['actionId'],
         'object_nonce': value['objectNonce'],
-        'when_created': value['whenCreated'].toISOString(),
-        'when_modified': value['whenModified'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
+        'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
     };
 }
 

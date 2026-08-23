@@ -22,44 +22,30 @@ import { mapValues } from '../runtime';
 export interface Member {
     /**
      * 
-     * @type {string}
-     * @memberof Member
      */
     id: string;
     /**
      * 
-     * @type {string}
-     * @memberof Member
      */
     walletId?: string;
     /**
      * 
-     * @type {string}
-     * @memberof Member
      */
     email: string;
     /**
      * 
-     * @type {MemberInviteStatusEnum}
-     * @memberof Member
      */
     inviteStatus: MemberInviteStatusEnum;
     /**
      * 
-     * @type {string}
-     * @memberof Member
      */
     roleName: string;
     /**
      * 
-     * @type {Date}
-     * @memberof Member
      */
     whenCreated: Date;
     /**
      * 
-     * @type {Date}
-     * @memberof Member
      */
     whenModified?: Date;
 }
@@ -71,7 +57,7 @@ export interface Member {
 export const MemberInviteStatusEnum = {
     Pending: 'pending',
     Accepted: 'accepted',
-    Declined: 'declined'
+    Declined: 'declined',
 } as const;
 export type MemberInviteStatusEnum = typeof MemberInviteStatusEnum[keyof typeof MemberInviteStatusEnum];
 
@@ -82,9 +68,9 @@ export type MemberInviteStatusEnum = typeof MemberInviteStatusEnum[keyof typeof 
 export function instanceOfMember(value: object): value is Member {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('email' in value) || value['email'] === undefined) return false;
-    if ((!('inviteStatus' in value) && !('invite_status' in value)) || (value['inviteStatus'] === undefined && value['invite_status'] === undefined)) return false;
-    if ((!('roleName' in value) && !('role_name' in value)) || (value['roleName'] === undefined && value['role_name'] === undefined)) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
+    if ((!('inviteStatus' in (value as Record<string, any>)) && !('invite_status' in (value as Record<string, any>))) || ((value as Record<string, any>)['inviteStatus'] === undefined && (value as Record<string, any>)['invite_status'] === undefined)) return false;
+    if ((!('roleName' in (value as Record<string, any>)) && !('role_name' in (value as Record<string, any>))) || ((value as Record<string, any>)['roleName'] === undefined && (value as Record<string, any>)['role_name'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
     return true;
 }
 
@@ -103,7 +89,7 @@ export function MemberFromJSONTyped(json: any, ignoreDiscriminator: boolean): Me
         'email': json['email'],
         'inviteStatus': json['invite_status'],
         'roleName': json['role_name'],
-        'whenCreated': (new Date(json['when_created'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
         'whenModified': json['when_modified'] == null ? undefined : (new Date(json['when_modified'])),
     };
 }
@@ -124,7 +110,7 @@ export function MemberToJSONTyped(value?: Member | null, ignoreDiscriminator: bo
         'email': value['email'],
         'invite_status': value['inviteStatus'],
         'role_name': value['roleName'],
-        'when_created': value['whenCreated'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
         'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
     };
 }

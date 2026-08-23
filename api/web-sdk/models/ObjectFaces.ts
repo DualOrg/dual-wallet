@@ -30,14 +30,10 @@ import {
 export interface ObjectFaces {
     /**
      * The ID of the template
-     * @type {string}
-     * @memberof ObjectFaces
      */
     templateId: string;
     /**
      * 
-     * @type {ObjectFacesFace}
-     * @memberof ObjectFaces
      */
     face: ObjectFacesFace;
 }
@@ -46,7 +42,7 @@ export interface ObjectFaces {
  * Check if a given object implements the ObjectFaces interface.
  */
 export function instanceOfObjectFaces(value: object): value is ObjectFaces {
-    if ((!('templateId' in value) && !('template_id' in value)) || (value['templateId'] === undefined && value['template_id'] === undefined)) return false;
+    if ((!('templateId' in (value as Record<string, any>)) && !('template_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['templateId'] === undefined && (value as Record<string, any>)['template_id'] === undefined)) return false;
     if (!('face' in value) || value['face'] === undefined) return false;
     return true;
 }

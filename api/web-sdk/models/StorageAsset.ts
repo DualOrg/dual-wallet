@@ -37,80 +37,54 @@ import {
 export interface StorageAsset {
     /**
      * Unique identifier for the API key.
-     * @type {string}
-     * @memberof StorageAsset
      */
     id: string;
     /**
      * Unique identifier for the API key.
-     * @type {string}
-     * @memberof StorageAsset
      */
     walletId: string;
     /**
      * 
-     * @type {string}
-     * @memberof StorageAsset
      */
     name: string;
     /**
      * 
-     * @type {string}
-     * @memberof StorageAsset
      */
     tag: string;
     /**
      * 
-     * @type {string}
-     * @memberof StorageAsset
      */
     url: string;
     /**
      * 
-     * @type {string}
-     * @memberof StorageAsset
      */
     path: string;
     /**
      * 
-     * @type {number}
-     * @memberof StorageAsset
      */
     size: number;
     /**
      * 
-     * @type {ProviderType}
-     * @memberof StorageAsset
      */
     provider: ProviderType;
     /**
      * 
-     * @type {FolderType}
-     * @memberof StorageAsset
      */
     folder: FolderType;
     /**
      * 
-     * @type {boolean}
-     * @memberof StorageAsset
      */
     isPublic?: boolean;
     /**
      * 
-     * @type {string}
-     * @memberof StorageAsset
      */
     type: string;
     /**
      * 
-     * @type {string}
-     * @memberof StorageAsset
      */
     hash?: string;
     /**
      * 
-     * @type {Date}
-     * @memberof StorageAsset
      */
     whenCreated: Date;
 }
@@ -122,7 +96,7 @@ export interface StorageAsset {
  */
 export function instanceOfStorageAsset(value: object): value is StorageAsset {
     if (!('id' in value) || value['id'] === undefined) return false;
-    if ((!('walletId' in value) && !('wallet_id' in value)) || (value['walletId'] === undefined && value['wallet_id'] === undefined)) return false;
+    if ((!('walletId' in (value as Record<string, any>)) && !('wallet_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['walletId'] === undefined && (value as Record<string, any>)['wallet_id'] === undefined)) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('tag' in value) || value['tag'] === undefined) return false;
     if (!('url' in value) || value['url'] === undefined) return false;
@@ -131,7 +105,7 @@ export function instanceOfStorageAsset(value: object): value is StorageAsset {
     if (!('provider' in value) || value['provider'] === undefined) return false;
     if (!('folder' in value) || value['folder'] === undefined) return false;
     if (!('type' in value) || value['type'] === undefined) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
     return true;
 }
 
@@ -157,7 +131,7 @@ export function StorageAssetFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'isPublic': json['is_public'] == null ? undefined : json['is_public'],
         'type': json['type'],
         'hash': json['hash'] == null ? undefined : json['hash'],
-        'whenCreated': (new Date(json['when_created'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
     };
 }
 
@@ -184,7 +158,7 @@ export function StorageAssetToJSONTyped(value?: StorageAsset | null, ignoreDiscr
         'is_public': value['isPublic'],
         'type': value['type'],
         'hash': value['hash'],
-        'when_created': value['whenCreated'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
     };
 }
 

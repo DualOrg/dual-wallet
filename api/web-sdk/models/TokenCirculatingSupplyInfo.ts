@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface TokenCirculatingSupplyInfo {
     /**
      * The amount of tokens currently in circulation.
-     * @type {string}
-     * @memberof TokenCirculatingSupplyInfo
      */
     circulatingSupply: string;
     /**
      * The total supply of tokens, including those not yet in circulation.
-     * @type {string}
-     * @memberof TokenCirculatingSupplyInfo
      */
     totalSupply: string;
 }
@@ -38,8 +34,8 @@ export interface TokenCirculatingSupplyInfo {
  * Check if a given object implements the TokenCirculatingSupplyInfo interface.
  */
 export function instanceOfTokenCirculatingSupplyInfo(value: object): value is TokenCirculatingSupplyInfo {
-    if ((!('circulatingSupply' in value) && !('circulating_supply' in value)) || (value['circulatingSupply'] === undefined && value['circulating_supply'] === undefined)) return false;
-    if ((!('totalSupply' in value) && !('total_supply' in value)) || (value['totalSupply'] === undefined && value['total_supply'] === undefined)) return false;
+    if ((!('circulatingSupply' in (value as Record<string, any>)) && !('circulating_supply' in (value as Record<string, any>))) || ((value as Record<string, any>)['circulatingSupply'] === undefined && (value as Record<string, any>)['circulating_supply'] === undefined)) return false;
+    if ((!('totalSupply' in (value as Record<string, any>)) && !('total_supply' in (value as Record<string, any>))) || ((value as Record<string, any>)['totalSupply'] === undefined && (value as Record<string, any>)['total_supply'] === undefined)) return false;
     return true;
 }
 

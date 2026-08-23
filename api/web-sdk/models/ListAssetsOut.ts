@@ -30,14 +30,10 @@ import {
 export interface ListAssetsOut {
     /**
      * 
-     * @type {Array<StorageAsset>}
-     * @memberof ListAssetsOut
      */
     assets: Array<StorageAsset>;
     /**
      * The next page token. If not present, there are no more pages.
-     * @type {string}
-     * @memberof ListAssetsOut
      */
     next?: string;
 }

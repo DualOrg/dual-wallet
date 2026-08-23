@@ -30,14 +30,10 @@ import {
 export interface ListNotificationMessagesOut {
     /**
      * Array of messages.
-     * @type {Array<Message>}
-     * @memberof ListNotificationMessagesOut
      */
     messages: Array<Message>;
     /**
      * Pagination token for the next set of results, if any.
-     * @type {string}
-     * @memberof ListNotificationMessagesOut
      */
     next?: string;
 }

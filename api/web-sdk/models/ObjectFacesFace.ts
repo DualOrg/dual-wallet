@@ -22,27 +22,19 @@ import { mapValues } from '../runtime';
 export interface ObjectFacesFace {
     /**
      * The ID of the face
-     * @type {string}
-     * @memberof ObjectFacesFace
      */
     id?: string;
     /**
      * The URL of the face image
-     * @type {string}
-     * @memberof ObjectFacesFace
      */
     url?: string;
     /**
      * Legacy v1 field. Use the resolved items[].display descriptor.
-     * @type {object}
-     * @memberof ObjectFacesFace
      * @deprecated
      */
     config?: object;
     /**
      * Legacy v1 field retained for schema compatibility; it is no longer returned.
-     * @type {string}
-     * @memberof ObjectFacesFace
      * @deprecated
      */
     content?: string;

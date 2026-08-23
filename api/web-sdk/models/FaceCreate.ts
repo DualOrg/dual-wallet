@@ -37,54 +37,38 @@ import {
 export interface FaceCreate {
     /**
      * Name of the face.
-     * @type {string}
-     * @memberof FaceCreate
      */
     name: string;
     /**
      * Renderer used for inline view content.
-     * @type {FaceCreateRendererEnum}
-     * @memberof FaceCreate
      */
     renderer?: FaceCreateRendererEnum;
     /**
      * Renderer-specific configuration available while rendering all views.
-     * @type {{ [key: string]: any; }}
-     * @memberof FaceCreate
      */
     rendererConfig?: { [key: string]: any; };
     /**
      * Variant-specific authoring definitions for this face.
-     * @type {Array<FaceView>}
-     * @memberof FaceCreate
      */
     views?: Array<FaceView>;
     /**
      * Legacy v1 default-view URL. Use views[].url instead.
-     * @type {string}
-     * @memberof FaceCreate
      * @deprecated
      */
     url?: string;
     /**
      * Legacy v1 default-view source. Use views[].content instead.
      * 
-     * @type {string}
-     * @memberof FaceCreate
      * @deprecated
      */
     content?: string;
     /**
      * Legacy v1 renderer configuration. Use renderer_config instead.
-     * @type {{ [key: string]: any; }}
-     * @memberof FaceCreate
      * @deprecated
      */
     config?: { [key: string]: any; };
     /**
      * List of resources required or utilized by the face.
-     * @type {Array<Asset>}
-     * @memberof FaceCreate
      */
     assets?: Array<Asset>;
 }
@@ -94,7 +78,7 @@ export interface FaceCreate {
  * @export
  */
 export const FaceCreateRendererEnum = {
-    GoTemplate: 'go-template'
+    GoTemplate: 'go-template',
 } as const;
 export type FaceCreateRendererEnum = typeof FaceCreateRendererEnum[keyof typeof FaceCreateRendererEnum];
 

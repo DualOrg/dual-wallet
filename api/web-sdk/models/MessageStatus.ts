@@ -26,7 +26,7 @@ export const MessageStatus = {
     Scheduled: 'scheduled',
     Cancelled: 'cancelled',
     Retrying: 'retrying',
-    Uncertain: 'uncertain'
+    Uncertain: 'uncertain',
 } as const;
 export type MessageStatus = typeof MessageStatus[keyof typeof MessageStatus];
 

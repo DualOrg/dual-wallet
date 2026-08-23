@@ -30,20 +30,14 @@ import {
 export interface ListMembersOut {
     /**
      * Total number of members in the organization
-     * @type {number}
-     * @memberof ListMembersOut
      */
     count: number;
     /**
      * Pagination token for retrieving the next set of members
-     * @type {string}
-     * @memberof ListMembersOut
      */
     next?: string;
     /**
      * List of organization members returned in the response
-     * @type {Array<Member>}
-     * @memberof ListMembersOut
      */
     members: Array<Member>;
 }

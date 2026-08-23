@@ -30,8 +30,6 @@ import {
 export interface ActionsExecutionStatsOut {
     /**
      * List of action execution statistics over time
-     * @type {Array<TimeSeriesDataPoint>}
-     * @memberof ActionsExecutionStatsOut
      */
     data: Array<TimeSeriesDataPoint>;
 }

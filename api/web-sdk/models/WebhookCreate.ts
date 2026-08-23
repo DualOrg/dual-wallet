@@ -30,44 +30,30 @@ import {
 export interface WebhookCreate {
     /**
      * Descriptive name of the webhook.
-     * @type {string}
-     * @memberof WebhookCreate
      */
     name: string;
     /**
      * 
-     * @type {WebhookType}
-     * @memberof WebhookCreate
      */
     type: WebhookType;
     /**
      * URL endpoint where webhook events are sent.
-     * @type {string}
-     * @memberof WebhookCreate
      */
     url: string;
     /**
-     * Whether the webhook is active.
-     * @type {boolean}
-     * @memberof WebhookCreate
+     * Whether the webhook is active. Defaults to true when omitted.
      */
     isActive?: boolean;
     /**
      * List of addresses being tracked, null if not an address activity webhook.
-     * @type {Array<string>}
-     * @memberof WebhookCreate
      */
     addresses?: Array<string>;
     /**
      * List of templates being tracked, null if not a template activity webhook.
-     * @type {Array<string>}
-     * @memberof WebhookCreate
      */
     templateIds?: Array<string>;
     /**
      * List of actions being tracked, null if not an action activity webhook.
-     * @type {Array<string>}
-     * @memberof WebhookCreate
      */
     actions?: Array<string>;
 }

@@ -41,59 +41,194 @@ import {
 } from '../models/ModelError';
 
 export interface GetBatchRequest {
+    /**
+     * Unique identifier of the transaction batch
+     */
     batchId: string;
 }
 
 export interface GetCheckpointRequest {
+    /**
+     * Unique identifier of the transaction checkpoint
+     */
     checkpointId: string;
 }
 
 export interface ListBatchesRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListBatchesOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Filter batches by sequencer ID
+     */
     sequence?: number;
+    /**
+     * Filter batches by action ID
+     */
     actionId?: string;
+    /**
+     * Filter batches by batch ID
+     */
     batchId?: string;
+    /**
+     * Filter batches by transaction hash
+     */
     hash?: string;
+    /**
+     * Filter batches by processing status
+     */
     status?: string;
+    /**
+     * Filter batches by signer address
+     */
     signer?: string;
+    /**
+     * Filter batches created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter batches created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * Filter batches created on or after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter batches created on or before this date and time
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter batches modified after this date and time
+     */
     whenModified$gt?: Date;
+    /**
+     * Filter batches modified before this date and time
+     */
     whenModified$lt?: Date;
+    /**
+     * Filter batches modified on or after this date and time
+     */
     whenModified$gte?: Date;
+    /**
+     * Filter batches modified on or before this date and time
+     */
     whenModified$lte?: Date;
+    /**
+     * Filter batches whose challenge window ends after this date and time
+     */
     challengeWindowEnd$gt?: Date;
+    /**
+     * Filter batches whose challenge window ends before this date and time
+     */
     challengeWindowEnd$lt?: Date;
+    /**
+     * Filter batches whose challenge window ends on or after this date and time
+     */
     challengeWindowEnd$gte?: Date;
+    /**
+     * Filter batches whose challenge window ends on or before this date and time
+     */
     challengeWindowEnd$lte?: Date;
 }
 
 export interface ListCheckpointsRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListCheckpointsOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Filter checkpoints by transaction hash
+     */
     hash?: string;
+    /**
+     * Filter checkpoints by processing status
+     */
     status?: string;
+    /**
+     * Filter checkpoints by signer address
+     */
     signer?: string;
+    /**
+     * Filter checkpoints created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter checkpoints created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * Filter checkpoints created on or after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter checkpoints created on or before this date and time
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter checkpoints modified after this date and time
+     */
     whenModified$gt?: Date;
+    /**
+     * Filter checkpoints modified before this date and time
+     */
     whenModified$lt?: Date;
+    /**
+     * Filter checkpoints modified on or after this date and time
+     */
     whenModified$gte?: Date;
+    /**
+     * Filter checkpoints modified on or before this date and time
+     */
     whenModified$lte?: Date;
 }
 
@@ -453,7 +588,7 @@ export class SequencerApi extends runtime.BaseAPI {
  */
 export const ListBatchesOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListBatchesOrderEnum = typeof ListBatchesOrderEnum[keyof typeof ListBatchesOrderEnum];
 /**
@@ -461,6 +596,6 @@ export type ListBatchesOrderEnum = typeof ListBatchesOrderEnum[keyof typeof List
  */
 export const ListCheckpointsOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListCheckpointsOrderEnum = typeof ListCheckpointsOrderEnum[keyof typeof ListCheckpointsOrderEnum];

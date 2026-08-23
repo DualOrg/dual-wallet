@@ -21,7 +21,7 @@
 export const FolderType = {
     Avatars: 'avatars',
     Assets: 'assets',
-    Support: 'support'
+    Support: 'support',
 } as const;
 export type FolderType = typeof FolderType[keyof typeof FolderType];
 

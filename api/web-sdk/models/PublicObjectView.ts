@@ -37,14 +37,10 @@ import {
 export interface PublicObjectView {
     /**
      * 
-     * @type {PublicSmartObject}
-     * @memberof PublicObjectView
      */
     object: PublicSmartObject;
     /**
      * 
-     * @type {ObjectDisplay}
-     * @memberof PublicObjectView
      */
     display?: ObjectDisplay;
 }

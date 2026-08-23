@@ -30,14 +30,10 @@ import {
 export interface ListStakingOperationsOut {
     /**
      * Array of staking operations.
-     * @type {Array<StakingOperation>}
-     * @memberof ListStakingOperationsOut
      */
     operations: Array<StakingOperation>;
     /**
      * Pagination token for the next set of results, if any.
-     * @type {string}
-     * @memberof ListStakingOperationsOut
      */
     next?: string;
 }

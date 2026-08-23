@@ -22,8 +22,6 @@ import { mapValues } from '../runtime';
 export interface NonceOut {
     /**
      * Current action nonce for the wallet.
-     * @type {number}
-     * @memberof NonceOut
      */
     nonce: number;
 }

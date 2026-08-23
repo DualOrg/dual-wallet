@@ -51,43 +51,103 @@ import {
 } from '../models/ModelError';
 
 export interface CreateFaceRequest {
+    /**
+     * 
+     */
     faceCreate: FaceCreate;
 }
 
 export interface DeleteFaceRequest {
+    /**
+     * Unique identifier of the face
+     */
     faceId: string;
 }
 
 export interface GetFaceRequest {
+    /**
+     * Unique identifier of the face
+     */
     faceId: string;
 }
 
 export interface GetFacePreviewRequest {
+    /**
+     * Unique identifier of the face
+     */
     faceId: string;
 }
 
 export interface ListFacesRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Filter resources by their name or title
+     */
     name?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListFacesOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Filter faces created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter faces created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * Filter faces created on or after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter faces created on or before this date and time
+     */
     whenCreated$lte?: Date;
 }
 
 export interface PreviewFaceRequest {
+    /**
+     * Unique identifier of the face
+     */
     faceId: string;
+    /**
+     * 
+     */
     facePreviewIn: FacePreviewIn;
 }
 
 export interface UpdateFaceRequest {
+    /**
+     * Unique identifier of the face
+     */
     faceId: string;
+    /**
+     * 
+     */
     faceUpdate: FaceUpdate;
 }
 
@@ -589,6 +649,6 @@ export class FacesApi extends runtime.BaseAPI {
  */
 export const ListFacesOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListFacesOrderEnum = typeof ListFacesOrderEnum[keyof typeof ListFacesOrderEnum];

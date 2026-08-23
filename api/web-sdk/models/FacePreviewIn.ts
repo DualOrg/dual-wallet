@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface FacePreviewIn {
     /**
      * Object whose public projection supplies preview data.
-     * @type {string}
-     * @memberof FacePreviewIn
      */
     objectId: string;
     /**
      * Face view to preview.
-     * @type {FacePreviewInVariantEnum}
-     * @memberof FacePreviewIn
      */
     variant?: FacePreviewInVariantEnum;
 }
@@ -41,7 +37,7 @@ export interface FacePreviewIn {
 export const FacePreviewInVariantEnum = {
     Card: 'card',
     Detail: 'detail',
-    Share: 'share'
+    Share: 'share',
 } as const;
 export type FacePreviewInVariantEnum = typeof FacePreviewInVariantEnum[keyof typeof FacePreviewInVariantEnum];
 
@@ -50,7 +46,7 @@ export type FacePreviewInVariantEnum = typeof FacePreviewInVariantEnum[keyof typ
  * Check if a given object implements the FacePreviewIn interface.
  */
 export function instanceOfFacePreviewIn(value: object): value is FacePreviewIn {
-    if ((!('objectId' in value) && !('object_id' in value)) || (value['objectId'] === undefined && value['object_id'] === undefined)) return false;
+    if ((!('objectId' in (value as Record<string, any>)) && !('object_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['objectId'] === undefined && (value as Record<string, any>)['object_id'] === undefined)) return false;
     return true;
 }
 

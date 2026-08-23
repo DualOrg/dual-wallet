@@ -22,7 +22,7 @@ export const WebhookEventStatus = {
     Pending: 'pending',
     Delivered: 'delivered',
     Failed: 'failed',
-    Retrying: 'retrying'
+    Retrying: 'retrying',
 } as const;
 export type WebhookEventStatus = typeof WebhookEventStatus[keyof typeof WebhookEventStatus];
 

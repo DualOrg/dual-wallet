@@ -25,7 +25,7 @@ export const CheckpointStatus = {
     Storing: 'storing',
     Anchoring: 'anchoring',
     Finalized: 'finalized',
-    Failed: 'failed'
+    Failed: 'failed',
 } as const;
 export type CheckpointStatus = typeof CheckpointStatus[keyof typeof CheckpointStatus];
 

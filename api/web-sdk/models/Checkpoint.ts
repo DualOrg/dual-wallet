@@ -44,110 +44,74 @@ import {
 export interface Checkpoint {
     /**
      * Unique identifier for the checkpoint
-     * @type {string}
-     * @memberof Checkpoint
      */
     id: string;
     /**
      * Cryptographic hash of the checkpoint content
-     * @type {string}
-     * @memberof Checkpoint
      */
     hash: string;
     /**
      * Sequence number of the checkpoint in the processing order
-     * @type {number}
-     * @memberof Checkpoint
      */
     sequence: number;
     /**
      * Hash of the starting batch in the checkpoint
-     * @type {string}
-     * @memberof Checkpoint
      */
     startHash: string;
     /**
      * Sequence number of the starting batch in the checkpoint
-     * @type {number}
-     * @memberof Checkpoint
      */
     startSequence: number;
     /**
      * Sequence number of the ending batch in the checkpoint
-     * @type {number}
-     * @memberof Checkpoint
      */
     endSequence: number;
     /**
      * Hash of the ending batch in the checkpoint
-     * @type {string}
-     * @memberof Checkpoint
      */
     endHash: string;
     /**
      * Address of the entity that created the checkpoint
-     * @type {string}
-     * @memberof Checkpoint
      */
     sender: string;
     /**
      * Hash of the Layer 2 transaction associated with the checkpoint
-     * @type {string}
-     * @memberof Checkpoint
      */
     l2TxHash?: string;
     /**
      * IPFS URL where the batch data is stored
-     * @type {string}
-     * @memberof Checkpoint
      */
     ipfsUrl?: string;
     /**
      * Current processing status of the checkpoint
-     * @type {CheckpointStatus}
-     * @memberof Checkpoint
      */
     status: CheckpointStatus;
     /**
      * 
-     * @type {Proof}
-     * @memberof Checkpoint
      */
     proof?: Proof;
     /**
      * Identifier of the proof for this batch
-     * @type {string}
-     * @memberof Checkpoint
      */
     proofId?: string;
     /**
      * Error message if the checkpoint processing failed
-     * @type {string}
-     * @memberof Checkpoint
      */
     error?: string;
     /**
      * List of affected batches in this checkpoint
-     * @type {Array<AffectedBatch>}
-     * @memberof Checkpoint
      */
     affectedBatches?: Array<AffectedBatch>;
     /**
      * Timestamp when the checkpoint processing was completed
-     * @type {Date}
-     * @memberof Checkpoint
      */
     whenCompleted?: Date;
     /**
      * Timestamp when the checkpoint was last modified
-     * @type {Date}
-     * @memberof Checkpoint
      */
     whenModified?: Date;
     /**
      * Timestamp when the checkpoint was created
-     * @type {Date}
-     * @memberof Checkpoint
      */
     whenCreated: Date;
 }
@@ -161,13 +125,13 @@ export function instanceOfCheckpoint(value: object): value is Checkpoint {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('hash' in value) || value['hash'] === undefined) return false;
     if (!('sequence' in value) || value['sequence'] === undefined) return false;
-    if ((!('startHash' in value) && !('start_hash' in value)) || (value['startHash'] === undefined && value['start_hash'] === undefined)) return false;
-    if ((!('startSequence' in value) && !('start_sequence' in value)) || (value['startSequence'] === undefined && value['start_sequence'] === undefined)) return false;
-    if ((!('endSequence' in value) && !('end_sequence' in value)) || (value['endSequence'] === undefined && value['end_sequence'] === undefined)) return false;
-    if ((!('endHash' in value) && !('end_hash' in value)) || (value['endHash'] === undefined && value['end_hash'] === undefined)) return false;
+    if ((!('startHash' in (value as Record<string, any>)) && !('start_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['startHash'] === undefined && (value as Record<string, any>)['start_hash'] === undefined)) return false;
+    if ((!('startSequence' in (value as Record<string, any>)) && !('start_sequence' in (value as Record<string, any>))) || ((value as Record<string, any>)['startSequence'] === undefined && (value as Record<string, any>)['start_sequence'] === undefined)) return false;
+    if ((!('endSequence' in (value as Record<string, any>)) && !('end_sequence' in (value as Record<string, any>))) || ((value as Record<string, any>)['endSequence'] === undefined && (value as Record<string, any>)['end_sequence'] === undefined)) return false;
+    if ((!('endHash' in (value as Record<string, any>)) && !('end_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['endHash'] === undefined && (value as Record<string, any>)['end_hash'] === undefined)) return false;
     if (!('sender' in value) || value['sender'] === undefined) return false;
     if (!('status' in value) || value['status'] === undefined) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
     return true;
 }
 
@@ -198,7 +162,7 @@ export function CheckpointFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'affectedBatches': json['affected_batches'] == null ? undefined : ((json['affected_batches'] as Array<any>).map(AffectedBatchFromJSON)),
         'whenCompleted': json['when_completed'] == null ? undefined : (new Date(json['when_completed'])),
         'whenModified': json['when_modified'] == null ? undefined : (new Date(json['when_modified'])),
-        'whenCreated': (new Date(json['when_created'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
     };
 }
 
@@ -230,7 +194,7 @@ export function CheckpointToJSONTyped(value?: Checkpoint | null, ignoreDiscrimin
         'affected_batches': value['affectedBatches'] == null ? undefined : ((value['affectedBatches'] as Array<any>).map(AffectedBatchToJSON)),
         'when_completed': value['whenCompleted'] == null ? value['whenCompleted'] : value['whenCompleted'].toISOString(),
         'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
-        'when_created': value['whenCreated'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
     };
 }
 

@@ -22,32 +22,22 @@ import { mapValues } from '../runtime';
 export interface WebhookUpdate {
     /**
      * URL endpoint where webhook events are sent.
-     * @type {string}
-     * @memberof WebhookUpdate
      */
     url?: string;
     /**
      * Whether the webhook is active.
-     * @type {boolean}
-     * @memberof WebhookUpdate
      */
     isActive?: boolean;
     /**
      * List of addresses being tracked, null if not an address activity webhook.
-     * @type {Array<string>}
-     * @memberof WebhookUpdate
      */
     addresses?: Array<string>;
     /**
      * List of templates being tracked, null if not a template activity webhook.
-     * @type {Array<string>}
-     * @memberof WebhookUpdate
      */
     templateIds?: Array<string>;
     /**
      * List of actions being tracked, null if not an action activity webhook.
-     * @type {Array<string>}
-     * @memberof WebhookUpdate
      */
     actions?: Array<string>;
 }

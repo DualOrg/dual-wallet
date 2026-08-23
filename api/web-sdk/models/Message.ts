@@ -58,68 +58,46 @@ import {
 export interface Message {
     /**
      * Unique identifier for the notification message
-     * @type {string}
-     * @memberof Message
      */
     id: string;
     /**
      * Template identifier used to format the message content
-     * @type {string}
-     * @memberof Message
      */
     templateId?: string;
     /**
      * Type of action that triggered this notification
-     * @type {ActionType}
-     * @memberof Message
      */
     actionType: ActionType;
     /**
      * Recipient address (email, phone number, etc.) for the notification
-     * @type {string}
-     * @memberof Message
      */
     to: string;
     /**
      * Notification system/channel to be used for delivery
-     * @type {System}
-     * @memberof Message
      */
     system: System;
     /**
      * Language preference for the notification content
-     * @type {Language}
-     * @memberof Message
      */
     language: Language;
     /**
      * Current delivery status of the notification message
-     * @type {MessageStatus}
-     * @memberof Message
      */
     status: MessageStatus;
     /**
      * The time at which the message should be sent.
-     * @type {Date}
-     * @memberof Message
      */
     scheduledAt?: Date;
     /**
      * Error information if message delivery failed
-     * @type {GeneralError}
-     * @memberof Message
      */
     error?: GeneralError;
     /**
      * Timestamp when the message was last modified
-     * @type {Date}
-     * @memberof Message
      */
     whenModified: Date;
     /**
      * Timestamp when the message was created
-     * @type {Date}
-     * @memberof Message
      */
     whenCreated: Date;
 }
@@ -131,13 +109,13 @@ export interface Message {
  */
 export function instanceOfMessage(value: object): value is Message {
     if (!('id' in value) || value['id'] === undefined) return false;
-    if ((!('actionType' in value) && !('action_type' in value)) || (value['actionType'] === undefined && value['action_type'] === undefined)) return false;
+    if ((!('actionType' in (value as Record<string, any>)) && !('action_type' in (value as Record<string, any>))) || ((value as Record<string, any>)['actionType'] === undefined && (value as Record<string, any>)['action_type'] === undefined)) return false;
     if (!('to' in value) || value['to'] === undefined) return false;
     if (!('system' in value) || value['system'] === undefined) return false;
     if (!('language' in value) || value['language'] === undefined) return false;
     if (!('status' in value) || value['status'] === undefined) return false;
-    if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
+    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
     return true;
 }
 
@@ -160,8 +138,8 @@ export function MessageFromJSONTyped(json: any, ignoreDiscriminator: boolean): M
         'status': MessageStatusFromJSON(json['status']),
         'scheduledAt': json['scheduled_at'] == null ? undefined : (new Date(json['scheduled_at'])),
         'error': json['error'] == null ? undefined : GeneralErrorFromJSON(json['error']),
-        'whenModified': (new Date(json['when_modified'])),
-        'whenCreated': (new Date(json['when_created'])),
+        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
     };
 }
 
@@ -185,8 +163,8 @@ export function MessageToJSONTyped(value?: Message | null, ignoreDiscriminator: 
         'status': MessageStatusToJSON(value['status']),
         'scheduled_at': value['scheduledAt'] == null ? value['scheduledAt'] : value['scheduledAt'].toISOString(),
         'error': GeneralErrorToJSON(value['error']),
-        'when_modified': value['whenModified'].toISOString(),
-        'when_created': value['whenCreated'].toISOString(),
+        'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
     };
 }
 

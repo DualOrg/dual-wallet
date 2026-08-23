@@ -76,134 +76,439 @@ import {
 } from '../models/SmartObject';
 
 export interface GetObjectByIdRequest {
+    /**
+     * 
+     */
     objectId: string;
 }
 
 export interface GetObjectByIdPublicRequest {
+    /**
+     * 
+     */
     objectId: string;
 }
 
 export interface GetObjectCreationStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
     interval?: GetObjectCreationStatsIntervalEnum;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetObjectCreationStatsTimeRangeEnum;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter statistics by template ID
+     */
     templateId?: string;
-    signer?: string;
+    /**
+     * Filter statistics by the owner's address. Objects record ownership as an
+     * address, which is why this is an address rather than a signer name, and
+     * it is the field the service itself applies to narrow an aggregate to an
+     * end-user session's own objects.
+     * 
+     */
+    owner?: string;
 }
 
 export interface GetObjectMetadataByIdPublicRequest {
+    /**
+     * 
+     */
+    objectId: string;
+}
+
+export interface GetObjectMetadataByIdPublicLegacyRequest {
+    /**
+     * 
+     */
     objectId: string;
 }
 
 export interface GetObjectStatsRequest {
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Time range for filtering statistics and analytics data
+     */
     timeRange?: GetObjectStatsTimeRangeEnum;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter statistics by template ID
+     */
     templateId?: string;
-    walletId?: string;
+    /**
+     * Filter statistics by the owner's address. Objects record ownership as an
+     * address, which is why this is an address rather than a wallet id, and it
+     * is the field the service itself applies to narrow an aggregate to an
+     * end-user session's own objects.
+     * 
+     */
+    owner?: string;
 }
 
 export interface ListObjectAttributesRequest {
+    /**
+     * 
+     */
     objectId: string;
 }
 
 export interface ListObjectAttributesPublicRequest {
+    /**
+     * 
+     */
     objectId: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Return only public attributes in this category.
+     */
     category?: string;
 }
 
 export interface ListObjectsRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListObjectsOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Legacy v1 flag. Use include=display instead.
+     * @deprecated
+     */
     faces?: boolean;
+    /**
+     * Optional related representations to resolve for each object.
+     */
     include?: Array<ListObjectsIncludeEnum>;
+    /**
+     * Display context resolved when include contains display.
+     */
     displayVariant?: ListObjectsDisplayVariantEnum;
+    /**
+     * Optional flag for action objects
+     */
     actions?: boolean;
+    /**
+     * Filter by the owner's address
+     */
     owner?: string;
+    /**
+     * Filter objects by fully qualified domain name
+     */
     fqdn?: string;
+    /**
+     * Optional flag for dropped items
+     */
     dropped?: boolean;
+    /**
+     * Geographical hash for location-based filtering
+     */
     geoHash?: string;
+    /**
+     * Filter by the collection ID
+     */
     templateId?: string;
+    /**
+     * Filter objects created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter objects created after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter objects created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
+    /**
+     * 
+     */
     whenModified$gt?: Date;
+    /**
+     * 
+     */
     whenModified$lt?: Date;
+    /**
+     * 
+     */
     whenModified$gte?: Date;
+    /**
+     * 
+     */
     whenModified$lte?: Date;
 }
 
 export interface ListObjectsPublicRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListObjectsPublicOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Legacy v1 flag. Use include=display instead.
+     * @deprecated
+     */
     faces?: boolean;
+    /**
+     * Optional related representations to resolve for each object.
+     */
     include?: Array<ListObjectsPublicIncludeEnum>;
+    /**
+     * Display context resolved when include contains display.
+     */
     displayVariant?: ListObjectsPublicDisplayVariantEnum;
+    /**
+     * Optional flag for action objects
+     */
     actions?: boolean;
+    /**
+     * Filter by the owner's address
+     */
     owner?: string;
+    /**
+     * Optional flag for dropped items
+     */
     dropped?: boolean;
+    /**
+     * Geographical hash for location-based filtering
+     */
     geoHash?: string;
+    /**
+     * Filter by the collection ID
+     */
     templateId?: string;
+    /**
+     * Filter objects created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter objects created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * Filter objects created on or after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter objects created on or before this date and time
+     */
     whenCreated$lte?: Date;
+    /**
+     * Filter objects modified after this date and time
+     */
     whenModified$gt?: Date;
+    /**
+     * Filter objects modified before this date and time
+     */
     whenModified$lt?: Date;
+    /**
+     * Filter objects modified on or after this date and time
+     */
     whenModified$gte?: Date;
+    /**
+     * Filter objects modified on or before this date and time
+     */
     whenModified$lte?: Date;
 }
 
 export interface ListStateChangesRequest {
+    /**
+     * 
+     */
     objectId: string;
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListStateChangesOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * 
+     */
     walletId?: string;
+    /**
+     * 
+     */
     actionId?: string;
+    /**
+     * 
+     */
     batchId?: string;
+    /**
+     * 
+     */
     changeType?: string;
+    /**
+     * 
+     */
     actionType?: string;
+    /**
+     * 
+     */
     nonce$gt?: number;
+    /**
+     * 
+     */
     nonce$lt?: number;
+    /**
+     * 
+     */
     prevStateRoot?: string;
+    /**
+     * 
+     */
     nextStateRoot?: string;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface RenderObjectDisplayByIdPublicRequest {
+    /**
+     * 
+     */
     objectId: string;
+    /**
+     * 
+     */
     variant: DisplayVariant;
 }
 
 export interface RenderObjectViewByIdPublicRequest {
+    /**
+     * 
+     */
     objectId: string;
 }
 
@@ -360,8 +665,8 @@ export class ObjectsApi extends runtime.BaseAPI {
             queryParameters['template_id'] = requestParameters['templateId'];
         }
 
-        if (requestParameters['signer'] != null) {
-            queryParameters['signer'] = requestParameters['signer'];
+        if (requestParameters['owner'] != null) {
+            queryParameters['owner'] = requestParameters['owner'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -457,6 +762,56 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
+     * Creates request options for getObjectMetadataByIdPublicLegacy without sending the request
+     * @deprecated
+     */
+    async getObjectMetadataByIdPublicLegacyRequestOpts(requestParameters: GetObjectMetadataByIdPublicLegacyRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['objectId'] == null) {
+            throw new runtime.RequiredError(
+                'objectId',
+                'Required parameter "objectId" was null or undefined when calling getObjectMetadataByIdPublicLegacy().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/public/metadata/{objectId}`;
+        urlPath = urlPath.replace('{objectId}', encodeURIComponent(String(requestParameters['objectId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Deprecated compatibility alias for `/public/objects/{objectId}/metadata`. 
+     * Get public object metadata (legacy path)
+     * @deprecated
+     */
+    async getObjectMetadataByIdPublicLegacyRaw(requestParameters: GetObjectMetadataByIdPublicLegacyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PublicSmartObjectMetadata>> {
+        const requestOptions = await this.getObjectMetadataByIdPublicLegacyRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PublicSmartObjectMetadataFromJSON(jsonValue));
+    }
+
+    /**
+     * Deprecated compatibility alias for `/public/objects/{objectId}/metadata`. 
+     * Get public object metadata (legacy path)
+     * @deprecated
+     */
+    async getObjectMetadataByIdPublicLegacy(requestParameters: GetObjectMetadataByIdPublicLegacyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PublicSmartObjectMetadata> {
+        const response = await this.getObjectMetadataByIdPublicLegacyRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for getObjectStats without sending the request
      */
     async getObjectStatsRequestOpts(requestParameters: GetObjectStatsRequest): Promise<runtime.RequestOpts> {
@@ -490,8 +845,8 @@ export class ObjectsApi extends runtime.BaseAPI {
             queryParameters['template_id'] = requestParameters['templateId'];
         }
 
-        if (requestParameters['walletId'] != null) {
-            queryParameters['wallet_id'] = requestParameters['walletId'];
+        if (requestParameters['owner'] != null) {
+            queryParameters['owner'] = requestParameters['owner'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -1193,7 +1548,7 @@ export const GetObjectCreationStatsIntervalEnum = {
     Day: 'day',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetObjectCreationStatsIntervalEnum = typeof GetObjectCreationStatsIntervalEnum[keyof typeof GetObjectCreationStatsIntervalEnum];
 /**
@@ -1204,7 +1559,7 @@ export const GetObjectCreationStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetObjectCreationStatsTimeRangeEnum = typeof GetObjectCreationStatsTimeRangeEnum[keyof typeof GetObjectCreationStatsTimeRangeEnum];
 /**
@@ -1215,7 +1570,7 @@ export const GetObjectStatsTimeRangeEnum = {
     Today: 'today',
     Week: 'week',
     Month: 'month',
-    Year: 'year'
+    Year: 'year',
 } as const;
 export type GetObjectStatsTimeRangeEnum = typeof GetObjectStatsTimeRangeEnum[keyof typeof GetObjectStatsTimeRangeEnum];
 /**
@@ -1223,14 +1578,14 @@ export type GetObjectStatsTimeRangeEnum = typeof GetObjectStatsTimeRangeEnum[key
  */
 export const ListObjectsOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListObjectsOrderEnum = typeof ListObjectsOrderEnum[keyof typeof ListObjectsOrderEnum];
 /**
  * @export
  */
 export const ListObjectsIncludeEnum = {
-    Display: 'display'
+    Display: 'display',
 } as const;
 export type ListObjectsIncludeEnum = typeof ListObjectsIncludeEnum[keyof typeof ListObjectsIncludeEnum];
 /**
@@ -1239,7 +1594,7 @@ export type ListObjectsIncludeEnum = typeof ListObjectsIncludeEnum[keyof typeof 
 export const ListObjectsDisplayVariantEnum = {
     Card: 'card',
     Detail: 'detail',
-    Share: 'share'
+    Share: 'share',
 } as const;
 export type ListObjectsDisplayVariantEnum = typeof ListObjectsDisplayVariantEnum[keyof typeof ListObjectsDisplayVariantEnum];
 /**
@@ -1247,14 +1602,14 @@ export type ListObjectsDisplayVariantEnum = typeof ListObjectsDisplayVariantEnum
  */
 export const ListObjectsPublicOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListObjectsPublicOrderEnum = typeof ListObjectsPublicOrderEnum[keyof typeof ListObjectsPublicOrderEnum];
 /**
  * @export
  */
 export const ListObjectsPublicIncludeEnum = {
-    Display: 'display'
+    Display: 'display',
 } as const;
 export type ListObjectsPublicIncludeEnum = typeof ListObjectsPublicIncludeEnum[keyof typeof ListObjectsPublicIncludeEnum];
 /**
@@ -1263,7 +1618,7 @@ export type ListObjectsPublicIncludeEnum = typeof ListObjectsPublicIncludeEnum[k
 export const ListObjectsPublicDisplayVariantEnum = {
     Card: 'card',
     Detail: 'detail',
-    Share: 'share'
+    Share: 'share',
 } as const;
 export type ListObjectsPublicDisplayVariantEnum = typeof ListObjectsPublicDisplayVariantEnum[keyof typeof ListObjectsPublicDisplayVariantEnum];
 /**
@@ -1271,6 +1626,6 @@ export type ListObjectsPublicDisplayVariantEnum = typeof ListObjectsPublicDispla
  */
 export const ListStateChangesOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListStateChangesOrderEnum = typeof ListStateChangesOrderEnum[keyof typeof ListStateChangesOrderEnum];

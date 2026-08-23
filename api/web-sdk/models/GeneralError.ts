@@ -22,20 +22,14 @@ import { mapValues } from '../runtime';
 export interface GeneralError {
     /**
      * 
-     * @type {number}
-     * @memberof GeneralError
      */
     code: number;
     /**
      * 
-     * @type {string}
-     * @memberof GeneralError
      */
     message: string;
     /**
      * 
-     * @type {object}
-     * @memberof GeneralError
      */
     details?: object;
 }

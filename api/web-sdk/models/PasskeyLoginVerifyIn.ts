@@ -32,26 +32,18 @@ import {
 export interface PasskeyLoginVerifyIn {
     /**
      * base64url-encoded credential ID returned by the browser.
-     * @type {string}
-     * @memberof PasskeyLoginVerifyIn
      */
     id: string;
     /**
      * base64url-encoded raw credential ID (identical to id).
-     * @type {string}
-     * @memberof PasskeyLoginVerifyIn
      */
     rawId: string;
     /**
      * 
-     * @type {PasskeyAssertionResponse}
-     * @memberof PasskeyLoginVerifyIn
      */
     response: PasskeyAssertionResponse;
     /**
      * Always "public-key".
-     * @type {PasskeyLoginVerifyInTypeEnum}
-     * @memberof PasskeyLoginVerifyIn
      */
     type: PasskeyLoginVerifyInTypeEnum;
 }
@@ -61,7 +53,7 @@ export interface PasskeyLoginVerifyIn {
  * @export
  */
 export const PasskeyLoginVerifyInTypeEnum = {
-    PublicKey: 'public-key'
+    PublicKey: 'public-key',
 } as const;
 export type PasskeyLoginVerifyInTypeEnum = typeof PasskeyLoginVerifyInTypeEnum[keyof typeof PasskeyLoginVerifyInTypeEnum];
 

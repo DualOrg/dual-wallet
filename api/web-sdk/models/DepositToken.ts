@@ -19,7 +19,7 @@
  * @export
  */
 export const DepositToken = {
-    Dual: 'dual'
+    Dual: 'dual',
 } as const;
 export type DepositToken = typeof DepositToken[keyof typeof DepositToken];
 

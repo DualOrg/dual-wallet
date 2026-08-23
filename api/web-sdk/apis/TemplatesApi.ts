@@ -56,55 +56,151 @@ import {
 } from '../models/TemplateUpdate';
 
 export interface CreateTemplateRequest {
+    /**
+     * 
+     */
     templateCreate: TemplateCreate;
 }
 
 export interface DeleteTemplateRequest {
+    /**
+     * Unique identifier of the template
+     */
     templateId: string;
 }
 
 export interface GetTemplateRequest {
+    /**
+     * Unique identifier of the template
+     */
     templateId: string;
 }
 
 export interface GetTemplatePublicRequest {
+    /**
+     * Unique identifier of the template
+     */
     templateId: string;
 }
 
 export interface ListTemplatesRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Filter resources by their name or title
+     */
     name?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListTemplatesOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Filter templates by a prefix for their name or identifier.
+     */
     prefix?: string;
+    /**
+     * Filter templates by fully qualified domain name
+     */
     fqdn?: string;
+    /**
+     * Filter templates created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter templates created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * Filter templates created on or after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface ListTemplatesPublicRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * Filter resources by the organization they belong to
+     */
     orgId?: string;
+    /**
+     * Filter resources by their name or title
+     */
     name?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListTemplatesPublicOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Filter templates created after this date and time
+     */
     whenCreated$gt?: Date;
+    /**
+     * Filter templates created before this date and time
+     */
     whenCreated$lt?: Date;
+    /**
+     * Filter templates created on or after this date and time
+     */
     whenCreated$gte?: Date;
+    /**
+     * Filter templates created on or before this date and time
+     */
     whenCreated$lte?: Date;
 }
 
 export interface UpdateTemplateRequest {
+    /**
+     * Unique identifier of the template
+     */
     templateId: string;
+    /**
+     * 
+     */
     templateUpdate: TemplateUpdate;
 }
 
@@ -609,7 +705,7 @@ export class TemplatesApi extends runtime.BaseAPI {
  */
 export const ListTemplatesOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListTemplatesOrderEnum = typeof ListTemplatesOrderEnum[keyof typeof ListTemplatesOrderEnum];
 /**
@@ -617,6 +713,6 @@ export type ListTemplatesOrderEnum = typeof ListTemplatesOrderEnum[keyof typeof 
  */
 export const ListTemplatesPublicOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListTemplatesPublicOrderEnum = typeof ListTemplatesPublicOrderEnum[keyof typeof ListTemplatesPublicOrderEnum];

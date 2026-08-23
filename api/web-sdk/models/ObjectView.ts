@@ -37,14 +37,10 @@ import {
 export interface ObjectView {
     /**
      * 
-     * @type {SmartObject}
-     * @memberof ObjectView
      */
     object: SmartObject;
     /**
      * 
-     * @type {ObjectDisplay}
-     * @memberof ObjectView
      */
     display?: ObjectDisplay;
 }

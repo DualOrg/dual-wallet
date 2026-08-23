@@ -44,104 +44,70 @@ import {
 export interface PublicSmartObject {
     /**
      * Unique identifier for the smart object
-     * @type {string}
-     * @memberof PublicSmartObject
      */
     id: string;
     /**
      * Reference to the chain information
-     * @type {Chain}
-     * @memberof PublicSmartObject
      */
     chain?: Chain;
     /**
      * System properties of the object
-     * @type {object}
-     * @memberof PublicSmartObject
      */
     system?: object;
     /**
      * Custom properties of the object
-     * @type {object}
-     * @memberof PublicSmartObject
      */
     custom?: object;
     /**
      * Custom hash for the object
-     * @type {string}
-     * @memberof PublicSmartObject
      */
     customHash?: string;
     /**
      * Metadata information for the object
-     * @type {Metadata}
-     * @memberof PublicSmartObject
      */
     metadata: Metadata;
     /**
      * ID of the owner of the object
-     * @type {string}
-     * @memberof PublicSmartObject
      */
     owner: string;
     /**
      * Template identifier that defines the structure and behavior of this smart object
-     * @type {string}
-     * @memberof PublicSmartObject
      */
     templateId: string;
     /**
      * Location information for the object
-     * @type {Location}
-     * @memberof PublicSmartObject
      */
     location?: Location;
     /**
      * Nonce value for the object
-     * @type {number}
-     * @memberof PublicSmartObject
      */
     nonce: number;
     /**
      * Version of the object
-     * @type {number}
-     * @memberof PublicSmartObject
      */
     version: number;
     /**
      * object state hash - ownership
-     * @type {string}
-     * @memberof PublicSmartObject
      */
     stateHash: string;
     /**
      * object content hash - metadata, assets, location, custom
-     * @type {string}
-     * @memberof PublicSmartObject
      */
     contentHash: string;
     /**
      * Merkle root of the integrity data
-     * @type {string}
-     * @memberof PublicSmartObject
      */
     integrityHash: string;
     /**
      * Previous object integrity hash.
-     * @type {string}
-     * @memberof PublicSmartObject
      */
     prevIntegrityHash: string;
     /**
      * Timestamp of when the object was created
-     * @type {Date}
-     * @memberof PublicSmartObject
      */
     whenCreated: Date;
     /**
      * Timestamp of the last modification
-     * @type {Date}
-     * @memberof PublicSmartObject
      */
     whenModified: Date;
 }
@@ -153,15 +119,15 @@ export function instanceOfPublicSmartObject(value: object): value is PublicSmart
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('metadata' in value) || value['metadata'] === undefined) return false;
     if (!('owner' in value) || value['owner'] === undefined) return false;
-    if ((!('templateId' in value) && !('template_id' in value)) || (value['templateId'] === undefined && value['template_id'] === undefined)) return false;
+    if ((!('templateId' in (value as Record<string, any>)) && !('template_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['templateId'] === undefined && (value as Record<string, any>)['template_id'] === undefined)) return false;
     if (!('nonce' in value) || value['nonce'] === undefined) return false;
     if (!('version' in value) || value['version'] === undefined) return false;
-    if ((!('stateHash' in value) && !('state_hash' in value)) || (value['stateHash'] === undefined && value['state_hash'] === undefined)) return false;
-    if ((!('contentHash' in value) && !('content_hash' in value)) || (value['contentHash'] === undefined && value['content_hash'] === undefined)) return false;
-    if ((!('integrityHash' in value) && !('integrity_hash' in value)) || (value['integrityHash'] === undefined && value['integrity_hash'] === undefined)) return false;
-    if ((!('prevIntegrityHash' in value) && !('prev_integrity_hash' in value)) || (value['prevIntegrityHash'] === undefined && value['prev_integrity_hash'] === undefined)) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
-    if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
+    if ((!('stateHash' in (value as Record<string, any>)) && !('state_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['stateHash'] === undefined && (value as Record<string, any>)['state_hash'] === undefined)) return false;
+    if ((!('contentHash' in (value as Record<string, any>)) && !('content_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['contentHash'] === undefined && (value as Record<string, any>)['content_hash'] === undefined)) return false;
+    if ((!('integrityHash' in (value as Record<string, any>)) && !('integrity_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['integrityHash'] === undefined && (value as Record<string, any>)['integrity_hash'] === undefined)) return false;
+    if ((!('prevIntegrityHash' in (value as Record<string, any>)) && !('prev_integrity_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['prevIntegrityHash'] === undefined && (value as Record<string, any>)['prev_integrity_hash'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
+    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
     return true;
 }
 
@@ -190,8 +156,8 @@ export function PublicSmartObjectFromJSONTyped(json: any, ignoreDiscriminator: b
         'contentHash': json['content_hash'],
         'integrityHash': json['integrity_hash'],
         'prevIntegrityHash': json['prev_integrity_hash'],
-        'whenCreated': (new Date(json['when_created'])),
-        'whenModified': (new Date(json['when_modified'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
+        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
     };
 }
 
@@ -221,8 +187,8 @@ export function PublicSmartObjectToJSONTyped(value?: PublicSmartObject | null, i
         'content_hash': value['contentHash'],
         'integrity_hash': value['integrityHash'],
         'prev_integrity_hash': value['prevIntegrityHash'],
-        'when_created': value['whenCreated'].toISOString(),
-        'when_modified': value['whenModified'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
+        'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
     };
 }
 

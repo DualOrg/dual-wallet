@@ -53,38 +53,26 @@ import {
 export interface PasskeyRegisterOptionsOut {
     /**
      * base64url-encoded 32-byte random challenge (single-use, 60 s TTL).
-     * @type {string}
-     * @memberof PasskeyRegisterOptionsOut
      */
     challenge: string;
     /**
      * 
-     * @type {PasskeyRp}
-     * @memberof PasskeyRegisterOptionsOut
      */
     rp: PasskeyRp;
     /**
      * 
-     * @type {PasskeyUser}
-     * @memberof PasskeyRegisterOptionsOut
      */
     user: PasskeyUser;
     /**
      * Ordered list of acceptable credential types and algorithms.
-     * @type {Array<PasskeyPubKeyCredParam>}
-     * @memberof PasskeyRegisterOptionsOut
      */
     pubKeyCredParams: Array<PasskeyPubKeyCredParam>;
     /**
      * 
-     * @type {PasskeyAuthenticatorSelection}
-     * @memberof PasskeyRegisterOptionsOut
      */
     authenticatorSelection?: PasskeyAuthenticatorSelection;
     /**
      * Ceremony timeout in milliseconds (browser hint, not enforced server-side).
-     * @type {number}
-     * @memberof PasskeyRegisterOptionsOut
      */
     timeout?: number;
 }

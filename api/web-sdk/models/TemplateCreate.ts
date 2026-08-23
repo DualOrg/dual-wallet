@@ -51,38 +51,26 @@ import {
 export interface TemplateCreate {
     /**
      * Name of the object
-     * @type {string}
-     * @memberof TemplateCreate
      */
     name: string;
     /**
      * Reference to the object schema
-     * @type {TemplateObject}
-     * @memberof TemplateCreate
      */
     object: TemplateObject;
     /**
      * Reference to the factory schema
-     * @type {Factory}
-     * @memberof TemplateCreate
      */
     factory?: Factory;
     /**
      * Array of actions that can be performed on the template.
-     * @type {Array<TemplateAction>}
-     * @memberof TemplateCreate
      */
     actions: Array<TemplateAction>;
     /**
      * 
-     * @type {PublicAccess}
-     * @memberof TemplateCreate
      */
     publicAccess?: PublicAccess;
     /**
      * 
-     * @type {string}
-     * @memberof TemplateCreate
      */
     faceId?: string;
 }

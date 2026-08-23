@@ -30,26 +30,18 @@ import {
 export interface AccountController {
     /**
      * Ethereum-shaped address of the key that authorizes the smart account.
-     * @type {string}
-     * @memberof AccountController
      */
     address: string;
     /**
      * Signature scheme used by the controller.
-     * @type {AccountControllerTypeEnum}
-     * @memberof AccountController
      */
     type: AccountControllerTypeEnum;
     /**
      * Who controls the private key or credential represented by this controller.
-     * @type {AccountCustody}
-     * @memberof AccountController
      */
     custody: AccountCustody;
     /**
      * Controller public key when available.
-     * @type {string}
-     * @memberof AccountController
      */
     publicKey?: string;
 }
@@ -60,7 +52,7 @@ export interface AccountController {
  */
 export const AccountControllerTypeEnum = {
     Secp256K1: 'SECP256K1',
-    Webauthn: 'WEBAUTHN'
+    Webauthn: 'WEBAUTHN',
 } as const;
 export type AccountControllerTypeEnum = typeof AccountControllerTypeEnum[keyof typeof AccountControllerTypeEnum];
 

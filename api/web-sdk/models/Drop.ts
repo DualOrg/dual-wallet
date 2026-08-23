@@ -22,20 +22,14 @@ import { mapValues } from '../runtime';
 export interface Drop {
     /**
      * 
-     * @type {string}
-     * @memberof Drop
      */
     id: string;
     /**
      * Latitude of the drop location.
-     * @type {number}
-     * @memberof Drop
      */
     latitude: number;
     /**
      * Longitude of the drop location.
-     * @type {number}
-     * @memberof Drop
      */
     longitude: number;
 }

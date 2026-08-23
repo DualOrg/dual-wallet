@@ -21,7 +21,7 @@
 export const System = {
     Email: 'email',
     Sms: 'sms',
-    Push: 'push'
+    Push: 'push',
 } as const;
 export type System = typeof System[keyof typeof System];
 

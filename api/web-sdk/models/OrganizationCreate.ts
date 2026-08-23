@@ -30,32 +30,22 @@ import {
 export interface OrganizationCreate {
     /**
      * Fully Qualified Domain Name for the new organization
-     * @type {string}
-     * @memberof OrganizationCreate
      */
     fqdn: string;
     /**
      * Human-readable name for the new organization
-     * @type {string}
-     * @memberof OrganizationCreate
      */
     name: string;
     /**
      * Optional logo or profile image for the organization
-     * @type {Asset}
-     * @memberof OrganizationCreate
      */
     image?: Asset;
     /**
      * Optional detailed description of the organization's purpose and activities
-     * @type {string}
-     * @memberof OrganizationCreate
      */
     description?: string;
     /**
      * 
-     * @type {string}
-     * @memberof OrganizationCreate
      */
     ownerEmail?: string;
 }

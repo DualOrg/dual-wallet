@@ -30,26 +30,18 @@ import {
 export interface PublicObjectAttribute {
     /**
      * Normalized, case-insensitive attribute key.
-     * @type {string}
-     * @memberof PublicObjectAttribute
      */
     key: string;
     /**
-     * 
-     * @type {any}
-     * @memberof PublicObjectAttribute
+     * Current arbitrary JSON value.
      */
     value: any | null;
     /**
      * Optional category used to group or classify the attribute.
-     * @type {string}
-     * @memberof PublicObjectAttribute
      */
     category?: string;
     /**
      * Optional format of the attribute value.
-     * @type {AttributeContentType}
-     * @memberof PublicObjectAttribute
      */
     contentType?: AttributeContentType;
 }

@@ -22,32 +22,22 @@ import { mapValues } from '../runtime';
 export interface Proof {
     /**
      * Type of proof (e.g., zk-SNARK)
-     * @type {string}
-     * @memberof Proof
      */
     type: string;
     /**
      * Encoded proof value
-     * @type {string}
-     * @memberof Proof
      */
     value: string;
     /**
      * Public values used in the proof
-     * @type {string}
-     * @memberof Proof
      */
     publicValues: string;
     /**
      * Verification key for the proof
-     * @type {string}
-     * @memberof Proof
      */
     vkey: string;
     /**
      * Optional message associated with the proof
-     * @type {string}
-     * @memberof Proof
      */
     message?: string;
 }
@@ -58,7 +48,7 @@ export interface Proof {
 export function instanceOfProof(value: object): value is Proof {
     if (!('type' in value) || value['type'] === undefined) return false;
     if (!('value' in value) || value['value'] === undefined) return false;
-    if ((!('publicValues' in value) && !('public_values' in value)) || (value['publicValues'] === undefined && value['public_values'] === undefined)) return false;
+    if ((!('publicValues' in (value as Record<string, any>)) && !('public_values' in (value as Record<string, any>))) || ((value as Record<string, any>)['publicValues'] === undefined && (value as Record<string, any>)['public_values'] === undefined)) return false;
     if (!('vkey' in value) || value['vkey'] === undefined) return false;
     return true;
 }

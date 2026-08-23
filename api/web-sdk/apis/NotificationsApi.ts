@@ -71,58 +71,163 @@ import {
 } from '../models/TemplateMessageUpdate';
 
 export interface CreateNotificationTemplateRequest {
+    /**
+     * 
+     */
     templateMessageCreate: TemplateMessageCreate;
 }
 
 export interface DeleteNotificationTemplateRequest {
+    /**
+     * Unique identifier of the template
+     */
     templateId: string;
 }
 
 export interface GetNotificationTemplateRequest {
+    /**
+     * Unique identifier of the template
+     */
     templateId: string;
 }
 
 export interface ListMessagesRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListMessagesOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * Filter messages by template ID.
+     */
     templateId?: string;
+    /**
+     * Filter messages by recipient.
+     */
     to?: string;
+    /**
+     * language of the message
+     */
     language?: Language;
+    /**
+     * Filter messages that are publicly accessible.
+     */
     system?: System;
+    /**
+     * Filter type of messages.
+     */
     actionType?: string;
+    /**
+     * Filter messages by status.
+     */
     status?: MessageStatus;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface ListNotificationTemplatesRequest {
+    /**
+     * Filter resources by their unique identifier
+     */
     id?: string;
+    /**
+     * How many items to return at one time (max 25)
+     */
     limit?: number;
+    /**
+     * Pagination token for retrieving the next page of results
+     */
     next?: string;
+    /**
+     * Search term for autocomplete functionality
+     */
     autocomplete?: string;
+    /**
+     * Sort order for the results (ascending or descending)
+     */
     order?: ListNotificationTemplatesOrderEnum;
+    /**
+     * Field name to sort the results by
+     */
     sortBy?: string;
+    /**
+     * language of the template
+     */
     language?: Language;
+    /**
+     * Filter templates that are publicly accessible.
+     */
     system?: System;
+    /**
+     * Filter unpublished templates.
+     */
     type?: string;
+    /**
+     * 
+     */
     whenCreated$gt?: Date;
+    /**
+     * 
+     */
     whenCreated$lt?: Date;
+    /**
+     * 
+     */
     whenCreated$gte?: Date;
+    /**
+     * 
+     */
     whenCreated$lte?: Date;
 }
 
 export interface SendMessageRequest {
+    /**
+     * 
+     */
     messageCreate: MessageCreate;
 }
 
 export interface UpdateNotificationTemplateRequest {
+    /**
+     * Unique identifier of the template
+     */
     templateId: string;
+    /**
+     * 
+     */
     templateMessageUpdate: TemplateMessageUpdate;
 }
 
@@ -665,7 +770,7 @@ export class NotificationsApi extends runtime.BaseAPI {
  */
 export const ListMessagesOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListMessagesOrderEnum = typeof ListMessagesOrderEnum[keyof typeof ListMessagesOrderEnum];
 /**
@@ -673,6 +778,6 @@ export type ListMessagesOrderEnum = typeof ListMessagesOrderEnum[keyof typeof Li
  */
 export const ListNotificationTemplatesOrderEnum = {
     Asc: 'asc',
-    Desc: 'desc'
+    Desc: 'desc',
 } as const;
 export type ListNotificationTemplatesOrderEnum = typeof ListNotificationTemplatesOrderEnum[keyof typeof ListNotificationTemplatesOrderEnum];

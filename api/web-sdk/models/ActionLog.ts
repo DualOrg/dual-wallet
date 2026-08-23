@@ -65,164 +65,114 @@ import {
 export interface ActionLog {
     /**
      * 
-     * @type {string}
-     * @memberof ActionLog
      */
     id: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionLog
      */
     batchId?: string;
     /**
      * The name of the action
-     * @type {string}
-     * @memberof ActionLog
      */
     name: string;
     /**
      * The alias of the action
-     * @type {string}
-     * @memberof ActionLog
      */
     alias?: string;
     /**
+     * Marks a protocol/operator action that is intentionally not authorized by a user credential. Internal actions are committed to a batch but cannot be proven by the normal action circuit.
+     */
+    internal?: boolean;
+    /**
      * 
-     * @type {ActionParams}
-     * @memberof ActionLog
      */
     params: ActionParams;
     /**
      * 
-     * @type {string}
-     * @memberof ActionLog
      */
     messageHash: string;
     /**
      * Execution identity committed by the action-log hash. For version 1 this can be a legacy EOA; for version 2 it is the canonical Kernel smart-account address.
-     * @type {string}
-     * @memberof ActionLog
      */
     account: string;
     /**
      * Signing identity. For version 1 the deployment migration derives it from the legacy delegated signer, or from account when no delegated signer was stored. For version 2 it is the controller that authorized the Kernel account.
-     * @type {string}
-     * @memberof ActionLog
      */
     controller: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionLog
      */
     hash: string;
     /**
      * 
-     * @type {Array<AffectedObject>}
-     * @memberof ActionLog
      */
     affectedObjects: Array<AffectedObject>;
     /**
      * 
-     * @type {ActionLogStatus}
-     * @memberof ActionLog
      */
     status: ActionLogStatus;
     /**
      * 
-     * @type {string}
-     * @memberof ActionLog
      */
     baseFee: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionLog
      */
     baseFeeWei: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionLog
      */
     dynamicFee: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionLog
      */
     dynamicFeeWei: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionLog
      */
     additionalFee?: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionLog
      */
     additionalFeeWei?: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionLog
      */
     tokenPrice: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionLog
      */
     totalFee: string;
     /**
      * 
-     * @type {string}
-     * @memberof ActionLog
      */
     totalFeeWei: string;
     /**
      * 
-     * @type {number}
-     * @memberof ActionLog
      */
     nonce: number;
     /**
      * 
-     * @type {ActionPermit}
-     * @memberof ActionLog
      */
     permit?: ActionPermit;
     /**
      * 
-     * @type {ActionAccess}
-     * @memberof ActionLog
      */
     access?: ActionAccess;
     /**
      * Canonical signature bundle used for proof verification. The deployment migration normalizes version 1 legacy signature fields into this bundle; version 2 stores it directly.
-     * @type {AuthBundle}
-     * @memberof ActionLog
      */
     auth: AuthBundle;
     /**
      * Action-log hash-layout version. Version 1 is the immutable legacy layout; version 2 commits account, controller, and auth type. New action logs are always version 2.
-     * @type {ActionLogVersionEnum}
-     * @memberof ActionLog
      */
     version: ActionLogVersionEnum;
     /**
      * 
-     * @type {Date}
-     * @memberof ActionLog
      */
     whenModified: Date;
     /**
      * 
-     * @type {Date}
-     * @memberof ActionLog
      */
     whenCreated: Date;
 }
@@ -233,7 +183,7 @@ export interface ActionLog {
  */
 export const ActionLogVersionEnum = {
     NUMBER_1: 1,
-    NUMBER_2: 2
+    NUMBER_2: 2,
 } as const;
 export type ActionLogVersionEnum = typeof ActionLogVersionEnum[keyof typeof ActionLogVersionEnum];
 
@@ -245,24 +195,24 @@ export function instanceOfActionLog(value: object): value is ActionLog {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('name' in value) || value['name'] === undefined) return false;
     if (!('params' in value) || value['params'] === undefined) return false;
-    if ((!('messageHash' in value) && !('message_hash' in value)) || (value['messageHash'] === undefined && value['message_hash'] === undefined)) return false;
+    if ((!('messageHash' in (value as Record<string, any>)) && !('message_hash' in (value as Record<string, any>))) || ((value as Record<string, any>)['messageHash'] === undefined && (value as Record<string, any>)['message_hash'] === undefined)) return false;
     if (!('account' in value) || value['account'] === undefined) return false;
     if (!('controller' in value) || value['controller'] === undefined) return false;
     if (!('hash' in value) || value['hash'] === undefined) return false;
-    if ((!('affectedObjects' in value) && !('affected_objects' in value)) || (value['affectedObjects'] === undefined && value['affected_objects'] === undefined)) return false;
+    if ((!('affectedObjects' in (value as Record<string, any>)) && !('affected_objects' in (value as Record<string, any>))) || ((value as Record<string, any>)['affectedObjects'] === undefined && (value as Record<string, any>)['affected_objects'] === undefined)) return false;
     if (!('status' in value) || value['status'] === undefined) return false;
-    if ((!('baseFee' in value) && !('base_fee' in value)) || (value['baseFee'] === undefined && value['base_fee'] === undefined)) return false;
-    if ((!('baseFeeWei' in value) && !('base_fee_wei' in value)) || (value['baseFeeWei'] === undefined && value['base_fee_wei'] === undefined)) return false;
-    if ((!('dynamicFee' in value) && !('dynamic_fee' in value)) || (value['dynamicFee'] === undefined && value['dynamic_fee'] === undefined)) return false;
-    if ((!('dynamicFeeWei' in value) && !('dynamic_fee_wei' in value)) || (value['dynamicFeeWei'] === undefined && value['dynamic_fee_wei'] === undefined)) return false;
-    if ((!('tokenPrice' in value) && !('token_price' in value)) || (value['tokenPrice'] === undefined && value['token_price'] === undefined)) return false;
-    if ((!('totalFee' in value) && !('total_fee' in value)) || (value['totalFee'] === undefined && value['total_fee'] === undefined)) return false;
-    if ((!('totalFeeWei' in value) && !('total_fee_wei' in value)) || (value['totalFeeWei'] === undefined && value['total_fee_wei'] === undefined)) return false;
+    if ((!('baseFee' in (value as Record<string, any>)) && !('base_fee' in (value as Record<string, any>))) || ((value as Record<string, any>)['baseFee'] === undefined && (value as Record<string, any>)['base_fee'] === undefined)) return false;
+    if ((!('baseFeeWei' in (value as Record<string, any>)) && !('base_fee_wei' in (value as Record<string, any>))) || ((value as Record<string, any>)['baseFeeWei'] === undefined && (value as Record<string, any>)['base_fee_wei'] === undefined)) return false;
+    if ((!('dynamicFee' in (value as Record<string, any>)) && !('dynamic_fee' in (value as Record<string, any>))) || ((value as Record<string, any>)['dynamicFee'] === undefined && (value as Record<string, any>)['dynamic_fee'] === undefined)) return false;
+    if ((!('dynamicFeeWei' in (value as Record<string, any>)) && !('dynamic_fee_wei' in (value as Record<string, any>))) || ((value as Record<string, any>)['dynamicFeeWei'] === undefined && (value as Record<string, any>)['dynamic_fee_wei'] === undefined)) return false;
+    if ((!('tokenPrice' in (value as Record<string, any>)) && !('token_price' in (value as Record<string, any>))) || ((value as Record<string, any>)['tokenPrice'] === undefined && (value as Record<string, any>)['token_price'] === undefined)) return false;
+    if ((!('totalFee' in (value as Record<string, any>)) && !('total_fee' in (value as Record<string, any>))) || ((value as Record<string, any>)['totalFee'] === undefined && (value as Record<string, any>)['total_fee'] === undefined)) return false;
+    if ((!('totalFeeWei' in (value as Record<string, any>)) && !('total_fee_wei' in (value as Record<string, any>))) || ((value as Record<string, any>)['totalFeeWei'] === undefined && (value as Record<string, any>)['total_fee_wei'] === undefined)) return false;
     if (!('nonce' in value) || value['nonce'] === undefined) return false;
     if (!('auth' in value) || value['auth'] === undefined) return false;
     if (!('version' in value) || value['version'] === undefined) return false;
-    if ((!('whenModified' in value) && !('when_modified' in value)) || (value['whenModified'] === undefined && value['when_modified'] === undefined)) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
+    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
     return true;
 }
 
@@ -280,6 +230,7 @@ export function ActionLogFromJSONTyped(json: any, ignoreDiscriminator: boolean):
         'batchId': json['batch_id'] == null ? undefined : json['batch_id'],
         'name': json['name'],
         'alias': json['alias'] == null ? undefined : json['alias'],
+        'internal': json['internal'] == null ? undefined : json['internal'],
         'params': ActionParamsFromJSON(json['params']),
         'messageHash': json['message_hash'],
         'account': json['account'],
@@ -301,8 +252,8 @@ export function ActionLogFromJSONTyped(json: any, ignoreDiscriminator: boolean):
         'access': json['access'] == null ? undefined : ActionAccessFromJSON(json['access']),
         'auth': AuthBundleFromJSON(json['auth']),
         'version': json['version'],
-        'whenModified': (new Date(json['when_modified'])),
-        'whenCreated': (new Date(json['when_created'])),
+        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
     };
 }
 
@@ -321,6 +272,7 @@ export function ActionLogToJSONTyped(value?: ActionLog | null, ignoreDiscriminat
         'batch_id': value['batchId'],
         'name': value['name'],
         'alias': value['alias'],
+        'internal': value['internal'],
         'params': ActionParamsToJSON(value['params']),
         'message_hash': value['messageHash'],
         'account': value['account'],
@@ -342,8 +294,8 @@ export function ActionLogToJSONTyped(value?: ActionLog | null, ignoreDiscriminat
         'access': ActionAccessToJSON(value['access']),
         'auth': AuthBundleToJSON(value['auth']),
         'version': value['version'],
-        'when_modified': value['whenModified'].toISOString(),
-        'when_created': value['whenCreated'].toISOString(),
+        'when_modified': value['whenModified'] == null ? value['whenModified'] : value['whenModified'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
     };
 }
 

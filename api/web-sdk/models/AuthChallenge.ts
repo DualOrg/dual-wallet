@@ -22,8 +22,6 @@ import { mapValues } from '../runtime';
 export interface AuthChallenge {
     /**
      * Unique identifier for the smart object
-     * @type {string}
-     * @memberof AuthChallenge
      */
     id: string;
     /**
@@ -31,20 +29,14 @@ export interface AuthChallenge {
      * For passkey: pass directly to navigator.credentials.get() as `challenge`.
      * For EOA: hex-decode and sign with eth_personal_sign.
      * 
-     * @type {string}
-     * @memberof AuthChallenge
      */
     challenge: string;
     /**
      * Challenge expiry timestamp. Reject assertions/signatures after this time.
-     * @type {Date}
-     * @memberof AuthChallenge
      */
     expiresAt: Date;
     /**
      * Timestamp indicating when the challenge was created.
-     * @type {Date}
-     * @memberof AuthChallenge
      */
     whenCreated: Date;
 }
@@ -55,8 +47,8 @@ export interface AuthChallenge {
 export function instanceOfAuthChallenge(value: object): value is AuthChallenge {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('challenge' in value) || value['challenge'] === undefined) return false;
-    if ((!('expiresAt' in value) && !('expires_at' in value)) || (value['expiresAt'] === undefined && value['expires_at'] === undefined)) return false;
-    if ((!('whenCreated' in value) && !('when_created' in value)) || (value['whenCreated'] === undefined && value['when_created'] === undefined)) return false;
+    if ((!('expiresAt' in (value as Record<string, any>)) && !('expires_at' in (value as Record<string, any>))) || ((value as Record<string, any>)['expiresAt'] === undefined && (value as Record<string, any>)['expires_at'] === undefined)) return false;
+    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
     return true;
 }
 
@@ -72,8 +64,8 @@ export function AuthChallengeFromJSONTyped(json: any, ignoreDiscriminator: boole
         
         'id': json['id'],
         'challenge': json['challenge'],
-        'expiresAt': (new Date(json['expires_at'])),
-        'whenCreated': (new Date(json['when_created'])),
+        'expiresAt': (json['expires_at'] == null ? json['expires_at'] : new Date(json['expires_at'])),
+        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
     };
 }
 
@@ -90,8 +82,8 @@ export function AuthChallengeToJSONTyped(value?: AuthChallenge | null, ignoreDis
         
         'id': value['id'],
         'challenge': value['challenge'],
-        'expires_at': value['expiresAt'].toISOString(),
-        'when_created': value['whenCreated'].toISOString(),
+        'expires_at': value['expiresAt'] == null ? value['expiresAt'] : value['expiresAt'].toISOString(),
+        'when_created': value['whenCreated'] == null ? value['whenCreated'] : value['whenCreated'].toISOString(),
     };
 }
 

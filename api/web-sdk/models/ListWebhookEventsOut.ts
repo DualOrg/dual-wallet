@@ -30,14 +30,10 @@ import {
 export interface ListWebhookEventsOut {
     /**
      * Array of webhook events showing delivery attempts and status.
-     * @type {Array<WebhookEvent>}
-     * @memberof ListWebhookEventsOut
      */
     events: Array<WebhookEvent>;
     /**
      * Pagination token for retrieving the next set of webhook events.
-     * @type {string}
-     * @memberof ListWebhookEventsOut
      */
     next?: string;
 }

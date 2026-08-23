@@ -22,14 +22,10 @@ import { mapValues } from '../runtime';
 export interface PasskeyAllowCredential {
     /**
      * base64url-encoded credential ID.
-     * @type {string}
-     * @memberof PasskeyAllowCredential
      */
     id: string;
     /**
      * 
-     * @type {PasskeyAllowCredentialTypeEnum}
-     * @memberof PasskeyAllowCredential
      */
     type: PasskeyAllowCredentialTypeEnum;
 }
@@ -39,7 +35,7 @@ export interface PasskeyAllowCredential {
  * @export
  */
 export const PasskeyAllowCredentialTypeEnum = {
-    PublicKey: 'public-key'
+    PublicKey: 'public-key',
 } as const;
 export type PasskeyAllowCredentialTypeEnum = typeof PasskeyAllowCredentialTypeEnum[keyof typeof PasskeyAllowCredentialTypeEnum];
 

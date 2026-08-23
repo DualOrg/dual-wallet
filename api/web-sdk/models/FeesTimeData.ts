@@ -22,56 +22,38 @@ import { mapValues } from '../runtime';
 export interface FeesTimeData {
     /**
      * The key for the fee statistic, e.g., action name or time interval.
-     * @type {string}
-     * @memberof FeesTimeData
      */
     key: string;
     /**
      * Timestamp for this fee statistic
-     * @type {Date}
-     * @memberof FeesTimeData
      */
     when: Date;
     /**
      * 
-     * @type {string}
-     * @memberof FeesTimeData
      */
     totalFeeWei: string;
     /**
      * 
-     * @type {string}
-     * @memberof FeesTimeData
      */
     totalFee: string;
     /**
      * 
-     * @type {string}
-     * @memberof FeesTimeData
      */
     baseFeeWei: string;
     /**
      * 
-     * @type {string}
-     * @memberof FeesTimeData
      */
     baseFee: string;
     /**
      * 
-     * @type {string}
-     * @memberof FeesTimeData
      */
     dynamicFeeWei: string;
     /**
      * 
-     * @type {string}
-     * @memberof FeesTimeData
      */
     dynamicFee: string;
     /**
      * Count of actions for this fee statistic
-     * @type {number}
-     * @memberof FeesTimeData
      */
     count: number;
 }
@@ -82,12 +64,12 @@ export interface FeesTimeData {
 export function instanceOfFeesTimeData(value: object): value is FeesTimeData {
     if (!('key' in value) || value['key'] === undefined) return false;
     if (!('when' in value) || value['when'] === undefined) return false;
-    if ((!('totalFeeWei' in value) && !('total_fee_wei' in value)) || (value['totalFeeWei'] === undefined && value['total_fee_wei'] === undefined)) return false;
-    if ((!('totalFee' in value) && !('total_fee' in value)) || (value['totalFee'] === undefined && value['total_fee'] === undefined)) return false;
-    if ((!('baseFeeWei' in value) && !('base_fee_wei' in value)) || (value['baseFeeWei'] === undefined && value['base_fee_wei'] === undefined)) return false;
-    if ((!('baseFee' in value) && !('base_fee' in value)) || (value['baseFee'] === undefined && value['base_fee'] === undefined)) return false;
-    if ((!('dynamicFeeWei' in value) && !('dynamic_fee_wei' in value)) || (value['dynamicFeeWei'] === undefined && value['dynamic_fee_wei'] === undefined)) return false;
-    if ((!('dynamicFee' in value) && !('dynamic_fee' in value)) || (value['dynamicFee'] === undefined && value['dynamic_fee'] === undefined)) return false;
+    if ((!('totalFeeWei' in (value as Record<string, any>)) && !('total_fee_wei' in (value as Record<string, any>))) || ((value as Record<string, any>)['totalFeeWei'] === undefined && (value as Record<string, any>)['total_fee_wei'] === undefined)) return false;
+    if ((!('totalFee' in (value as Record<string, any>)) && !('total_fee' in (value as Record<string, any>))) || ((value as Record<string, any>)['totalFee'] === undefined && (value as Record<string, any>)['total_fee'] === undefined)) return false;
+    if ((!('baseFeeWei' in (value as Record<string, any>)) && !('base_fee_wei' in (value as Record<string, any>))) || ((value as Record<string, any>)['baseFeeWei'] === undefined && (value as Record<string, any>)['base_fee_wei'] === undefined)) return false;
+    if ((!('baseFee' in (value as Record<string, any>)) && !('base_fee' in (value as Record<string, any>))) || ((value as Record<string, any>)['baseFee'] === undefined && (value as Record<string, any>)['base_fee'] === undefined)) return false;
+    if ((!('dynamicFeeWei' in (value as Record<string, any>)) && !('dynamic_fee_wei' in (value as Record<string, any>))) || ((value as Record<string, any>)['dynamicFeeWei'] === undefined && (value as Record<string, any>)['dynamic_fee_wei'] === undefined)) return false;
+    if ((!('dynamicFee' in (value as Record<string, any>)) && !('dynamic_fee' in (value as Record<string, any>))) || ((value as Record<string, any>)['dynamicFee'] === undefined && (value as Record<string, any>)['dynamic_fee'] === undefined)) return false;
     if (!('count' in value) || value['count'] === undefined) return false;
     return true;
 }
@@ -103,7 +85,7 @@ export function FeesTimeDataFromJSONTyped(json: any, ignoreDiscriminator: boolea
     return {
         
         'key': json['key'],
-        'when': (new Date(json['when'])),
+        'when': (json['when'] == null ? json['when'] : new Date(json['when'])),
         'totalFeeWei': json['total_fee_wei'],
         'totalFee': json['total_fee'],
         'baseFeeWei': json['base_fee_wei'],
@@ -126,7 +108,7 @@ export function FeesTimeDataToJSONTyped(value?: FeesTimeData | null, ignoreDiscr
     return {
         
         'key': value['key'],
-        'when': value['when'].toISOString(),
+        'when': value['when'] == null ? value['when'] : value['when'].toISOString(),
         'total_fee_wei': value['totalFeeWei'],
         'total_fee': value['totalFee'],
         'base_fee_wei': value['baseFeeWei'],

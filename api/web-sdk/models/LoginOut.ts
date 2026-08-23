@@ -30,20 +30,14 @@ import {
 export interface LoginOut {
     /**
      * User's wallet information returned after successful authentication
-     * @type {Wallet}
-     * @memberof LoginOut
      */
     wallet: Wallet;
     /**
      * JWT token used for authenticating subsequent API requests
-     * @type {string}
-     * @memberof LoginOut
      */
     accessToken: string;
     /**
      * Long-lived token used to obtain new access tokens without re-authentication
-     * @type {string}
-     * @memberof LoginOut
      */
     refreshToken: string;
 }
@@ -53,8 +47,8 @@ export interface LoginOut {
  */
 export function instanceOfLoginOut(value: object): value is LoginOut {
     if (!('wallet' in value) || value['wallet'] === undefined) return false;
-    if ((!('accessToken' in value) && !('access_token' in value)) || (value['accessToken'] === undefined && value['access_token'] === undefined)) return false;
-    if ((!('refreshToken' in value) && !('refresh_token' in value)) || (value['refreshToken'] === undefined && value['refresh_token'] === undefined)) return false;
+    if ((!('accessToken' in (value as Record<string, any>)) && !('access_token' in (value as Record<string, any>))) || ((value as Record<string, any>)['accessToken'] === undefined && (value as Record<string, any>)['access_token'] === undefined)) return false;
+    if ((!('refreshToken' in (value as Record<string, any>)) && !('refresh_token' in (value as Record<string, any>))) || ((value as Record<string, any>)['refreshToken'] === undefined && (value as Record<string, any>)['refresh_token'] === undefined)) return false;
     return true;
 }
 
