@@ -16,8 +16,10 @@ export function useVerifyAccount() {
   return useMutation({
     mutationFn: verifyAccount,
     onSuccess: async () => {
-      await session.refresh();
-      router.replace("/inventory");
+      // A link may be followed with no session at all, so where to go next
+      // depends on whether there is one to go with.
+      const wallet = await session.refresh();
+      router.replace(wallet ? "/inventory" : "/login");
       router.refresh();
     },
   });

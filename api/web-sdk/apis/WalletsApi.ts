@@ -85,6 +85,11 @@ import {
     SetNewPasswordInToJSON,
 } from '../models/SetNewPasswordIn';
 import {
+    type StatsOut,
+    StatsOutFromJSON,
+    StatsOutToJSON,
+} from '../models/StatsOut';
+import {
     type VerifyIn,
     VerifyInFromJSON,
     VerifyInToJSON,
@@ -104,21 +109,6 @@ import {
     WalletUpdateFromJSON,
     WalletUpdateToJSON,
 } from '../models/WalletUpdate';
-import {
-    type WalletsRegistrationStatsOut,
-    WalletsRegistrationStatsOutFromJSON,
-    WalletsRegistrationStatsOutToJSON,
-} from '../models/WalletsRegistrationStatsOut';
-import {
-    type WalletsStatsOut,
-    WalletsStatsOutFromJSON,
-    WalletsStatsOutToJSON,
-} from '../models/WalletsStatsOut';
-import {
-    type WalletsTotalStatsOut,
-    WalletsTotalStatsOutFromJSON,
-    WalletsTotalStatsOutToJSON,
-} from '../models/WalletsTotalStatsOut';
 
 export interface ConnectEoaRequest {
     /**
@@ -134,112 +124,107 @@ export interface DeleteWalletByIdRequest {
     id: string;
 }
 
+export interface GetOrganizationWalletStatsRequest {
+    /**
+     * Unique identifier of the organization
+     */
+    organizationId: string;
+    /**
+     * Start of the window, inclusive. Omit for "since the beginning".
+     * Replaces the when_created[$gt] and when_created[$gte] pair: an aggregate has
+     * no use for both an open and a closed lower bound.
+     * 
+     */
+    from?: Date;
+    /**
+     * End of the window, exclusive. Omit for "up to now". Half-open with from, so
+     * adjacent windows tile without double-counting the boundary record.
+     * 
+     */
+    to?: Date;
+    /**
+     * Which optional parts of the aggregate to compute. The total is always
+     * returned; a breakdown and a series each cost a grouping pass, so a caller
+     * that only needs the headline number does not pay for them.
+     * 
+     */
+    include?: Array<GetOrganizationWalletStatsIncludeEnum>;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
+    interval?: GetOrganizationWalletStatsIntervalEnum;
+    /**
+     * How many groups to keep in a breakdown, largest first. Bounds the response
+     * for a high-cardinality dimension such as template, where an organization may
+     * have thousands.
+     * 
+     * It does not bound a series. The number of buckets in a series is already
+     * fixed by from, to and interval; capping it separately would silently truncate
+     * the window a caller explicitly asked for.
+     * 
+     */
+    top?: number;
+    /**
+     * Group the breakdown by activation state. It shapes the breakdown only;
+     * this aggregate cannot split its series. Only the dimensions listed
+     * here are accepted; anything else is rejected rather than passed
+     * through to the aggregation.
+     * 
+     */
+    groupBy?: GetOrganizationWalletStatsGroupByEnum;
+}
+
+export interface GetPublicWalletStatsRequest {
+    /**
+     * Start of the window, inclusive. Omit for "since the beginning".
+     * Replaces the when_created[$gt] and when_created[$gte] pair: an aggregate has
+     * no use for both an open and a closed lower bound.
+     * 
+     */
+    from?: Date;
+    /**
+     * End of the window, exclusive. Omit for "up to now". Half-open with from, so
+     * adjacent windows tile without double-counting the boundary record.
+     * 
+     */
+    to?: Date;
+    /**
+     * Which optional parts of the aggregate to compute. The total is always
+     * returned; a breakdown and a series each cost a grouping pass, so a caller
+     * that only needs the headline number does not pay for them.
+     * 
+     */
+    include?: Array<GetPublicWalletStatsIncludeEnum>;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
+    interval?: GetPublicWalletStatsIntervalEnum;
+    /**
+     * How many groups to keep in a breakdown, largest first. Bounds the response
+     * for a high-cardinality dimension such as template, where an organization may
+     * have thousands.
+     * 
+     * It does not bound a series. The number of buckets in a series is already
+     * fixed by from, to and interval; capping it separately would silently truncate
+     * the window a caller explicitly asked for.
+     * 
+     */
+    top?: number;
+    /**
+     * Group the breakdown by activation state. It shapes the breakdown only;
+     * this aggregate cannot split its series. Only the dimensions listed
+     * here are accepted; anything else is rejected rather than passed
+     * through to the aggregation.
+     * 
+     */
+    groupBy?: GetPublicWalletStatsGroupByEnum;
+}
+
 export interface GetWalletByIdRequest {
     /**
      * Unique identifier of the target wallet
      */
     id: string;
-}
-
-export interface GetWalletsRegistrationStatsRequest {
-    /**
-     * Filter resources by the organization they belong to
-     */
-    orgId?: string;
-    /**
-     * Time interval for grouping time-series statistics and analytics data
-     */
-    interval?: GetWalletsRegistrationStatsIntervalEnum;
-    /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetWalletsRegistrationStatsTimeRangeEnum;
-    /**
-     * How many items to return at one time (max 25)
-     */
-    limit?: number;
-    /**
-     * Filter statistics by activation status
-     */
-    activated?: boolean;
-    /**
-     * 
-     */
-    whenCreated$gt?: Date;
-    /**
-     * 
-     */
-    whenCreated$lt?: Date;
-    /**
-     * 
-     */
-    whenCreated$gte?: Date;
-    /**
-     * 
-     */
-    whenCreated$lte?: Date;
-}
-
-export interface GetWalletsStatsRequest {
-    /**
-     * Filter resources by the organization they belong to
-     */
-    orgId?: string;
-    /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetWalletsStatsTimeRangeEnum;
-    /**
-     * 
-     */
-    whenCreated$gt?: Date;
-    /**
-     * 
-     */
-    whenCreated$lt?: Date;
-    /**
-     * 
-     */
-    whenCreated$gte?: Date;
-    /**
-     * 
-     */
-    whenCreated$lte?: Date;
-}
-
-export interface GetWalletsTotalStatsRequest {
-    /**
-     * Filter resources by the organization they belong to
-     */
-    orgId?: string;
-    /**
-     * Time interval for grouping time-series statistics and analytics data
-     */
-    interval?: GetWalletsTotalStatsIntervalEnum;
-    /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetWalletsTotalStatsTimeRangeEnum;
-    /**
-     * How many items to return at one time (max 25)
-     */
-    limit?: number;
-    /**
-     * 
-     */
-    whenCreated$gt?: Date;
-    /**
-     * 
-     */
-    whenCreated$lt?: Date;
-    /**
-     * 
-     */
-    whenCreated$gte?: Date;
-    /**
-     * 
-     */
-    whenCreated$lte?: Date;
 }
 
 export interface LoginWalletRequest {
@@ -534,6 +519,152 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
+     * Creates request options for getOrganizationWalletStats without sending the request
+     */
+    async getOrganizationWalletStatsRequestOpts(requestParameters: GetOrganizationWalletStatsRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['organizationId'] == null) {
+            throw new runtime.RequiredError(
+                'organizationId',
+                'Required parameter "organizationId" was null or undefined when calling getOrganizationWalletStats().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['from'] != null) {
+            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+        }
+
+        if (requestParameters['to'] != null) {
+            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+        }
+
+        if (requestParameters['include'] != null) {
+            queryParameters['include'] = requestParameters['include']!.join(runtime.COLLECTION_FORMATS["csv"]);
+        }
+
+        if (requestParameters['interval'] != null) {
+            queryParameters['interval'] = requestParameters['interval'];
+        }
+
+        if (requestParameters['top'] != null) {
+            queryParameters['top'] = requestParameters['top'];
+        }
+
+        if (requestParameters['groupBy'] != null) {
+            queryParameters['group_by'] = requestParameters['groupBy'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearer-auth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/organizations/{organizationId}/stats/wallets`;
+        urlPath = urlPath.replace('{organizationId}', encodeURIComponent(String(requestParameters['organizationId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Aggregate counts of registered wallets. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
+     * Organization wallet statistics
+     */
+    async getOrganizationWalletStatsRaw(requestParameters: GetOrganizationWalletStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
+        const requestOptions = await this.getOrganizationWalletStatsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => StatsOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Aggregate counts of registered wallets. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
+     * Organization wallet statistics
+     */
+    async getOrganizationWalletStats(requestParameters: GetOrganizationWalletStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
+        const response = await this.getOrganizationWalletStatsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getPublicWalletStats without sending the request
+     */
+    async getPublicWalletStatsRequestOpts(requestParameters: GetPublicWalletStatsRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        if (requestParameters['from'] != null) {
+            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+        }
+
+        if (requestParameters['to'] != null) {
+            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+        }
+
+        if (requestParameters['include'] != null) {
+            queryParameters['include'] = requestParameters['include']!.join(runtime.COLLECTION_FORMATS["csv"]);
+        }
+
+        if (requestParameters['interval'] != null) {
+            queryParameters['interval'] = requestParameters['interval'];
+        }
+
+        if (requestParameters['top'] != null) {
+            queryParameters['top'] = requestParameters['top'];
+        }
+
+        if (requestParameters['groupBy'] != null) {
+            queryParameters['group_by'] = requestParameters['groupBy'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/public/stats/wallets`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Aggregate counts of registered wallets. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide wallet statistics
+     */
+    async getPublicWalletStatsRaw(requestParameters: GetPublicWalletStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
+        const requestOptions = await this.getPublicWalletStatsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => StatsOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Aggregate counts of registered wallets. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide wallet statistics
+     */
+    async getPublicWalletStats(requestParameters: GetPublicWalletStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
+        const response = await this.getPublicWalletStatsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for getWallet without sending the request
      */
     async getWalletRequestOpts(): Promise<runtime.RequestOpts> {
@@ -640,239 +771,6 @@ export class WalletsApi extends runtime.BaseAPI {
      */
     async getWalletById(requestParameters: GetWalletByIdRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Wallet> {
         const response = await this.getWalletByIdRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getWalletsRegistrationStats without sending the request
-     */
-    async getWalletsRegistrationStatsRequestOpts(requestParameters: GetWalletsRegistrationStatsRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
-        }
-
-        if (requestParameters['interval'] != null) {
-            queryParameters['interval'] = requestParameters['interval'];
-        }
-
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
-        }
-
-        if (requestParameters['limit'] != null) {
-            queryParameters['limit'] = requestParameters['limit'];
-        }
-
-        if (requestParameters['activated'] != null) {
-            queryParameters['activated'] = requestParameters['activated'];
-        }
-
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/stats/wallets/registration`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Retrieve time-series data about user registration patterns and trends. This endpoint provides detailed analytics on user sign-ups over time, including activation rates, registration velocity, and temporal distribution of new account creation. 
-     * Get users registration statistics over time
-     */
-    async getWalletsRegistrationStatsRaw(requestParameters: GetWalletsRegistrationStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WalletsRegistrationStatsOut>> {
-        const requestOptions = await this.getWalletsRegistrationStatsRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => WalletsRegistrationStatsOutFromJSON(jsonValue));
-    }
-
-    /**
-     * Retrieve time-series data about user registration patterns and trends. This endpoint provides detailed analytics on user sign-ups over time, including activation rates, registration velocity, and temporal distribution of new account creation. 
-     * Get users registration statistics over time
-     */
-    async getWalletsRegistrationStats(requestParameters: GetWalletsRegistrationStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WalletsRegistrationStatsOut> {
-        const response = await this.getWalletsRegistrationStatsRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getWalletsStats without sending the request
-     */
-    async getWalletsStatsRequestOpts(requestParameters: GetWalletsStatsRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
-        }
-
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
-        }
-
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/stats/wallets`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Retrieve comprehensive statistics about user wallets and account activity. This endpoint provides aggregate data including total user counts, registration trends, and activity metrics over specified time ranges for analytics and reporting purposes. 
-     * Get users statistics
-     */
-    async getWalletsStatsRaw(requestParameters: GetWalletsStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WalletsStatsOut>> {
-        const requestOptions = await this.getWalletsStatsRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => WalletsStatsOutFromJSON(jsonValue));
-    }
-
-    /**
-     * Retrieve comprehensive statistics about user wallets and account activity. This endpoint provides aggregate data including total user counts, registration trends, and activity metrics over specified time ranges for analytics and reporting purposes. 
-     * Get users statistics
-     */
-    async getWalletsStats(requestParameters: GetWalletsStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WalletsStatsOut> {
-        const response = await this.getWalletsStatsRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getWalletsTotalStats without sending the request
-     */
-    async getWalletsTotalStatsRequestOpts(requestParameters: GetWalletsTotalStatsRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
-        }
-
-        if (requestParameters['interval'] != null) {
-            queryParameters['interval'] = requestParameters['interval'];
-        }
-
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
-        }
-
-        if (requestParameters['limit'] != null) {
-            queryParameters['limit'] = requestParameters['limit'];
-        }
-
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-
-        let urlPath = `/stats/wallets/total`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Retrieve comprehensive statistics about user wallets and account activity over time. This endpoint provides aggregate data including total user counts, registration trends, and activity metrics over specified time ranges for analytics and reporting purposes. 
-     * Get users statistics over time
-     */
-    async getWalletsTotalStatsRaw(requestParameters: GetWalletsTotalStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WalletsTotalStatsOut>> {
-        const requestOptions = await this.getWalletsTotalStatsRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => WalletsTotalStatsOutFromJSON(jsonValue));
-    }
-
-    /**
-     * Retrieve comprehensive statistics about user wallets and account activity over time. This endpoint provides aggregate data including total user counts, registration trends, and activity metrics over specified time ranges for analytics and reporting purposes. 
-     * Get users statistics over time
-     */
-    async getWalletsTotalStats(requestParameters: GetWalletsTotalStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WalletsTotalStatsOut> {
-        const response = await this.getWalletsTotalStatsRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1682,55 +1580,52 @@ export class WalletsApi extends runtime.BaseAPI {
 /**
  * @export
  */
-export const GetWalletsRegistrationStatsIntervalEnum = {
+export const GetOrganizationWalletStatsIncludeEnum = {
+    Breakdown: 'breakdown',
+    Series: 'series',
+} as const;
+export type GetOrganizationWalletStatsIncludeEnum = typeof GetOrganizationWalletStatsIncludeEnum[keyof typeof GetOrganizationWalletStatsIncludeEnum];
+/**
+ * @export
+ */
+export const GetOrganizationWalletStatsIntervalEnum = {
     Hour: 'hour',
     Day: 'day',
     Week: 'week',
     Month: 'month',
     Year: 'year',
 } as const;
-export type GetWalletsRegistrationStatsIntervalEnum = typeof GetWalletsRegistrationStatsIntervalEnum[keyof typeof GetWalletsRegistrationStatsIntervalEnum];
+export type GetOrganizationWalletStatsIntervalEnum = typeof GetOrganizationWalletStatsIntervalEnum[keyof typeof GetOrganizationWalletStatsIntervalEnum];
 /**
  * @export
  */
-export const GetWalletsRegistrationStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
+export const GetOrganizationWalletStatsGroupByEnum = {
+    Activated: 'activated',
 } as const;
-export type GetWalletsRegistrationStatsTimeRangeEnum = typeof GetWalletsRegistrationStatsTimeRangeEnum[keyof typeof GetWalletsRegistrationStatsTimeRangeEnum];
+export type GetOrganizationWalletStatsGroupByEnum = typeof GetOrganizationWalletStatsGroupByEnum[keyof typeof GetOrganizationWalletStatsGroupByEnum];
 /**
  * @export
  */
-export const GetWalletsStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
+export const GetPublicWalletStatsIncludeEnum = {
+    Breakdown: 'breakdown',
+    Series: 'series',
 } as const;
-export type GetWalletsStatsTimeRangeEnum = typeof GetWalletsStatsTimeRangeEnum[keyof typeof GetWalletsStatsTimeRangeEnum];
+export type GetPublicWalletStatsIncludeEnum = typeof GetPublicWalletStatsIncludeEnum[keyof typeof GetPublicWalletStatsIncludeEnum];
 /**
  * @export
  */
-export const GetWalletsTotalStatsIntervalEnum = {
+export const GetPublicWalletStatsIntervalEnum = {
     Hour: 'hour',
     Day: 'day',
     Week: 'week',
     Month: 'month',
     Year: 'year',
 } as const;
-export type GetWalletsTotalStatsIntervalEnum = typeof GetWalletsTotalStatsIntervalEnum[keyof typeof GetWalletsTotalStatsIntervalEnum];
+export type GetPublicWalletStatsIntervalEnum = typeof GetPublicWalletStatsIntervalEnum[keyof typeof GetPublicWalletStatsIntervalEnum];
 /**
  * @export
  */
-export const GetWalletsTotalStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
+export const GetPublicWalletStatsGroupByEnum = {
+    Activated: 'activated',
 } as const;
-export type GetWalletsTotalStatsTimeRangeEnum = typeof GetWalletsTotalStatsTimeRangeEnum[keyof typeof GetWalletsTotalStatsTimeRangeEnum];
+export type GetPublicWalletStatsGroupByEnum = typeof GetPublicWalletStatsGroupByEnum[keyof typeof GetPublicWalletStatsGroupByEnum];

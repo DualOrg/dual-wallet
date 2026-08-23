@@ -50,16 +50,6 @@ import {
     ModelErrorToJSON,
 } from '../models/ModelError';
 import {
-    type ObjectsCreationStatsOut,
-    ObjectsCreationStatsOutFromJSON,
-    ObjectsCreationStatsOutToJSON,
-} from '../models/ObjectsCreationStatsOut';
-import {
-    type ObjectsStatsOut,
-    ObjectsStatsOutFromJSON,
-    ObjectsStatsOutToJSON,
-} from '../models/ObjectsStatsOut';
-import {
     type PublicSmartObject,
     PublicSmartObjectFromJSON,
     PublicSmartObjectToJSON,
@@ -74,6 +64,11 @@ import {
     SmartObjectFromJSON,
     SmartObjectToJSON,
 } from '../models/SmartObject';
+import {
+    type StatsOut,
+    StatsOutFromJSON,
+    StatsOutToJSON,
+} from '../models/StatsOut';
 
 export interface GetObjectByIdRequest {
     /**
@@ -87,53 +82,6 @@ export interface GetObjectByIdPublicRequest {
      * 
      */
     objectId: string;
-}
-
-export interface GetObjectCreationStatsRequest {
-    /**
-     * Filter resources by the organization they belong to
-     */
-    orgId?: string;
-    /**
-     * Time interval for grouping time-series statistics and analytics data
-     */
-    interval?: GetObjectCreationStatsIntervalEnum;
-    /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetObjectCreationStatsTimeRangeEnum;
-    /**
-     * How many items to return at one time (max 25)
-     */
-    limit?: number;
-    /**
-     * 
-     */
-    whenCreated$gt?: Date;
-    /**
-     * 
-     */
-    whenCreated$lt?: Date;
-    /**
-     * 
-     */
-    whenCreated$gte?: Date;
-    /**
-     * 
-     */
-    whenCreated$lte?: Date;
-    /**
-     * Filter statistics by template ID
-     */
-    templateId?: string;
-    /**
-     * Filter statistics by the owner's address. Objects record ownership as an
-     * address, which is why this is an address rather than a signer name, and
-     * it is the field the service itself applies to narrow an aggregate to an
-     * end-user session's own objects.
-     * 
-     */
-    owner?: string;
 }
 
 export interface GetObjectMetadataByIdPublicRequest {
@@ -150,43 +98,108 @@ export interface GetObjectMetadataByIdPublicLegacyRequest {
     objectId: string;
 }
 
-export interface GetObjectStatsRequest {
+export interface GetOrganizationObjectStatsRequest {
     /**
-     * Filter resources by the organization they belong to
+     * Unique identifier of the organization
      */
-    orgId?: string;
+    organizationId: string;
     /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetObjectStatsTimeRangeEnum;
-    /**
+     * Start of the window, inclusive. Omit for "since the beginning".
+     * Replaces the when_created[$gt] and when_created[$gte] pair: an aggregate has
+     * no use for both an open and a closed lower bound.
      * 
      */
-    whenCreated$gt?: Date;
+    from?: Date;
     /**
+     * End of the window, exclusive. Omit for "up to now". Half-open with from, so
+     * adjacent windows tile without double-counting the boundary record.
      * 
      */
-    whenCreated$lt?: Date;
+    to?: Date;
     /**
+     * Which optional parts of the aggregate to compute. The total is always
+     * returned; a breakdown and a series each cost a grouping pass, so a caller
+     * that only needs the headline number does not pay for them.
      * 
      */
-    whenCreated$gte?: Date;
+    include?: Array<GetOrganizationObjectStatsIncludeEnum>;
     /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
+    interval?: GetOrganizationObjectStatsIntervalEnum;
+    /**
+     * How many groups to keep in a breakdown, largest first. Bounds the response
+     * for a high-cardinality dimension such as template, where an organization may
+     * have thousands.
+     * 
+     * It does not bound a series. The number of buckets in a series is already
+     * fixed by from, to and interval; capping it separately would silently truncate
+     * the window a caller explicitly asked for.
      * 
      */
-    whenCreated$lte?: Date;
+    top?: number;
     /**
-     * Filter statistics by template ID
+     * Group the breakdown by the template each object was minted from. It shapes the breakdown only;
+     * this aggregate cannot split its series. Only
+     * the dimensions listed here are accepted; anything else is rejected
+     * rather than passed through to the aggregation.
+     * 
+     */
+    groupBy?: GetOrganizationObjectStatsGroupByEnum;
+    /**
+     * Count only objects minted from this template
      */
     templateId?: string;
+}
+
+export interface GetPublicObjectStatsRequest {
     /**
-     * Filter statistics by the owner's address. Objects record ownership as an
-     * address, which is why this is an address rather than a wallet id, and it
-     * is the field the service itself applies to narrow an aggregate to an
-     * end-user session's own objects.
+     * Start of the window, inclusive. Omit for "since the beginning".
+     * Replaces the when_created[$gt] and when_created[$gte] pair: an aggregate has
+     * no use for both an open and a closed lower bound.
      * 
      */
-    owner?: string;
+    from?: Date;
+    /**
+     * End of the window, exclusive. Omit for "up to now". Half-open with from, so
+     * adjacent windows tile without double-counting the boundary record.
+     * 
+     */
+    to?: Date;
+    /**
+     * Which optional parts of the aggregate to compute. The total is always
+     * returned; a breakdown and a series each cost a grouping pass, so a caller
+     * that only needs the headline number does not pay for them.
+     * 
+     */
+    include?: Array<GetPublicObjectStatsIncludeEnum>;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
+    interval?: GetPublicObjectStatsIntervalEnum;
+    /**
+     * How many groups to keep in a breakdown, largest first. Bounds the response
+     * for a high-cardinality dimension such as template, where an organization may
+     * have thousands.
+     * 
+     * It does not bound a series. The number of buckets in a series is already
+     * fixed by from, to and interval; capping it separately would silently truncate
+     * the window a caller explicitly asked for.
+     * 
+     */
+    top?: number;
+    /**
+     * Group the breakdown by the template each object was minted from. It shapes the breakdown only;
+     * this aggregate cannot split its series. Only
+     * the dimensions listed here are accepted; anything else is rejected
+     * rather than passed through to the aggregation.
+     * 
+     */
+    groupBy?: GetPublicObjectStatsGroupByEnum;
+    /**
+     * Count only objects minted from this template
+     */
+    templateId?: string;
 }
 
 export interface ListObjectAttributesRequest {
@@ -624,97 +637,6 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Creates request options for getObjectCreationStats without sending the request
-     */
-    async getObjectCreationStatsRequestOpts(requestParameters: GetObjectCreationStatsRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
-        }
-
-        if (requestParameters['interval'] != null) {
-            queryParameters['interval'] = requestParameters['interval'];
-        }
-
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
-        }
-
-        if (requestParameters['limit'] != null) {
-            queryParameters['limit'] = requestParameters['limit'];
-        }
-
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
-        }
-
-        if (requestParameters['templateId'] != null) {
-            queryParameters['template_id'] = requestParameters['templateId'];
-        }
-
-        if (requestParameters['owner'] != null) {
-            queryParameters['owner'] = requestParameters['owner'];
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/stats/objects/creation`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Retrieve time-series data about smart object creation patterns and trends. This endpoint provides detailed analytics on object instantiation over time, including creation velocity, template popularity, and temporal distribution of new object generation. 
-     * Get object creation statistics over time
-     */
-    async getObjectCreationStatsRaw(requestParameters: GetObjectCreationStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ObjectsCreationStatsOut>> {
-        const requestOptions = await this.getObjectCreationStatsRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => ObjectsCreationStatsOutFromJSON(jsonValue));
-    }
-
-    /**
-     * Retrieve time-series data about smart object creation patterns and trends. This endpoint provides detailed analytics on object instantiation over time, including creation velocity, template popularity, and temporal distribution of new object generation. 
-     * Get object creation statistics over time
-     */
-    async getObjectCreationStats(requestParameters: GetObjectCreationStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ObjectsCreationStatsOut> {
-        const response = await this.getObjectCreationStatsRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
      * Creates request options for getObjectMetadataByIdPublic without sending the request
      */
     async getObjectMetadataByIdPublicRequestOpts(requestParameters: GetObjectMetadataByIdPublicRequest): Promise<runtime.RequestOpts> {
@@ -812,41 +734,44 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Creates request options for getObjectStats without sending the request
+     * Creates request options for getOrganizationObjectStats without sending the request
      */
-    async getObjectStatsRequestOpts(requestParameters: GetObjectStatsRequest): Promise<runtime.RequestOpts> {
+    async getOrganizationObjectStatsRequestOpts(requestParameters: GetOrganizationObjectStatsRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['organizationId'] == null) {
+            throw new runtime.RequiredError(
+                'organizationId',
+                'Required parameter "organizationId" was null or undefined when calling getOrganizationObjectStats().'
+            );
+        }
+
         const queryParameters: any = {};
 
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
+        if (requestParameters['from'] != null) {
+            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
         }
 
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
+        if (requestParameters['to'] != null) {
+            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
         }
 
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
+        if (requestParameters['include'] != null) {
+            queryParameters['include'] = requestParameters['include']!.join(runtime.COLLECTION_FORMATS["csv"]);
         }
 
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
+        if (requestParameters['interval'] != null) {
+            queryParameters['interval'] = requestParameters['interval'];
         }
 
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
+        if (requestParameters['top'] != null) {
+            queryParameters['top'] = requestParameters['top'];
         }
 
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
+        if (requestParameters['groupBy'] != null) {
+            queryParameters['group_by'] = requestParameters['groupBy'];
         }
 
         if (requestParameters['templateId'] != null) {
             queryParameters['template_id'] = requestParameters['templateId'];
-        }
-
-        if (requestParameters['owner'] != null) {
-            queryParameters['owner'] = requestParameters['owner'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -864,7 +789,8 @@ export class ObjectsApi extends runtime.BaseAPI {
             }
         }
 
-        let urlPath = `/stats/objects`;
+        let urlPath = `/organizations/{organizationId}/stats/objects`;
+        urlPath = urlPath.replace('{organizationId}', encodeURIComponent(String(requestParameters['organizationId'])));
 
         return {
             path: urlPath,
@@ -875,22 +801,89 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve comprehensive statistics about smart objects and their usage patterns. This endpoint provides aggregate data including total object counts, creation trends, template distribution, and ownership analytics over specified time ranges for platform insights and reporting. 
-     * Get object statistics
+     * Aggregate counts of smart objects. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
+     * Organization object statistics
      */
-    async getObjectStatsRaw(requestParameters: GetObjectStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ObjectsStatsOut>> {
-        const requestOptions = await this.getObjectStatsRequestOpts(requestParameters);
+    async getOrganizationObjectStatsRaw(requestParameters: GetOrganizationObjectStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
+        const requestOptions = await this.getOrganizationObjectStatsRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => ObjectsStatsOutFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => StatsOutFromJSON(jsonValue));
     }
 
     /**
-     * Retrieve comprehensive statistics about smart objects and their usage patterns. This endpoint provides aggregate data including total object counts, creation trends, template distribution, and ownership analytics over specified time ranges for platform insights and reporting. 
-     * Get object statistics
+     * Aggregate counts of smart objects. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
+     * Organization object statistics
      */
-    async getObjectStats(requestParameters: GetObjectStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ObjectsStatsOut> {
-        const response = await this.getObjectStatsRaw(requestParameters, initOverrides);
+    async getOrganizationObjectStats(requestParameters: GetOrganizationObjectStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
+        const response = await this.getOrganizationObjectStatsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getPublicObjectStats without sending the request
+     */
+    async getPublicObjectStatsRequestOpts(requestParameters: GetPublicObjectStatsRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        if (requestParameters['from'] != null) {
+            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+        }
+
+        if (requestParameters['to'] != null) {
+            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+        }
+
+        if (requestParameters['include'] != null) {
+            queryParameters['include'] = requestParameters['include']!.join(runtime.COLLECTION_FORMATS["csv"]);
+        }
+
+        if (requestParameters['interval'] != null) {
+            queryParameters['interval'] = requestParameters['interval'];
+        }
+
+        if (requestParameters['top'] != null) {
+            queryParameters['top'] = requestParameters['top'];
+        }
+
+        if (requestParameters['groupBy'] != null) {
+            queryParameters['group_by'] = requestParameters['groupBy'];
+        }
+
+        if (requestParameters['templateId'] != null) {
+            queryParameters['template_id'] = requestParameters['templateId'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/public/stats/objects`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Aggregate counts of smart objects. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide object statistics
+     */
+    async getPublicObjectStatsRaw(requestParameters: GetPublicObjectStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
+        const requestOptions = await this.getPublicObjectStatsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => StatsOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Aggregate counts of smart objects. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide object statistics
+     */
+    async getPublicObjectStats(requestParameters: GetPublicObjectStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
+        const response = await this.getPublicObjectStatsRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1543,36 +1536,55 @@ export class ObjectsApi extends runtime.BaseAPI {
 /**
  * @export
  */
-export const GetObjectCreationStatsIntervalEnum = {
+export const GetOrganizationObjectStatsIncludeEnum = {
+    Breakdown: 'breakdown',
+    Series: 'series',
+} as const;
+export type GetOrganizationObjectStatsIncludeEnum = typeof GetOrganizationObjectStatsIncludeEnum[keyof typeof GetOrganizationObjectStatsIncludeEnum];
+/**
+ * @export
+ */
+export const GetOrganizationObjectStatsIntervalEnum = {
     Hour: 'hour',
     Day: 'day',
     Week: 'week',
     Month: 'month',
     Year: 'year',
 } as const;
-export type GetObjectCreationStatsIntervalEnum = typeof GetObjectCreationStatsIntervalEnum[keyof typeof GetObjectCreationStatsIntervalEnum];
+export type GetOrganizationObjectStatsIntervalEnum = typeof GetOrganizationObjectStatsIntervalEnum[keyof typeof GetOrganizationObjectStatsIntervalEnum];
 /**
  * @export
  */
-export const GetObjectCreationStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
+export const GetOrganizationObjectStatsGroupByEnum = {
+    Template: 'template',
+} as const;
+export type GetOrganizationObjectStatsGroupByEnum = typeof GetOrganizationObjectStatsGroupByEnum[keyof typeof GetOrganizationObjectStatsGroupByEnum];
+/**
+ * @export
+ */
+export const GetPublicObjectStatsIncludeEnum = {
+    Breakdown: 'breakdown',
+    Series: 'series',
+} as const;
+export type GetPublicObjectStatsIncludeEnum = typeof GetPublicObjectStatsIncludeEnum[keyof typeof GetPublicObjectStatsIncludeEnum];
+/**
+ * @export
+ */
+export const GetPublicObjectStatsIntervalEnum = {
+    Hour: 'hour',
+    Day: 'day',
     Week: 'week',
     Month: 'month',
     Year: 'year',
 } as const;
-export type GetObjectCreationStatsTimeRangeEnum = typeof GetObjectCreationStatsTimeRangeEnum[keyof typeof GetObjectCreationStatsTimeRangeEnum];
+export type GetPublicObjectStatsIntervalEnum = typeof GetPublicObjectStatsIntervalEnum[keyof typeof GetPublicObjectStatsIntervalEnum];
 /**
  * @export
  */
-export const GetObjectStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
+export const GetPublicObjectStatsGroupByEnum = {
+    Template: 'template',
 } as const;
-export type GetObjectStatsTimeRangeEnum = typeof GetObjectStatsTimeRangeEnum[keyof typeof GetObjectStatsTimeRangeEnum];
+export type GetPublicObjectStatsGroupByEnum = typeof GetPublicObjectStatsGroupByEnum[keyof typeof GetPublicObjectStatsGroupByEnum];
 /**
  * @export
  */

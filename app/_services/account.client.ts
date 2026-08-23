@@ -2,7 +2,11 @@ import "client-only";
 
 import { requestJson } from "@/app/_utils/client-api";
 
-export function verifyAccount(input: { code: string; email?: string }) {
+export function verifyAccount(input: {
+  code: string;
+  email?: string;
+  organization_id?: string;
+}) {
   return requestJson<{ ok: boolean }>("/api/session/verify", {
     method: "POST",
     body: JSON.stringify(input),

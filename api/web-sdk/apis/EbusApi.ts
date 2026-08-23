@@ -15,21 +15,6 @@
 
 import * as runtime from '../runtime';
 import {
-    type ActionsExecutionStatsOut,
-    ActionsExecutionStatsOutFromJSON,
-    ActionsExecutionStatsOutToJSON,
-} from '../models/ActionsExecutionStatsOut';
-import {
-    type ActionsStatsFeesOut,
-    ActionsStatsFeesOutFromJSON,
-    ActionsStatsFeesOutToJSON,
-} from '../models/ActionsStatsFeesOut';
-import {
-    type ActionsStatsOut,
-    ActionsStatsOutFromJSON,
-    ActionsStatsOutToJSON,
-} from '../models/ActionsStatsOut';
-import {
     type BalanceHistoryOut,
     BalanceHistoryOutFromJSON,
     BalanceHistoryOutToJSON,
@@ -49,6 +34,11 @@ import {
     ExecuteResultFromJSON,
     ExecuteResultToJSON,
 } from '../models/ExecuteResult';
+import {
+    type FeesOut,
+    FeesOutFromJSON,
+    FeesOutToJSON,
+} from '../models/FeesOut';
 import {
     type ListActionLogsOut,
     ListActionLogsOutFromJSON,
@@ -79,6 +69,11 @@ import {
     PrepareExecuteRequestFromJSON,
     PrepareExecuteRequestToJSON,
 } from '../models/PrepareExecuteRequest';
+import {
+    type StatsOut,
+    StatsOutFromJSON,
+    StatsOutToJSON,
+} from '../models/StatsOut';
 
 export interface ExecuteActionRequest {
     /**
@@ -87,132 +82,62 @@ export interface ExecuteActionRequest {
     executeRequest: ExecuteRequest;
 }
 
-export interface GetActionExecutionStatsRequest {
-    /**
-     * Filter resources by the organization they belong to
-     */
-    orgId?: string;
-    /**
-     * Time interval for grouping time-series statistics and analytics data
-     */
-    interval?: GetActionExecutionStatsIntervalEnum;
-    /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetActionExecutionStatsTimeRangeEnum;
-    /**
-     * How many items to return at one time (max 25)
-     */
-    limit?: number;
-    /**
-     * 
-     */
-    whenCreated$gt?: Date;
-    /**
-     * 
-     */
-    whenCreated$lt?: Date;
-    /**
-     * 
-     */
-    whenCreated$gte?: Date;
-    /**
-     * 
-     */
-    whenCreated$lte?: Date;
-    /**
-     * Filter statistics by action name
-     */
-    actionName?: string;
-    /**
-     * Filter statistics by signer account name
-     */
-    signer?: string;
-}
-
-export interface GetActionFeesStatsRequest {
-    /**
-     * Filter resources by the organization they belong to
-     */
-    orgId?: string;
-    /**
-     * Time interval for grouping time-series statistics and analytics data
-     */
-    interval?: GetActionFeesStatsIntervalEnum;
-    /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetActionFeesStatsTimeRangeEnum;
-    /**
-     * How many items to return at one time (max 25)
-     */
-    limit?: number;
-    /**
-     * 
-     */
-    whenCreated$gt?: Date;
-    /**
-     * 
-     */
-    whenCreated$lt?: Date;
-    /**
-     * 
-     */
-    whenCreated$gte?: Date;
-    /**
-     * 
-     */
-    whenCreated$lte?: Date;
-    /**
-     * Filter statistics by action name
-     */
-    actionName?: string;
-    /**
-     * Filter statistics by signer account name
-     */
-    signer?: string;
-}
-
-export interface GetActionsStatsRequest {
-    /**
-     * Filter resources by the organization they belong to
-     */
-    orgId?: string;
-    /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetActionsStatsTimeRangeEnum;
-    /**
-     * 
-     */
-    whenCreated$gt?: Date;
-    /**
-     * 
-     */
-    whenCreated$lt?: Date;
-    /**
-     * 
-     */
-    whenCreated$gte?: Date;
-    /**
-     * 
-     */
-    whenCreated$lte?: Date;
-    /**
-     * Filter statistics by action name
-     */
-    actionName?: string;
-    /**
-     * Filter statistics by signer account name
-     */
-    signer?: string;
-}
-
 export interface GetAuthNonceRequest {
     /**
      * The wallet address to retrieve the nonce for. If not provided, the nonce for the authenticated wallet will be returned.
      */
     address: string;
+}
+
+export interface GetOrganizationActionStatsRequest {
+    /**
+     * Unique identifier of the organization
+     */
+    organizationId: string;
+    /**
+     * Start of the window, inclusive. Omit for "since the beginning".
+     * Replaces the when_created[$gt] and when_created[$gte] pair: an aggregate has
+     * no use for both an open and a closed lower bound.
+     * 
+     */
+    from?: Date;
+    /**
+     * End of the window, exclusive. Omit for "up to now". Half-open with from, so
+     * adjacent windows tile without double-counting the boundary record.
+     * 
+     */
+    to?: Date;
+    /**
+     * Which optional parts of the aggregate to compute. The total is always
+     * returned; a breakdown and a series each cost a grouping pass, so a caller
+     * that only needs the headline number does not pay for them.
+     * 
+     */
+    include?: Array<GetOrganizationActionStatsIncludeEnum>;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
+    interval?: GetOrganizationActionStatsIntervalEnum;
+    /**
+     * How many groups to keep in a breakdown, largest first. Bounds the response
+     * for a high-cardinality dimension such as template, where an organization may
+     * have thousands.
+     * 
+     * It does not bound a series. The number of buckets in a series is already
+     * fixed by from, to and interval; capping it separately would silently truncate
+     * the window a caller explicitly asked for.
+     * 
+     */
+    top?: number;
+    /**
+     * Group by action name. This shapes the breakdown, and combined with
+     * include=series it also splits the series, giving one bucket per action
+     * per interval with the action in each point's key. Only the dimensions
+     * listed here are accepted; anything else is rejected rather than passed
+     * through to the aggregation.
+     * 
+     */
+    groupBy?: GetOrganizationActionStatsGroupByEnum;
 }
 
 export interface GetOrganizationBalanceRequest {
@@ -255,6 +180,151 @@ export interface GetOrganizationBalanceHistoryRequest {
      * 
      */
     whenCreated$lte?: Date;
+}
+
+export interface GetOrganizationFeeStatsRequest {
+    /**
+     * Unique identifier of the organization
+     */
+    organizationId: string;
+    /**
+     * Start of the window, inclusive. Omit for "since the beginning".
+     * Replaces the when_created[$gt] and when_created[$gte] pair: an aggregate has
+     * no use for both an open and a closed lower bound.
+     * 
+     */
+    from?: Date;
+    /**
+     * End of the window, exclusive. Omit for "up to now". Half-open with from, so
+     * adjacent windows tile without double-counting the boundary record.
+     * 
+     */
+    to?: Date;
+    /**
+     * Which optional parts of the aggregate to compute. The total is always
+     * returned; a breakdown and a series each cost a grouping pass, so a caller
+     * that only needs the headline number does not pay for them.
+     * 
+     */
+    include?: Array<GetOrganizationFeeStatsIncludeEnum>;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
+    interval?: GetOrganizationFeeStatsIntervalEnum;
+    /**
+     * How many groups to keep in a breakdown, largest first. Bounds the response
+     * for a high-cardinality dimension such as template, where an organization may
+     * have thousands.
+     * 
+     * It does not bound a series. The number of buckets in a series is already
+     * fixed by from, to and interval; capping it separately would silently truncate
+     * the window a caller explicitly asked for.
+     * 
+     */
+    top?: number;
+    /**
+     * Group by action name. This shapes the breakdown, and combined with
+     * include=series it also splits the series, giving one bucket per action
+     * per interval with the action in each point's key. Only the dimensions
+     * listed here are accepted; anything else is rejected rather than passed
+     * through to the aggregation.
+     * 
+     */
+    groupBy?: GetOrganizationFeeStatsGroupByEnum;
+}
+
+export interface GetPublicActionStatsRequest {
+    /**
+     * Start of the window, inclusive. Omit for "since the beginning".
+     * Replaces the when_created[$gt] and when_created[$gte] pair: an aggregate has
+     * no use for both an open and a closed lower bound.
+     * 
+     */
+    from?: Date;
+    /**
+     * End of the window, exclusive. Omit for "up to now". Half-open with from, so
+     * adjacent windows tile without double-counting the boundary record.
+     * 
+     */
+    to?: Date;
+    /**
+     * Which optional parts of the aggregate to compute. The total is always
+     * returned; a breakdown and a series each cost a grouping pass, so a caller
+     * that only needs the headline number does not pay for them.
+     * 
+     */
+    include?: Array<GetPublicActionStatsIncludeEnum>;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
+    interval?: GetPublicActionStatsIntervalEnum;
+    /**
+     * How many groups to keep in a breakdown, largest first. Bounds the response
+     * for a high-cardinality dimension such as template, where an organization may
+     * have thousands.
+     * 
+     * It does not bound a series. The number of buckets in a series is already
+     * fixed by from, to and interval; capping it separately would silently truncate
+     * the window a caller explicitly asked for.
+     * 
+     */
+    top?: number;
+    /**
+     * Group by action name. This shapes the breakdown, and combined with
+     * include=series it also splits the series, giving one bucket per action
+     * per interval with the action in each point's key. Only the dimensions
+     * listed here are accepted; anything else is rejected rather than passed
+     * through to the aggregation.
+     * 
+     */
+    groupBy?: GetPublicActionStatsGroupByEnum;
+}
+
+export interface GetPublicFeeStatsRequest {
+    /**
+     * Start of the window, inclusive. Omit for "since the beginning".
+     * Replaces the when_created[$gt] and when_created[$gte] pair: an aggregate has
+     * no use for both an open and a closed lower bound.
+     * 
+     */
+    from?: Date;
+    /**
+     * End of the window, exclusive. Omit for "up to now". Half-open with from, so
+     * adjacent windows tile without double-counting the boundary record.
+     * 
+     */
+    to?: Date;
+    /**
+     * Which optional parts of the aggregate to compute. The total is always
+     * returned; a breakdown and a series each cost a grouping pass, so a caller
+     * that only needs the headline number does not pay for them.
+     * 
+     */
+    include?: Array<GetPublicFeeStatsIncludeEnum>;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
+    interval?: GetPublicFeeStatsIntervalEnum;
+    /**
+     * How many groups to keep in a breakdown, largest first. Bounds the response
+     * for a high-cardinality dimension such as template, where an organization may
+     * have thousands.
+     * 
+     * It does not bound a series. The number of buckets in a series is already
+     * fixed by from, to and interval; capping it separately would silently truncate
+     * the window a caller explicitly asked for.
+     * 
+     */
+    top?: number;
+    /**
+     * Group by action name. This shapes the breakdown, and combined with
+     * include=series it also splits the series, giving one bucket per action
+     * per interval with the action in each point's key. Only the dimensions
+     * listed here are accepted; anything else is rejected rather than passed
+     * through to the aggregation.
+     * 
+     */
+    groupBy?: GetPublicFeeStatsGroupByEnum;
 }
 
 export interface ListActionLogsRequest {
@@ -406,271 +476,6 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Creates request options for getActionExecutionStats without sending the request
-     */
-    async getActionExecutionStatsRequestOpts(requestParameters: GetActionExecutionStatsRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
-        }
-
-        if (requestParameters['interval'] != null) {
-            queryParameters['interval'] = requestParameters['interval'];
-        }
-
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
-        }
-
-        if (requestParameters['limit'] != null) {
-            queryParameters['limit'] = requestParameters['limit'];
-        }
-
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
-        }
-
-        if (requestParameters['actionName'] != null) {
-            queryParameters['action_name'] = requestParameters['actionName'];
-        }
-
-        if (requestParameters['signer'] != null) {
-            queryParameters['signer'] = requestParameters['signer'];
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/stats/actions/execution`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Retrieve time-series data about blockchain action execution patterns and trends. This endpoint provides detailed analytics on action processing over time, including execution velocity, action type popularity, and temporal distribution of blockchain transactions. 
-     * Get action execution statistics over time
-     */
-    async getActionExecutionStatsRaw(requestParameters: GetActionExecutionStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ActionsExecutionStatsOut>> {
-        const requestOptions = await this.getActionExecutionStatsRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => ActionsExecutionStatsOutFromJSON(jsonValue));
-    }
-
-    /**
-     * Retrieve time-series data about blockchain action execution patterns and trends. This endpoint provides detailed analytics on action processing over time, including execution velocity, action type popularity, and temporal distribution of blockchain transactions. 
-     * Get action execution statistics over time
-     */
-    async getActionExecutionStats(requestParameters: GetActionExecutionStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ActionsExecutionStatsOut> {
-        const response = await this.getActionExecutionStatsRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getActionFeesStats without sending the request
-     */
-    async getActionFeesStatsRequestOpts(requestParameters: GetActionFeesStatsRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
-        }
-
-        if (requestParameters['interval'] != null) {
-            queryParameters['interval'] = requestParameters['interval'];
-        }
-
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
-        }
-
-        if (requestParameters['limit'] != null) {
-            queryParameters['limit'] = requestParameters['limit'];
-        }
-
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
-        }
-
-        if (requestParameters['actionName'] != null) {
-            queryParameters['action_name'] = requestParameters['actionName'];
-        }
-
-        if (requestParameters['signer'] != null) {
-            queryParameters['signer'] = requestParameters['signer'];
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/stats/actions/fees`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Retrieve time-series data about blockchain action fee patterns and trends. This endpoint provides detailed analytics on transaction costs over time, including fee distribution, cost trends by action type, and temporal analysis of blockchain transaction expenses. 
-     * Get action fees statistics over time
-     */
-    async getActionFeesStatsRaw(requestParameters: GetActionFeesStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ActionsStatsFeesOut>> {
-        const requestOptions = await this.getActionFeesStatsRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => ActionsStatsFeesOutFromJSON(jsonValue));
-    }
-
-    /**
-     * Retrieve time-series data about blockchain action fee patterns and trends. This endpoint provides detailed analytics on transaction costs over time, including fee distribution, cost trends by action type, and temporal analysis of blockchain transaction expenses. 
-     * Get action fees statistics over time
-     */
-    async getActionFeesStats(requestParameters: GetActionFeesStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ActionsStatsFeesOut> {
-        const response = await this.getActionFeesStatsRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getActionsStats without sending the request
-     */
-    async getActionsStatsRequestOpts(requestParameters: GetActionsStatsRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
-        }
-
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
-        }
-
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
-        }
-
-        if (requestParameters['actionName'] != null) {
-            queryParameters['action_name'] = requestParameters['actionName'];
-        }
-
-        if (requestParameters['signer'] != null) {
-            queryParameters['signer'] = requestParameters['signer'];
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/stats/actions`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Retrieve comprehensive statistics about blockchain actions and their execution patterns. This endpoint provides aggregate data including total action counts, execution trends, action type distribution, and wallet activity analytics over specified time ranges. 
-     * Get actions statistics
-     */
-    async getActionsStatsRaw(requestParameters: GetActionsStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ActionsStatsOut>> {
-        const requestOptions = await this.getActionsStatsRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => ActionsStatsOutFromJSON(jsonValue));
-    }
-
-    /**
-     * Retrieve comprehensive statistics about blockchain actions and their execution patterns. This endpoint provides aggregate data including total action counts, execution trends, action type distribution, and wallet activity analytics over specified time ranges. 
-     * Get actions statistics
-     */
-    async getActionsStats(requestParameters: GetActionsStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ActionsStatsOut> {
-        const response = await this.getActionsStatsRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
      * Creates request options for getAuthNonce without sending the request
      */
     async getAuthNonceRequestOpts(requestParameters: GetAuthNonceRequest): Promise<runtime.RequestOpts> {
@@ -756,6 +561,89 @@ export class EbusApi extends runtime.BaseAPI {
      */
     async getNetworkFees(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<NetworkFees> {
         const response = await this.getNetworkFeesRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getOrganizationActionStats without sending the request
+     */
+    async getOrganizationActionStatsRequestOpts(requestParameters: GetOrganizationActionStatsRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['organizationId'] == null) {
+            throw new runtime.RequiredError(
+                'organizationId',
+                'Required parameter "organizationId" was null or undefined when calling getOrganizationActionStats().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['from'] != null) {
+            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+        }
+
+        if (requestParameters['to'] != null) {
+            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+        }
+
+        if (requestParameters['include'] != null) {
+            queryParameters['include'] = requestParameters['include']!.join(runtime.COLLECTION_FORMATS["csv"]);
+        }
+
+        if (requestParameters['interval'] != null) {
+            queryParameters['interval'] = requestParameters['interval'];
+        }
+
+        if (requestParameters['top'] != null) {
+            queryParameters['top'] = requestParameters['top'];
+        }
+
+        if (requestParameters['groupBy'] != null) {
+            queryParameters['group_by'] = requestParameters['groupBy'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearer-auth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/organizations/{organizationId}/stats/actions`;
+        urlPath = urlPath.replace('{organizationId}', encodeURIComponent(String(requestParameters['organizationId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Aggregate counts of executed actions. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
+     * Organization action statistics
+     */
+    async getOrganizationActionStatsRaw(requestParameters: GetOrganizationActionStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
+        const requestOptions = await this.getOrganizationActionStatsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => StatsOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Aggregate counts of executed actions. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
+     * Organization action statistics
+     */
+    async getOrganizationActionStats(requestParameters: GetOrganizationActionStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
+        const response = await this.getOrganizationActionStatsRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -902,6 +790,215 @@ export class EbusApi extends runtime.BaseAPI {
      */
     async getOrganizationBalanceHistory(requestParameters: GetOrganizationBalanceHistoryRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BalanceHistoryOut> {
         const response = await this.getOrganizationBalanceHistoryRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getOrganizationFeeStats without sending the request
+     */
+    async getOrganizationFeeStatsRequestOpts(requestParameters: GetOrganizationFeeStatsRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['organizationId'] == null) {
+            throw new runtime.RequiredError(
+                'organizationId',
+                'Required parameter "organizationId" was null or undefined when calling getOrganizationFeeStats().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['from'] != null) {
+            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+        }
+
+        if (requestParameters['to'] != null) {
+            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+        }
+
+        if (requestParameters['include'] != null) {
+            queryParameters['include'] = requestParameters['include']!.join(runtime.COLLECTION_FORMATS["csv"]);
+        }
+
+        if (requestParameters['interval'] != null) {
+            queryParameters['interval'] = requestParameters['interval'];
+        }
+
+        if (requestParameters['top'] != null) {
+            queryParameters['top'] = requestParameters['top'];
+        }
+
+        if (requestParameters['groupBy'] != null) {
+            queryParameters['group_by'] = requestParameters['groupBy'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearer-auth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/organizations/{organizationId}/stats/fees`;
+        urlPath = urlPath.replace('{organizationId}', encodeURIComponent(String(requestParameters['organizationId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Aggregate sums of transaction fees. Returns the totals for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
+     * Organization fee statistics
+     */
+    async getOrganizationFeeStatsRaw(requestParameters: GetOrganizationFeeStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<FeesOut>> {
+        const requestOptions = await this.getOrganizationFeeStatsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => FeesOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Aggregate sums of transaction fees. Returns the totals for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
+     * Organization fee statistics
+     */
+    async getOrganizationFeeStats(requestParameters: GetOrganizationFeeStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<FeesOut> {
+        const response = await this.getOrganizationFeeStatsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getPublicActionStats without sending the request
+     */
+    async getPublicActionStatsRequestOpts(requestParameters: GetPublicActionStatsRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        if (requestParameters['from'] != null) {
+            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+        }
+
+        if (requestParameters['to'] != null) {
+            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+        }
+
+        if (requestParameters['include'] != null) {
+            queryParameters['include'] = requestParameters['include']!.join(runtime.COLLECTION_FORMATS["csv"]);
+        }
+
+        if (requestParameters['interval'] != null) {
+            queryParameters['interval'] = requestParameters['interval'];
+        }
+
+        if (requestParameters['top'] != null) {
+            queryParameters['top'] = requestParameters['top'];
+        }
+
+        if (requestParameters['groupBy'] != null) {
+            queryParameters['group_by'] = requestParameters['groupBy'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/public/stats/actions`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Aggregate counts of executed actions. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide action statistics
+     */
+    async getPublicActionStatsRaw(requestParameters: GetPublicActionStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
+        const requestOptions = await this.getPublicActionStatsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => StatsOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Aggregate counts of executed actions. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide action statistics
+     */
+    async getPublicActionStats(requestParameters: GetPublicActionStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
+        const response = await this.getPublicActionStatsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getPublicFeeStats without sending the request
+     */
+    async getPublicFeeStatsRequestOpts(requestParameters: GetPublicFeeStatsRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        if (requestParameters['from'] != null) {
+            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+        }
+
+        if (requestParameters['to'] != null) {
+            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+        }
+
+        if (requestParameters['include'] != null) {
+            queryParameters['include'] = requestParameters['include']!.join(runtime.COLLECTION_FORMATS["csv"]);
+        }
+
+        if (requestParameters['interval'] != null) {
+            queryParameters['interval'] = requestParameters['interval'];
+        }
+
+        if (requestParameters['top'] != null) {
+            queryParameters['top'] = requestParameters['top'];
+        }
+
+        if (requestParameters['groupBy'] != null) {
+            queryParameters['group_by'] = requestParameters['groupBy'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/public/stats/fees`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Aggregate sums of transaction fees. Returns the totals for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide fee statistics
+     */
+    async getPublicFeeStatsRaw(requestParameters: GetPublicFeeStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<FeesOut>> {
+        const requestOptions = await this.getPublicFeeStatsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => FeesOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Aggregate sums of transaction fees. Returns the totals for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide fee statistics
+     */
+    async getPublicFeeStats(requestParameters: GetPublicFeeStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<FeesOut> {
+        const response = await this.getPublicFeeStatsRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1090,58 +1187,29 @@ export class EbusApi extends runtime.BaseAPI {
 /**
  * @export
  */
-export const GetActionExecutionStatsIntervalEnum = {
+export const GetOrganizationActionStatsIncludeEnum = {
+    Breakdown: 'breakdown',
+    Series: 'series',
+} as const;
+export type GetOrganizationActionStatsIncludeEnum = typeof GetOrganizationActionStatsIncludeEnum[keyof typeof GetOrganizationActionStatsIncludeEnum];
+/**
+ * @export
+ */
+export const GetOrganizationActionStatsIntervalEnum = {
     Hour: 'hour',
     Day: 'day',
     Week: 'week',
     Month: 'month',
     Year: 'year',
 } as const;
-export type GetActionExecutionStatsIntervalEnum = typeof GetActionExecutionStatsIntervalEnum[keyof typeof GetActionExecutionStatsIntervalEnum];
+export type GetOrganizationActionStatsIntervalEnum = typeof GetOrganizationActionStatsIntervalEnum[keyof typeof GetOrganizationActionStatsIntervalEnum];
 /**
  * @export
  */
-export const GetActionExecutionStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
+export const GetOrganizationActionStatsGroupByEnum = {
+    Action: 'action',
 } as const;
-export type GetActionExecutionStatsTimeRangeEnum = typeof GetActionExecutionStatsTimeRangeEnum[keyof typeof GetActionExecutionStatsTimeRangeEnum];
-/**
- * @export
- */
-export const GetActionFeesStatsIntervalEnum = {
-    Hour: 'hour',
-    Day: 'day',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
-} as const;
-export type GetActionFeesStatsIntervalEnum = typeof GetActionFeesStatsIntervalEnum[keyof typeof GetActionFeesStatsIntervalEnum];
-/**
- * @export
- */
-export const GetActionFeesStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
-} as const;
-export type GetActionFeesStatsTimeRangeEnum = typeof GetActionFeesStatsTimeRangeEnum[keyof typeof GetActionFeesStatsTimeRangeEnum];
-/**
- * @export
- */
-export const GetActionsStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
-} as const;
-export type GetActionsStatsTimeRangeEnum = typeof GetActionsStatsTimeRangeEnum[keyof typeof GetActionsStatsTimeRangeEnum];
+export type GetOrganizationActionStatsGroupByEnum = typeof GetOrganizationActionStatsGroupByEnum[keyof typeof GetOrganizationActionStatsGroupByEnum];
 /**
  * @export
  */
@@ -1164,6 +1232,84 @@ export const GetOrganizationBalanceHistoryTimeRangeEnum = {
     Year: 'year',
 } as const;
 export type GetOrganizationBalanceHistoryTimeRangeEnum = typeof GetOrganizationBalanceHistoryTimeRangeEnum[keyof typeof GetOrganizationBalanceHistoryTimeRangeEnum];
+/**
+ * @export
+ */
+export const GetOrganizationFeeStatsIncludeEnum = {
+    Breakdown: 'breakdown',
+    Series: 'series',
+} as const;
+export type GetOrganizationFeeStatsIncludeEnum = typeof GetOrganizationFeeStatsIncludeEnum[keyof typeof GetOrganizationFeeStatsIncludeEnum];
+/**
+ * @export
+ */
+export const GetOrganizationFeeStatsIntervalEnum = {
+    Hour: 'hour',
+    Day: 'day',
+    Week: 'week',
+    Month: 'month',
+    Year: 'year',
+} as const;
+export type GetOrganizationFeeStatsIntervalEnum = typeof GetOrganizationFeeStatsIntervalEnum[keyof typeof GetOrganizationFeeStatsIntervalEnum];
+/**
+ * @export
+ */
+export const GetOrganizationFeeStatsGroupByEnum = {
+    Action: 'action',
+} as const;
+export type GetOrganizationFeeStatsGroupByEnum = typeof GetOrganizationFeeStatsGroupByEnum[keyof typeof GetOrganizationFeeStatsGroupByEnum];
+/**
+ * @export
+ */
+export const GetPublicActionStatsIncludeEnum = {
+    Breakdown: 'breakdown',
+    Series: 'series',
+} as const;
+export type GetPublicActionStatsIncludeEnum = typeof GetPublicActionStatsIncludeEnum[keyof typeof GetPublicActionStatsIncludeEnum];
+/**
+ * @export
+ */
+export const GetPublicActionStatsIntervalEnum = {
+    Hour: 'hour',
+    Day: 'day',
+    Week: 'week',
+    Month: 'month',
+    Year: 'year',
+} as const;
+export type GetPublicActionStatsIntervalEnum = typeof GetPublicActionStatsIntervalEnum[keyof typeof GetPublicActionStatsIntervalEnum];
+/**
+ * @export
+ */
+export const GetPublicActionStatsGroupByEnum = {
+    Action: 'action',
+} as const;
+export type GetPublicActionStatsGroupByEnum = typeof GetPublicActionStatsGroupByEnum[keyof typeof GetPublicActionStatsGroupByEnum];
+/**
+ * @export
+ */
+export const GetPublicFeeStatsIncludeEnum = {
+    Breakdown: 'breakdown',
+    Series: 'series',
+} as const;
+export type GetPublicFeeStatsIncludeEnum = typeof GetPublicFeeStatsIncludeEnum[keyof typeof GetPublicFeeStatsIncludeEnum];
+/**
+ * @export
+ */
+export const GetPublicFeeStatsIntervalEnum = {
+    Hour: 'hour',
+    Day: 'day',
+    Week: 'week',
+    Month: 'month',
+    Year: 'year',
+} as const;
+export type GetPublicFeeStatsIntervalEnum = typeof GetPublicFeeStatsIntervalEnum[keyof typeof GetPublicFeeStatsIntervalEnum];
+/**
+ * @export
+ */
+export const GetPublicFeeStatsGroupByEnum = {
+    Action: 'action',
+} as const;
+export type GetPublicFeeStatsGroupByEnum = typeof GetPublicFeeStatsGroupByEnum[keyof typeof GetPublicFeeStatsGroupByEnum];
 /**
  * @export
  */

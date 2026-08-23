@@ -29,6 +29,10 @@ export interface VerifyIn {
      */
     phoneNumber?: string;
     /**
+     * Organization the account belongs to. Absent for a system account, which is how the two are told apart: the verification code is looked up against the one wallet this contact resolves to, and a contact can exist once per organization and once in the system scope.
+     */
+    organizationId?: string;
+    /**
      * Verification code sent to the user's email or phone
      */
     code: string;
@@ -54,6 +58,7 @@ export function VerifyInFromJSONTyped(json: any, ignoreDiscriminator: boolean): 
         
         'email': json['email'] == null ? undefined : json['email'],
         'phoneNumber': json['phone_number'] == null ? undefined : json['phone_number'],
+        'organizationId': json['organization_id'] == null ? undefined : json['organization_id'],
         'code': json['code'],
     };
 }
@@ -71,6 +76,7 @@ export function VerifyInToJSONTyped(value?: VerifyIn | null, ignoreDiscriminator
         
         'email': value['email'],
         'phone_number': value['phoneNumber'],
+        'organization_id': value['organizationId'],
         'code': value['code'],
     };
 }

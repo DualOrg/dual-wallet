@@ -21,13 +21,27 @@ import {
     FeesTimeDataToJSON,
     FeesTimeDataToJSONTyped,
 } from './FeesTimeData';
+import type { Interval } from './Interval';
+import {
+    IntervalFromJSON,
+    IntervalFromJSONTyped,
+    IntervalToJSON,
+    IntervalToJSONTyped,
+} from './Interval';
 
 /**
+ * A fee aggregate. Fees keep their own response type rather than reusing the
+ * count one, because a sum of money is not a count: it needs decimal and wei
+ * side by side, and squeezing that into a generic count field loses precision.
  * 
  * @export
- * @interface ActionsStatsFeesOut
+ * @interface FeesOut
  */
-export interface ActionsStatsFeesOut {
+export interface FeesOut {
+    /**
+     * Number of actions the sums are taken over
+     */
+    count: number;
     /**
      * 
      */
@@ -55,13 +69,24 @@ export interface ActionsStatsFeesOut {
     /**
      * 
      */
-    byName?: Array<FeesTimeData>;
+    interval?: Interval;
+    /**
+     * Fee sums grouped by the group_by dimension. Present with include=breakdown.
+     */
+    breakdown?: Array<FeesTimeData>;
+    /**
+     * Fee sums per time bucket. Present with include=series.
+     */
+    series?: Array<FeesTimeData>;
 }
 
+
+
 /**
- * Check if a given object implements the ActionsStatsFeesOut interface.
+ * Check if a given object implements the FeesOut interface.
  */
-export function instanceOfActionsStatsFeesOut(value: object): value is ActionsStatsFeesOut {
+export function instanceOfFeesOut(value: object): value is FeesOut {
+    if (!('count' in value) || value['count'] === undefined) return false;
     if ((!('totalFee' in (value as Record<string, any>)) && !('total_fee' in (value as Record<string, any>))) || ((value as Record<string, any>)['totalFee'] === undefined && (value as Record<string, any>)['total_fee'] === undefined)) return false;
     if ((!('totalFeeWei' in (value as Record<string, any>)) && !('total_fee_wei' in (value as Record<string, any>))) || ((value as Record<string, any>)['totalFeeWei'] === undefined && (value as Record<string, any>)['total_fee_wei'] === undefined)) return false;
     if ((!('baseFee' in (value as Record<string, any>)) && !('base_fee' in (value as Record<string, any>))) || ((value as Record<string, any>)['baseFee'] === undefined && (value as Record<string, any>)['base_fee'] === undefined)) return false;
@@ -71,44 +96,50 @@ export function instanceOfActionsStatsFeesOut(value: object): value is ActionsSt
     return true;
 }
 
-export function ActionsStatsFeesOutFromJSON(json: any): ActionsStatsFeesOut {
-    return ActionsStatsFeesOutFromJSONTyped(json, false);
+export function FeesOutFromJSON(json: any): FeesOut {
+    return FeesOutFromJSONTyped(json, false);
 }
 
-export function ActionsStatsFeesOutFromJSONTyped(json: any, ignoreDiscriminator: boolean): ActionsStatsFeesOut {
+export function FeesOutFromJSONTyped(json: any, ignoreDiscriminator: boolean): FeesOut {
     if (json == null) {
         return json;
     }
     return {
         
+        'count': json['count'],
         'totalFee': json['total_fee'],
         'totalFeeWei': json['total_fee_wei'],
         'baseFee': json['base_fee'],
         'baseFeeWei': json['base_fee_wei'],
         'dynamicFee': json['dynamic_fee'],
         'dynamicFeeWei': json['dynamic_fee_wei'],
-        'byName': json['by_name'] == null ? undefined : ((json['by_name'] as Array<any>).map(FeesTimeDataFromJSON)),
+        'interval': json['interval'] == null ? undefined : IntervalFromJSON(json['interval']),
+        'breakdown': json['breakdown'] == null ? undefined : ((json['breakdown'] as Array<any>).map(FeesTimeDataFromJSON)),
+        'series': json['series'] == null ? undefined : ((json['series'] as Array<any>).map(FeesTimeDataFromJSON)),
     };
 }
 
-export function ActionsStatsFeesOutToJSON(json: any): ActionsStatsFeesOut {
-    return ActionsStatsFeesOutToJSONTyped(json, false);
+export function FeesOutToJSON(json: any): FeesOut {
+    return FeesOutToJSONTyped(json, false);
 }
 
-export function ActionsStatsFeesOutToJSONTyped(value?: ActionsStatsFeesOut | null, ignoreDiscriminator: boolean = false): any {
+export function FeesOutToJSONTyped(value?: FeesOut | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
 
     return {
         
+        'count': value['count'],
         'total_fee': value['totalFee'],
         'total_fee_wei': value['totalFeeWei'],
         'base_fee': value['baseFee'],
         'base_fee_wei': value['baseFeeWei'],
         'dynamic_fee': value['dynamicFee'],
         'dynamic_fee_wei': value['dynamicFeeWei'],
-        'by_name': value['byName'] == null ? undefined : ((value['byName'] as Array<any>).map(FeesTimeDataToJSON)),
+        'interval': IntervalToJSON(value['interval']),
+        'breakdown': value['breakdown'] == null ? undefined : ((value['breakdown'] as Array<any>).map(FeesTimeDataToJSON)),
+        'series': value['series'] == null ? undefined : ((value['series'] as Array<any>).map(FeesTimeDataToJSON)),
     };
 }
 

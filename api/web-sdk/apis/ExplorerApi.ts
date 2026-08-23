@@ -15,21 +15,6 @@
 
 import * as runtime from '../runtime';
 import {
-    type ActionsExecutionStatsOut,
-    ActionsExecutionStatsOutFromJSON,
-    ActionsExecutionStatsOutToJSON,
-} from '../models/ActionsExecutionStatsOut';
-import {
-    type ActionsStatsFeesOut,
-    ActionsStatsFeesOutFromJSON,
-    ActionsStatsFeesOutToJSON,
-} from '../models/ActionsStatsFeesOut';
-import {
-    type ActionsStatsOut,
-    ActionsStatsOutFromJSON,
-    ActionsStatsOutToJSON,
-} from '../models/ActionsStatsOut';
-import {
     type Batch,
     BatchFromJSON,
     BatchToJSON,
@@ -44,6 +29,11 @@ import {
     DisplayVariantFromJSON,
     DisplayVariantToJSON,
 } from '../models/DisplayVariant';
+import {
+    type FeesOut,
+    FeesOutFromJSON,
+    FeesOutToJSON,
+} from '../models/FeesOut';
 import {
     type ListActionLogsOut,
     ListActionLogsOutFromJSON,
@@ -120,16 +110,6 @@ import {
     NetworkTokenPriceHistoryToJSON,
 } from '../models/NetworkTokenPriceHistory';
 import {
-    type ObjectsCreationStatsOut,
-    ObjectsCreationStatsOutFromJSON,
-    ObjectsCreationStatsOutToJSON,
-} from '../models/ObjectsCreationStatsOut';
-import {
-    type ObjectsStatsOut,
-    ObjectsStatsOutFromJSON,
-    ObjectsStatsOutToJSON,
-} from '../models/ObjectsStatsOut';
-import {
     type PublicSmartObject,
     PublicSmartObjectFromJSON,
     PublicSmartObjectToJSON,
@@ -155,146 +135,15 @@ import {
     StakingOperationsStatsToJSON,
 } from '../models/StakingOperationsStats';
 import {
+    type StatsOut,
+    StatsOutFromJSON,
+    StatsOutToJSON,
+} from '../models/StatsOut';
+import {
     type TokenCirculatingSupplyInfo,
     TokenCirculatingSupplyInfoFromJSON,
     TokenCirculatingSupplyInfoToJSON,
 } from '../models/TokenCirculatingSupplyInfo';
-import {
-    type WalletsRegistrationStatsOut,
-    WalletsRegistrationStatsOutFromJSON,
-    WalletsRegistrationStatsOutToJSON,
-} from '../models/WalletsRegistrationStatsOut';
-import {
-    type WalletsStatsOut,
-    WalletsStatsOutFromJSON,
-    WalletsStatsOutToJSON,
-} from '../models/WalletsStatsOut';
-import {
-    type WalletsTotalStatsOut,
-    WalletsTotalStatsOutFromJSON,
-    WalletsTotalStatsOutToJSON,
-} from '../models/WalletsTotalStatsOut';
-
-export interface GetActionExecutionStatsRequest {
-    /**
-     * Filter resources by the organization they belong to
-     */
-    orgId?: string;
-    /**
-     * Time interval for grouping time-series statistics and analytics data
-     */
-    interval?: GetActionExecutionStatsIntervalEnum;
-    /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetActionExecutionStatsTimeRangeEnum;
-    /**
-     * How many items to return at one time (max 25)
-     */
-    limit?: number;
-    /**
-     * 
-     */
-    whenCreated$gt?: Date;
-    /**
-     * 
-     */
-    whenCreated$lt?: Date;
-    /**
-     * 
-     */
-    whenCreated$gte?: Date;
-    /**
-     * 
-     */
-    whenCreated$lte?: Date;
-    /**
-     * Filter statistics by action name
-     */
-    actionName?: string;
-    /**
-     * Filter statistics by signer account name
-     */
-    signer?: string;
-}
-
-export interface GetActionFeesStatsRequest {
-    /**
-     * Filter resources by the organization they belong to
-     */
-    orgId?: string;
-    /**
-     * Time interval for grouping time-series statistics and analytics data
-     */
-    interval?: GetActionFeesStatsIntervalEnum;
-    /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetActionFeesStatsTimeRangeEnum;
-    /**
-     * How many items to return at one time (max 25)
-     */
-    limit?: number;
-    /**
-     * 
-     */
-    whenCreated$gt?: Date;
-    /**
-     * 
-     */
-    whenCreated$lt?: Date;
-    /**
-     * 
-     */
-    whenCreated$gte?: Date;
-    /**
-     * 
-     */
-    whenCreated$lte?: Date;
-    /**
-     * Filter statistics by action name
-     */
-    actionName?: string;
-    /**
-     * Filter statistics by signer account name
-     */
-    signer?: string;
-}
-
-export interface GetActionsStatsRequest {
-    /**
-     * Filter resources by the organization they belong to
-     */
-    orgId?: string;
-    /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetActionsStatsTimeRangeEnum;
-    /**
-     * 
-     */
-    whenCreated$gt?: Date;
-    /**
-     * 
-     */
-    whenCreated$lt?: Date;
-    /**
-     * 
-     */
-    whenCreated$gte?: Date;
-    /**
-     * 
-     */
-    whenCreated$lte?: Date;
-    /**
-     * Filter statistics by action name
-     */
-    actionName?: string;
-    /**
-     * Filter statistics by signer account name
-     */
-    signer?: string;
-}
 
 export interface GetBatchRequest {
     /**
@@ -331,53 +180,6 @@ export interface GetObjectByIdPublicRequest {
     objectId: string;
 }
 
-export interface GetObjectCreationStatsRequest {
-    /**
-     * Filter resources by the organization they belong to
-     */
-    orgId?: string;
-    /**
-     * Time interval for grouping time-series statistics and analytics data
-     */
-    interval?: GetObjectCreationStatsIntervalEnum;
-    /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetObjectCreationStatsTimeRangeEnum;
-    /**
-     * How many items to return at one time (max 25)
-     */
-    limit?: number;
-    /**
-     * 
-     */
-    whenCreated$gt?: Date;
-    /**
-     * 
-     */
-    whenCreated$lt?: Date;
-    /**
-     * 
-     */
-    whenCreated$gte?: Date;
-    /**
-     * 
-     */
-    whenCreated$lte?: Date;
-    /**
-     * Filter statistics by template ID
-     */
-    templateId?: string;
-    /**
-     * Filter statistics by the owner's address. Objects record ownership as an
-     * address, which is why this is an address rather than a signer name, and
-     * it is the field the service itself applies to narrow an aggregate to an
-     * end-user session's own objects.
-     * 
-     */
-    owner?: string;
-}
-
 export interface GetObjectMetadataByIdPublicRequest {
     /**
      * 
@@ -392,43 +194,194 @@ export interface GetObjectMetadataByIdPublicLegacyRequest {
     objectId: string;
 }
 
-export interface GetObjectStatsRequest {
+export interface GetPublicActionStatsRequest {
     /**
-     * Filter resources by the organization they belong to
-     */
-    orgId?: string;
-    /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetObjectStatsTimeRangeEnum;
-    /**
+     * Start of the window, inclusive. Omit for "since the beginning".
+     * Replaces the when_created[$gt] and when_created[$gte] pair: an aggregate has
+     * no use for both an open and a closed lower bound.
      * 
      */
-    whenCreated$gt?: Date;
+    from?: Date;
     /**
+     * End of the window, exclusive. Omit for "up to now". Half-open with from, so
+     * adjacent windows tile without double-counting the boundary record.
      * 
      */
-    whenCreated$lt?: Date;
+    to?: Date;
     /**
+     * Which optional parts of the aggregate to compute. The total is always
+     * returned; a breakdown and a series each cost a grouping pass, so a caller
+     * that only needs the headline number does not pay for them.
      * 
      */
-    whenCreated$gte?: Date;
+    include?: Array<GetPublicActionStatsIncludeEnum>;
     /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
+    interval?: GetPublicActionStatsIntervalEnum;
+    /**
+     * How many groups to keep in a breakdown, largest first. Bounds the response
+     * for a high-cardinality dimension such as template, where an organization may
+     * have thousands.
+     * 
+     * It does not bound a series. The number of buckets in a series is already
+     * fixed by from, to and interval; capping it separately would silently truncate
+     * the window a caller explicitly asked for.
      * 
      */
-    whenCreated$lte?: Date;
+    top?: number;
     /**
-     * Filter statistics by template ID
+     * Group by action name. This shapes the breakdown, and combined with
+     * include=series it also splits the series, giving one bucket per action
+     * per interval with the action in each point's key. Only the dimensions
+     * listed here are accepted; anything else is rejected rather than passed
+     * through to the aggregation.
+     * 
+     */
+    groupBy?: GetPublicActionStatsGroupByEnum;
+}
+
+export interface GetPublicFeeStatsRequest {
+    /**
+     * Start of the window, inclusive. Omit for "since the beginning".
+     * Replaces the when_created[$gt] and when_created[$gte] pair: an aggregate has
+     * no use for both an open and a closed lower bound.
+     * 
+     */
+    from?: Date;
+    /**
+     * End of the window, exclusive. Omit for "up to now". Half-open with from, so
+     * adjacent windows tile without double-counting the boundary record.
+     * 
+     */
+    to?: Date;
+    /**
+     * Which optional parts of the aggregate to compute. The total is always
+     * returned; a breakdown and a series each cost a grouping pass, so a caller
+     * that only needs the headline number does not pay for them.
+     * 
+     */
+    include?: Array<GetPublicFeeStatsIncludeEnum>;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
+    interval?: GetPublicFeeStatsIntervalEnum;
+    /**
+     * How many groups to keep in a breakdown, largest first. Bounds the response
+     * for a high-cardinality dimension such as template, where an organization may
+     * have thousands.
+     * 
+     * It does not bound a series. The number of buckets in a series is already
+     * fixed by from, to and interval; capping it separately would silently truncate
+     * the window a caller explicitly asked for.
+     * 
+     */
+    top?: number;
+    /**
+     * Group by action name. This shapes the breakdown, and combined with
+     * include=series it also splits the series, giving one bucket per action
+     * per interval with the action in each point's key. Only the dimensions
+     * listed here are accepted; anything else is rejected rather than passed
+     * through to the aggregation.
+     * 
+     */
+    groupBy?: GetPublicFeeStatsGroupByEnum;
+}
+
+export interface GetPublicObjectStatsRequest {
+    /**
+     * Start of the window, inclusive. Omit for "since the beginning".
+     * Replaces the when_created[$gt] and when_created[$gte] pair: an aggregate has
+     * no use for both an open and a closed lower bound.
+     * 
+     */
+    from?: Date;
+    /**
+     * End of the window, exclusive. Omit for "up to now". Half-open with from, so
+     * adjacent windows tile without double-counting the boundary record.
+     * 
+     */
+    to?: Date;
+    /**
+     * Which optional parts of the aggregate to compute. The total is always
+     * returned; a breakdown and a series each cost a grouping pass, so a caller
+     * that only needs the headline number does not pay for them.
+     * 
+     */
+    include?: Array<GetPublicObjectStatsIncludeEnum>;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
+    interval?: GetPublicObjectStatsIntervalEnum;
+    /**
+     * How many groups to keep in a breakdown, largest first. Bounds the response
+     * for a high-cardinality dimension such as template, where an organization may
+     * have thousands.
+     * 
+     * It does not bound a series. The number of buckets in a series is already
+     * fixed by from, to and interval; capping it separately would silently truncate
+     * the window a caller explicitly asked for.
+     * 
+     */
+    top?: number;
+    /**
+     * Group the breakdown by the template each object was minted from. It shapes the breakdown only;
+     * this aggregate cannot split its series. Only
+     * the dimensions listed here are accepted; anything else is rejected
+     * rather than passed through to the aggregation.
+     * 
+     */
+    groupBy?: GetPublicObjectStatsGroupByEnum;
+    /**
+     * Count only objects minted from this template
      */
     templateId?: string;
+}
+
+export interface GetPublicWalletStatsRequest {
     /**
-     * Filter statistics by the owner's address. Objects record ownership as an
-     * address, which is why this is an address rather than a wallet id, and it
-     * is the field the service itself applies to narrow an aggregate to an
-     * end-user session's own objects.
+     * Start of the window, inclusive. Omit for "since the beginning".
+     * Replaces the when_created[$gt] and when_created[$gte] pair: an aggregate has
+     * no use for both an open and a closed lower bound.
      * 
      */
-    owner?: string;
+    from?: Date;
+    /**
+     * End of the window, exclusive. Omit for "up to now". Half-open with from, so
+     * adjacent windows tile without double-counting the boundary record.
+     * 
+     */
+    to?: Date;
+    /**
+     * Which optional parts of the aggregate to compute. The total is always
+     * returned; a breakdown and a series each cost a grouping pass, so a caller
+     * that only needs the headline number does not pay for them.
+     * 
+     */
+    include?: Array<GetPublicWalletStatsIncludeEnum>;
+    /**
+     * Time interval for grouping time-series statistics and analytics data
+     */
+    interval?: GetPublicWalletStatsIntervalEnum;
+    /**
+     * How many groups to keep in a breakdown, largest first. Bounds the response
+     * for a high-cardinality dimension such as template, where an organization may
+     * have thousands.
+     * 
+     * It does not bound a series. The number of buckets in a series is already
+     * fixed by from, to and interval; capping it separately would silently truncate
+     * the window a caller explicitly asked for.
+     * 
+     */
+    top?: number;
+    /**
+     * Group the breakdown by activation state. It shapes the breakdown only;
+     * this aggregate cannot split its series. Only the dimensions listed
+     * here are accepted; anything else is rejected rather than passed
+     * through to the aggregation.
+     * 
+     */
+    groupBy?: GetPublicWalletStatsGroupByEnum;
 }
 
 export interface GetStakingOperationsStatsRequest {
@@ -498,107 +451,6 @@ export interface GetTemplatePublicRequest {
      * Unique identifier of the template
      */
     templateId: string;
-}
-
-export interface GetWalletsRegistrationStatsRequest {
-    /**
-     * Filter resources by the organization they belong to
-     */
-    orgId?: string;
-    /**
-     * Time interval for grouping time-series statistics and analytics data
-     */
-    interval?: GetWalletsRegistrationStatsIntervalEnum;
-    /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetWalletsRegistrationStatsTimeRangeEnum;
-    /**
-     * How many items to return at one time (max 25)
-     */
-    limit?: number;
-    /**
-     * Filter statistics by activation status
-     */
-    activated?: boolean;
-    /**
-     * 
-     */
-    whenCreated$gt?: Date;
-    /**
-     * 
-     */
-    whenCreated$lt?: Date;
-    /**
-     * 
-     */
-    whenCreated$gte?: Date;
-    /**
-     * 
-     */
-    whenCreated$lte?: Date;
-}
-
-export interface GetWalletsStatsRequest {
-    /**
-     * Filter resources by the organization they belong to
-     */
-    orgId?: string;
-    /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetWalletsStatsTimeRangeEnum;
-    /**
-     * 
-     */
-    whenCreated$gt?: Date;
-    /**
-     * 
-     */
-    whenCreated$lt?: Date;
-    /**
-     * 
-     */
-    whenCreated$gte?: Date;
-    /**
-     * 
-     */
-    whenCreated$lte?: Date;
-}
-
-export interface GetWalletsTotalStatsRequest {
-    /**
-     * Filter resources by the organization they belong to
-     */
-    orgId?: string;
-    /**
-     * Time interval for grouping time-series statistics and analytics data
-     */
-    interval?: GetWalletsTotalStatsIntervalEnum;
-    /**
-     * Time range for filtering statistics and analytics data
-     */
-    timeRange?: GetWalletsTotalStatsTimeRangeEnum;
-    /**
-     * How many items to return at one time (max 25)
-     */
-    limit?: number;
-    /**
-     * 
-     */
-    whenCreated$gt?: Date;
-    /**
-     * 
-     */
-    whenCreated$lt?: Date;
-    /**
-     * 
-     */
-    whenCreated$gte?: Date;
-    /**
-     * 
-     */
-    whenCreated$lte?: Date;
 }
 
 export interface ListActionLogsRequest {
@@ -1182,271 +1034,6 @@ export interface RenderObjectViewByIdPublicRequest {
 export class ExplorerApi extends runtime.BaseAPI {
 
     /**
-     * Creates request options for getActionExecutionStats without sending the request
-     */
-    async getActionExecutionStatsRequestOpts(requestParameters: GetActionExecutionStatsRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
-        }
-
-        if (requestParameters['interval'] != null) {
-            queryParameters['interval'] = requestParameters['interval'];
-        }
-
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
-        }
-
-        if (requestParameters['limit'] != null) {
-            queryParameters['limit'] = requestParameters['limit'];
-        }
-
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
-        }
-
-        if (requestParameters['actionName'] != null) {
-            queryParameters['action_name'] = requestParameters['actionName'];
-        }
-
-        if (requestParameters['signer'] != null) {
-            queryParameters['signer'] = requestParameters['signer'];
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/stats/actions/execution`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Retrieve time-series data about blockchain action execution patterns and trends. This endpoint provides detailed analytics on action processing over time, including execution velocity, action type popularity, and temporal distribution of blockchain transactions. 
-     * Get action execution statistics over time
-     */
-    async getActionExecutionStatsRaw(requestParameters: GetActionExecutionStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ActionsExecutionStatsOut>> {
-        const requestOptions = await this.getActionExecutionStatsRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => ActionsExecutionStatsOutFromJSON(jsonValue));
-    }
-
-    /**
-     * Retrieve time-series data about blockchain action execution patterns and trends. This endpoint provides detailed analytics on action processing over time, including execution velocity, action type popularity, and temporal distribution of blockchain transactions. 
-     * Get action execution statistics over time
-     */
-    async getActionExecutionStats(requestParameters: GetActionExecutionStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ActionsExecutionStatsOut> {
-        const response = await this.getActionExecutionStatsRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getActionFeesStats without sending the request
-     */
-    async getActionFeesStatsRequestOpts(requestParameters: GetActionFeesStatsRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
-        }
-
-        if (requestParameters['interval'] != null) {
-            queryParameters['interval'] = requestParameters['interval'];
-        }
-
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
-        }
-
-        if (requestParameters['limit'] != null) {
-            queryParameters['limit'] = requestParameters['limit'];
-        }
-
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
-        }
-
-        if (requestParameters['actionName'] != null) {
-            queryParameters['action_name'] = requestParameters['actionName'];
-        }
-
-        if (requestParameters['signer'] != null) {
-            queryParameters['signer'] = requestParameters['signer'];
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/stats/actions/fees`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Retrieve time-series data about blockchain action fee patterns and trends. This endpoint provides detailed analytics on transaction costs over time, including fee distribution, cost trends by action type, and temporal analysis of blockchain transaction expenses. 
-     * Get action fees statistics over time
-     */
-    async getActionFeesStatsRaw(requestParameters: GetActionFeesStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ActionsStatsFeesOut>> {
-        const requestOptions = await this.getActionFeesStatsRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => ActionsStatsFeesOutFromJSON(jsonValue));
-    }
-
-    /**
-     * Retrieve time-series data about blockchain action fee patterns and trends. This endpoint provides detailed analytics on transaction costs over time, including fee distribution, cost trends by action type, and temporal analysis of blockchain transaction expenses. 
-     * Get action fees statistics over time
-     */
-    async getActionFeesStats(requestParameters: GetActionFeesStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ActionsStatsFeesOut> {
-        const response = await this.getActionFeesStatsRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getActionsStats without sending the request
-     */
-    async getActionsStatsRequestOpts(requestParameters: GetActionsStatsRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
-        }
-
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
-        }
-
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
-        }
-
-        if (requestParameters['actionName'] != null) {
-            queryParameters['action_name'] = requestParameters['actionName'];
-        }
-
-        if (requestParameters['signer'] != null) {
-            queryParameters['signer'] = requestParameters['signer'];
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/stats/actions`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Retrieve comprehensive statistics about blockchain actions and their execution patterns. This endpoint provides aggregate data including total action counts, execution trends, action type distribution, and wallet activity analytics over specified time ranges. 
-     * Get actions statistics
-     */
-    async getActionsStatsRaw(requestParameters: GetActionsStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ActionsStatsOut>> {
-        const requestOptions = await this.getActionsStatsRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => ActionsStatsOutFromJSON(jsonValue));
-    }
-
-    /**
-     * Retrieve comprehensive statistics about blockchain actions and their execution patterns. This endpoint provides aggregate data including total action counts, execution trends, action type distribution, and wallet activity analytics over specified time ranges. 
-     * Get actions statistics
-     */
-    async getActionsStats(requestParameters: GetActionsStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ActionsStatsOut> {
-        const response = await this.getActionsStatsRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
      * Creates request options for getBatch without sending the request
      */
     async getBatchRequestOpts(requestParameters: GetBatchRequest): Promise<runtime.RequestOpts> {
@@ -1869,97 +1456,6 @@ export class ExplorerApi extends runtime.BaseAPI {
     }
 
     /**
-     * Creates request options for getObjectCreationStats without sending the request
-     */
-    async getObjectCreationStatsRequestOpts(requestParameters: GetObjectCreationStatsRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
-        }
-
-        if (requestParameters['interval'] != null) {
-            queryParameters['interval'] = requestParameters['interval'];
-        }
-
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
-        }
-
-        if (requestParameters['limit'] != null) {
-            queryParameters['limit'] = requestParameters['limit'];
-        }
-
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
-        }
-
-        if (requestParameters['templateId'] != null) {
-            queryParameters['template_id'] = requestParameters['templateId'];
-        }
-
-        if (requestParameters['owner'] != null) {
-            queryParameters['owner'] = requestParameters['owner'];
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/stats/objects/creation`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Retrieve time-series data about smart object creation patterns and trends. This endpoint provides detailed analytics on object instantiation over time, including creation velocity, template popularity, and temporal distribution of new object generation. 
-     * Get object creation statistics over time
-     */
-    async getObjectCreationStatsRaw(requestParameters: GetObjectCreationStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ObjectsCreationStatsOut>> {
-        const requestOptions = await this.getObjectCreationStatsRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => ObjectsCreationStatsOutFromJSON(jsonValue));
-    }
-
-    /**
-     * Retrieve time-series data about smart object creation patterns and trends. This endpoint provides detailed analytics on object instantiation over time, including creation velocity, template popularity, and temporal distribution of new object generation. 
-     * Get object creation statistics over time
-     */
-    async getObjectCreationStats(requestParameters: GetObjectCreationStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ObjectsCreationStatsOut> {
-        const response = await this.getObjectCreationStatsRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
      * Creates request options for getObjectMetadataByIdPublic without sending the request
      */
     async getObjectMetadataByIdPublicRequestOpts(requestParameters: GetObjectMetadataByIdPublicRequest): Promise<runtime.RequestOpts> {
@@ -2057,59 +1553,39 @@ export class ExplorerApi extends runtime.BaseAPI {
     }
 
     /**
-     * Creates request options for getObjectStats without sending the request
+     * Creates request options for getPublicActionStats without sending the request
      */
-    async getObjectStatsRequestOpts(requestParameters: GetObjectStatsRequest): Promise<runtime.RequestOpts> {
+    async getPublicActionStatsRequestOpts(requestParameters: GetPublicActionStatsRequest): Promise<runtime.RequestOpts> {
         const queryParameters: any = {};
 
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
+        if (requestParameters['from'] != null) {
+            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
         }
 
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
+        if (requestParameters['to'] != null) {
+            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
         }
 
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
+        if (requestParameters['include'] != null) {
+            queryParameters['include'] = requestParameters['include']!.join(runtime.COLLECTION_FORMATS["csv"]);
         }
 
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
+        if (requestParameters['interval'] != null) {
+            queryParameters['interval'] = requestParameters['interval'];
         }
 
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
+        if (requestParameters['top'] != null) {
+            queryParameters['top'] = requestParameters['top'];
         }
 
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
-        }
-
-        if (requestParameters['templateId'] != null) {
-            queryParameters['template_id'] = requestParameters['templateId'];
-        }
-
-        if (requestParameters['owner'] != null) {
-            queryParameters['owner'] = requestParameters['owner'];
+        if (requestParameters['groupBy'] != null) {
+            queryParameters['group_by'] = requestParameters['groupBy'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
 
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/stats/objects`;
+        let urlPath = `/public/stats/actions`;
 
         return {
             path: urlPath,
@@ -2120,22 +1596,215 @@ export class ExplorerApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve comprehensive statistics about smart objects and their usage patterns. This endpoint provides aggregate data including total object counts, creation trends, template distribution, and ownership analytics over specified time ranges for platform insights and reporting. 
-     * Get object statistics
+     * Aggregate counts of executed actions. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide action statistics
      */
-    async getObjectStatsRaw(requestParameters: GetObjectStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ObjectsStatsOut>> {
-        const requestOptions = await this.getObjectStatsRequestOpts(requestParameters);
+    async getPublicActionStatsRaw(requestParameters: GetPublicActionStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
+        const requestOptions = await this.getPublicActionStatsRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => ObjectsStatsOutFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => StatsOutFromJSON(jsonValue));
     }
 
     /**
-     * Retrieve comprehensive statistics about smart objects and their usage patterns. This endpoint provides aggregate data including total object counts, creation trends, template distribution, and ownership analytics over specified time ranges for platform insights and reporting. 
-     * Get object statistics
+     * Aggregate counts of executed actions. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide action statistics
      */
-    async getObjectStats(requestParameters: GetObjectStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ObjectsStatsOut> {
-        const response = await this.getObjectStatsRaw(requestParameters, initOverrides);
+    async getPublicActionStats(requestParameters: GetPublicActionStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
+        const response = await this.getPublicActionStatsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getPublicFeeStats without sending the request
+     */
+    async getPublicFeeStatsRequestOpts(requestParameters: GetPublicFeeStatsRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        if (requestParameters['from'] != null) {
+            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+        }
+
+        if (requestParameters['to'] != null) {
+            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+        }
+
+        if (requestParameters['include'] != null) {
+            queryParameters['include'] = requestParameters['include']!.join(runtime.COLLECTION_FORMATS["csv"]);
+        }
+
+        if (requestParameters['interval'] != null) {
+            queryParameters['interval'] = requestParameters['interval'];
+        }
+
+        if (requestParameters['top'] != null) {
+            queryParameters['top'] = requestParameters['top'];
+        }
+
+        if (requestParameters['groupBy'] != null) {
+            queryParameters['group_by'] = requestParameters['groupBy'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/public/stats/fees`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Aggregate sums of transaction fees. Returns the totals for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide fee statistics
+     */
+    async getPublicFeeStatsRaw(requestParameters: GetPublicFeeStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<FeesOut>> {
+        const requestOptions = await this.getPublicFeeStatsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => FeesOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Aggregate sums of transaction fees. Returns the totals for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide fee statistics
+     */
+    async getPublicFeeStats(requestParameters: GetPublicFeeStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<FeesOut> {
+        const response = await this.getPublicFeeStatsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getPublicObjectStats without sending the request
+     */
+    async getPublicObjectStatsRequestOpts(requestParameters: GetPublicObjectStatsRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        if (requestParameters['from'] != null) {
+            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+        }
+
+        if (requestParameters['to'] != null) {
+            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+        }
+
+        if (requestParameters['include'] != null) {
+            queryParameters['include'] = requestParameters['include']!.join(runtime.COLLECTION_FORMATS["csv"]);
+        }
+
+        if (requestParameters['interval'] != null) {
+            queryParameters['interval'] = requestParameters['interval'];
+        }
+
+        if (requestParameters['top'] != null) {
+            queryParameters['top'] = requestParameters['top'];
+        }
+
+        if (requestParameters['groupBy'] != null) {
+            queryParameters['group_by'] = requestParameters['groupBy'];
+        }
+
+        if (requestParameters['templateId'] != null) {
+            queryParameters['template_id'] = requestParameters['templateId'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/public/stats/objects`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Aggregate counts of smart objects. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide object statistics
+     */
+    async getPublicObjectStatsRaw(requestParameters: GetPublicObjectStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
+        const requestOptions = await this.getPublicObjectStatsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => StatsOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Aggregate counts of smart objects. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide object statistics
+     */
+    async getPublicObjectStats(requestParameters: GetPublicObjectStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
+        const response = await this.getPublicObjectStatsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getPublicWalletStats without sending the request
+     */
+    async getPublicWalletStatsRequestOpts(requestParameters: GetPublicWalletStatsRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        if (requestParameters['from'] != null) {
+            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+        }
+
+        if (requestParameters['to'] != null) {
+            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+        }
+
+        if (requestParameters['include'] != null) {
+            queryParameters['include'] = requestParameters['include']!.join(runtime.COLLECTION_FORMATS["csv"]);
+        }
+
+        if (requestParameters['interval'] != null) {
+            queryParameters['interval'] = requestParameters['interval'];
+        }
+
+        if (requestParameters['top'] != null) {
+            queryParameters['top'] = requestParameters['top'];
+        }
+
+        if (requestParameters['groupBy'] != null) {
+            queryParameters['group_by'] = requestParameters['groupBy'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/public/stats/wallets`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Aggregate counts of registered wallets. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide wallet statistics
+     */
+    async getPublicWalletStatsRaw(requestParameters: GetPublicWalletStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
+        const requestOptions = await this.getPublicWalletStatsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => StatsOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Aggregate counts of registered wallets. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
+     * Network-wide wallet statistics
+     */
+    async getPublicWalletStats(requestParameters: GetPublicWalletStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
+        const response = await this.getPublicWalletStatsRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -2317,239 +1986,6 @@ export class ExplorerApi extends runtime.BaseAPI {
      */
     async getTemplatePublic(requestParameters: GetTemplatePublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PublicTemplate> {
         const response = await this.getTemplatePublicRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getWalletsRegistrationStats without sending the request
-     */
-    async getWalletsRegistrationStatsRequestOpts(requestParameters: GetWalletsRegistrationStatsRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
-        }
-
-        if (requestParameters['interval'] != null) {
-            queryParameters['interval'] = requestParameters['interval'];
-        }
-
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
-        }
-
-        if (requestParameters['limit'] != null) {
-            queryParameters['limit'] = requestParameters['limit'];
-        }
-
-        if (requestParameters['activated'] != null) {
-            queryParameters['activated'] = requestParameters['activated'];
-        }
-
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/stats/wallets/registration`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Retrieve time-series data about user registration patterns and trends. This endpoint provides detailed analytics on user sign-ups over time, including activation rates, registration velocity, and temporal distribution of new account creation. 
-     * Get users registration statistics over time
-     */
-    async getWalletsRegistrationStatsRaw(requestParameters: GetWalletsRegistrationStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WalletsRegistrationStatsOut>> {
-        const requestOptions = await this.getWalletsRegistrationStatsRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => WalletsRegistrationStatsOutFromJSON(jsonValue));
-    }
-
-    /**
-     * Retrieve time-series data about user registration patterns and trends. This endpoint provides detailed analytics on user sign-ups over time, including activation rates, registration velocity, and temporal distribution of new account creation. 
-     * Get users registration statistics over time
-     */
-    async getWalletsRegistrationStats(requestParameters: GetWalletsRegistrationStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WalletsRegistrationStatsOut> {
-        const response = await this.getWalletsRegistrationStatsRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getWalletsStats without sending the request
-     */
-    async getWalletsStatsRequestOpts(requestParameters: GetWalletsStatsRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
-        }
-
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
-        }
-
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/stats/wallets`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Retrieve comprehensive statistics about user wallets and account activity. This endpoint provides aggregate data including total user counts, registration trends, and activity metrics over specified time ranges for analytics and reporting purposes. 
-     * Get users statistics
-     */
-    async getWalletsStatsRaw(requestParameters: GetWalletsStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WalletsStatsOut>> {
-        const requestOptions = await this.getWalletsStatsRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => WalletsStatsOutFromJSON(jsonValue));
-    }
-
-    /**
-     * Retrieve comprehensive statistics about user wallets and account activity. This endpoint provides aggregate data including total user counts, registration trends, and activity metrics over specified time ranges for analytics and reporting purposes. 
-     * Get users statistics
-     */
-    async getWalletsStats(requestParameters: GetWalletsStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WalletsStatsOut> {
-        const response = await this.getWalletsStatsRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getWalletsTotalStats without sending the request
-     */
-    async getWalletsTotalStatsRequestOpts(requestParameters: GetWalletsTotalStatsRequest): Promise<runtime.RequestOpts> {
-        const queryParameters: any = {};
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
-        }
-
-        if (requestParameters['interval'] != null) {
-            queryParameters['interval'] = requestParameters['interval'];
-        }
-
-        if (requestParameters['timeRange'] != null) {
-            queryParameters['time_range'] = requestParameters['timeRange'];
-        }
-
-        if (requestParameters['limit'] != null) {
-            queryParameters['limit'] = requestParameters['limit'];
-        }
-
-        if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
-        }
-
-        if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-
-        let urlPath = `/stats/wallets/total`;
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Retrieve comprehensive statistics about user wallets and account activity over time. This endpoint provides aggregate data including total user counts, registration trends, and activity metrics over specified time ranges for analytics and reporting purposes. 
-     * Get users statistics over time
-     */
-    async getWalletsTotalStatsRaw(requestParameters: GetWalletsTotalStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WalletsTotalStatsOut>> {
-        const requestOptions = await this.getWalletsTotalStatsRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => WalletsTotalStatsOutFromJSON(jsonValue));
-    }
-
-    /**
-     * Retrieve comprehensive statistics about user wallets and account activity over time. This endpoint provides aggregate data including total user counts, registration trends, and activity metrics over specified time ranges for analytics and reporting purposes. 
-     * Get users statistics over time
-     */
-    async getWalletsTotalStats(requestParameters: GetWalletsTotalStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WalletsTotalStatsOut> {
-        const response = await this.getWalletsTotalStatsRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -3547,61 +2983,6 @@ export class ExplorerApi extends runtime.BaseAPI {
 /**
  * @export
  */
-export const GetActionExecutionStatsIntervalEnum = {
-    Hour: 'hour',
-    Day: 'day',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
-} as const;
-export type GetActionExecutionStatsIntervalEnum = typeof GetActionExecutionStatsIntervalEnum[keyof typeof GetActionExecutionStatsIntervalEnum];
-/**
- * @export
- */
-export const GetActionExecutionStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
-} as const;
-export type GetActionExecutionStatsTimeRangeEnum = typeof GetActionExecutionStatsTimeRangeEnum[keyof typeof GetActionExecutionStatsTimeRangeEnum];
-/**
- * @export
- */
-export const GetActionFeesStatsIntervalEnum = {
-    Hour: 'hour',
-    Day: 'day',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
-} as const;
-export type GetActionFeesStatsIntervalEnum = typeof GetActionFeesStatsIntervalEnum[keyof typeof GetActionFeesStatsIntervalEnum];
-/**
- * @export
- */
-export const GetActionFeesStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
-} as const;
-export type GetActionFeesStatsTimeRangeEnum = typeof GetActionFeesStatsTimeRangeEnum[keyof typeof GetActionFeesStatsTimeRangeEnum];
-/**
- * @export
- */
-export const GetActionsStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
-} as const;
-export type GetActionsStatsTimeRangeEnum = typeof GetActionsStatsTimeRangeEnum[keyof typeof GetActionsStatsTimeRangeEnum];
-/**
- * @export
- */
 export const GetNetworkTokenPriceHistoryTimeRangeEnum = {
     All: 'all',
     Today: 'today',
@@ -3613,36 +2994,107 @@ export type GetNetworkTokenPriceHistoryTimeRangeEnum = typeof GetNetworkTokenPri
 /**
  * @export
  */
-export const GetObjectCreationStatsIntervalEnum = {
+export const GetPublicActionStatsIncludeEnum = {
+    Breakdown: 'breakdown',
+    Series: 'series',
+} as const;
+export type GetPublicActionStatsIncludeEnum = typeof GetPublicActionStatsIncludeEnum[keyof typeof GetPublicActionStatsIncludeEnum];
+/**
+ * @export
+ */
+export const GetPublicActionStatsIntervalEnum = {
     Hour: 'hour',
     Day: 'day',
     Week: 'week',
     Month: 'month',
     Year: 'year',
 } as const;
-export type GetObjectCreationStatsIntervalEnum = typeof GetObjectCreationStatsIntervalEnum[keyof typeof GetObjectCreationStatsIntervalEnum];
+export type GetPublicActionStatsIntervalEnum = typeof GetPublicActionStatsIntervalEnum[keyof typeof GetPublicActionStatsIntervalEnum];
 /**
  * @export
  */
-export const GetObjectCreationStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
+export const GetPublicActionStatsGroupByEnum = {
+    Action: 'action',
+} as const;
+export type GetPublicActionStatsGroupByEnum = typeof GetPublicActionStatsGroupByEnum[keyof typeof GetPublicActionStatsGroupByEnum];
+/**
+ * @export
+ */
+export const GetPublicFeeStatsIncludeEnum = {
+    Breakdown: 'breakdown',
+    Series: 'series',
+} as const;
+export type GetPublicFeeStatsIncludeEnum = typeof GetPublicFeeStatsIncludeEnum[keyof typeof GetPublicFeeStatsIncludeEnum];
+/**
+ * @export
+ */
+export const GetPublicFeeStatsIntervalEnum = {
+    Hour: 'hour',
+    Day: 'day',
     Week: 'week',
     Month: 'month',
     Year: 'year',
 } as const;
-export type GetObjectCreationStatsTimeRangeEnum = typeof GetObjectCreationStatsTimeRangeEnum[keyof typeof GetObjectCreationStatsTimeRangeEnum];
+export type GetPublicFeeStatsIntervalEnum = typeof GetPublicFeeStatsIntervalEnum[keyof typeof GetPublicFeeStatsIntervalEnum];
 /**
  * @export
  */
-export const GetObjectStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
+export const GetPublicFeeStatsGroupByEnum = {
+    Action: 'action',
+} as const;
+export type GetPublicFeeStatsGroupByEnum = typeof GetPublicFeeStatsGroupByEnum[keyof typeof GetPublicFeeStatsGroupByEnum];
+/**
+ * @export
+ */
+export const GetPublicObjectStatsIncludeEnum = {
+    Breakdown: 'breakdown',
+    Series: 'series',
+} as const;
+export type GetPublicObjectStatsIncludeEnum = typeof GetPublicObjectStatsIncludeEnum[keyof typeof GetPublicObjectStatsIncludeEnum];
+/**
+ * @export
+ */
+export const GetPublicObjectStatsIntervalEnum = {
+    Hour: 'hour',
+    Day: 'day',
     Week: 'week',
     Month: 'month',
     Year: 'year',
 } as const;
-export type GetObjectStatsTimeRangeEnum = typeof GetObjectStatsTimeRangeEnum[keyof typeof GetObjectStatsTimeRangeEnum];
+export type GetPublicObjectStatsIntervalEnum = typeof GetPublicObjectStatsIntervalEnum[keyof typeof GetPublicObjectStatsIntervalEnum];
+/**
+ * @export
+ */
+export const GetPublicObjectStatsGroupByEnum = {
+    Template: 'template',
+} as const;
+export type GetPublicObjectStatsGroupByEnum = typeof GetPublicObjectStatsGroupByEnum[keyof typeof GetPublicObjectStatsGroupByEnum];
+/**
+ * @export
+ */
+export const GetPublicWalletStatsIncludeEnum = {
+    Breakdown: 'breakdown',
+    Series: 'series',
+} as const;
+export type GetPublicWalletStatsIncludeEnum = typeof GetPublicWalletStatsIncludeEnum[keyof typeof GetPublicWalletStatsIncludeEnum];
+/**
+ * @export
+ */
+export const GetPublicWalletStatsIntervalEnum = {
+    Hour: 'hour',
+    Day: 'day',
+    Week: 'week',
+    Month: 'month',
+    Year: 'year',
+} as const;
+export type GetPublicWalletStatsIntervalEnum = typeof GetPublicWalletStatsIntervalEnum[keyof typeof GetPublicWalletStatsIntervalEnum];
+/**
+ * @export
+ */
+export const GetPublicWalletStatsGroupByEnum = {
+    Activated: 'activated',
+} as const;
+export type GetPublicWalletStatsGroupByEnum = typeof GetPublicWalletStatsGroupByEnum[keyof typeof GetPublicWalletStatsGroupByEnum];
 /**
  * @export
  */
@@ -3676,61 +3128,6 @@ export const GetStakingOperationsTotalIntervalEnum = {
     Year: 'year',
 } as const;
 export type GetStakingOperationsTotalIntervalEnum = typeof GetStakingOperationsTotalIntervalEnum[keyof typeof GetStakingOperationsTotalIntervalEnum];
-/**
- * @export
- */
-export const GetWalletsRegistrationStatsIntervalEnum = {
-    Hour: 'hour',
-    Day: 'day',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
-} as const;
-export type GetWalletsRegistrationStatsIntervalEnum = typeof GetWalletsRegistrationStatsIntervalEnum[keyof typeof GetWalletsRegistrationStatsIntervalEnum];
-/**
- * @export
- */
-export const GetWalletsRegistrationStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
-} as const;
-export type GetWalletsRegistrationStatsTimeRangeEnum = typeof GetWalletsRegistrationStatsTimeRangeEnum[keyof typeof GetWalletsRegistrationStatsTimeRangeEnum];
-/**
- * @export
- */
-export const GetWalletsStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
-} as const;
-export type GetWalletsStatsTimeRangeEnum = typeof GetWalletsStatsTimeRangeEnum[keyof typeof GetWalletsStatsTimeRangeEnum];
-/**
- * @export
- */
-export const GetWalletsTotalStatsIntervalEnum = {
-    Hour: 'hour',
-    Day: 'day',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
-} as const;
-export type GetWalletsTotalStatsIntervalEnum = typeof GetWalletsTotalStatsIntervalEnum[keyof typeof GetWalletsTotalStatsIntervalEnum];
-/**
- * @export
- */
-export const GetWalletsTotalStatsTimeRangeEnum = {
-    All: 'all',
-    Today: 'today',
-    Week: 'week',
-    Month: 'month',
-    Year: 'year',
-} as const;
-export type GetWalletsTotalStatsTimeRangeEnum = typeof GetWalletsTotalStatsTimeRangeEnum[keyof typeof GetWalletsTotalStatsTimeRangeEnum];
 /**
  * @export
  */

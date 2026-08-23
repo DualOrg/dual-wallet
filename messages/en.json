@@ -102,6 +102,7 @@
   "verify": {
     "title": "Verify your account",
     "description": "Enter the verification code sent to your email.",
+    "fromLink": "Verifying the account from your email link.",
     "code": "Verification code",
     "submit": "Verify account",
     "submitting": "Verifying…",
