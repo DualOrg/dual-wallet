@@ -52,9 +52,13 @@ export interface WalletUpdate {
      */
     language?: Language;
     /**
-     * User's account password (stored securely and never returned in responses)
+     * New account password. Sending it requires current_password, and it ends every other session on the wallet.
      */
     password?: string;
+    /**
+     * The password in force now. Required only when password is sent, to prove the caller owns the account rather than merely holding a token for it.
+     */
+    currentPassword?: string;
     /**
      * 
      */
@@ -89,6 +93,7 @@ export function WalletUpdateFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'phoneNumber': json['phone_number'] == null ? undefined : json['phone_number'],
         'language': json['language'] == null ? undefined : LanguageFromJSON(json['language']),
         'password': json['password'] == null ? undefined : json['password'],
+        'currentPassword': json['current_password'] == null ? undefined : json['current_password'],
         'avatar': json['avatar'] == null ? undefined : AssetFromJSON(json['avatar']),
         'onboarding': json['onboarding'] == null ? undefined : json['onboarding'],
     };
@@ -110,6 +115,7 @@ export function WalletUpdateToJSONTyped(value?: WalletUpdate | null, ignoreDiscr
         'phone_number': value['phoneNumber'],
         'language': LanguageToJSON(value['language']),
         'password': value['password'],
+        'current_password': value['currentPassword'],
         'avatar': AssetToJSON(value['avatar']),
         'onboarding': value['onboarding'],
     };
