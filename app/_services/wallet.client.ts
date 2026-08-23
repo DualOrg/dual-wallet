@@ -18,6 +18,23 @@ export async function updateWalletProfile(input: WalletProfileUpdate) {
   }
 }
 
+export interface WalletPasswordChange {
+  currentPassword: string;
+  password: string;
+}
+
+// changeWalletPassword goes through the same patch as the profile. The API
+// requires the password in force now — an access token alone is not proof of
+// ownership — and revokes every session on the wallet once the new one is
+// stored, this one included.
+export async function changeWalletPassword(input: WalletPasswordChange) {
+  try {
+    await getWalletsApi().updateWallet({ walletUpdate: input });
+  } catch (error) {
+    throw await toViewerError(error, "Your password could not be changed.");
+  }
+}
+
 export async function deleteWalletAccount() {
   try {
     await getWalletsApi().deleteWalletRaw();
