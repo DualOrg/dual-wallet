@@ -140,6 +140,23 @@ export function writeSession(response: NextResponse, state: SessionState) {
   });
 }
 
+// revokeSession ends the session on the API so the refresh token sealed in the
+// cookie stops working. Dropping the cookie alone leaves that token usable for
+// its full thirty days — most of a month of sign-in for anyone holding a copy.
+//
+// It never throws. A failed revoke must not stop the sign-out: the cookie still
+// goes, and the token still expires on its own.
+export async function revokeSession(request: NextRequest): Promise<void> {
+  const state = readSession(request);
+  if (!state) return;
+  try {
+    await getWalletsApi(state.refreshToken).logout({ cache: "no-store" });
+  } catch {
+    // Already revoked, already expired, or the API is unreachable — every one
+    // of them ends the same way here.
+  }
+}
+
 export function clearSessionCookie(response: NextResponse) {
   response.cookies.set(SESSION_COOKIE_NAME, "", {
     httpOnly: true,

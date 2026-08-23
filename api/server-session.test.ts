@@ -6,14 +6,16 @@ import { DEFAULT_ORGANIZATION_ID } from "@/api/tenant";
 import { ResponseError } from "@/api/web-sdk/runtime";
 
 const refreshToken = jest.fn();
+const logout = jest.fn();
 jest.mock("@/api/web-sdk-client", () => ({
-  getWalletsApi: () => ({ refreshToken }),
+  getWalletsApi: () => ({ refreshToken, logout }),
 }));
 
 import {
   activeSession,
   establishSession,
   readSession,
+  revokeSession,
 } from "@/api/server-session";
 import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
 
@@ -153,4 +155,34 @@ test("production without SESSION_SECRET seals the session and says so", async ()
       process.env.SESSION_SECRET = previousSecret;
     jest.resetModules();
   }
+});
+
+// Dropping the cookie is not a sign-out on its own: the refresh token sealed
+// inside it stays usable upstream for thirty days unless the API is told.
+describe("revokeSession", () => {
+  beforeEach(() => logout.mockReset());
+
+  it("revokes the refresh token held in the cookie", async () => {
+    logout.mockResolvedValue({});
+
+    await revokeSession(requestWith(signIn()));
+
+    expect(logout).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not throw when the API rejects the revoke", async () => {
+    logout.mockRejectedValue(
+      new ResponseError(new Response(null, { status: 401 }), "unauthorized"),
+    );
+
+    await expect(
+      revokeSession(requestWith(signIn())),
+    ).resolves.toBeUndefined();
+  });
+
+  it("is a no-op without a session cookie", async () => {
+    await revokeSession(new NextRequest("http://localhost/api/session/logout"));
+
+    expect(logout).not.toHaveBeenCalled();
+  });
 });
