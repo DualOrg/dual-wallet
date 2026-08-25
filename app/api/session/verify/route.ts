@@ -11,6 +11,7 @@ import {
 import { currentWallet, writeSession } from "@/api/server-session";
 import { tenantFromRequest } from "@/api/tenant";
 import { getWalletsApi } from "@/api/web-sdk-client";
+import { toViewerWallet } from "@/app/_adapters/wallet";
 
 // Verification arrives two ways, and only one of them has a session.
 //
@@ -74,23 +75,33 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // currentWallet may have renewed the session just now, and a renewal only
+  // survives on a response that carries it. Every exit from here writes it,
+  // including the failed verification: losing it there leaves the browser
+  // holding a refresh token the API has already spent.
   try {
     await getWalletsApi().verifyWallet(
       { verifyIn: { code, email: current.wallet.email, organizationId } },
       { cache: "no-store" },
     );
-    // Re-read so the session carries the activated flag the page renders from.
-    const verified = await currentWallet(request);
-    if (verified.status !== "active") {
-      return NextResponse.json({ ok: true });
-    }
-    const response = NextResponse.json({ ok: true, wallet: verified.wallet });
-    writeSession(response, verified.state);
-    return response;
   } catch (error) {
-    return apiErrorResponse(
+    const failure = await apiErrorResponse(
       error,
       "The verification code is invalid or has expired.",
     );
+    writeSession(failure, current.state);
+    return failure;
   }
+
+  // Re-read so the session carries the activated flag the page renders from.
+  // The access token in hand is the live one — a second currentWallet would
+  // present the refresh token this request already spent.
+  const wallet = await getWalletsApi(current.state.accessToken)
+    .getWallet({ cache: "no-store" })
+    .then(toViewerWallet)
+    .catch(() => current.wallet);
+
+  const response = NextResponse.json({ ok: true, wallet });
+  writeSession(response, current.state);
+  return response;
 }

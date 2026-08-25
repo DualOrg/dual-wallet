@@ -9,6 +9,7 @@ import {
 import type { NextRequest } from "next/server";
 import type { NextResponse } from "next/server";
 import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
+import type { RefreshTokenOut } from "@/api/web-sdk/models/RefreshTokenOut";
 import { SESSION_COOKIE_NAME } from "@/api/settings";
 import type { TenantContext } from "@/api/tenant";
 import { tenantFromRequest } from "@/api/tenant";
@@ -212,22 +213,39 @@ export function readSession(request: NextRequest): SessionState | undefined {
   return state;
 }
 
-// ponytail: no cross-request single-flight. Each request renews its own copy;
-// if the API ever starts invalidating rotated refresh tokens, parallel requests
-// will need the renewal narrowed to /api/session alone.
-export async function activeSession(
-  request: NextRequest,
-  force = false,
-): Promise<SessionResult | undefined> {
-  const state = readSession(request);
-  if (!state) return undefined;
-  if (!force && state.accessExpiresAt > Date.now() + REFRESH_MARGIN_MS) {
-    return { status: "active", state, rotated: false };
-  }
+// A refresh token is single-use and the API rotates it, so two requests that
+// present the same one are a race the API settles with 409. The loser used to
+// come back as a 503, and the winner's token could still be lost: parallel
+// responses each carry their own sealed cookie, and only the last one to reach
+// the browser survives.
+//
+// One rotation per refresh token instead, shared by every request that asks
+// while it runs. The entry goes as soon as it settles, so the next renewal
+// starts fresh.
+//
+// ponytail: single-flight holds inside one instance. Requests that land on two
+// containers still race, and narrowing renewal to /api/session alone is the fix
+// if that shows up in the logs.
+const rotations = new Map<string, Promise<RefreshTokenOut>>();
+
+function rotate(refreshToken: string) {
+  const running = rotations.get(refreshToken);
+  if (running) return running;
+
+  const rotation = getWalletsApi(refreshToken)
+    .refreshToken({ cache: "no-store" })
+    .finally(() => rotations.delete(refreshToken));
+
+  rotations.set(refreshToken, rotation);
+
+  return rotation;
+}
+
+// renew takes the state rather than the request, because the caller may hold a
+// newer one than the cookie the request arrived with.
+export async function renew(state: SessionState): Promise<SessionResult> {
   try {
-    const result = await getWalletsApi(state.refreshToken).refreshToken({
-      cache: "no-store",
-    });
+    const result = await rotate(state.refreshToken);
     return {
       status: "active",
       rotated: true,
@@ -239,12 +257,24 @@ export async function activeSession(
       },
     };
   } catch (error) {
-    // Only a rejected refresh token ends the session. A timeout or a 500
-    // upstream must not sign the wallet out.
+    // Only a rejected refresh token ends the session. A timeout, a 409 from a
+    // sibling rotation or a 500 upstream must not sign the wallet out.
     return isAuthRejection(error)
       ? { status: "expired" }
       : { status: "unavailable", state };
   }
+}
+
+export async function activeSession(
+  request: NextRequest,
+  force = false,
+): Promise<SessionResult | undefined> {
+  const state = readSession(request);
+  if (!state) return undefined;
+  if (!force && state.accessExpiresAt > Date.now() + REFRESH_MARGIN_MS) {
+    return { status: "active", state, rotated: false };
+  }
+  return renew(state);
 }
 
 export async function currentWallet(
@@ -323,12 +353,15 @@ export async function authenticatedUpstreamFetch(
   let state = session.state;
   let response = await fetch(url, requestWithToken(state.accessToken));
   if (response.status === 401) {
-    const retry = await activeSession(request, true);
-    if (!retry || retry.status !== "active") {
+    // From the state in hand: the call above may already have spent the refresh
+    // token the request arrived with, and presenting that one again reads as a
+    // replay rather than a retry.
+    const retry = await renew(state);
+    if (retry.status !== "active") {
       return {
         response,
-        state: retry?.status === "unavailable" ? retry.state : undefined,
-        expired: retry?.status !== "unavailable",
+        state: retry.status === "unavailable" ? retry.state : undefined,
+        expired: retry.status !== "unavailable",
       };
     }
     state = retry.state;

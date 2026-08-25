@@ -104,6 +104,34 @@ test("an expired access token is renewed and the new one is handed back", async 
   expect(result?.status === "active" && result.state.accessToken).toBe(minted);
 });
 
+// A refresh token is single-use. Two requests presenting the same one is a
+// race the API settles with 409, which used to cost the loser a 503 and could
+// orphan the winner's token: parallel responses each seal their own cookie and
+// only the last one to the browser survives.
+test("parallel requests share one rotation", async () => {
+  const cookie = signIn();
+  const minted = jwt({ exp: Math.floor(Date.now() / 1000) + 900 });
+  let release: (result: unknown) => void = () => {};
+  refreshToken.mockReturnValue(
+    new Promise((resolve) => {
+      release = resolve;
+    }),
+  );
+
+  const inFlight = Promise.all([
+    activeSession(requestWith(cookie)),
+    activeSession(requestWith(cookie)),
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  release({ accessToken: minted });
+
+  const [first, second] = await inFlight;
+
+  expect(refreshToken).toHaveBeenCalledTimes(1);
+  expect(first?.status === "active" && first.state.accessToken).toBe(minted);
+  expect(second?.status === "active" && second.state.accessToken).toBe(minted);
+});
+
 test("a transient refresh failure keeps the wallet signed in", async () => {
   const cookie = signIn();
   refreshToken.mockRejectedValue(new Error("socket hang up"));
@@ -175,9 +203,7 @@ describe("revokeSession", () => {
       new ResponseError(new Response(null, { status: 401 }), "unauthorized"),
     );
 
-    await expect(
-      revokeSession(requestWith(signIn())),
-    ).resolves.toBeUndefined();
+    await expect(revokeSession(requestWith(signIn()))).resolves.toBeUndefined();
   });
 
   it("is a no-op without a session cookie", async () => {

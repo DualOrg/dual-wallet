@@ -5,14 +5,17 @@ import { NextRequest } from "next/server";
 import { DEFAULT_ORGANIZATION_ID } from "@/api/tenant";
 
 const verifyWallet = jest.fn();
+const getWallet = jest.fn();
 jest.mock("@/api/web-sdk-client", () => ({
-  getWalletsApi: () => ({ verifyWallet }),
+  ...jest.requireActual("@/api/web-sdk-client"),
+  getWalletsApi: () => ({ verifyWallet, getWallet }),
 }));
 
 const currentWallet = jest.fn();
+const writeSession = jest.fn();
 jest.mock("@/api/server-session", () => ({
   currentWallet: (...args: unknown[]) => currentWallet(...args),
-  writeSession: jest.fn(),
+  writeSession: (...args: unknown[]) => writeSession(...args),
 }));
 
 import { POST } from "./route";
@@ -30,9 +33,22 @@ const post = (body: unknown) =>
     }),
   );
 
+const SESSION_STATE = { accessToken: "live-access" };
+
+const walletRecord = (activated: boolean) => ({
+  id: "wallet-id",
+  email: "session@example.com",
+  activated,
+  account: { controller: {}, smartAccount: {} },
+  whenCreated: new Date(),
+  whenModified: new Date(),
+});
+
 beforeEach(() => {
   verifyWallet.mockReset().mockResolvedValue(undefined);
+  getWallet.mockReset().mockResolvedValue(walletRecord(true));
   currentWallet.mockReset();
+  writeSession.mockReset();
 });
 
 // The link in the mail opens wherever the person reads mail, which is usually
@@ -105,4 +121,44 @@ it("refuses a request with no code", async () => {
 
   expect(response.status).toBe(400);
   expect(verifyWallet).not.toHaveBeenCalled();
+});
+
+// A renewal only survives on a response that carries it, and currentWallet may
+// have renewed just now. The second read used to go through the session again
+// and present the refresh token the first read had already spent.
+describe("the renewed session", () => {
+  beforeEach(() => {
+    currentWallet.mockResolvedValue({
+      status: "active",
+      wallet: { email: "session@example.com" },
+      state: SESSION_STATE,
+    });
+  });
+
+  it("reads the session once and reports the activated wallet", async () => {
+    const response = await post({ code: "abc123" });
+
+    expect(currentWallet).toHaveBeenCalledTimes(1);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      wallet: { activated: true },
+    });
+  });
+
+  it("rides back out on the response", async () => {
+    const response = await post({ code: "abc123" });
+
+    expect(writeSession).toHaveBeenCalledWith(response, SESSION_STATE);
+  });
+
+  // Losing it here left the browser holding a spent refresh token, and the next
+  // request signed the wallet out over a mistyped code.
+  it("survives a refused code", async () => {
+    verifyWallet.mockRejectedValue(new Error("invalid code"));
+
+    const response = await post({ code: "abc123" });
+
+    expect(response.status).not.toBe(200);
+    expect(writeSession).toHaveBeenCalledWith(response, SESSION_STATE);
+  });
 });
