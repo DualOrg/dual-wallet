@@ -2,6 +2,8 @@ import "server-only";
 
 import type { NextRequest } from "next/server";
 
+import { ORGANIZATION_COOKIE_NAME } from "@/api/settings";
+
 export interface TenantContext {
   organizationId: string;
   subdomain: string;
@@ -95,9 +97,27 @@ export function organizationIdFromHost(
   return { organizationId, subdomain, host };
 }
 
+// An entry link names its organization in the path, and proxy.ts leaves that ID
+// in a cookie. The ID is therefore supplied by whoever opens the link. It
+// chooses which organization the sign-in is made against; it grants nothing on
+// its own. api-v3 checks the credentials inside that organization, and
+// establishSession refuses a login whose JWT org_id is a different one.
+const ORGANIZATION_ID = /^[0-9a-f]{24}$/i;
+
+export function chosenOrganizationId(value?: string) {
+  return value && ORGANIZATION_ID.test(value) ? value.toLowerCase() : undefined;
+}
+
 export function tenantFromRequest(request: NextRequest) {
   const forwardedHost = request.headers.get("x-forwarded-host");
   const host =
     forwardedHost || request.headers.get("host") || request.nextUrl.host;
-  return organizationIdFromHost(host);
+  const tenant = organizationIdFromHost(host);
+  if (!tenant) return undefined;
+  // The host still has to be a valid one, and it stays the host the session is
+  // bound to. Only the organization comes from the link.
+  const chosen = chosenOrganizationId(
+    request.cookies.get(ORGANIZATION_COOKIE_NAME)?.value,
+  );
+  return chosen ? { ...tenant, organizationId: chosen } : tenant;
 }

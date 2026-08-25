@@ -4,7 +4,51 @@ End-user smart object wallet viewer built with Next.js App Router. The app uses 
 
 ## Tenant routing
 
-The left-most subdomain is resolved through a server-owned map to the internal organization ObjectID. It is never accepted from a browser form or query parameter.
+An organization is resolved two ways, and the entry link wins.
+
+### Entry link
+
+A wallet entry link names its organization in the path:
+
+```
+https://wallet.dual.network/000000000000000000000001/login
+```
+
+`proxy.ts` accepts that prefix on any route, strips it, serves the plain route,
+and keeps the ID in the `smarttoken_viewer_org` cookie. The pages and the
+`/api/session/**` routes that the proxy matcher excludes all stay on the plain
+paths and read the organization from that cookie. The console shows this link on
+the organization overview page.
+
+Every unauthorized route keeps the prefix in the address bar. A link from one of
+them to the next resolves to a plain path, so the proxy redirects it back to
+`/<organization-id>/<route>`; a reload, a bookmark, or a URL handed to somebody
+else therefore stays in the same wallet. The authorized routes carry no prefix,
+because their session already holds the organization.
+
+The verification, sign-in-code and password-reset mails name the organization in
+their link query instead, which is what `smarttoken/services/notifications`
+already builds. `/verify`, `/otp` and `/reset-password` accept
+`?organization_id=` there and move it into the path. No other route does: a link
+that could set the organization anywhere could also sign a visitor out of the
+wallet they are using.
+
+The ID is therefore supplied by whoever opens the link, and it grants nothing on
+its own. It chooses which organization the sign-in is made against; `api-v3`
+validates the credentials inside that organization, and `establishSession`
+refuses a login whose access token `org_id` claim is a different one. A session
+stays bound to both the organization and the exact host, so opening a second
+organization's entry link ends the first session in that browser.
+
+The wallet cannot check the ID before sign-in, because
+`GET /organizations/{organizationId}` requires a bearer token. An unknown
+organization therefore surfaces as a failed sign-in rather than a rejected link.
+
+### Host
+
+Without an entry link, the left-most subdomain resolves through a server-owned
+map to the internal organization ObjectID. The host must be a valid one either
+way.
 
 - Current wildcard mapping: `*` → `000000000000000000000001`
 - Production host: `wallet.dual.network` → `*` → wildcard organization
@@ -17,9 +61,7 @@ The left-most subdomain is resolved through a server-owned map to the internal o
 Configure the production suffix with `VIEWER_BASE_DOMAIN`. Add either an exact
 host mapping such as `wallet.customer.com` or a tenant-label mapping such as
 `customer` in `api/tenant.ts` as organizations are introduced. Exact hosts win
-over labels, and all unknown hosts and labels fall back to `*`. Session records
-remain bound to both the resolved organization ID and exact host, and the
-access token `org_id` claim must match before a session is established.
+over labels, and all unknown hosts and labels fall back to `*`.
 
 ## Local development
 

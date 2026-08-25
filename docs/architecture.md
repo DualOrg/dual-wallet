@@ -2,8 +2,8 @@
 
 ## Request boundary
 
-1. `api/tenant.ts` extracts the subdomain from the request host and resolves it through the versioned organization ObjectID map.
-2. Auth BFF routes send that server-derived ID to `api-v3`.
+1. `api/tenant.ts` resolves the organization. A wallet entry link names it in the path (`/<organization-id>/login`), and the verification, sign-in-code and password-reset mails name it as `?organization_id=` on `/verify`, `/otp` and `/reset-password`. `proxy.ts` strips the prefix, serves the plain route, and keeps the ID in the `ORGANIZATION_COOKIE_NAME` cookie; it also restores the prefix on any unauthorized route reached without one, so the address bar keeps the organization. Without such a cookie the request host resolves through the versioned organization ObjectID map. The host itself must still be valid, and it stays the host the session is bound to.
+2. Auth BFF routes send that resolved ID to `api-v3`.
 3. `api/server-session.ts` verifies the returned JWT `org_id`, stores API tokens server-side and sends only an opaque session credential to the browser.
 4. Generated SDK clients in the browser call the allow-listed `/api/backend` proxy.
 5. Protected pages consume only safe wallet fields and adapted object/activity view models. The wallet domain keeps the canonical Kernel execution account (`wallet.account.address`), its authorized controller and custody, and the Kernel deployment recipe as separate concepts. Inventory ownership uses only the execution-account address; an EOA controller address is used only by the corresponding signing ceremony. The sidebar profile popover renders this safe projection and links to settings without exposing credentials.
@@ -17,11 +17,13 @@
 13. Inventory and anonymous public object requests resolve the `card` display variant. Opening an inventory object makes a separate authenticated request for `detail`; when the face has no `detail` or `default` view, standard metadata remains the fallback.
 14. The authenticated external-face bridge uses an exact-origin bootstrap followed by a transferred `MessagePort`, strict envelopes, size/rate/duplicate-ID controls, and application identity verification. Its Viewer implementation is split into `core/` (protocol, application binding, context, transport, validation, errors) and `capabilities/` (object, attributes, actions, and Viewer UI); the compatibility facade remains `app/_lib/external-face-bridge.ts`. Inventory cards receive current-object/subscription capability only. Authenticated detail may read the bound object's minimized attributes and request a standard action intent. Viewer refetches fresh availability, rejects child object IDs/unknown defaults, opens native confirmation, executes through email/passkey/EOA, and returns only status/action ID. The normalized object excludes `system`, generated transport DTOs, credentials, signatures, cookies, and signing material; arbitrary `execute_action` and HTTP proxy operations are denied. A future integration such as a service-book API adds a capability module and injected handler without changing the transport; no such operation is advertised until the canonical endpoint exists.
 
-The organization ID is therefore not user-selectable. The current `*` mapping also supports bare hosts and unknown tenant labels; changing host still requires a separate host-only session.
+The organization ID is chosen by whoever opens the entry link, and it grants nothing on its own: `api-v3` validates the credentials inside that organization, and `establishSession` refuses a login whose JWT `org_id` differs from the one asked for. `readSession` binds the session to both the host and the organization, so opening a second organization's entry link ends the first session in that browser and requires a new sign-in. The current `*` mapping also supports bare hosts and unknown tenant labels; changing host still requires a separate host-only session.
+
+The wallet cannot check the ID before sign-in, because `GET /organizations/{organizationId}` requires a bearer token. An unknown organization therefore surfaces as a failed sign-in rather than a rejected link.
 
 ## Route ownership
 
-- Public user routes: `/login`, `/register`, `/verify`, `/forgot-password`, `/reset-password`
+- Public user routes: `/login`, `/register`, `/verify`, `/otp`, `/forgot-password`, `/reset-password`, each carrying `/<organization-id>` in front once an organization is known
 - Authenticated user routes: `/inventory`, `/inventory/[objectId]`, `/activity`, `/settings`
 - BFF auth boundary: `/api/session/**`
 - Allow-listed SDK transport: `/api/backend/**`

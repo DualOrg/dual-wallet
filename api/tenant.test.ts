@@ -1,7 +1,12 @@
+/**
+ * @jest-environment node
+ */
+import { NextRequest } from "next/server";
 import {
   DEFAULT_ORGANIZATION_ID,
   organizationIdForSubdomain,
   organizationIdFromHost,
+  tenantFromRequest,
 } from "@/api/tenant";
 
 describe("organizationIdFromHost", () => {
@@ -67,6 +72,52 @@ describe("organizationIdFromHost", () => {
     ).toBeUndefined();
     expect(
       organizationIdFromHost("bad_host.example.com", "wallet.dual.network"),
+    ).toBeUndefined();
+  });
+});
+
+describe("tenantFromRequest", () => {
+  const CHOSEN = "5f2b1c4e8a9d0b3c7e6f1a24";
+
+  function request(cookie?: string, forwardedHost?: string) {
+    const headers: Record<string, string> = {};
+    if (cookie) headers.cookie = cookie;
+    if (forwardedHost) headers["x-forwarded-host"] = forwardedHost;
+    return new NextRequest("http://localhost/api/session/login", { headers });
+  }
+
+  it("prefers the organization the entry link left in the cookie", () => {
+    expect(
+      tenantFromRequest(request(`smarttoken_viewer_org=${CHOSEN}`)),
+    ).toEqual({
+      organizationId: CHOSEN,
+      subdomain: "*",
+      host: "localhost",
+    });
+  });
+
+  it("falls back to the host when no entry link chose one", () => {
+    expect(tenantFromRequest(request())).toEqual({
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      subdomain: "*",
+      host: "localhost",
+    });
+  });
+
+  it("ignores a cookie that is not an organization ID", () => {
+    for (const value of ["", "not-an-organization", "6a1889", `${CHOSEN}0`]) {
+      expect(
+        tenantFromRequest(request(`smarttoken_viewer_org=${value}`))
+          ?.organizationId,
+      ).toBe(DEFAULT_ORGANIZATION_ID);
+    }
+  });
+
+  it("still rejects a malformed host, chosen organization or not", () => {
+    expect(
+      tenantFromRequest(
+        request(`smarttoken_viewer_org=${CHOSEN}`, "bad_host.example.com"),
+      ),
     ).toBeUndefined();
   });
 });

@@ -92,9 +92,9 @@ const server = createServer((request, response) => {
     request.on("end", () => {
       try {
         const body = JSON.parse(rawBody);
-        if (body.org_id !== expectedOrganizationId) {
+        if (body.organization_id !== expectedOrganizationId) {
           return respond(response, 422, {
-            message: `Unexpected organization ID: ${body.org_id}`,
+            message: `Unexpected organization ID: ${body.organization_id}`,
           });
         }
         return respond(response, 200, {});
