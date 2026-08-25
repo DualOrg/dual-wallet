@@ -20,6 +20,7 @@ MAX_INSTANCES ?= 1
 
 API_URL ?= https://api.dual.network
 VIEWER_BASE_DOMAIN ?= wallet.dual.network
+DEFAULT_ORGANIZATION_ID ?=
 NEXT_PUBLIC_APP_URL ?= https://wallet.dual.network
 NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS ?= https://faces.dual.network
 NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS ?= dual.dpp@1=https://faces.dual.network/dpp/v1/
@@ -71,6 +72,7 @@ deploy-config-check:
 	@test -n "$(MAX_INSTANCES)" || (echo "MAX_INSTANCES is required" >&2; exit 1)
 	@test -n "$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS)" || (echo "NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS is required" >&2; exit 1)
 	@test -n "$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS)" || (echo "NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS is required" >&2; exit 1)
+	@test -n "$(DEFAULT_ORGANIZATION_ID)" || echo "WARNING: DEFAULT_ORGANIZATION_ID is unset; only /<organization-id> entry links will resolve." >&2
 	@test -n "$(SESSION_SECRET_NAME)" || echo "WARNING: SESSION_SECRET_NAME is unset; sessions will be sealed with the public fallback key." >&2
 
 image-build: deploy-config-check
@@ -94,7 +96,7 @@ deploy: deploy-config-check
 		--allow-unauthenticated \
 		--max-instances $(MAX_INSTANCES) \
 		$(if $(SESSION_SECRET_NAME),--set-secrets "SESSION_SECRET=$(SESSION_SECRET_NAME):latest",) \
-		--update-env-vars "^|^API_URL=$(API_URL)|VIEWER_BASE_DOMAIN=$(VIEWER_BASE_DOMAIN)|NEXT_PUBLIC_APP_URL=$(NEXT_PUBLIC_APP_URL)|NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS=$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS)|NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS=$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS)"
+		--update-env-vars "^|^API_URL=$(API_URL)|VIEWER_BASE_DOMAIN=$(VIEWER_BASE_DOMAIN)|DEFAULT_ORGANIZATION_ID=$(DEFAULT_ORGANIZATION_ID)|NEXT_PUBLIC_APP_URL=$(NEXT_PUBLIC_APP_URL)|NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS=$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS)|NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS=$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS)"
 
 deploy-dev: ENV=dev
 deploy-dev: deploy

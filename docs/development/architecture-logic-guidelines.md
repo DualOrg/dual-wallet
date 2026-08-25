@@ -16,13 +16,13 @@ pages/components -> hooks/use cases -> domain
 ```
 
 - `api/web-sdk/` is generated transport code and is never hand-edited.
-- `app/_domain/` contains Viewer-owned models, value semantics, invariants,
+- `app/_domain/` contains wallet-owned models, value semantics, invariants,
   normalized errors, and explicit view/workflow states. It imports no React,
   Next.js, generated SDK, SDK client, browser API, or route-handler code.
 - `app/_adapters/` is the generated-DTO boundary. Adapters may import generated
   DTO types and domain types; they return stable domain projections and perform
   no rendering or navigation.
-- `app/_services/` owns Viewer use cases and transport orchestration that do not
+- `app/_services/` owns the wallet's use cases and transport orchestration that do not
   belong to a React hook. Separate server-only and browser-safe entry points.
 - `app/_hooks/` owns React Query and browser workflow composition. Hooks consume
   services and domain models, not generated DTOs.
@@ -43,7 +43,7 @@ domain fixtures.
 - Browser-only integrations use explicit client entry points and never receive
   a token-bearing object or server configuration through props or context.
 - A Server Component calls the server data-access/service layer directly; it
-  does not make an HTTP request to Viewer's own route handler.
+  does not make an HTTP request to wallet's own route handler.
 - Browser code calls only same-origin, allowlisted BFF or dedicated session
   endpoints through a browser-safe service. UI modules do not know the upstream
   API origin.
@@ -86,7 +86,7 @@ domain fixtures.
 
 ## Error policy
 
-- Normalize failures once into a Viewer error containing a safe category,
+- Normalize failures once into a wallet error containing a safe category,
   localized message key or safe fallback, retryability, HTTP status when useful,
   and optional request ID.
 - Presentation code switches on the normalized category rather than matching

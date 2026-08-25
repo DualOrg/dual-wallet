@@ -35,6 +35,7 @@ export default defineConfig({
         ...process.env,
         API_URL: "http://127.0.0.1:4010",
         VIEWER_BASE_DOMAIN: "wallet.dual.network",
+        DEFAULT_ORGANIZATION_ID: "000000000000000000000001",
         NEXT_PUBLIC_APP_URL: "http://demo.localhost:3000",
         NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS: "https://faces.dual.network",
         NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS:

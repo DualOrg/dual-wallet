@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 
-const expectedOrganizationId = "000000000000000000000001";
+const expectedOrganizationId =
+  process.env.DEFAULT_ORGANIZATION_ID || "000000000000000000000001";
 const port = 4010;
 const publicObjectId = "507f1f77bcf86cd799439011";
 const publicObject = {

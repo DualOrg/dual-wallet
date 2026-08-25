@@ -1,16 +1,16 @@
-# Viewer product guidelines
+# Wallet product guidelines
 
-These rules define what belongs in Viewer and how product decisions should be
+These rules define what belongs in the wallet and how product decisions should be
 made. Read them before changing routes, navigation, inventory, object views,
 activity, settings, sharing, or external-face behavior.
 
 ## Product role
 
-- Viewer is the end-user SmartToken application. Optimize for recognition,
+- The wallet is the end-user SmartToken application. Optimize for recognition,
   confidence, and completing a small number of personal tasks; do not expose
   console administration or operator workflows.
 - The authenticated SmartToken `Wallet`, an EOA authentication/signing method,
-  and the server-managed Viewer session are separate concepts in copy, types,
+  and the server-managed wallet session are separate concepts in copy, types,
   state, and tests.
 - The API and chain are authoritative. The UI may explain, filter, and stage an
   intent, but it must not manufacture capabilities or imply an outcome that has
@@ -36,7 +36,7 @@ activity, settings, sharing, or external-face behavior.
 
 ## Information hierarchy and disclosure
 
-- Lead object views with the assigned face or a standard Viewer-owned pass,
+- Lead object views with the assigned face or a standard wallet-owned pass,
   followed by name, description, ownership-relevant status, and available user
   actions.
 - Show action history as a readable event: action, status, affected objects,
@@ -63,9 +63,9 @@ activity, settings, sharing, or external-face behavior.
 - Only the authenticated detail route may grant a reviewed private-attribute or
   action-intent capability, and only after exact application ID, semantic major,
   origin, path, and ready identity verification.
-- An external action request is untrusted intent. Viewer refetches availability,
+- An external action request is untrusted intent. The wallet refetches availability,
   discards child-supplied authority fields, and uses the same native confirmation
-  and authentication ceremony as a Viewer-originated action.
+  and authentication ceremony as a wallet-originated action.
 - Bridge payloads are explicit allowlisted projections. Never spread a domain or
   transport object into a message envelope.
 

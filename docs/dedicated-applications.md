@@ -2,13 +2,13 @@
 
 ## Decision
 
-Dual Viewer remains the universal, deliberately constrained smart-object wallet. Rich vertical products are separate applications that share reviewed libraries and API contracts rather than forks of Viewer.
+Dual Wallet remains the universal, deliberately constrained smart-object wallet. Rich vertical products are separate applications that share reviewed libraries and API contracts rather than forks of the wallet.
 
 The product boundary is:
 
 | Surface             | Responsibility                                                                                                                                  |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dual Viewer         | Public card rendering, metadata/details, share links, generic inventory, standard actions, isolated faces, and a fallback for every object type |
+| Dual Wallet         | Public card rendering, metadata/details, share links, generic inventory, standard actions, isolated faces, and a fallback for every object type |
 | DPP application     | Lifecycle records, certificates, service history, ownership workflows, public/private attributes, and issuer or service-provider operations     |
 | Trading application | Offers, pricing, order books, settlement, transfers, balances, and trading-specific risk controls                                               |
 | NFT application     | Galleries, collections, minting, traits, drops, marketplace discovery, and collection-specific navigation                                       |
@@ -17,7 +17,7 @@ Faces describe how an object is presented. Applications implement a business wor
 
 ## Why separate applications
 
-A universal Viewer needs a small and predictable attack surface. Every additional third-party script, API permission, signing workflow, or vertical navigation rule makes that surface harder to reason about and turns every face publisher into a potential wallet application author.
+A universal wallet needs a small and predictable attack surface. Every additional third-party script, API permission, signing workflow, or vertical navigation rule makes that surface harder to reason about and turns every face publisher into a potential wallet application author.
 
 Dedicated applications provide:
 
@@ -28,7 +28,7 @@ Dedicated applications provide:
 - a clear consent boundary for sensitive or high-value operations;
 - normal JavaScript and authenticated backend access without putting credentials in face HTML.
 
-The applications should reuse packages, not Viewer pages. Copying or forking Viewer would create incompatible login, signing, object-adapter, and security implementations.
+The applications should reuse packages, not the wallet pages. Copying or forking the wallet would create incompatible login, signing, object-adapter, and security implementations.
 
 ## Current state versus target state
 
@@ -36,22 +36,22 @@ The applications should reuse packages, not Viewer pages. Copying or forking Vie
 
 - DUAL access and refresh JWTs never reach browser code. They are sealed into the session cookie and opened only on the server.
 - Browser code receives only a host-only, `HttpOnly`, `SameSite=Strict` cookie it cannot read.
-- Viewer exposes a small allowlisted same-origin BFF at `/api/backend/**`.
+- The wallet exposes a small allowlisted same-origin BFF at `/api/backend/**`.
 - Inline HTML faces are rendered from the public object projection and run without scripts or network access.
 - HTTPS URL-backed faces can run JavaScript in a sandboxed iframe and receive resolved `object_id` and `variant` query parameters.
 - Email sessions can execute standard actions through the authenticated BFF.
 - Passkey and EOA sessions use `POST /ebus/prepare`, sign the canonical challenge in the browser, and submit `POST /ebus/execute`.
 - Trusted external faces can use an authenticated, object-bound bridge for the
-  current object, minimized detail attributes, and Viewer-owned standard action
-  requests. They never receive the Viewer token or an arbitrary API proxy.
+  current object, minimized detail attributes, and wallet-owned standard action
+  requests. They never receive the wallet token or an arbitrary API proxy.
 
 ### Not available yet
 
 - a trusted application registry;
 - OAuth/OIDC authorization-code and token endpoints;
-- a one-time launch-grant exchange between Viewer and a dedicated application;
+- a one-time launch-grant exchange between the wallet and a dedicated application;
 - a backend-managed face application registry and per-application capability
-  policy (Viewer currently uses exact deployment-configured bindings);
+  policy (the wallet currently uses exact deployment-configured bindings);
 - application-scoped access or refresh tokens;
 - complete session-key creation, consent, revocation, and enforcement endpoints;
 - action/object/template scopes in the current session-key permission schema.
@@ -65,7 +65,7 @@ but broader authenticated APIs remain a dedicated-application/BFF concern.
 Use a separate origin and BFF for every product:
 
 ```text
-wallet.dual.network     Generic Dual Viewer + Viewer BFF
+wallet.dual.network     Generic Dual Wallet + the wallet BFF
 dpp.dual.network        DPP web application + DPP BFF
 trade.dual.network      Trading web application + Trading BFF
 nft.dual.network        NFT web application + NFT BFF
@@ -73,9 +73,9 @@ auth.dual.network       Authorization service (target architecture)
 api.dual.network        Canonical api-v3 services
 ```
 
-Each product has its own deployment, cookie, session store, API route allowlist, CSP, telemetry, and incident boundary. A compromise of the DPP frontend must not automatically expose a Trading or Viewer session.
+Each product has its own deployment, cookie, session store, API route allowlist, CSP, telemetry, and incident boundary. A compromise of the DPP frontend must not automatically expose a Trading or wallet session.
 
-For the full application, prefer top-level navigation from Viewer to the dedicated origin. Top-level navigation avoids third-party-cookie restrictions, gives WebAuthn a clear origin, provides usable browser history, and makes the security boundary visible to the user.
+For the full application, prefer top-level navigation from the wallet to the dedicated origin. Top-level navigation avoids third-party-cookie restrictions, gives WebAuthn a clear origin, provides usable browser history, and makes the security boundary visible to the user.
 
 Use an iframe only for a small embedded preview or transitional integration. Do not put the entire authenticated product inside the generic object card unless the bridge and authorization model described below have been implemented.
 
@@ -120,7 +120,7 @@ This package may create a PKCE verifier, invoke a passkey, or ask a wallet to si
 
 ### `@dual/bff-session`
 
-Server-only session implementation shared by Viewer and dedicated application BFFs.
+Server-only session implementation shared by the wallet and dedicated application BFFs.
 
 - opaque host-only session cookies;
 - encrypted/shared session storage keyed by a hash of the opaque cookie;
@@ -131,7 +131,7 @@ Server-only session implementation shared by Viewer and dedicated application BF
 - terminal-401 cleanup;
 - audit-safe error normalization.
 
-This package must have a server-only export condition so it cannot be bundled into browser JavaScript. The current Viewer process-local store is acceptable for a single instance, but horizontally scaled products need a shared encrypted TTL store before increasing replicas.
+This package must have a server-only export condition so it cannot be bundled into browser JavaScript. The wallet seals its session into the cookie and keeps no server-side store, so it scales horizontally as it stands. A product that needs revocable server-side sessions has to add a shared encrypted TTL store.
 
 ### `@dual/action-executor`
 
@@ -182,7 +182,7 @@ Shared application discovery and launch helpers once the registry exists.
 
 ## Application registry
 
-Viewer should show **Open in DPP**, **Open Trading**, or **Open NFT** only for a server-registered application. Object or face data must not be able to invent a trusted application link.
+The wallet should show **Open in DPP**, **Open Trading**, or **Open NFT** only for a server-registered application. Object or face data must not be able to invent a trusted application link.
 
 A target registry record should contain at least:
 
@@ -234,9 +234,9 @@ The resolved object response should contain a source-free application descriptor
 
 Public data does not need a JWT.
 
-1. Viewer resolves the registered application for the object.
+1. The wallet resolves the registered application for the object.
 2. The user selects **Open in DPP**.
-3. Viewer navigates to the registered application with `object_id` and an optional `return_to` value.
+3. The wallet navigates to the registered application with `object_id` and an optional `return_to` value.
 4. The application requests only public endpoints such as `GET /public/objects` and `GET /public/objects/{id}/attributes`.
 5. When the user requests a private operation, the application starts its own authenticated flow.
 
@@ -293,7 +293,7 @@ Advantages:
 
 - uses current authentication endpoints;
 - each application's session is isolated;
-- no credential crosses from Viewer to the application.
+- no credential crosses from the wallet to the application.
 
 Tradeoff: the user may authenticate once per application.
 
@@ -323,11 +323,11 @@ GET  /oauth/userinfo       optional safe identity projection
 
 Exact endpoint names should be added to `api-v3` only after the authorization-server boundary is agreed.
 
-### Option C: one-time Viewer launch grant
+### Option C: one-time wallet launch grant
 
 This is a smaller bridge to SSO if a full authorization server is deferred.
 
-1. Viewer BFF creates a random, 30–60 second, single-use launch grant for a registered app, wallet, object, redirect URI, and capability set.
+1. The wallet BFF creates a random, 30–60 second, single-use launch grant for a registered app, wallet, object, redirect URI, and capability set.
 2. The browser is redirected to the registered application callback with the opaque grant and state.
 3. The dedicated application BFF exchanges the grant server-to-server.
 4. The grant is atomically consumed.
@@ -423,7 +423,7 @@ The session private key should live in the dedicated application's protected run
 
 ## Embedded face bridge
 
-Some URL-backed faces, including the current BKVS DPP application, expect a parent bridge. If Viewer supports that integration, the bridge must be a narrow capability protocol—not a transport for credentials or arbitrary backend calls.
+Some URL-backed faces, including the current BKVS DPP application, expect a parent bridge. If the wallet supports that integration, the bridge must be a narrow capability protocol—not a transport for credentials or arbitrary backend calls.
 
 Allowed bridge concepts could include:
 
@@ -455,7 +455,7 @@ and:
 }
 ```
 
-Viewer must:
+The wallet must:
 
 - accept messages only from the iframe window created for that object;
 - require an exact registered origin, never `*`;
@@ -463,7 +463,7 @@ Viewer must:
 - bind the message to the displayed object and allowed application;
 - enforce message-size, timeout, and rate limits;
 - expose only named operations, never arbitrary URL/method/headers;
-- return public data directly or open a Viewer-owned details/action UI;
+- return public data directly or open a wallet-owned details/action UI;
 - show native confirmation before any mutation or signature;
 - perform the existing email/passkey/EOA workflow itself;
 - return only the minimal result or typed error;
@@ -476,17 +476,17 @@ The bridge has no `fetch`, `proxy`, `getSession`, `getCookie`, or `getToken` ope
 URL-backed faces are untrusted remote applications. Before treating them as a production extension mechanism:
 
 - register and allowlist exact origins;
-- reject the Viewer origin itself and arbitrary subdomains unless explicitly reviewed;
+- reject the wallet origin itself and arbitrary subdomains unless explicitly reviewed;
 - require HTTPS;
 - keep `referrerPolicy="no-referrer"`;
 - omit popups, downloads, top navigation, pointer lock, camera, microphone, geolocation, and payment capabilities by default;
 - use a restrictive iframe `allow` policy in addition to `sandbox`;
-- keep Viewer cookies host-only and inaccessible to the external origin;
+- keep the wallet cookies host-only and inaccessible to the external origin;
 - require the remote origin to set an appropriate CSP and `frame-ancestors` policy;
 - display the application identity when interaction is enabled;
 - provide a clear top-level **Open application** action for workflows that outgrow the preview.
 
-`allow-scripts allow-same-origin` lets a remote application run normally on its own origin. It must not be used for a same-origin Viewer URL because same-origin script execution weakens the intended separation.
+`allow-scripts allow-same-origin` lets a remote application run normally on its own origin. It must not be used for a same-origin wallet URL because same-origin script execution weakens the intended separation.
 
 ## API work required
 
@@ -581,7 +581,7 @@ Collection media and metadata remain untrusted. The NFT app should reuse the dis
 
 ## Suggested delivery sequence
 
-1. Keep Viewer as the universal fallback and public/share surface.
+1. Keep the wallet as the universal fallback and public/share surface.
 2. Add a trusted application registry and top-level **Open in application** action.
 3. Extract and publish API SDK, domain adapters, action executor, UI, and server-only BFF session packages.
 4. Build the DPP application with its own login/BFF using current endpoints.

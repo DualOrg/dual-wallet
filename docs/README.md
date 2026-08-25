@@ -1,8 +1,8 @@
-# Viewer documentation
+# Wallet documentation
 
 - [Architecture](./architecture.md)
 - Development guidelines:
-  - [Viewer product guidelines](./development/viewer-product-guidelines.md)
+  - [the wallet product guidelines](./development/wallet-product-guidelines.md)
   - [UI and accessibility guidelines](./development/ui-accessibility-guidelines.md)
   - [Architecture and logic guidelines](./development/architecture-logic-guidelines.md)
   - [React and state guidelines](./development/react-state-guidelines.md)

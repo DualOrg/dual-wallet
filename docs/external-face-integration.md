@@ -1,7 +1,7 @@
-# External-face integration in Viewer
+# External-face integration in the wallet
 
 This document is the implementation guide for changing external-face behavior
-inside Dual Viewer. It records the shipped host behavior, security boundary,
+inside Dual Wallet. It records the shipped host behavior, security boundary,
 file ownership, tests, and cross-repository release impact.
 
 For the wire protocol and face-authoring contract, use the canonical documents
@@ -12,23 +12,23 @@ in the sibling `external-faces` workspace:
 - `external-faces/docs/face-authoring-guide.md`
 - `external-faces/docs/hosting-and-deployment.md`
 
-The Viewer code is authoritative for what the host actually grants. A face
+The wallet code is authoritative for what the host actually grants. A face
 manifest or publisher config cannot grant itself a capability.
 
 ## Product boundary
 
-Viewer is a generic wallet and safe object renderer. It owns:
+The wallet is a generic wallet and safe object renderer. It owns:
 
 - public object routes and authenticated inventory;
 - selection of `card`, `detail`, and `share` display variants;
 - standard metadata fallback when no usable display exists;
 - iframe sandboxing and aspect-ratio containers;
 - the authenticated external-face bridge host;
-- the wallet session, object binding, native confirmation UI, signing, action
+- The wallet session, object binding, native confirmation UI, signing, action
   execution, cache invalidation, and activity rendering.
 
 An external face owns presentation inside its iframe. It never receives the
-Viewer JWT, refresh token, cookie, passkey material, EOA signature, or generic
+wallet JWT, refresh token, cookie, passkey material, EOA signature, or generic
 backend access. Workflows that need broad authenticated APIs belong in a
 dedicated top-level application with its own BFF and host-only session; see
 `docs/dedicated-applications.md`.
@@ -36,7 +36,7 @@ dedicated top-level application with its own BFF and host-only session; see
 ## Display resolution
 
 `api-v3` resolves a source-free `ObjectDisplay` from the selected
-`FaceView`. Viewer adapts that response in `app/_adapters/inventory.ts` and
+`FaceView`. The wallet adapts that response in `app/_adapters/inventory.ts` and
 renders it in `app/_components/inventory/object-visual.tsx`.
 
 The normal selection is:
@@ -49,7 +49,7 @@ The normal selection is:
 | Share URL                 | `share` where requested by the API      | Public-only                        | Never                                                 |
 
 If `detail` or `default` is absent, the object page uses the standard metadata
-face. If no display is usable at all, Viewer renders name, description,
+face. If no display is usable at all, the wallet renders name, description,
 category, object ID, and the metadata image when present. A missing face must
 never produce an empty object page.
 
@@ -75,12 +75,12 @@ referrerPolicy="no-referrer"
 ```
 
 There is deliberately no popup, download, top-navigation, parent-DOM, or
-Viewer-session permission. The remote application must allow framing by the
-Viewer origin through its CSP. It runs on its own origin and is responsible for
+wallet-session permission. The remote application must allow framing by the
+wallet origin through its CSP. It runs on its own origin and is responsible for
 its own content security.
 
 `api-v3` resolves `object_id` and `variant` into the external view URL. On an
-authenticated route, Viewer adds `dual_bridge=1` only when the URL matches a
+authenticated route, the wallet adds `dual_bridge=1` only when the URL matches a
 registered application binding. The query flag is a mode hint, not authority;
 the bridge still requires the exact-origin `MessageChannel` handshake and
 application identity check.
@@ -100,10 +100,10 @@ GET /public/objects/<id>/display/<variant>
 GET /public/objects/<id>/attributes?limit<=25&cursor=<cursor>
 ```
 
-Viewer's inline display proxy is
+wallet's inline display proxy is
 `/api/public/objects/[objectId]/display/[variant]`. It validates the fixed path,
 caps the response, returns text rather than trusted HTML, and never attaches a
-Viewer session.
+wallet session.
 
 Public pages must not initialize the bridge or fall back to authenticated
 object/attribute endpoints. An object ID is an identifier, not authorization.
@@ -115,7 +115,7 @@ The host is split by responsibility:
 ```text
 app/_lib/external-face-bridge/
   core/          application binding, context, envelopes, channel, limits
-  capabilities/  named operations and injected Viewer handlers
+  capabilities/  named operations and injected wallet handlers
   index.ts       public host exports
 ```
 
@@ -124,12 +124,12 @@ second `postMessage` protocol.
 
 The handshake is:
 
-1. Viewer verifies the iframe URL against its build-time application registry.
-2. Viewer creates a random channel ID and transfers exactly one `MessagePort`
+1. The wallet verifies the iframe URL against its build-time application registry.
+2. The wallet creates a random channel ID and transfers exactly one `MessagePort`
    to the exact target origin.
 3. The child answers with `dual.face.ready`, protocol version, channel ID, and
    application `{id, version}`.
-4. Viewer verifies ID and semantic major, then sends the bound context through
+4. The wallet verifies ID and semantic major, then sends the bound context through
    the private port.
 5. All subsequent requests and events use that port, strict envelopes, unique
    request IDs, size limits, and rate limits.
@@ -171,18 +171,18 @@ the corresponding handler.
 Inventory cards expose only `bridge.ping` and the minimized
 `object.current.read`; they do not expose change subscriptions because the v1
 event envelope contains a content hash. They also do not inject
-private-attribute, action, or Viewer-UI handlers. The authenticated detail
+private-attribute, action, or wallet-UI handlers. The authenticated detail
 component injects:
 
 - `viewer.details.open` to open the native details modal;
 - `object.attributes.read` to load attributes for the already-bound object;
-- `object.action.request` only when Viewer can run the native action flow.
+- `object.action.request` only when the wallet can run the native action flow.
 
 `object.attributes.read` accepts no object ID. The handler calls the generated
 SDK for the bound object and returns the minimized attribute projection.
 
 `object.action.request` is untrusted intent. The child supplies only a supported
-action name and schema-checked suggested defaults. Viewer:
+action name and schema-checked suggested defaults. The wallet:
 
 1. refetches fresh object/action availability;
 2. rejects child-supplied object, wallet, controller, organization, endpoint, or
@@ -209,7 +209,7 @@ application-ID, semantic-major, origin, and path-prefix binding. Origin alone
 is insufficient.
 
 Both values are public build-time inputs embedded by Next.js. Changing them
-requires rebuilding and redeploying Viewer. A trailing slash is required on the
+requires rebuilding and redeploying the wallet. A trailing slash is required on the
 registered path. Multiple bindings are comma-separated.
 
 Local non-production builds additionally allow the reviewed bridge fixture at
@@ -244,7 +244,7 @@ Confirm the standard metadata fallback still works.
 ### New display field or FaceView behavior
 
 Change `api-v3` schemas and gateway bundle first, regenerate/synchronize the
-web SDK, update Viewer adaptation, then update face/template authoring docs and
+web SDK, update the wallet adaptation, then update face/template authoring docs and
 Console App editing if publishers need to set the field.
 
 ### New bridge operation
@@ -253,7 +253,7 @@ This is a cross-repository protocol change. Update, in one coordinated review:
 
 1. canonical protocol and security docs in `external-faces`;
 2. strict child schemas/client and tests;
-3. Viewer capability module, injected handler, limits, and tests;
+3. The wallet capability module, injected handler, limits, and tests;
 4. the DPP UI with capability detection and safe error states;
 5. `api-v3`, SDK, or BFF routes when backend data is required.
 
@@ -266,7 +266,7 @@ options through the bridge.
 
 Register the exact application ID, semantic major, HTTPS origin, and narrow path
 prefix. Review hosting ownership, CSP, manifest, bridge implementation, and
-release process before changing Viewer environment values.
+release process before changing the wallet environment values.
 
 ## Verification
 
@@ -292,13 +292,13 @@ live object, or deploy.
 Before deploying an integration change, confirm:
 
 - the face manifest identity matches its bridge-ready identity;
-- the face semantic major matches Viewer's application binding;
+- the face semantic major matches wallet's application binding;
 - the exact production URL is under the registered path prefix;
 - api-v3 and generated SDK changes are already compatible;
 - the face handles a missing optional capability without breaking rendering;
-- Viewer and face deployment order is backward compatible;
+- The wallet and face deployment order is backward compatible;
 - public mode still works with no authenticated bridge;
-- a prior immutable face release and prior Viewer revision are available for
+- a prior immutable face release and prior wallet revision are available for
   rollback.
 
 Deployment, promotion, template reassignment, and live object actions are

@@ -1,15 +1,15 @@
 # Repository Guidelines
 
-For changes that originate in api-v3 or affect generated SDK contracts, read
-`../docs/codebase-change-flow.md` before editing Viewer. Refresh
+For changes that originate in api-v3 or affect generated SDK contracts, follow
+the internal contract-first change flow before editing the wallet. Refresh
 `api/web-sdk/**` only through `npm run sdk:sync`; never hand-edit it as the
 source of an API change.
 
 The focused development guides below are normative. Read every guide whose
 scope is affected before editing implementation or tests:
 
-- Viewer routes, product behavior, disclosure, local persistence, or external
-  faces: `docs/development/viewer-product-guidelines.md`.
+- The wallet routes, product behavior, disclosure, local persistence, or external
+  faces: `docs/development/wallet-product-guidelines.md`.
 - Components, styles, interaction primitives, copy, formatting, or responsive
   behavior: `docs/development/ui-accessibility-guidelines.md`.
 - Domain models, adapters, services, SDK usage, errors, or async workflows:
@@ -20,8 +20,13 @@ scope is affected before editing implementation or tests:
 These guides refine the repository rules; this file wins if a genuine conflict
 remains. Keep the guides synchronized with architectural changes.
 
-- Repo: https://github.com/vlabsio/wallet
-- The Viewer is the end-user SmartToken application. It authenticates a wallet
+- Repo: https://github.com/DualOrg/dual-wallet
+- Several boundaries below name sibling repositories (`../api-v3`, `../web-sdk`,
+  `../console-app`, `../smarttoken`, `../viewer`, `../external-faces`). Those are
+  internal and are not published with this one. Everything needed to run, test,
+  and deploy this app is in this repository; the sibling notes only say where a
+  contract is decided.
+- The wallet is the end-user SmartToken application. It authenticates a wallet
   account and gives that user access to their inventory, object details,
   activity, and account settings.
 - Build the application as a strict TypeScript, React 19, Next.js App Router
@@ -30,7 +35,7 @@ remains. Keep the guides synchronized with architectural changes.
   - HTTP contract and endpoint semantics: sibling `../api-v3` repository,
     especially `api.yaml`, `routes/`, and `schemas/`.
   - Generated TypeScript client: sibling `../web-sdk` repository. It is
-    generated from `api-v3` and is the transport/type boundary used by Viewer.
+    generated from `api-v3` and is the transport/type boundary used by the wallet.
   - Visual language, colors, typography, spacing, and component treatment:
     sibling `../console-app` repository.
   - SmartToken backend and on-chain behavior: sibling `../smarttoken`
@@ -38,7 +43,7 @@ remains. Keep the guides synchronized with architectural changes.
 - Keep three meanings distinct throughout the code:
   - a SmartToken `Wallet` is the authenticated API account;
   - an EOA wallet connection is one authentication/signing method;
-  - the Viewer session is the app's server-managed authenticated session.
+  - The wallet session is the app's server-managed authenticated session.
 
 ## Target Product Scope and Routes
 
@@ -67,7 +72,7 @@ remains. Keep the guides synchronized with architectural changes.
     destructive actions when implemented.
 - `/` redirects to `/inventory` for an authenticated session and `/login`
   otherwise. Authentication pages redirect authenticated users to inventory.
-- The Viewer is an end-user surface. Do not copy console administration,
+- The wallet is an end-user surface. Do not copy console administration,
   organization management, operational dashboards, or role-management screens
   from `console-app`.
 - Do not invent API capabilities. If a requested setting, auth-method mutation,
@@ -78,20 +83,20 @@ remains. Keep the guides synchronized with architectural changes.
 
 - Next.js App Router source: `app/`
   - Unauthorized account routes: `app/(unauthorized)/`
-  - Authenticated Viewer routes: `app/(authorized)/`
+  - Authenticated wallet routes: `app/(authorized)/`
   - Inventory feature: `app/(authorized)/inventory/`
   - Activity feature: `app/(authorized)/activity/`
   - Settings feature: `app/(authorized)/settings/`
   - Stable generated-DTO adapters: `app/_adapters/`
   - Domain models, errors, and view states: `app/_domain/`
-  - Viewer use cases and transport orchestration: `app/_services/`
+  - Wallet use cases and transport orchestration: `app/_services/`
   - Reviewed protocol/integration modules, not general feature business logic:
     `app/_lib/`
   - Deployment/API configuration: `app/_config/`
   - Shared components, hooks, providers, types, and utilities:
     `app/_components/`, `app/_hooks/`, `app/_providers/`, `app/_types/`, and
     `app/_utils/`
-  - Viewer-owned design tokens and primitives:
+  - Wallet-owned design tokens and primitives:
     `app/_components/design-system/`
   - Dedicated session/auth BFF routes: `app/api/session/`
   - Authenticated, allowlisted backend proxy: `app/api/backend/[...path]/`
@@ -111,14 +116,8 @@ remains. Keep the guides synchronized with architectural changes.
 - Architecture, security, field ownership, and deployment notes: `docs/`.
 - Static assets, fonts, and association files: `public/`.
 
-## Greenfield Build Rules
+## Build Rules
 
-- Delete the current `src/`, `webpack.config.js`, `dist/`, direct API wrappers,
-  browser-token session implementation, and static deployment path when
-  establishing the scaffold.
-- Start from the target structure and current contracts. Do not port browser
-  storage formats, old endpoint names, or implementation helpers merely
-  because they exist in the current folder.
 - The app must not expose API tokens to browser JavaScript. Do not introduce
   `localStorage` keys such as `access_token`, `refresh_token`, or
   `viewer_session`.
@@ -138,7 +137,7 @@ remains. Keep the guides synchronized with architectural changes.
 - Package manager: npm. Use `npm` and preserve the reviewed
   `package-lock.json`; do not substitute Bun, Yarn, or pnpm.
 - Install exact dependencies: `npm ci`.
-- The greenfield baseline must expose these scripts:
+- The repository exposes these scripts:
   - Start development: `npm run dev`
   - Build production output: `npm run build`
   - Serve a production build: `npm run start`
@@ -152,7 +151,7 @@ remains. Keep the guides synchronized with architectural changes.
   - Install Playwright Chromium: `npm run test:e2e:install`
   - Run browser tests: `npm run test:e2e`
 - Add missing baseline scripts as part of the Next.js scaffold before relying
-  on them in CI. Do not weaken a check merely to make a greenfield build pass.
+  on them in CI. Do not weaken a check merely to make a build pass.
 - Build, push, and deploy targets are state-changing. Never run `deploy.sh`,
   publish an image, update a bucket, or deploy Cloud Run without explicit user
   confirmation.
@@ -164,7 +163,7 @@ remains. Keep the guides synchronized with architectural changes.
 - Prefer precise types and narrow unions. Avoid `any`, unchecked casts, and
   duplicate local versions of generated SDK types.
 - Keep generated transport DTOs at the boundary. Convert them into stable
-  Viewer domain/view models in `app/_adapters/`; do not let OpenAPI naming and
+  the wallet domain/view models in `app/_adapters/`; do not let OpenAPI naming and
   optionality spread through presentation components.
 - `app/_domain/` never imports React, Next.js, browser APIs, generated SDK
   modules, or SDK clients. Components and pages never instantiate generated API
@@ -176,7 +175,7 @@ remains. Keep the guides synchronized with architectural changes.
   handlers, wallet connectors, WebAuthn, or other browser APIs. Pages and
   layouts remain Server Components by default.
 - Server Components call a server-only data/service layer directly instead of
-  making HTTP requests to Viewer route handlers. Browser code calls only
+  making HTTP requests to the wallet route handlers. Browser code calls only
   same-origin, allowlisted routes through browser-safe services.
 - Mark session, tenant, upstream-origin, credential, and token-bearing modules
   with `import "server-only"`.
@@ -187,7 +186,7 @@ remains. Keep the guides synchronized with architectural changes.
 - Use typed per-feature query-key factories and focused mutation hooks. Raw
   query-key arrays, SDK DTOs, and direct mutation calls do not belong in pages
   or components. Enable the TanStack Query strict ESLint rules when establishing
-  the greenfield quality baseline.
+  the quality baseline.
 - Keep protocol values explicit about units and serialization. Use `bigint` or
   Viem-safe values for chain amounts and never use JavaScript floating point for
   token arithmetic.
@@ -246,8 +245,8 @@ remains. Keep the guides synchronized with architectural changes.
   - `app/globals.css`
   - its shared form, auth-shell, navigation, card, status, and feedback
     primitives.
-- Copy or adapt reviewed design tokens into Viewer-owned files; do not import
-  sibling repository source at runtime. Viewer builds must be reproducible from
+- Copy or adapt reviewed design tokens into wallet-owned files; do not import
+  sibling repository source at runtime. The wallet builds must be reproducible from
   this repository and lockfile alone.
 - Preserve the semantic token layering used by Console App. Product components
   consume semantic surface/content/stroke/action/status tokens, not raw palette
@@ -278,15 +277,15 @@ remains. Keep the guides synchronized with architectural changes.
   generated TypeScript representation. Backend implementation details do not
   override the reviewed contract silently.
 - Never manually edit files under `api/web-sdk/` or in the sibling generated
-  `../web-sdk` repository as part of Viewer feature work.
+  `../web-sdk` repository as part of the wallet feature work.
 - `npm run sdk:sync` must copy the reviewed sibling SDK into `api/web-sdk/`,
   normalize only deterministic integration concerns, and record the source
   commit. Do not hand-copy individual generated models or API methods.
 - After a canonical API change:
   1. Validate and bundle the OpenAPI document in `../api-v3`.
   2. Regenerate and review `../web-sdk`.
-  3. Run `npm run sdk:sync` in Viewer.
-  4. Update Viewer adapters, field dispositions, and use sites.
+  3. Run `npm run sdk:sync` in the wallet.
+  4. Update the wallet adapters, field dispositions, and use sites.
   5. Run `npm run check`, `npm run build`, and relevant browser tests.
 - Important current generated operations:
   - wallet account: `registerWallet`, `loginWallet`, `getWallet`,
@@ -362,7 +361,7 @@ remains. Keep the guides synchronized with architectural changes.
 - Proxied mutations validate the exact configured `Origin`. Keep explicit
   method, path, body-size, request-header, and response-header allowlists.
 - Authenticated responses are `private, no-store`. A terminal upstream 401
-  clears the Viewer session; transient API errors do not silently destroy it.
+  clears the wallet session; transient API errors do not silently destroy it.
 - UI route guards are usability controls, not authorization. The API must
   authorize every wallet, object, action-log, and settings request.
 - Preserve strict CSP and security headers. WalletConnect and asset origins
@@ -410,7 +409,7 @@ documents it links. Keep that guide synchronized with the code and tests.
 - An external action request is untrusted intent, not authorization. Accept
   only a supported action name and known form-default fields, reject child
   object/signer/organization/endpoint values, refetch the object's fresh action
-  list, and require the existing Viewer-native confirmation and
+  list, and require the existing wallet-native confirmation and
   email/passkey/EOA execution flow. Allow one pending request per face.
 - Never send JWTs, cookies, passkey assertions, challenges, EOA signatures,
   permit secrets, or raw action payloads to an iframe. Do not add generic
@@ -418,7 +417,7 @@ documents it links. Keep that guide synchronized with the code and tests.
 - Activity calls `listActionLogs` with the current wallet ID and/or signer as
   defined by the canonical ownership model. Keep the wallet filter across
   cursor pages and filter changes; never expose an organization-wide operator
-  feed in Viewer.
+  feed in the wallet.
 - Activity maps status, action name/alias, affected objects, transaction hash,
   timestamps, and fee strings into a user-readable model. Preserve exact fee
   strings and label units; do not imply finality beyond the API status.
@@ -439,7 +438,7 @@ documents it links. Keep that guide synchronized with the code and tests.
   credentials.
 - Server-only:
   - `API_URL`: upstream `api-v3` origin.
-  - `VIEWER_BASE_DOMAIN`: parent Viewer domain. The left-most tenant subdomain
+  - `VIEWER_BASE_DOMAIN`: parent wallet domain. The left-most tenant subdomain
     is resolved by the server-owned map in `api/tenant.ts` to the organization
     ObjectID injected by the BFF into account operations.
 - Public build-time values only when browser code genuinely needs them:
@@ -486,7 +485,7 @@ check`. Run `npm run build` for routes, server/client boundaries, environment,
   cross-origin iframe integration coverage with mocked APIs.
 - Test loading, empty, error, partial-data, stale-session, and pagination states
   in addition to the happy path.
-- The greenfield quality baseline also enforces architecture import boundaries,
+- The quality baseline also enforces architecture import boundaries,
   TanStack Query's strict ESLint rules, formatting checks, automated
   accessibility checks, and reviewed viewport/theme visual coverage. Do not
   enable a rule without resolving existing violations or recording an explicit,
@@ -495,13 +494,13 @@ check`. Run `npm run build` for routes, server/client boundaries, environment,
 ## Documentation and Delivery
 
 - `README.md` is the repository overview; `docs/README.md` is the documentation
-  index. Establish both as part of the greenfield scaffold.
+  index. Keep both current.
 - The focused product, UI/accessibility, architecture/logic, and React/state
   guides live in `docs/development/` and are indexed from `docs/README.md`.
-- Document the greenfield Next.js architecture and its current deployment.
+- Document the Next.js architecture and its current deployment.
 - Update relevant documentation in the same change when modifying:
   - auth method flows, cookies, refresh, or proxy policy;
-  - route ownership or the Viewer navigation model;
+  - route ownership or the wallet navigation model;
   - generated SDK synchronization or field dispositions;
   - inventory ownership/filter semantics or activity visibility;
   - design-token provenance and theme behavior; or
@@ -512,19 +511,5 @@ check`. Run `npm run build` for routes, server/client boundaries, environment,
 - Never commit tokens, passwords, recovery links, verification codes, wallet
   signatures, passkey assertions, personal data, production credentials,
   `.env*`, build output, Playwright reports, or local test artifacts.
-- Do not push commits, publish packages/images, deploy Viewer, change cloud
+- Do not push commits, publish packages/images, deploy the wallet, change cloud
   resources, or alter production configuration without explicit confirmation.
-
-## Greenfield Implementation Order
-
-1. Establish the Next.js/App Router scaffold, layer/import boundaries, quality
-   scripts, formatting and accessibility gates, same-origin BFF, secure session
-   model, SDK synchronization, and Console App-derived token layers.
-2. Complete email registration/login, verification, password recovery, refresh,
-   logout, and route protection end to end.
-3. Add EOA and passkey alternatives with deterministic unit and browser tests.
-4. Build the authenticated shell, inventory list, and object detail adapters.
-5. Add wallet-scoped activity and settings with correct invalidation and
-   destructive-action handling.
-6. Complete accessibility, responsive states, field coverage, documentation,
-   production build verification, and deployment runbook before release.

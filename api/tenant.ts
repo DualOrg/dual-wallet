@@ -10,7 +10,13 @@ export interface TenantContext {
   host: string;
 }
 
-export const DEFAULT_ORGANIZATION_ID = "000000000000000000000001";
+// The organization a request falls back to when no entry link named one. It is
+// deployment configuration, not a constant: this repository belongs to no single
+// tenant. Unset, host resolution yields nothing and the BFF answers
+// tenantRequired, which is the honest failure for a wallet that was never told
+// whose it is.
+export const DEFAULT_ORGANIZATION_ID =
+  process.env.DEFAULT_ORGANIZATION_ID ?? "";
 
 // Versioned deployment mapping. Exact hosts take precedence over tenant labels,
 // and both take precedence over the wildcard. Add either form when a custom

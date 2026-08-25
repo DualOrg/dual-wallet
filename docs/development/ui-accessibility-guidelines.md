@@ -1,6 +1,6 @@
 # UI and accessibility guidelines
 
-These rules apply to Viewer-owned components, styles, interaction patterns, and
+These rules apply to wallet-owned components, styles, interaction patterns, and
 user-visible copy. The target is WCAG 2.2 AA in both light and dark themes.
 
 ## Design-token system
@@ -10,7 +10,7 @@ user-visible copy. The target is WCAG 2.2 AA in both light and dark themes.
   never palette values directly.
 - Tokenize color, typography, spacing, sizing, radius, elevation, motion,
   content width, and z-index. Preserve Console App provenance, but copy reviewed
-  values into Viewer-owned files.
+  values into wallet-owned files.
 - Raw colors and arbitrary layout constants are allowed only in token
   definitions, reviewed brand artwork, sandbox policy, or genuinely runtime
   geometry such as an API-provided aspect ratio. Document non-obvious

@@ -289,7 +289,7 @@ authenticated variant of the endpoint is needed.
 ## Caching and invalidation
 
 The public response carries `Cache-Control: public, max-age=300`, matched by
-the wallet's `revalidate: 300`. A branding change is therefore visible within
+The wallet's `revalidate: 300`. A branding change is therefore visible within
 five minutes. No explicit purge mechanism; if immediate propagation is ever
 needed, that is a follow-up.
 
