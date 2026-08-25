@@ -27,7 +27,9 @@ export async function POST(request: NextRequest) {
   const otp = body ? optionalString(body, "otp", 64) : undefined;
   if (!email || (!password && !otp)) {
     return NextResponse.json(
-      { message: "Email and either a password or a sign-in code are required." },
+      {
+        message: "Email and either a password or a sign-in code are required.",
+      },
       { status: 400 },
     );
   }

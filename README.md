@@ -159,23 +159,17 @@ local Chromium runtime once with `npm run test:e2e:install` when needed.
 
 ## Deployment
 
-Viewer requires a Node.js runtime because authentication, server-held sessions,
-tenant resolution and the allow-listed `api-v3` proxy run in Next.js route
-handlers. A Google Cloud Storage bucket such as `dual-viewer` can host static
-assets, but it cannot host this application by itself.
+This app needs a Node.js runtime. Authentication, session sealing, organization
+resolution and the allow-listed `api-v3` proxy all run in Next.js route
+handlers, so a static bucket cannot host it.
 
-The Makefile deploys the standalone Docker image as the Cloud Run service
-`dual-wallet`, following the same registry and region convention as Console
-App. That service does not exist yet: Cloud Run cannot rename, so the first
-deploy creates it alongside the old `dual-viewer`. Move the
-`wallet.dual.network` domain mapping over and delete `dual-viewer` afterwards.
+The Makefile builds the standalone Docker image and deploys it as a Cloud Run
+service. `PROJECT_ID` has no default — pass the Google Cloud project you deploy
+into:
 
 ```bash
-# YOUR_GCP_DEV_PROJECT
-make wallet-dev
-
-# YOUR_GCP_PROD_PROJECT
-make wallet-prod
+make wallet-dev PROJECT_ID=my-dev-project
+make wallet-prod PROJECT_ID=my-prod-project SESSION_SECRET_NAME=wallet-session-secret
 ```
 
 The defaults are `API_URL=https://api.dual.network`,
@@ -199,9 +193,19 @@ make wallet-prod API_URL=https://api.example.com VIEWER_BASE_DOMAIN=viewer.examp
 
 The session is a sealed cookie rather than process-local state, so instances no
 longer have to be pinned to one. `MAX_INSTANCES` still defaults to 1; raise it
-when you have picked a ceiling. `SESSION_SECRET` is optional for now: unset, sessions are
-sealed with a key derived from a constant in the source, which is obfuscation
-rather than a secret. Set it — 32 bytes of base64, `openssl rand -base64 32` —
-to get real tamper-evidence back, and keep it stable across deploys, since
-changing it signs every wallet out. Wildcard tenant DNS/TLS routing for `*.wallet.dual.network` remains
-an infrastructure concern and is not changed by these targets.
+when you have picked a ceiling.
+
+**Set `SESSION_SECRET` for any real deployment.** Unset, sessions are sealed
+with a key derived from a constant in this repository — which is public, so it
+is not a secret and gives no tamper-evidence at all. Generate 32 bytes of base64
+with `openssl rand -base64 32`, store it in Secret Manager, and pass the secret
+name as `SESSION_SECRET_NAME`; the deploy target mounts it rather than putting
+it on the command line. Keep it stable across deploys, because changing it signs
+every wallet out.
+
+Wildcard tenant DNS and TLS routing remains an infrastructure concern and is not
+changed by these targets.
+
+## License
+
+[MIT](./LICENSE)

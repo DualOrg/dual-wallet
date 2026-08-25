@@ -2,6 +2,13 @@
   "name": "smarttoken-wallet",
   "version": "0.1.0",
   "private": true,
+  "description": "Multi-tenant end-user wallet for SmartToken smart objects, built with the Next.js App Router.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DualOrg/dual-wallet.git"
+  },
+  "homepage": "https://github.com/DualOrg/dual-wallet#readme",
   "engines": {
     "node": ">=20.9.0"
   },
