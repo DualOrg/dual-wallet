@@ -117,9 +117,13 @@ the iframe.
 
 ## API and session boundary
 
-Browser code never receives API access or refresh tokens. Auth routes establish an opaque, host-only, `HttpOnly`, `SameSite=Strict` cookie and keep tokens server-side. The allow-listed `/api/backend` proxy exposes only the Viewer operations needed by the generated SDK.
+Browser code never receives API access or refresh tokens. Auth routes establish a host-only, `HttpOnly`, `SameSite=Strict` cookie whose contents are sealed and opaque to the browser. The allow-listed `/api/backend` proxy exposes only the operations the generated SDK needs.
 
-The included session store is process-local and fits the provided single-process standalone Docker runtime. A horizontally scaled deployment must replace it with a shared encrypted/TTL session store before adding replicas.
+A second cookie holds the organization an entry link chose. It carries no credential, and the session cookie stays the only thing that grants access.
+
+There is no server-side session store. The tokens are sealed into the cookie
+itself with AES-256-GCM, so a replaced container or a request that lands on a
+second instance keeps the wallet signed in, and instances need no pinning.
 
 The authenticated wallet projection distinguishes the Kernel execution account
 from its authorized controller. Object ownership and inventory filtering use

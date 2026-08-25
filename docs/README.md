@@ -1,6 +1,5 @@
 # Viewer documentation
 
-- [Cross-repository contract-first change flow](../../docs/codebase-change-flow.md)
 - [Architecture](./architecture.md)
 - Development guidelines:
   - [Viewer product guidelines](./development/viewer-product-guidelines.md)

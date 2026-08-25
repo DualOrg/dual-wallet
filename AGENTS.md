@@ -20,12 +20,10 @@ scope is affected before editing implementation or tests:
 These guides refine the repository rules; this file wins if a genuine conflict
 remains. Keep the guides synchronized with architectural changes.
 
-- Repo: https://github.com/vlabsio/viewer
+- Repo: https://github.com/vlabsio/wallet
 - The Viewer is the end-user SmartToken application. It authenticates a wallet
   account and gives that user access to their inventory, object details,
   activity, and account settings.
-- This repository is a greenfield implementation. The existing files are
-  disposable and may be deleted before establishing the new scaffold.
 - Build the application as a strict TypeScript, React 19, Next.js App Router
   application.
 - Canonical boundaries:

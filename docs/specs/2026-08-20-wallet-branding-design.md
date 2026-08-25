@@ -23,8 +23,10 @@ already knows before login, and must never be load-bearing for authentication.
   `app/_components/auth/auth-shell.tsx` stay `next-intl` translations.
 - Per-tenant enabled auth methods. Method availability is an authorization
   concern, not a presentation one.
-- Replacing the host to organization map in `api/tenant.ts`. Tenant onboarding
-  stays a wallet deploy for now.
+- Replacing the host to organization map in `api/tenant.ts`. It stays as the
+  fallback. Onboarding a tenant no longer needs a wallet deploy: an entry link
+  names the organization in its path, and the map only answers when no link
+  did.
 
 ## Decisions
 

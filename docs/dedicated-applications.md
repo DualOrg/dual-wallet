@@ -34,8 +34,8 @@ The applications should reuse packages, not Viewer pages. Copying or forking Vie
 
 ### Available now
 
-- Viewer keeps DUAL access and refresh JWTs in its server process.
-- Browser code receives only a host-only, `HttpOnly`, `SameSite=Strict` opaque Viewer cookie.
+- DUAL access and refresh JWTs never reach browser code. They are sealed into the session cookie and opened only on the server.
+- Browser code receives only a host-only, `HttpOnly`, `SameSite=Strict` cookie it cannot read.
 - Viewer exposes a small allowlisted same-origin BFF at `/api/backend/**`.
 - Inline HTML faces are rendered from the public object projection and run without scripts or network access.
 - HTTPS URL-backed faces can run JavaScript in a sandboxed iframe and receive resolved `object_id` and `variant` query parameters.
