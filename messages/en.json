@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "title": "Dual Viewer",
+    "title": "Dual Wallet",
     "description": "Your secure smart object inventory and wallet activity."
   },
   "common": {
-    "brand": "Dual Viewer",
+    "brand": "Dual Wallet",
     "smartObject": "Smart object",
     "loading": "Loading…",
     "tryAgain": "Try again",
@@ -66,7 +66,7 @@
     "createDescription": "Email is the quickest way to start. You can also use a wallet or passkey.",
     "methodLabel": "Authentication method",
     "emailMethod": "Email",
-    "walletMethod": "Wallet",
+    "walletMethod": "Crypto wallet",
     "passkeyMethod": "Passkey",
     "email": "Email address",
     "emailPlaceholder": "you@example.com",
@@ -91,7 +91,7 @@
     "createPasskey": "Create a passkey account",
     "passkeyDescription": "Use Face ID, Touch ID or your device PIN. Your passkey never leaves your device.",
     "passwordMismatch": "Passwords do not match.",
-    "tenantMissing": "This Viewer host is not configured.",
+    "tenantMissing": "This wallet host is not configured.",
     "errors": {
       "wallet_unavailable": "No compatible browser wallet was found.",
       "wallet_account_missing": "The wallet did not provide an account.",
@@ -183,7 +183,7 @@
     "showDetails": "Show details",
     "closeDetails": "Close pass details",
     "objectInformation": "Object information",
-    "actions": "Object actions",
+    "actions": "Actions",
     "showActions": "Show object actions",
     "provenance": "Provenance",
     "assets": "Assets",
@@ -358,7 +358,7 @@
   "settings": {
     "eyebrow": "Your account",
     "title": "Settings",
-    "description": "Manage your Viewer profile and review smart-account security.",
+    "description": "Manage your wallet profile and review smart-account security.",
     "profile": "Profile",
     "profileDescription": "These details are used across your smart object experience.",
     "nickname": "Display name",
@@ -409,7 +409,7 @@
     "changePassword": "Change password",
     "changingPassword": "Changing…",
     "danger": "Delete account",
-    "dangerDescription": "This permanently deletes your Viewer wallet account. Blockchain history cannot be deleted.",
+    "dangerDescription": "This permanently deletes your wallet account. Blockchain history cannot be deleted.",
     "delete": "Delete my account",
     "deleteConfirm": "Type DELETE to confirm",
     "deleteAction": "Permanently delete account",

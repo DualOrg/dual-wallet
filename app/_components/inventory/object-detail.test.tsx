@@ -188,6 +188,16 @@ describe("ObjectDetail", () => {
     expect(stage?.style.aspectRatio).toBe("16 / 10");
   });
 
+  it("states the object's own name and category", () => {
+    render(<ObjectDetail item={item} />);
+
+    const identity = document.querySelector(".wallet-object-identity");
+    expect(identity?.querySelector("h1")?.textContent).toBe(item.name);
+    expect(identity?.querySelector("p")?.textContent).toContain(
+      item.category ?? "",
+    );
+  });
+
   it("opens template actions from the top-left lightning button", () => {
     render(<ObjectDetail item={item} actions={<div>Action controls</div>} />);
 
@@ -196,9 +206,11 @@ describe("ObjectDetail", () => {
         .querySelector(".wallet-pass-top-controls")
         ?.contains(screen.getByRole("button", { name: "Show object actions" })),
     ).toBe(true);
+    // Carries its own visible label: a lightning bolt alone does not say what
+    // the control does.
     expect(
       screen.getByRole("button", { name: "Show object actions" }).textContent,
-    ).toBe("");
+    ).not.toBe("");
 
     fireEvent.click(
       screen.getByRole("button", { name: "Show object actions" }),

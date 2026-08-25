@@ -1113,9 +1113,42 @@ button {
   display: flex;
   width: 100%;
   max-width: 620px;
+  align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
   padding: 0 2px;
+  gap: 12px;
+}
+/* The object's name used to live in an sr-only heading, so the only visible
+   identity was whatever the publisher's face happened to draw — and a face is
+   untrusted remote input. The wallet states it itself. */
+.wallet-object-identity {
+  width: 100%;
+  max-width: 620px;
+  margin-bottom: 14px;
+  padding: 0 2px;
+}
+.wallet-object-identity h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.wallet-object-identity p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.wallet-pass-actions-button.has-label {
+  width: auto;
+  gap: 8px;
+  grid-auto-flow: column;
+  border-radius: 22px;
+  padding: 0 18px;
+  font-weight: 700;
 }
 .wallet-pass-stage {
   position: relative;
@@ -1689,7 +1722,14 @@ button {
     padding-top: 35px;
   }
   .tablist {
-    grid-template-columns: 1fr;
+    /* Three short labels still fit a 320px phone. Stacking them pushed the
+       first field of the form most of a screen down. */
+    gap: 4px;
+    padding: 4px;
+  }
+  .tab {
+    padding: 0 4px;
+    font-size: 0.9rem;
   }
   .wallet-pass-shell {
     border-radius: 22px;

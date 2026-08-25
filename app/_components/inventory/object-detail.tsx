@@ -318,17 +318,24 @@ export function ObjectDetail({
   return (
     <>
       <section className="wallet-object-view">
-        <h1 className="sr-only">{item.name}</h1>
+        <header className="wallet-object-identity">
+          <h1>{item.name}</h1>
+          <p>
+            {item.category || t("smartObject")}
+            {item.edition ? ` · #${item.edition}` : ""}
+          </p>
+        </header>
         <div className="wallet-pass-top-controls">
           {actions ? (
             <button
               ref={actionButton}
               type="button"
-              className="wallet-pass-actions-button"
+              className="wallet-pass-actions-button has-label"
               aria-label={t("showActions")}
               onClick={() => setModalView("actions")}
             >
               <Zap size={18} aria-hidden />
+              {t("actions")}
             </button>
           ) : null}
           <div className="wallet-pass-menu" ref={menu}>
