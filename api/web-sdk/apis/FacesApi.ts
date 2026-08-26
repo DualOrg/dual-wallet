@@ -2,8 +2,8 @@
 /* tslint:disable */
 /* eslint-disable */
 /**
- * DualOrg API
- * DualOrg API documentation
+ * Dual API
+ * Dual turns the things your product issues — tickets, warranties, memberships, loyalty cards — into **smart objects**: items that belong to a named owner, look the way you design them, and carry a complete, provable record of everything that has ever happened to them.  Nothing about an object changes quietly. Every change is signed by whoever made it, priced, and written into a history that is later recorded on a public blockchain. That lets you issue a ticket, let its owner transfer it, and still prove months later exactly where it came from.  Most integrations follow the same path:  1. Create a **wallet** to sign with and an **organization** to own the work    and pay for it. 2. Design a **template** — what one of your items is — and a **face**, which    is how it looks. 3. **Mint** items from that template, then transfer, update or redeem them. 4. Read where things stand whenever you like, and let **webhooks** tell you    the moment something happens.  ## Base URL  ``` https://api.dual.network ```  Every path in this reference hangs off that address, and everything is HTTPS.  ## Signing in  There are two ways to identify yourself, and some things need neither.  | What you send | Header | When to use it | | --- | --- | --- | | An access token | `Authorization: Bearer <access_token>` | Anything done on behalf of a signed-in person | | An API key | `x-api-key: <key>` | Backend-to-backend calls with no interactive sign-in | | Nothing | — | Public information, and signing up or in |  Each endpoint below shows which of these it accepts. An endpoint with none shown is open to everyone.  ### Access tokens  Signing in — with a password, a passkey or a crypto wallet — gives you an `access_token` and a `refresh_token`.  The access token is short-lived, about fifteen minutes, and goes on every request. When it runs out, send the refresh token to `POST /auth/refresh-token` and you will get a fresh pair back, without asking the person to sign in again.  Each refresh retires the token you sent and gives you a new one, so always keep the newest pair and discard the old. If an already-used refresh token turns up again, we treat it as stolen and end that session everywhere — so never keep an old one around \"just in case\".  ### API keys  Create a key with `POST /api-keys`. You see the secret once, in that response, and never again — store it at that moment, because a lost key can only be replaced. A key belongs to the organization that made it, does only what its creator was allowed to do, lasts up to a year, and cannot be used to sign anyone in.  ### Permissions  Everything that is not public needs a permission, such as `objects.read` or `webhooks.create`. A signed-in person has the permissions their role gives them; an API key has the ones it was created with. Ask for something you do not have permission for and you get a `401` — the same answer as an expired token — so check the message before assuming the token is the problem.  ## Working in one organization at a time  Authenticated management data — objects, templates, faces, files, webhooks and keys — is scoped to one organization, and you only see organizations your credential may access. Guessing another organization\'s identifier does not cross that boundary: the resource simply reads as missing. Public endpoints are the deliberate exception; they expose only published views and network-wide figures described on those endpoints.  Which organization you are working in is decided by the token or key you send. To move to another one, call `POST /organizations/switch`; it hands back a new access token for that organization, and the refresh token you already hold carries on working.  ## Pagination  Lists come back a page at a time, under a named array, with a `next` marker whenever there is more to fetch.  ```http GET /objects?limit=25 ```  ```json {   \"objects\": [ { \"id\": \"665f1c2d4b1a2c3d4e5f6a7b\" } ],   \"next\": \"7b226964...\" } ```  Send that value back as `?next=` for the following page, keeping every other parameter the same — `sortBy` and `order` are part of what the marker means. No `next` in the response means you have reached the end.  | Parameter | Default | Notes | | --- | --- | --- | | `limit` | 25 | Between 1 and 25 | | `order` | `desc` | Newest first, or `asc` for oldest first | | `sortBy` | `id` | Resource field to sort by; use a field documented by the endpoint | | `next` | — | Treat it as a token: pass it back, never build one |  ## Filtering  Every list has filters of its own, and they all share the same way of asking for a date range:  ```http GET /objects?when_created[$gte]=2026-01-01T00:00:00Z&when_created[$lt]=2026-02-01T00:00:00Z ```  `$gt` and `$gte` set the start of the window, `$lt` and `$lte` set the end; the `e` versions include the moment itself. The `/stats` endpoints use simple `from` and `to` instead. `to` is exclusive there, so back-to-back ranges never count the same record twice.  ## Identifiers, times and amounts  - Resource identifiers are normally 24-character hexadecimal strings. - Times are UTC, written like `2026-01-01T12:00:00Z`. - DUAL balances, fees and other precise amounts are sent as strings rather   than numbers, so nothing is rounded away in transit. A field ending in   `_wei` is in wei, the smallest unit of DUAL. - Blockchain addresses start with `0x`.  ## Errors  Every failure returns the same JSON body, whatever the status:  ```json {   \"code\": 3,   \"message\": \"limit must be 25 or less\",   \"details\": {} } ```  `code` is meant for your code and never changes meaning; `message` is meant for a person reading a log and may be reworded at any time. Make decisions on the status and on `code`.  | Status | What happened | | --- | --- | | `400` | Something in the request is wrong. Fix it before trying again | | `401` | Not signed in, signed in with something expired, or not allowed to do this | | `403` | Signed in, but this particular thing is not yours to touch | | `404` | The resource does not exist or is not visible to you | | `409` | The thing is not in a state where this makes sense right now | | `422` | The request is well formed but breaks a rule | | `429` | Too many requests. Slow down | | `500` | Something went wrong on our side | | `503` | We could not take the request safely. Try again shortly |  ### Error codes  | `code` | Meaning | Usually seen with | | --- | --- | --- | | 3 | Something in the request is wrong | 400, 422 | | 5 | Not found | 404 | | 7 | Not allowed | 403 | | 8 | Too many requests | 429 | | 10 | Another request got there first — try again | 409 | | 12 | Not available | 501 | | 13 | Something went wrong on our side | 500 | | 14 | A required service is temporarily unavailable | 503 | | 16 | Not signed in | 401 |  ## How often you can call  Each token or key gets roughly 5 requests a second, and can burst to 30 for a moment. Callers with no token are counted by network address instead. Go over and you get a `429`; wait a little longer each time before retrying, with a bit of randomness so that everyone does not come back at once.  ## Finding one request again  Every response carries an `x-request-id`. Send your own on the way in and we will keep it; otherwise we make one for you. Quote it when you contact support and we can find the exact call in seconds.  ## Why an action cannot be replayed  Actions are signed by the wallet behind them, not merely sent by someone holding a token. Each signature is tied to that wallet\'s next action number, which you read from `GET /ebus/nonce`, so a copy of an old request is worthless the moment the number moves on. **Actions & fees** walks through the whole sequence.  ## Stability  We add things without warning: a new endpoint, a new optional parameter, a new field in a response. Build your side to ignore anything it does not recognise and those additions will never disturb you.  We do not take things away without warning. Anything being retired is marked `deprecated` here first, keeps working while it carries that mark, and is announced before it goes. 
  *
  * The version of the OpenAPI document: 1.0.0
  * 
@@ -59,79 +59,92 @@ export interface CreateFaceRequest {
 
 export interface DeleteFaceRequest {
     /**
-     * Unique identifier of the face
+     * Identifier of the face.
      */
     faceId: string;
 }
 
 export interface GetFaceRequest {
     /**
-     * Unique identifier of the face
-     */
-    faceId: string;
-}
-
-export interface GetFacePreviewRequest {
-    /**
-     * Unique identifier of the face
+     * Identifier of the face.
      */
     faceId: string;
 }
 
 export interface ListFacesRequest {
     /**
-     * Filter resources by their unique identifier
+     * Return only the resource with this identifier. Equivalent to fetching it by
+     * path, but usable together with the other list filters.
+     * 
      */
     id?: string;
     /**
-     * Filter resources by the organization they belong to
+     * Return only resources associated with this organization. On protected
+     * endpoints, authorization may restrict or replace this value with the
+     * credential's active organization.
+     * 
      */
     orgId?: string;
     /**
-     * Filter resources by their name or title
+     * Return only resources whose name matches this value exactly.
      */
     name?: string;
     /**
-     * Search term for autocomplete functionality
+     * Search the endpoint's supported text and identifier fields. Matching may be
+     * an exact identifier lookup or a case-insensitive prefix search, depending on
+     * the resource. Alphanumeric characters only.
+     * 
      */
     autocomplete?: string;
     /**
-     * How many items to return at one time (max 25)
+     * How many items to return in one page. The default and the maximum are both
+     * 25; a larger value is rejected with `400`.
+     * 
      */
     limit?: number;
     /**
-     * Pagination token for retrieving the next page of results
+     * Cursor for the next page, taken verbatim from the `next` field of the previous
+     * response. Keep every other query parameter the same between pages: `sortBy`
+     * and `order` are part of what the cursor means. An absent or empty `next` in a
+     * response means there are no more pages.
+     * 
+     * The value is opaque. Do not parse it or build one yourself.
+     * 
      */
     next?: string;
     /**
-     * Sort order for the results (ascending or descending)
+     * Sort direction. Defaults to `desc`, newest first.
      */
     order?: ListFacesOrderEnum;
     /**
-     * Field name to sort the results by
+     * Field used to sort the result. Supported fields depend on the endpoint; use
+     * `when_created` for chronological ordering where it is available. The default
+     * is the resource identifier, and identifiers break ties so cursor paging stays
+     * stable.
+     * 
      */
     sortBy?: string;
     /**
-     * Filter faces created after this date and time
+     * Created strictly after this moment.
      */
     whenCreated$gt?: Date;
     /**
-     * Filter faces created before this date and time
+     * Created strictly before this moment.
      */
     whenCreated$lt?: Date;
     /**
-     * Filter faces created on or after this date and time
+     * Created at or after this moment.
      */
     whenCreated$gte?: Date;
     /**
-     * Filter faces created on or before this date and time
+     * Created at or before this moment.
      */
     whenCreated$lte?: Date;
 }
 
 export interface PreviewFaceRequest {
     /**
-     * Unique identifier of the face
+     * Identifier of the face.
      */
     faceId: string;
     /**
@@ -142,7 +155,7 @@ export interface PreviewFaceRequest {
 
 export interface UpdateFaceRequest {
     /**
-     * Unique identifier of the face
+     * Identifier of the face.
      */
     faceId: string;
     /**
@@ -198,8 +211,8 @@ export class FacesApi extends runtime.BaseAPI {
     }
 
     /**
-     * Create a new face definition by providing necessary configuration details.
-     * Create a new face
+     * Design how a kind of object looks.  A face holds one design per **variant** — `card` for a tile in a list, `detail` for a full page, `share` for a link preview. Give it only the variants you need; what is missing simply is not offered.  **Two ways to build a view.** Either write the design inline in `content`, as HTML or SVG with `{{.metadata.name}}`-style placeholders that are filled in from each object, or point `url` at a page of your own over `https`. Each view needs exactly one of the two — both, or neither, comes back as `400`.  Inline designs can be up to 1 MB and must be HTML or SVG. Set `aspect_ratio` so that apps can leave the right amount of room, and `interactive` if the design responds to taps and clicks.  Face names have to be unique within your organization.  Requires the `faces.create` permission. 
+     * Create a face
      */
     async createFaceRaw(requestParameters: CreateFaceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<InlineObject>> {
         const requestOptions = await this.createFaceRequestOpts(requestParameters);
@@ -209,8 +222,8 @@ export class FacesApi extends runtime.BaseAPI {
     }
 
     /**
-     * Create a new face definition by providing necessary configuration details.
-     * Create a new face
+     * Design how a kind of object looks.  A face holds one design per **variant** — `card` for a tile in a list, `detail` for a full page, `share` for a link preview. Give it only the variants you need; what is missing simply is not offered.  **Two ways to build a view.** Either write the design inline in `content`, as HTML or SVG with `{{.metadata.name}}`-style placeholders that are filled in from each object, or point `url` at a page of your own over `https`. Each view needs exactly one of the two — both, or neither, comes back as `400`.  Inline designs can be up to 1 MB and must be HTML or SVG. Set `aspect_ratio` so that apps can leave the right amount of room, and `interactive` if the design responds to taps and clicks.  Face names have to be unique within your organization.  Requires the `faces.create` permission. 
+     * Create a face
      */
     async createFace(requestParameters: CreateFaceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<InlineObject> {
         const response = await this.createFaceRaw(requestParameters, initOverrides);
@@ -257,7 +270,7 @@ export class FacesApi extends runtime.BaseAPI {
     }
 
     /**
-     * Permanently remove a face from the system by providing its unique ID.
+     * Delete a face for good.  A face still assigned to a template cannot be deleted — objects made from that template would be left with nothing to show. Point the template at another face first.  Requires the `faces.delete` permission. 
      * Delete a face
      */
     async deleteFaceRaw(requestParameters: DeleteFaceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
@@ -268,7 +281,7 @@ export class FacesApi extends runtime.BaseAPI {
     }
 
     /**
-     * Permanently remove a face from the system by providing its unique ID.
+     * Delete a face for good.  A face still assigned to a template cannot be deleted — objects made from that template would be left with nothing to show. Point the template at another face first.  Requires the `faces.delete` permission. 
      * Delete a face
      */
     async deleteFace(requestParameters: DeleteFaceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
@@ -316,8 +329,8 @@ export class FacesApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve detailed information for a specific face by providing its unique ID.
-     * Retrieve a specific face
+     * One of your faces, with the design behind each of its variants exactly as written.  Requires the `faces.read` permission. 
+     * Get a face
      */
     async getFaceRaw(requestParameters: GetFaceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Face>> {
         const requestOptions = await this.getFaceRequestOpts(requestParameters);
@@ -327,77 +340,11 @@ export class FacesApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve detailed information for a specific face by providing its unique ID.
-     * Retrieve a specific face
+     * One of your faces, with the design behind each of its variants exactly as written.  Requires the `faces.read` permission. 
+     * Get a face
      */
     async getFace(requestParameters: GetFaceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Face> {
         const response = await this.getFaceRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * Creates request options for getFacePreview without sending the request
-     * @deprecated
-     */
-    async getFacePreviewRequestOpts(requestParameters: GetFacePreviewRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['faceId'] == null) {
-            throw new runtime.RequiredError(
-                'faceId',
-                'Required parameter "faceId" was null or undefined when calling getFacePreview().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
-
-        let urlPath = `/faces/{faceId}/preview`;
-        urlPath = urlPath.replace('{faceId}', encodeURIComponent(String(requestParameters['faceId'])));
-
-        return {
-            path: urlPath,
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        };
-    }
-
-    /**
-     * Legacy v1 raw-source preview. Use POST with an object and variant.
-     * Preview a face
-     * @deprecated
-     */
-    async getFacePreviewRaw(requestParameters: GetFacePreviewRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<string>> {
-        const requestOptions = await this.getFacePreviewRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        if (this.isJsonMime(response.headers.get('content-type'))) {
-            return new runtime.JSONApiResponse<string>(response);
-        } else {
-            return new runtime.TextApiResponse(response) as any;
-        }
-    }
-
-    /**
-     * Legacy v1 raw-source preview. Use POST with an object and variant.
-     * Preview a face
-     * @deprecated
-     */
-    async getFacePreview(requestParameters: GetFacePreviewRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<string> {
-        const response = await this.getFacePreviewRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -481,8 +428,8 @@ export class FacesApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a list of face definitions, with optional filters for template type, language, limit, and pagination.
-     * Retrieve a list of faces
+     * The faces your organization has designed, newest first, with the design behind each one.  Requires the `faces.read` permission. 
+     * List faces
      */
     async listFacesRaw(requestParameters: ListFacesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListFacesOut>> {
         const requestOptions = await this.listFacesRequestOpts(requestParameters);
@@ -492,8 +439,8 @@ export class FacesApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a list of face definitions, with optional filters for template type, language, limit, and pagination.
-     * Retrieve a list of faces
+     * The faces your organization has designed, newest first, with the design behind each one.  Requires the `faces.read` permission. 
+     * List faces
      */
     async listFaces(requestParameters: ListFacesRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListFacesOut> {
         const response = await this.listFacesRaw(requestParameters, initOverrides);
@@ -550,8 +497,8 @@ export class FacesApi extends runtime.BaseAPI {
     }
 
     /**
-     * Render a face variant against an object\'s public data projection.
-     * Render a face preview
+     * See what a face looks like, drawn with a real object\'s details, before anybody else does.  Name the object to draw and the variant to draw — `card`, `detail` or `share`, with `detail` as the default. What comes back is the finished picture or page, exactly as a visitor would see it.  Previews are never cached, so a design change shows up on the next request. If the variant points at a page of your own instead of a design, the response redirects there.  Requires the `faces.read` permission. 
+     * Preview a face
      */
     async previewFaceRaw(requestParameters: PreviewFaceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<string>> {
         const requestOptions = await this.previewFaceRequestOpts(requestParameters);
@@ -565,8 +512,8 @@ export class FacesApi extends runtime.BaseAPI {
     }
 
     /**
-     * Render a face variant against an object\'s public data projection.
-     * Render a face preview
+     * See what a face looks like, drawn with a real object\'s details, before anybody else does.  Name the object to draw and the variant to draw — `card`, `detail` or `share`, with `detail` as the default. What comes back is the finished picture or page, exactly as a visitor would see it.  Previews are never cached, so a design change shows up on the next request. If the variant points at a page of your own instead of a design, the response redirects there.  Requires the `faces.read` permission. 
+     * Preview a face
      */
     async previewFace(requestParameters: PreviewFaceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<string> {
         const response = await this.previewFaceRaw(requestParameters, initOverrides);
@@ -623,8 +570,8 @@ export class FacesApi extends runtime.BaseAPI {
     }
 
     /**
-     * Update the attributes of an existing face by specifying its unique ID along with the updated data.
-     * Update face details
+     * Change a face. Send only the parts you want to change.  Sending `views` replaces the whole set, so include every variant you want to keep. Each one still needs exactly one of a design or a link, and the same size and format rules apply.  A change is live at once: every object wearing this face looks different on the next page load. Preview first with `POST /faces/{faceId}/preview`.  Requires the `faces.update` permission. 
+     * Update a face
      */
     async updateFaceRaw(requestParameters: UpdateFaceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
         const requestOptions = await this.updateFaceRequestOpts(requestParameters);
@@ -634,8 +581,8 @@ export class FacesApi extends runtime.BaseAPI {
     }
 
     /**
-     * Update the attributes of an existing face by specifying its unique ID along with the updated data.
-     * Update face details
+     * Change a face. Send only the parts you want to change.  Sending `views` replaces the whole set, so include every variant you want to keep. Each one still needs exactly one of a design or a link, and the same size and format rules apply.  A change is live at once: every object wearing this face looks different on the next page load. Preview first with `POST /faces/{faceId}/preview`.  Requires the `faces.update` permission. 
+     * Update a face
      */
     async updateFace(requestParameters: UpdateFaceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
         const response = await this.updateFaceRaw(requestParameters, initOverrides);

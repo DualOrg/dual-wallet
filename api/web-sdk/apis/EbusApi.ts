@@ -2,8 +2,8 @@
 /* tslint:disable */
 /* eslint-disable */
 /**
- * DualOrg API
- * DualOrg API documentation
+ * Dual API
+ * Dual turns the things your product issues — tickets, warranties, memberships, loyalty cards — into **smart objects**: items that belong to a named owner, look the way you design them, and carry a complete, provable record of everything that has ever happened to them.  Nothing about an object changes quietly. Every change is signed by whoever made it, priced, and written into a history that is later recorded on a public blockchain. That lets you issue a ticket, let its owner transfer it, and still prove months later exactly where it came from.  Most integrations follow the same path:  1. Create a **wallet** to sign with and an **organization** to own the work    and pay for it. 2. Design a **template** — what one of your items is — and a **face**, which    is how it looks. 3. **Mint** items from that template, then transfer, update or redeem them. 4. Read where things stand whenever you like, and let **webhooks** tell you    the moment something happens.  ## Base URL  ``` https://api.dual.network ```  Every path in this reference hangs off that address, and everything is HTTPS.  ## Signing in  There are two ways to identify yourself, and some things need neither.  | What you send | Header | When to use it | | --- | --- | --- | | An access token | `Authorization: Bearer <access_token>` | Anything done on behalf of a signed-in person | | An API key | `x-api-key: <key>` | Backend-to-backend calls with no interactive sign-in | | Nothing | — | Public information, and signing up or in |  Each endpoint below shows which of these it accepts. An endpoint with none shown is open to everyone.  ### Access tokens  Signing in — with a password, a passkey or a crypto wallet — gives you an `access_token` and a `refresh_token`.  The access token is short-lived, about fifteen minutes, and goes on every request. When it runs out, send the refresh token to `POST /auth/refresh-token` and you will get a fresh pair back, without asking the person to sign in again.  Each refresh retires the token you sent and gives you a new one, so always keep the newest pair and discard the old. If an already-used refresh token turns up again, we treat it as stolen and end that session everywhere — so never keep an old one around \"just in case\".  ### API keys  Create a key with `POST /api-keys`. You see the secret once, in that response, and never again — store it at that moment, because a lost key can only be replaced. A key belongs to the organization that made it, does only what its creator was allowed to do, lasts up to a year, and cannot be used to sign anyone in.  ### Permissions  Everything that is not public needs a permission, such as `objects.read` or `webhooks.create`. A signed-in person has the permissions their role gives them; an API key has the ones it was created with. Ask for something you do not have permission for and you get a `401` — the same answer as an expired token — so check the message before assuming the token is the problem.  ## Working in one organization at a time  Authenticated management data — objects, templates, faces, files, webhooks and keys — is scoped to one organization, and you only see organizations your credential may access. Guessing another organization\'s identifier does not cross that boundary: the resource simply reads as missing. Public endpoints are the deliberate exception; they expose only published views and network-wide figures described on those endpoints.  Which organization you are working in is decided by the token or key you send. To move to another one, call `POST /organizations/switch`; it hands back a new access token for that organization, and the refresh token you already hold carries on working.  ## Pagination  Lists come back a page at a time, under a named array, with a `next` marker whenever there is more to fetch.  ```http GET /objects?limit=25 ```  ```json {   \"objects\": [ { \"id\": \"665f1c2d4b1a2c3d4e5f6a7b\" } ],   \"next\": \"7b226964...\" } ```  Send that value back as `?next=` for the following page, keeping every other parameter the same — `sortBy` and `order` are part of what the marker means. No `next` in the response means you have reached the end.  | Parameter | Default | Notes | | --- | --- | --- | | `limit` | 25 | Between 1 and 25 | | `order` | `desc` | Newest first, or `asc` for oldest first | | `sortBy` | `id` | Resource field to sort by; use a field documented by the endpoint | | `next` | — | Treat it as a token: pass it back, never build one |  ## Filtering  Every list has filters of its own, and they all share the same way of asking for a date range:  ```http GET /objects?when_created[$gte]=2026-01-01T00:00:00Z&when_created[$lt]=2026-02-01T00:00:00Z ```  `$gt` and `$gte` set the start of the window, `$lt` and `$lte` set the end; the `e` versions include the moment itself. The `/stats` endpoints use simple `from` and `to` instead. `to` is exclusive there, so back-to-back ranges never count the same record twice.  ## Identifiers, times and amounts  - Resource identifiers are normally 24-character hexadecimal strings. - Times are UTC, written like `2026-01-01T12:00:00Z`. - DUAL balances, fees and other precise amounts are sent as strings rather   than numbers, so nothing is rounded away in transit. A field ending in   `_wei` is in wei, the smallest unit of DUAL. - Blockchain addresses start with `0x`.  ## Errors  Every failure returns the same JSON body, whatever the status:  ```json {   \"code\": 3,   \"message\": \"limit must be 25 or less\",   \"details\": {} } ```  `code` is meant for your code and never changes meaning; `message` is meant for a person reading a log and may be reworded at any time. Make decisions on the status and on `code`.  | Status | What happened | | --- | --- | | `400` | Something in the request is wrong. Fix it before trying again | | `401` | Not signed in, signed in with something expired, or not allowed to do this | | `403` | Signed in, but this particular thing is not yours to touch | | `404` | The resource does not exist or is not visible to you | | `409` | The thing is not in a state where this makes sense right now | | `422` | The request is well formed but breaks a rule | | `429` | Too many requests. Slow down | | `500` | Something went wrong on our side | | `503` | We could not take the request safely. Try again shortly |  ### Error codes  | `code` | Meaning | Usually seen with | | --- | --- | --- | | 3 | Something in the request is wrong | 400, 422 | | 5 | Not found | 404 | | 7 | Not allowed | 403 | | 8 | Too many requests | 429 | | 10 | Another request got there first — try again | 409 | | 12 | Not available | 501 | | 13 | Something went wrong on our side | 500 | | 14 | A required service is temporarily unavailable | 503 | | 16 | Not signed in | 401 |  ## How often you can call  Each token or key gets roughly 5 requests a second, and can burst to 30 for a moment. Callers with no token are counted by network address instead. Go over and you get a `429`; wait a little longer each time before retrying, with a bit of randomness so that everyone does not come back at once.  ## Finding one request again  Every response carries an `x-request-id`. Send your own on the way in and we will keep it; otherwise we make one for you. Quote it when you contact support and we can find the exact call in seconds.  ## Why an action cannot be replayed  Actions are signed by the wallet behind them, not merely sent by someone holding a token. Each signature is tied to that wallet\'s next action number, which you read from `GET /ebus/nonce`, so a copy of an old request is worthless the moment the number moves on. **Actions & fees** walks through the whole sequence.  ## Stability  We add things without warning: a new endpoint, a new optional parameter, a new field in a response. Build your side to ignore anything it does not recognise and those additions will never disturb you.  We do not take things away without warning. Anything being retired is marked `deprecated` here first, keeps working while it carries that mark, and is announced before it goes. 
  *
  * The version of the OpenAPI document: 1.0.0
  * 
@@ -84,14 +84,16 @@ export interface ExecuteActionRequest {
 
 export interface GetAuthNonceRequest {
     /**
-     * The wallet address to retrieve the nonce for. If not provided, the nonce for the authenticated wallet will be returned.
+     * The wallet address to look up.
      */
     address: string;
 }
 
 export interface GetOrganizationActionStatsRequest {
     /**
-     * Unique identifier of the organization
+     * Identifier of the organization. Each endpoint states whether it must be the
+     * caller's active organization or may be used without authentication.
+     * 
      */
     organizationId: string;
     /**
@@ -115,7 +117,10 @@ export interface GetOrganizationActionStatsRequest {
      */
     include?: Array<GetOrganizationActionStatsIncludeEnum>;
     /**
-     * Time interval for grouping time-series statistics and analytics data
+     * Bucket size for a time series. It fixes how many points the series has over
+     * the requested window, so a long window with a small interval is an expensive
+     * request.
+     * 
      */
     interval?: GetOrganizationActionStatsIntervalEnum;
     /**
@@ -130,11 +135,10 @@ export interface GetOrganizationActionStatsRequest {
      */
     top?: number;
     /**
-     * Group by action name. This shapes the breakdown, and combined with
-     * include=series it also splits the series, giving one bucket per action
-     * per interval with the action in each point's key. Only the dimensions
-     * listed here are accepted; anything else is rejected rather than passed
-     * through to the aggregation.
+     * Split the figures by this. It shapes the breakdown, and with
+     * `include=series` it splits the series too — one line per group, with the
+     * group named in each point's `key`. Only the values listed here work;
+     * anything else is refused.
      * 
      */
     groupBy?: GetOrganizationActionStatsGroupByEnum;
@@ -142,49 +146,56 @@ export interface GetOrganizationActionStatsRequest {
 
 export interface GetOrganizationBalanceRequest {
     /**
-     * Unique identifier of the organization
+     * Identifier of the organization. Each endpoint states whether it must be the
+     * caller's active organization or may be used without authentication.
+     * 
      */
     organizationId: string;
 }
 
 export interface GetOrganizationBalanceHistoryRequest {
     /**
-     * Unique identifier of the organization
+     * Identifier of the organization. Each endpoint states whether it must be the
+     * caller's active organization or may be used without authentication.
+     * 
      */
     organizationId: string;
     /**
-     * Time interval for grouping time-series statistics and analytics data
+     * Bucket size for a time series. It fixes how many points the series has over
+     * the requested window, so a long window with a small interval is an expensive
+     * request.
+     * 
      */
     interval?: GetOrganizationBalanceHistoryIntervalEnum;
     /**
-     * Time range for filtering statistics and analytics data
+     * Named time window relative to now. Endpoints that also expose `from` and `to`
+     * can use those parameters for an exact window instead.
+     * 
      */
     timeRange?: GetOrganizationBalanceHistoryTimeRangeEnum;
     /**
-     * How many items to return at one time (max 25)
-     */
-    limit?: number;
-    /**
-     * 
+     * Include changes strictly after this moment.
      */
     whenCreated$gt?: Date;
     /**
-     * 
+     * Include changes strictly before this moment.
      */
     whenCreated$lt?: Date;
     /**
-     * 
+     * Include changes at or after this moment.
      */
     whenCreated$gte?: Date;
     /**
-     * 
+     * Include changes at or before this moment.
      */
     whenCreated$lte?: Date;
 }
 
 export interface GetOrganizationFeeStatsRequest {
     /**
-     * Unique identifier of the organization
+     * Identifier of the organization. Each endpoint states whether it must be the
+     * caller's active organization or may be used without authentication.
+     * 
      */
     organizationId: string;
     /**
@@ -208,7 +219,10 @@ export interface GetOrganizationFeeStatsRequest {
      */
     include?: Array<GetOrganizationFeeStatsIncludeEnum>;
     /**
-     * Time interval for grouping time-series statistics and analytics data
+     * Bucket size for a time series. It fixes how many points the series has over
+     * the requested window, so a long window with a small interval is an expensive
+     * request.
+     * 
      */
     interval?: GetOrganizationFeeStatsIntervalEnum;
     /**
@@ -223,11 +237,10 @@ export interface GetOrganizationFeeStatsRequest {
      */
     top?: number;
     /**
-     * Group by action name. This shapes the breakdown, and combined with
-     * include=series it also splits the series, giving one bucket per action
-     * per interval with the action in each point's key. Only the dimensions
-     * listed here are accepted; anything else is rejected rather than passed
-     * through to the aggregation.
+     * Split the figures by this. It shapes the breakdown, and with
+     * `include=series` it splits the series too — one line per group, with the
+     * group named in each point's `key`. Only the values listed here work;
+     * anything else is refused.
      * 
      */
     groupBy?: GetOrganizationFeeStatsGroupByEnum;
@@ -255,7 +268,10 @@ export interface GetPublicActionStatsRequest {
      */
     include?: Array<GetPublicActionStatsIncludeEnum>;
     /**
-     * Time interval for grouping time-series statistics and analytics data
+     * Bucket size for a time series. It fixes how many points the series has over
+     * the requested window, so a long window with a small interval is an expensive
+     * request.
+     * 
      */
     interval?: GetPublicActionStatsIntervalEnum;
     /**
@@ -270,11 +286,10 @@ export interface GetPublicActionStatsRequest {
      */
     top?: number;
     /**
-     * Group by action name. This shapes the breakdown, and combined with
-     * include=series it also splits the series, giving one bucket per action
-     * per interval with the action in each point's key. Only the dimensions
-     * listed here are accepted; anything else is rejected rather than passed
-     * through to the aggregation.
+     * Split the figures by this. It shapes the breakdown, and with
+     * `include=series` it splits the series too — one line per group, with the
+     * group named in each point's `key`. Only the values listed here work;
+     * anything else is refused.
      * 
      */
     groupBy?: GetPublicActionStatsGroupByEnum;
@@ -302,7 +317,10 @@ export interface GetPublicFeeStatsRequest {
      */
     include?: Array<GetPublicFeeStatsIncludeEnum>;
     /**
-     * Time interval for grouping time-series statistics and analytics data
+     * Bucket size for a time series. It fixes how many points the series has over
+     * the requested window, so a long window with a small interval is an expensive
+     * request.
+     * 
      */
     interval?: GetPublicFeeStatsIntervalEnum;
     /**
@@ -317,11 +335,10 @@ export interface GetPublicFeeStatsRequest {
      */
     top?: number;
     /**
-     * Group by action name. This shapes the breakdown, and combined with
-     * include=series it also splits the series, giving one bucket per action
-     * per interval with the action in each point's key. Only the dimensions
-     * listed here are accepted; anything else is rejected rather than passed
-     * through to the aggregation.
+     * Split the figures by this. It shapes the breakdown, and with
+     * `include=series` it splits the series too — one line per group, with the
+     * group named in each point's `key`. Only the values listed here work;
+     * anything else is refused.
      * 
      */
     groupBy?: GetPublicFeeStatsGroupByEnum;
@@ -329,75 +346,96 @@ export interface GetPublicFeeStatsRequest {
 
 export interface ListActionLogsRequest {
     /**
-     * Filter resources by their unique identifier
+     * Return only the resource with this identifier. Equivalent to fetching it by
+     * path, but usable together with the other list filters.
+     * 
      */
     id?: string;
     /**
-     * Filter resources by the organization they belong to
+     * Return only resources associated with this organization. On protected
+     * endpoints, authorization may restrict or replace this value with the
+     * credential's active organization.
+     * 
      */
     orgId?: string;
     /**
-     * How many items to return at one time (max 25)
+     * How many items to return in one page. The default and the maximum are both
+     * 25; a larger value is rejected with `400`.
+     * 
      */
     limit?: number;
     /**
-     * Search term for autocomplete functionality
+     * Search the endpoint's supported text and identifier fields. Matching may be
+     * an exact identifier lookup or a case-insensitive prefix search, depending on
+     * the resource. Alphanumeric characters only.
+     * 
      */
     autocomplete?: string;
     /**
-     * Pagination token for retrieving the next page of results
+     * Cursor for the next page, taken verbatim from the `next` field of the previous
+     * response. Keep every other query parameter the same between pages: `sortBy`
+     * and `order` are part of what the cursor means. An absent or empty `next` in a
+     * response means there are no more pages.
+     * 
+     * The value is opaque. Do not parse it or build one yourself.
+     * 
      */
     next?: string;
     /**
-     * Sort order for the results (ascending or descending)
+     * Sort direction. Defaults to `desc`, newest first.
      */
     order?: ListActionLogsOrderEnum;
     /**
-     * Field name to sort the results by
+     * Field used to sort the result. Supported fields depend on the endpoint; use
+     * `when_created` for chronological ordering where it is available. The default
+     * is the resource identifier, and identifiers break ties so cursor paging stays
+     * stable.
+     * 
      */
     sortBy?: string;
     /**
-     * Filter logs by action ID
+     * Return only this action.
      */
     actionId?: string;
     /**
-     * Filter logs by transaction hash
+     * Return only the action with this hash.
      */
     hash?: string;
     /**
-     * Filter logs by batch ID
+     * Return only actions settled in this batch.
      */
     batchId?: string;
     /**
-     * Filter logs by wallet ID
+     * Return only actions run by this wallet.
      */
     walletId?: string;
     /**
-     * Filter logs by object ID
+     * Return only actions that touched this object.
      */
     objectId?: string;
     /**
-     * Filter by the execution identity committed by the action log. The migrated account contains the legacy signer for version 1 and the Kernel account for version 2.
+     * Return only actions run from this address.
      */
     account?: string;
     /**
-     * Filter logs by execution status
+     * Return only actions in this state: `pending`, `completed` or `failed`.
+     * 
      */
     status?: string;
     /**
-     * Filter logs created after this date and time
+     * Run strictly after this moment.
      */
     whenCreated$gt?: Date;
     /**
-     * Filter logs created before this date and time
+     * Run strictly before this moment.
      */
     whenCreated$lt?: Date;
     /**
-     * Filter logs created on or after this date and time
+     * Run at or after this moment.
      */
     whenCreated$gte?: Date;
     /**
-     * Filter logs created on or before this date and time
+     * Run at or before this moment.
      */
     whenCreated$lte?: Date;
 }
@@ -456,8 +494,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Call an action by providing the action name and the necessary details in the request body.
-     * Execute an action
+     * Do something to an object: create one, hand it over, update it, redeem it, destroy it. This is the only endpoint that changes an object, and everything it does is signed, priced and recorded.  **What to send.** One action — `mint`, `transfer`, `redeem` and the rest are listed on the request below, and exactly one of them is set. Along with it, the wallet\'s action number, and the signature over what `POST /ebus/prepare` gave you.  **What happens.** We check the signature, work out who signed, check they are allowed to do this to this object, price the action, take the fee from the organization\'s balance and apply the change — all together, so an action either happens completely or not at all. Nothing is charged for an action that is refused.  **What you get back.** The action\'s identifier and what it did — for a `mint`, the identifiers of the objects it created. The action then appears in `GET /ebus/action-logs`, reaches every webhook watching for it, and is settled on chain shortly afterwards in a batch.  **Custodial accounts.** Where Dual holds the keys, you can leave the signature out and we sign on the account\'s behalf. Accounts with their own passkey or crypto wallet must sign for themselves.  The HTTP credential is optional when `auth` contains a valid self-custodial signature; this lets a relayer submit a signed action without receiving the owner\'s access token. A custodial action must use an access token or API key with the `ebus.actions.create` permission. 
+     * Run an action
      */
     async executeActionRaw(requestParameters: ExecuteActionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ExecuteResult>> {
         const requestOptions = await this.executeActionRequestOpts(requestParameters);
@@ -467,8 +505,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Call an action by providing the action name and the necessary details in the request body.
-     * Execute an action
+     * Do something to an object: create one, hand it over, update it, redeem it, destroy it. This is the only endpoint that changes an object, and everything it does is signed, priced and recorded.  **What to send.** One action — `mint`, `transfer`, `redeem` and the rest are listed on the request below, and exactly one of them is set. Along with it, the wallet\'s action number, and the signature over what `POST /ebus/prepare` gave you.  **What happens.** We check the signature, work out who signed, check they are allowed to do this to this object, price the action, take the fee from the organization\'s balance and apply the change — all together, so an action either happens completely or not at all. Nothing is charged for an action that is refused.  **What you get back.** The action\'s identifier and what it did — for a `mint`, the identifiers of the objects it created. The action then appears in `GET /ebus/action-logs`, reaches every webhook watching for it, and is settled on chain shortly afterwards in a batch.  **Custodial accounts.** Where Dual holds the keys, you can leave the signature out and we sign on the account\'s behalf. Accounts with their own passkey or crypto wallet must sign for themselves.  The HTTP credential is optional when `auth` contains a valid self-custodial signature; this lets a relayer submit a signed action without receiving the owner\'s access token. A custodial action must use an access token or API key with the `ebus.actions.create` permission. 
+     * Run an action
      */
     async executeAction(requestParameters: ExecuteActionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ExecuteResult> {
         const response = await this.executeActionRaw(requestParameters, initOverrides);
@@ -506,8 +544,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Returns the current replay-protection nonce for the authenticated wallet. The nonce must be included in the `ExecuteRequest` body when signing an action with EIP-712. The backend increments the nonce after each accepted action to prevent replay attacks. 
-     * Get the current action nonce for a wallet
+     * Every wallet has a counter that goes up by one with each action it takes. Whatever it signs is tied to the number it had at the time, so a copy of an old request is worthless once the counter has moved on. That is what makes a signed action safe to send over the internet.  Read the number here, include it when you sign, and send it with the action. Between reading and sending, the wallet must not do anything else, or the number will have moved and the action will be refused — read it fresh for each action rather than keeping one around.  `POST /ebus/prepare` returns the same number along with everything else you need, so most integrations never call this directly.  No sign-in needed. The counter is public, and knowing it grants nothing. 
+     * Get a wallet\'s next action number
      */
     async getAuthNonceRaw(requestParameters: GetAuthNonceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<NonceOut>> {
         const requestOptions = await this.getAuthNonceRequestOpts(requestParameters);
@@ -517,8 +555,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Returns the current replay-protection nonce for the authenticated wallet. The nonce must be included in the `ExecuteRequest` body when signing an action with EIP-712. The backend increments the nonce after each accepted action to prevent replay attacks. 
-     * Get the current action nonce for a wallet
+     * Every wallet has a counter that goes up by one with each action it takes. Whatever it signs is tied to the number it had at the time, so a copy of an old request is worthless once the counter has moved on. That is what makes a signed action safe to send over the internet.  Read the number here, include it when you sign, and send it with the action. Between reading and sending, the wallet must not do anything else, or the number will have moved and the action will be refused — read it fresh for each action rather than keeping one around.  `POST /ebus/prepare` returns the same number along with everything else you need, so most integrations never call this directly.  No sign-in needed. The counter is public, and knowing it grants nothing. 
+     * Get a wallet\'s next action number
      */
     async getAuthNonce(requestParameters: GetAuthNonceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<NonceOut> {
         const response = await this.getAuthNonceRaw(requestParameters, initOverrides);
@@ -545,8 +583,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve detailed information about the eBus network fees, including current fees, network status, and other relevant metrics. 
-     * Get network fees information
+     * What one action costs right now.  The price has two parts: a fixed base fee, and a moving part that follows what it currently costs the network to prove and settle work. Both are given in DUAL and in wei, alongside the token price they were worked out from.  Quote this before committing a user to a price. The price moves, so read it fresh rather than caching it for long.  Open to everyone. No sign-in needed. 
+     * Get the current fee
      */
     async getNetworkFeesRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<NetworkFees>> {
         const requestOptions = await this.getNetworkFeesRequestOpts();
@@ -556,8 +594,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve detailed information about the eBus network fees, including current fees, network status, and other relevant metrics. 
-     * Get network fees information
+     * What one action costs right now.  The price has two parts: a fixed base fee, and a moving part that follows what it currently costs the network to prove and settle work. Both are given in DUAL and in wei, alongside the token price they were worked out from.  Quote this before committing a user to a price. The price moves, so read it fresh rather than caching it for long.  Open to everyone. No sign-in needed. 
+     * Get the current fee
      */
     async getNetworkFees(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<NetworkFees> {
         const response = await this.getNetworkFeesRaw(initOverrides);
@@ -628,8 +666,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate counts of executed actions. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
-     * Organization action statistics
+     * How many actions your organization has run — the headline number behind an activity dashboard.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  You have to be a member of the organization in the path. The figures never quietly widen to the whole network if a token is missing or expired — the request fails instead, so a dashboard cannot show network numbers under your own name.  For network-wide figures, use the matching endpoint under `/public/stats/`.  Requires the `stats.actions.read` permission. 
+     * Your action statistics
      */
     async getOrganizationActionStatsRaw(requestParameters: GetOrganizationActionStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
         const requestOptions = await this.getOrganizationActionStatsRequestOpts(requestParameters);
@@ -639,8 +677,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate counts of executed actions. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
-     * Organization action statistics
+     * How many actions your organization has run — the headline number behind an activity dashboard.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  You have to be a member of the organization in the path. The figures never quietly widen to the whole network if a token is missing or expired — the request fails instead, so a dashboard cannot show network numbers under your own name.  For network-wide figures, use the matching endpoint under `/public/stats/`.  Requires the `stats.actions.read` permission. 
+     * Your action statistics
      */
     async getOrganizationActionStats(requestParameters: GetOrganizationActionStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
         const response = await this.getOrganizationActionStatsRaw(requestParameters, initOverrides);
@@ -687,8 +725,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Fetch the current balance of an organization by providing its unique ID. This endpoint returns the total balance available for the organization.
-     * Retrieve the balance of an organization
+     * How much DUAL the organization has left to spend on actions.  Every action costs something, and it comes out of this balance. Top it up by sending DUAL on chain; payments appear in `GET /payments/deposits` and are added here once credited.  Watch this figure and warn people before it runs out — an action fails when there is not enough left to pay for it.  Requires the `organizations.read` permission. 
+     * Get an organization\'s balance
      */
     async getOrganizationBalanceRaw(requestParameters: GetOrganizationBalanceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BalanceOut>> {
         const requestOptions = await this.getOrganizationBalanceRequestOpts(requestParameters);
@@ -698,8 +736,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Fetch the current balance of an organization by providing its unique ID. This endpoint returns the total balance available for the organization.
-     * Retrieve the balance of an organization
+     * How much DUAL the organization has left to spend on actions.  Every action costs something, and it comes out of this balance. Top it up by sending DUAL on chain; payments appear in `GET /payments/deposits` and are added here once credited.  Watch this figure and warn people before it runs out — an action fails when there is not enough left to pay for it.  Requires the `organizations.read` permission. 
+     * Get an organization\'s balance
      */
     async getOrganizationBalance(requestParameters: GetOrganizationBalanceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BalanceOut> {
         const response = await this.getOrganizationBalanceRaw(requestParameters, initOverrides);
@@ -725,10 +763,6 @@ export class EbusApi extends runtime.BaseAPI {
 
         if (requestParameters['timeRange'] != null) {
             queryParameters['time_range'] = requestParameters['timeRange'];
-        }
-
-        if (requestParameters['limit'] != null) {
-            queryParameters['limit'] = requestParameters['limit'];
         }
 
         if (requestParameters['whenCreated$gt'] != null) {
@@ -774,8 +808,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Fetch the balance history of an organization by providing its unique ID. This endpoint returns the historical balance changes for the organization.
-     * Retrieve the balance history of an organization
+     * How the balance has moved, one point per period — the line behind a spending chart.  Choose the period with `interval` and the range with `time_range` or the `when_created` dates. Each point is the balance as it stood at the end of that period.  Requires the `organizations.read` permission. 
+     * Get an organization\'s balance over time
      */
     async getOrganizationBalanceHistoryRaw(requestParameters: GetOrganizationBalanceHistoryRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BalanceHistoryOut>> {
         const requestOptions = await this.getOrganizationBalanceHistoryRequestOpts(requestParameters);
@@ -785,8 +819,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Fetch the balance history of an organization by providing its unique ID. This endpoint returns the historical balance changes for the organization.
-     * Retrieve the balance history of an organization
+     * How the balance has moved, one point per period — the line behind a spending chart.  Choose the period with `interval` and the range with `time_range` or the `when_created` dates. Each point is the balance as it stood at the end of that period.  Requires the `organizations.read` permission. 
+     * Get an organization\'s balance over time
      */
     async getOrganizationBalanceHistory(requestParameters: GetOrganizationBalanceHistoryRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BalanceHistoryOut> {
         const response = await this.getOrganizationBalanceHistoryRaw(requestParameters, initOverrides);
@@ -857,8 +891,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate sums of transaction fees. Returns the totals for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
-     * Organization fee statistics
+     * What your organization has spent on fees, in DUAL and in wei.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  You have to be a member of the organization in the path. The figures never quietly widen to the whole network if a token is missing or expired — the request fails instead, so a dashboard cannot show network numbers under your own name.  For network-wide figures, use the matching endpoint under `/public/stats/`.  Requires the `stats.actions.read` permission. 
+     * Your fee statistics
      */
     async getOrganizationFeeStatsRaw(requestParameters: GetOrganizationFeeStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<FeesOut>> {
         const requestOptions = await this.getOrganizationFeeStatsRequestOpts(requestParameters);
@@ -868,8 +902,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate sums of transaction fees. Returns the totals for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
-     * Organization fee statistics
+     * What your organization has spent on fees, in DUAL and in wei.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  You have to be a member of the organization in the path. The figures never quietly widen to the whole network if a token is missing or expired — the request fails instead, so a dashboard cannot show network numbers under your own name.  For network-wide figures, use the matching endpoint under `/public/stats/`.  Requires the `stats.actions.read` permission. 
+     * Your fee statistics
      */
     async getOrganizationFeeStats(requestParameters: GetOrganizationFeeStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<FeesOut> {
         const response = await this.getOrganizationFeeStatsRaw(requestParameters, initOverrides);
@@ -920,8 +954,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate counts of executed actions. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
-     * Network-wide action statistics
+     * How many actions have been run — the headline number behind an activity dashboard.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  These figures cover the whole network and take no sign-in. For your own organization\'s numbers, use the matching endpoint under `/organizations/{organizationId}/stats/`. 
+     * Action statistics
      */
     async getPublicActionStatsRaw(requestParameters: GetPublicActionStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
         const requestOptions = await this.getPublicActionStatsRequestOpts(requestParameters);
@@ -931,8 +965,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate counts of executed actions. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
-     * Network-wide action statistics
+     * How many actions have been run — the headline number behind an activity dashboard.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  These figures cover the whole network and take no sign-in. For your own organization\'s numbers, use the matching endpoint under `/organizations/{organizationId}/stats/`. 
+     * Action statistics
      */
     async getPublicActionStats(requestParameters: GetPublicActionStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
         const response = await this.getPublicActionStatsRaw(requestParameters, initOverrides);
@@ -983,8 +1017,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate sums of transaction fees. Returns the totals for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
-     * Network-wide fee statistics
+     * What has been spent on fees, in DUAL and in wei.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  These figures cover the whole network and take no sign-in. For your own organization\'s numbers, use the matching endpoint under `/organizations/{organizationId}/stats/`. 
+     * Fee statistics
      */
     async getPublicFeeStatsRaw(requestParameters: GetPublicFeeStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<FeesOut>> {
         const requestOptions = await this.getPublicFeeStatsRequestOpts(requestParameters);
@@ -994,8 +1028,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate sums of transaction fees. Returns the totals for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
-     * Network-wide fee statistics
+     * What has been spent on fees, in DUAL and in wei.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  These figures cover the whole network and take no sign-in. For your own organization\'s numbers, use the matching endpoint under `/organizations/{organizationId}/stats/`. 
+     * Fee statistics
      */
     async getPublicFeeStats(requestParameters: GetPublicFeeStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<FeesOut> {
         const response = await this.getPublicFeeStatsRaw(requestParameters, initOverrides);
@@ -1082,18 +1116,6 @@ export class EbusApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
 
         let urlPath = `/ebus/action-logs`;
 
@@ -1106,8 +1128,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a paginated list of blockchain action execution logs. This endpoint provides access to detailed information about action processing including status, wallet interactions, batch associations, and execution timestamps. Action logs can be filtered by various criteria including action ID, batch ID, wallet ID, object ID, account, and status. 
-     * List action logs
+     * Everything that has been done, newest first — the audit trail. Each entry records what was done, who signed it, what it affected, what it cost, and which batch settled it.  `status` follows an action to the chain: `pending` while it is waiting to be settled, `completed` once its batch is anchored, `failed` if settling could not be completed.  This is a public explorer endpoint. Use `org_id`, `account`, `wallet_id`, or the other filters to narrow the public record. 
+     * List actions
      */
     async listActionLogsRaw(requestParameters: ListActionLogsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListActionLogsOut>> {
         const requestOptions = await this.listActionLogsRequestOpts(requestParameters);
@@ -1117,8 +1139,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a paginated list of blockchain action execution logs. This endpoint provides access to detailed information about action processing including status, wallet interactions, batch associations, and execution timestamps. Action logs can be filtered by various criteria including action ID, batch ID, wallet ID, object ID, account, and status. 
-     * List action logs
+     * Everything that has been done, newest first — the audit trail. Each entry records what was done, who signed it, what it affected, what it cost, and which batch settled it.  `status` follows an action to the chain: `pending` while it is waiting to be settled, `completed` once its batch is anchored, `failed` if settling could not be completed.  This is a public explorer endpoint. Use `org_id`, `account`, `wallet_id`, or the other filters to narrow the public record. 
+     * List actions
      */
     async listActionLogs(requestParameters: ListActionLogsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListActionLogsOut> {
         const response = await this.listActionLogsRaw(requestParameters, initOverrides);
@@ -1163,8 +1185,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Resolves the authenticated wallet\'s current nonce and returns the canonical EIP-712 action hash as a base64url WebAuthn challenge. Preparing an action does not execute it or reserve the nonce; execution recomputes and verifies the action hash. 
-     * Prepare an action for client-side signing
+     * Describe the action you want to take, and get back exactly what needs to be signed — along with the wallet\'s current action number.  Signing the wrong bytes is the most common way an integration goes wrong, so this endpoint removes the guesswork: whatever it hands you is what the server will check against when you send the action.  ```js const { nonce, challenge } = await prepare({ action: { mint: { template_id, num: 1 } } }); const assertion = await navigator.credentials.get({   publicKey: { challenge: base64urlToBytes(challenge) }, }); await execute({ action, nonce, auth: { type: \'webauthn\', /_* … *_/ } }); ```  Preparing changes nothing and costs nothing. It does not reserve the action number and does not hold anything open, so a prepared action you never send simply evaporates. If the wallet does something else in between, prepare again.  Requires the `ebus.actions.create` permission. 
+     * Prepare an action for signing
      */
     async prepareActionRaw(requestParameters: PrepareActionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PrepareExecuteOut>> {
         const requestOptions = await this.prepareActionRequestOpts(requestParameters);
@@ -1174,8 +1196,8 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Resolves the authenticated wallet\'s current nonce and returns the canonical EIP-712 action hash as a base64url WebAuthn challenge. Preparing an action does not execute it or reserve the nonce; execution recomputes and verifies the action hash. 
-     * Prepare an action for client-side signing
+     * Describe the action you want to take, and get back exactly what needs to be signed — along with the wallet\'s current action number.  Signing the wrong bytes is the most common way an integration goes wrong, so this endpoint removes the guesswork: whatever it hands you is what the server will check against when you send the action.  ```js const { nonce, challenge } = await prepare({ action: { mint: { template_id, num: 1 } } }); const assertion = await navigator.credentials.get({   publicKey: { challenge: base64urlToBytes(challenge) }, }); await execute({ action, nonce, auth: { type: \'webauthn\', /_* … *_/ } }); ```  Preparing changes nothing and costs nothing. It does not reserve the action number and does not hold anything open, so a prepared action you never send simply evaporates. If the wallet does something else in between, prepare again.  Requires the `ebus.actions.create` permission. 
+     * Prepare an action for signing
      */
     async prepareAction(requestParameters: PrepareActionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PrepareExecuteOut> {
         const response = await this.prepareActionRaw(requestParameters, initOverrides);

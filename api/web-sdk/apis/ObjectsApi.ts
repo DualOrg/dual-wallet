@@ -2,8 +2,8 @@
 /* tslint:disable */
 /* eslint-disable */
 /**
- * DualOrg API
- * DualOrg API documentation
+ * Dual API
+ * Dual turns the things your product issues — tickets, warranties, memberships, loyalty cards — into **smart objects**: items that belong to a named owner, look the way you design them, and carry a complete, provable record of everything that has ever happened to them.  Nothing about an object changes quietly. Every change is signed by whoever made it, priced, and written into a history that is later recorded on a public blockchain. That lets you issue a ticket, let its owner transfer it, and still prove months later exactly where it came from.  Most integrations follow the same path:  1. Create a **wallet** to sign with and an **organization** to own the work    and pay for it. 2. Design a **template** — what one of your items is — and a **face**, which    is how it looks. 3. **Mint** items from that template, then transfer, update or redeem them. 4. Read where things stand whenever you like, and let **webhooks** tell you    the moment something happens.  ## Base URL  ``` https://api.dual.network ```  Every path in this reference hangs off that address, and everything is HTTPS.  ## Signing in  There are two ways to identify yourself, and some things need neither.  | What you send | Header | When to use it | | --- | --- | --- | | An access token | `Authorization: Bearer <access_token>` | Anything done on behalf of a signed-in person | | An API key | `x-api-key: <key>` | Backend-to-backend calls with no interactive sign-in | | Nothing | — | Public information, and signing up or in |  Each endpoint below shows which of these it accepts. An endpoint with none shown is open to everyone.  ### Access tokens  Signing in — with a password, a passkey or a crypto wallet — gives you an `access_token` and a `refresh_token`.  The access token is short-lived, about fifteen minutes, and goes on every request. When it runs out, send the refresh token to `POST /auth/refresh-token` and you will get a fresh pair back, without asking the person to sign in again.  Each refresh retires the token you sent and gives you a new one, so always keep the newest pair and discard the old. If an already-used refresh token turns up again, we treat it as stolen and end that session everywhere — so never keep an old one around \"just in case\".  ### API keys  Create a key with `POST /api-keys`. You see the secret once, in that response, and never again — store it at that moment, because a lost key can only be replaced. A key belongs to the organization that made it, does only what its creator was allowed to do, lasts up to a year, and cannot be used to sign anyone in.  ### Permissions  Everything that is not public needs a permission, such as `objects.read` or `webhooks.create`. A signed-in person has the permissions their role gives them; an API key has the ones it was created with. Ask for something you do not have permission for and you get a `401` — the same answer as an expired token — so check the message before assuming the token is the problem.  ## Working in one organization at a time  Authenticated management data — objects, templates, faces, files, webhooks and keys — is scoped to one organization, and you only see organizations your credential may access. Guessing another organization\'s identifier does not cross that boundary: the resource simply reads as missing. Public endpoints are the deliberate exception; they expose only published views and network-wide figures described on those endpoints.  Which organization you are working in is decided by the token or key you send. To move to another one, call `POST /organizations/switch`; it hands back a new access token for that organization, and the refresh token you already hold carries on working.  ## Pagination  Lists come back a page at a time, under a named array, with a `next` marker whenever there is more to fetch.  ```http GET /objects?limit=25 ```  ```json {   \"objects\": [ { \"id\": \"665f1c2d4b1a2c3d4e5f6a7b\" } ],   \"next\": \"7b226964...\" } ```  Send that value back as `?next=` for the following page, keeping every other parameter the same — `sortBy` and `order` are part of what the marker means. No `next` in the response means you have reached the end.  | Parameter | Default | Notes | | --- | --- | --- | | `limit` | 25 | Between 1 and 25 | | `order` | `desc` | Newest first, or `asc` for oldest first | | `sortBy` | `id` | Resource field to sort by; use a field documented by the endpoint | | `next` | — | Treat it as a token: pass it back, never build one |  ## Filtering  Every list has filters of its own, and they all share the same way of asking for a date range:  ```http GET /objects?when_created[$gte]=2026-01-01T00:00:00Z&when_created[$lt]=2026-02-01T00:00:00Z ```  `$gt` and `$gte` set the start of the window, `$lt` and `$lte` set the end; the `e` versions include the moment itself. The `/stats` endpoints use simple `from` and `to` instead. `to` is exclusive there, so back-to-back ranges never count the same record twice.  ## Identifiers, times and amounts  - Resource identifiers are normally 24-character hexadecimal strings. - Times are UTC, written like `2026-01-01T12:00:00Z`. - DUAL balances, fees and other precise amounts are sent as strings rather   than numbers, so nothing is rounded away in transit. A field ending in   `_wei` is in wei, the smallest unit of DUAL. - Blockchain addresses start with `0x`.  ## Errors  Every failure returns the same JSON body, whatever the status:  ```json {   \"code\": 3,   \"message\": \"limit must be 25 or less\",   \"details\": {} } ```  `code` is meant for your code and never changes meaning; `message` is meant for a person reading a log and may be reworded at any time. Make decisions on the status and on `code`.  | Status | What happened | | --- | --- | | `400` | Something in the request is wrong. Fix it before trying again | | `401` | Not signed in, signed in with something expired, or not allowed to do this | | `403` | Signed in, but this particular thing is not yours to touch | | `404` | The resource does not exist or is not visible to you | | `409` | The thing is not in a state where this makes sense right now | | `422` | The request is well formed but breaks a rule | | `429` | Too many requests. Slow down | | `500` | Something went wrong on our side | | `503` | We could not take the request safely. Try again shortly |  ### Error codes  | `code` | Meaning | Usually seen with | | --- | --- | --- | | 3 | Something in the request is wrong | 400, 422 | | 5 | Not found | 404 | | 7 | Not allowed | 403 | | 8 | Too many requests | 429 | | 10 | Another request got there first — try again | 409 | | 12 | Not available | 501 | | 13 | Something went wrong on our side | 500 | | 14 | A required service is temporarily unavailable | 503 | | 16 | Not signed in | 401 |  ## How often you can call  Each token or key gets roughly 5 requests a second, and can burst to 30 for a moment. Callers with no token are counted by network address instead. Go over and you get a `429`; wait a little longer each time before retrying, with a bit of randomness so that everyone does not come back at once.  ## Finding one request again  Every response carries an `x-request-id`. Send your own on the way in and we will keep it; otherwise we make one for you. Quote it when you contact support and we can find the exact call in seconds.  ## Why an action cannot be replayed  Actions are signed by the wallet behind them, not merely sent by someone holding a token. Each signature is tied to that wallet\'s next action number, which you read from `GET /ebus/nonce`, so a copy of an old request is worthless the moment the number moves on. **Actions & fees** walks through the whole sequence.  ## Stability  We add things without warning: a new endpoint, a new optional parameter, a new field in a response. Build your side to ignore anything it does not recognise and those additions will never disturb you.  We do not take things away without warning. Anything being retired is marked `deprecated` here first, keeps working while it carries that mark, and is announced before it goes. 
  *
  * The version of the OpenAPI document: 1.0.0
  * 
@@ -72,35 +72,37 @@ import {
 
 export interface GetObjectByIdRequest {
     /**
-     * 
+     * Identifier of the smart object.
      */
     objectId: string;
 }
 
 export interface GetObjectByIdPublicRequest {
     /**
-     * 
+     * Identifier of the smart object.
      */
     objectId: string;
 }
 
 export interface GetObjectMetadataByIdPublicRequest {
     /**
-     * 
+     * Identifier of the smart object.
      */
     objectId: string;
 }
 
 export interface GetObjectMetadataByIdPublicLegacyRequest {
     /**
-     * 
+     * Identifier of the smart object.
      */
     objectId: string;
 }
 
 export interface GetOrganizationObjectStatsRequest {
     /**
-     * Unique identifier of the organization
+     * Identifier of the organization. Each endpoint states whether it must be the
+     * caller's active organization or may be used without authentication.
+     * 
      */
     organizationId: string;
     /**
@@ -124,7 +126,10 @@ export interface GetOrganizationObjectStatsRequest {
      */
     include?: Array<GetOrganizationObjectStatsIncludeEnum>;
     /**
-     * Time interval for grouping time-series statistics and analytics data
+     * Bucket size for a time series. It fixes how many points the series has over
+     * the requested window, so a long window with a small interval is an expensive
+     * request.
+     * 
      */
     interval?: GetOrganizationObjectStatsIntervalEnum;
     /**
@@ -139,15 +144,15 @@ export interface GetOrganizationObjectStatsRequest {
      */
     top?: number;
     /**
-     * Group the breakdown by the template each object was minted from. It shapes the breakdown only;
-     * this aggregate cannot split its series. Only
+     * Group the breakdown by the template each object was minted from. It
+     * shapes the breakdown only; this aggregate cannot split its series. Only
      * the dimensions listed here are accepted; anything else is rejected
      * rather than passed through to the aggregation.
      * 
      */
     groupBy?: GetOrganizationObjectStatsGroupByEnum;
     /**
-     * Count only objects minted from this template
+     * Count only objects minted from this template.
      */
     templateId?: string;
 }
@@ -174,7 +179,10 @@ export interface GetPublicObjectStatsRequest {
      */
     include?: Array<GetPublicObjectStatsIncludeEnum>;
     /**
-     * Time interval for grouping time-series statistics and analytics data
+     * Bucket size for a time series. It fixes how many points the series has over
+     * the requested window, so a long window with a small interval is an expensive
+     * request.
+     * 
      */
     interval?: GetPublicObjectStatsIntervalEnum;
     /**
@@ -204,22 +212,30 @@ export interface GetPublicObjectStatsRequest {
 
 export interface ListObjectAttributesRequest {
     /**
-     * 
+     * Identifier of the smart object.
      */
     objectId: string;
 }
 
 export interface ListObjectAttributesPublicRequest {
     /**
-     * 
+     * Identifier of the smart object.
      */
     objectId: string;
     /**
-     * How many items to return at one time (max 25)
+     * How many items to return in one page. The default and the maximum are both
+     * 25; a larger value is rejected with `400`.
+     * 
      */
     limit?: number;
     /**
-     * Pagination token for retrieving the next page of results
+     * Cursor for the next page, taken verbatim from the `next` field of the previous
+     * response. Keep every other query parameter the same between pages: `sortBy`
+     * and `order` are part of what the cursor means. An absent or empty `next` in a
+     * response means there are no more pages.
+     * 
+     * The value is opaque. Do not parse it or build one yourself.
+     * 
      */
     next?: string;
     /**
@@ -230,297 +246,383 @@ export interface ListObjectAttributesPublicRequest {
 
 export interface ListObjectsRequest {
     /**
-     * Filter resources by their unique identifier
+     * Return only the resource with this identifier. Equivalent to fetching it by
+     * path, but usable together with the other list filters.
+     * 
      */
     id?: string;
     /**
-     * Filter resources by the organization they belong to
+     * Return only resources associated with this organization. On protected
+     * endpoints, authorization may restrict or replace this value with the
+     * credential's active organization.
+     * 
      */
     orgId?: string;
     /**
-     * Search term for autocomplete functionality
+     * Search the endpoint's supported text and identifier fields. Matching may be
+     * an exact identifier lookup or a case-insensitive prefix search, depending on
+     * the resource. Alphanumeric characters only.
+     * 
      */
     autocomplete?: string;
     /**
-     * How many items to return at one time (max 25)
+     * How many items to return in one page. The default and the maximum are both
+     * 25; a larger value is rejected with `400`.
+     * 
      */
     limit?: number;
     /**
-     * Pagination token for retrieving the next page of results
+     * Cursor for the next page, taken verbatim from the `next` field of the previous
+     * response. Keep every other query parameter the same between pages: `sortBy`
+     * and `order` are part of what the cursor means. An absent or empty `next` in a
+     * response means there are no more pages.
+     * 
+     * The value is opaque. Do not parse it or build one yourself.
+     * 
      */
     next?: string;
     /**
-     * Sort order for the results (ascending or descending)
+     * Sort direction. Defaults to `desc`, newest first.
      */
     order?: ListObjectsOrderEnum;
     /**
-     * Field name to sort the results by
+     * Field used to sort the result. Supported fields depend on the endpoint; use
+     * `when_created` for chronological ordering where it is available. The default
+     * is the resource identifier, and identifiers break ties so cursor paging stays
+     * stable.
+     * 
      */
     sortBy?: string;
     /**
-     * Legacy v1 flag. Use include=display instead.
+     * An older way of asking for how each object looks. Use
+     * `include=display`, which returns a ready-made display for the variant
+     * you ask for.
+     * 
      * @deprecated
      */
     faces?: boolean;
     /**
-     * Optional related representations to resolve for each object.
+     * Ask for extras alongside each object. `display` adds a ready-made way to
+     * show it, in the variant named by `display_variant`.
+     * 
      */
     include?: Array<ListObjectsIncludeEnum>;
     /**
-     * Display context resolved when include contains display.
+     * Which look to resolve when you ask for `include=display`: a tile
+     * (`card`), a full page (`detail`) or a link preview (`share`).
+     * 
      */
     displayVariant?: ListObjectsDisplayVariantEnum;
     /**
-     * Optional flag for action objects
+     * Also return, for each object, what its template allows to be done with
+     * it.
+     * 
      */
     actions?: boolean;
     /**
-     * Filter by the owner's address
+     * Return only objects held by this address.
      */
     owner?: string;
     /**
-     * Filter objects by fully qualified domain name
+     * Return only objects whose template is published under this domain name.
+     * 
      */
     fqdn?: string;
     /**
-     * Optional flag for dropped items
+     * Return only objects that have been left at a place for someone to pick
+     * up (`true`), or only objects that have not (`false`).
+     * 
      */
     dropped?: boolean;
     /**
-     * Geographical hash for location-based filtering
+     * Return only objects dropped in this area. The longer the value, the
+     * smaller the area it covers.
+     * 
      */
     geoHash?: string;
     /**
-     * Filter by the collection ID
+     * Return only objects made from this template.
      */
     templateId?: string;
     /**
-     * Filter objects created after this date and time
+     * Created strictly after this moment.
      */
     whenCreated$gt?: Date;
     /**
-     * Filter objects created after this date and time
+     * Created at or after this moment.
      */
     whenCreated$gte?: Date;
     /**
-     * Filter objects created before this date and time
+     * Created strictly before this moment.
      */
     whenCreated$lt?: Date;
     /**
-     * 
+     * Created at or before this moment.
      */
     whenCreated$lte?: Date;
     /**
-     * 
+     * Last changed strictly after this moment.
      */
     whenModified$gt?: Date;
     /**
-     * 
+     * Last changed strictly before this moment.
      */
     whenModified$lt?: Date;
     /**
-     * 
+     * Last changed at or after this moment.
      */
     whenModified$gte?: Date;
     /**
-     * 
+     * Last changed at or before this moment.
      */
     whenModified$lte?: Date;
 }
 
 export interface ListObjectsPublicRequest {
     /**
-     * Filter resources by their unique identifier
+     * Return only the resource with this identifier. Equivalent to fetching it by
+     * path, but usable together with the other list filters.
+     * 
      */
     id?: string;
     /**
-     * How many items to return at one time (max 25)
+     * How many items to return in one page. The default and the maximum are both
+     * 25; a larger value is rejected with `400`.
+     * 
      */
     limit?: number;
     /**
-     * Search term for autocomplete functionality
+     * Search the endpoint's supported text and identifier fields. Matching may be
+     * an exact identifier lookup or a case-insensitive prefix search, depending on
+     * the resource. Alphanumeric characters only.
+     * 
      */
     autocomplete?: string;
     /**
-     * Pagination token for retrieving the next page of results
+     * Cursor for the next page, taken verbatim from the `next` field of the previous
+     * response. Keep every other query parameter the same between pages: `sortBy`
+     * and `order` are part of what the cursor means. An absent or empty `next` in a
+     * response means there are no more pages.
+     * 
+     * The value is opaque. Do not parse it or build one yourself.
+     * 
      */
     next?: string;
     /**
-     * Sort order for the results (ascending or descending)
+     * Sort direction. Defaults to `desc`, newest first.
      */
     order?: ListObjectsPublicOrderEnum;
     /**
-     * Field name to sort the results by
+     * Field used to sort the result. Supported fields depend on the endpoint; use
+     * `when_created` for chronological ordering where it is available. The default
+     * is the resource identifier, and identifiers break ties so cursor paging stays
+     * stable.
+     * 
      */
     sortBy?: string;
     /**
-     * Legacy v1 flag. Use include=display instead.
+     * An older way of asking for how each object looks. Use
+     * `include=display` instead.
+     * 
      * @deprecated
      */
     faces?: boolean;
     /**
-     * Optional related representations to resolve for each object.
+     * Ask for extras alongside each object. `display` adds a ready-made way to
+     * show it.
+     * 
      */
     include?: Array<ListObjectsPublicIncludeEnum>;
     /**
-     * Display context resolved when include contains display.
+     * Which look to resolve when you ask for `include=display`: a tile
+     * (`card`), a full page (`detail`) or a link preview (`share`).
+     * 
      */
     displayVariant?: ListObjectsPublicDisplayVariantEnum;
     /**
-     * Optional flag for action objects
+     * Also return what can be done with each object.
      */
     actions?: boolean;
     /**
-     * Filter by the owner's address
+     * Return only objects held by this address.
      */
     owner?: string;
     /**
-     * Optional flag for dropped items
+     * Return only objects left somewhere to be picked up (`true`), or only
+     * objects that have not been (`false`).
+     * 
      */
     dropped?: boolean;
     /**
-     * Geographical hash for location-based filtering
+     * Return only objects dropped in this area. The longer the value, the
+     * smaller the area.
+     * 
      */
     geoHash?: string;
     /**
-     * Filter by the collection ID
+     * Return only objects made from this template.
      */
     templateId?: string;
     /**
-     * Filter objects created after this date and time
+     * Created strictly after this moment.
      */
     whenCreated$gt?: Date;
     /**
-     * Filter objects created before this date and time
+     * Created strictly before this moment.
      */
     whenCreated$lt?: Date;
     /**
-     * Filter objects created on or after this date and time
+     * Created at or after this moment.
      */
     whenCreated$gte?: Date;
     /**
-     * Filter objects created on or before this date and time
+     * Created at or before this moment.
      */
     whenCreated$lte?: Date;
     /**
-     * Filter objects modified after this date and time
+     * Last changed strictly after this moment.
      */
     whenModified$gt?: Date;
     /**
-     * Filter objects modified before this date and time
+     * Last changed strictly before this moment.
      */
     whenModified$lt?: Date;
     /**
-     * Filter objects modified on or after this date and time
+     * Last changed at or after this moment.
      */
     whenModified$gte?: Date;
     /**
-     * Filter objects modified on or before this date and time
+     * Last changed at or before this moment.
      */
     whenModified$lte?: Date;
 }
 
 export interface ListStateChangesRequest {
     /**
-     * 
+     * Identifier of the smart object.
      */
     objectId: string;
     /**
-     * Filter resources by their unique identifier
+     * Return only the resource with this identifier. Equivalent to fetching it by
+     * path, but usable together with the other list filters.
+     * 
      */
     id?: string;
     /**
-     * Filter resources by the organization they belong to
+     * Return only resources associated with this organization. On protected
+     * endpoints, authorization may restrict or replace this value with the
+     * credential's active organization.
+     * 
      */
     orgId?: string;
     /**
-     * Search term for autocomplete functionality
+     * Search the endpoint's supported text and identifier fields. Matching may be
+     * an exact identifier lookup or a case-insensitive prefix search, depending on
+     * the resource. Alphanumeric characters only.
+     * 
      */
     autocomplete?: string;
     /**
-     * How many items to return at one time (max 25)
+     * How many items to return in one page. The default and the maximum are both
+     * 25; a larger value is rejected with `400`.
+     * 
      */
     limit?: number;
     /**
-     * Pagination token for retrieving the next page of results
+     * Cursor for the next page, taken verbatim from the `next` field of the previous
+     * response. Keep every other query parameter the same between pages: `sortBy`
+     * and `order` are part of what the cursor means. An absent or empty `next` in a
+     * response means there are no more pages.
+     * 
+     * The value is opaque. Do not parse it or build one yourself.
+     * 
      */
     next?: string;
     /**
-     * Sort order for the results (ascending or descending)
+     * Sort direction. Defaults to `desc`, newest first.
      */
     order?: ListStateChangesOrderEnum;
     /**
-     * Field name to sort the results by
+     * Field used to sort the result. Supported fields depend on the endpoint; use
+     * `when_created` for chronological ordering where it is available. The default
+     * is the resource identifier, and identifiers break ties so cursor paging stays
+     * stable.
+     * 
      */
     sortBy?: string;
     /**
-     * 
+     * Return only changes made by this wallet.
      */
     walletId?: string;
     /**
-     * 
+     * Return only the change made by this action.
      */
     actionId?: string;
     /**
-     * 
+     * Return only changes settled in this batch.
      */
     batchId?: string;
     /**
+     * Return only changes of this kind: `create` when the object came into
+     * being, `update` when it changed, `delete` when it was destroyed.
      * 
      */
     changeType?: string;
     /**
+     * Return only changes made by this action, such as `transfer` or `redeem`.
      * 
      */
     actionType?: string;
     /**
+     * Return only changes after this point in the object's life. Each change
+     * raises the object's count by one, so this walks its history in order.
      * 
      */
     nonce$gt?: number;
     /**
-     * 
+     * Return only changes before this point in the object's life.
      */
     nonce$lt?: number;
     /**
-     * 
+     * Return the change that started from this fingerprint.
      */
     prevStateRoot?: string;
     /**
-     * 
+     * Return the change that produced this fingerprint.
      */
     nextStateRoot?: string;
     /**
-     * 
+     * Happened strictly after this moment.
      */
     whenCreated$gt?: Date;
     /**
-     * 
+     * Happened strictly before this moment.
      */
     whenCreated$lt?: Date;
     /**
-     * 
+     * Happened at or after this moment.
      */
     whenCreated$gte?: Date;
     /**
-     * 
+     * Happened at or before this moment.
      */
     whenCreated$lte?: Date;
 }
 
 export interface RenderObjectDisplayByIdPublicRequest {
     /**
-     * 
+     * Identifier of the smart object.
      */
     objectId: string;
     /**
-     * 
+     * Which look to draw.
      */
     variant: DisplayVariant;
 }
 
 export interface RenderObjectViewByIdPublicRequest {
     /**
-     * 
+     * Identifier of the smart object.
      */
     objectId: string;
 }
@@ -570,8 +672,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve detailed information about a specific smart object by its unique identifier. This endpoint returns comprehensive object data including faces, actions, metadata, and current state information. 
-     * Get object
+     * One object in full: who holds it, what it carries, and the fingerprints that let its history be checked.  `custom` is your own data as it stands right now. `nonce` counts how many times the object has changed. The `*_hash` fields are what gets proved on chain — you rarely need them, but they are what makes the history trustworthy.  To see how it got here, read `GET /objects/{objectId}/state-changes`.  Requires the `objects.read` permission. 
+     * Get an object
      */
     async getObjectByIdRaw(requestParameters: GetObjectByIdRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SmartObject>> {
         const requestOptions = await this.getObjectByIdRequestOpts(requestParameters);
@@ -581,8 +683,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve detailed information about a specific smart object by its unique identifier. This endpoint returns comprehensive object data including faces, actions, metadata, and current state information. 
-     * Get object
+     * One object in full: who holds it, what it carries, and the fingerprints that let its history be checked.  `custom` is your own data as it stands right now. `nonce` counts how many times the object has changed. The `*_hash` fields are what gets proved on chain — you rarely need them, but they are what makes the history trustworthy.  To see how it got here, read `GET /objects/{objectId}/state-changes`.  Requires the `objects.read` permission. 
+     * Get an object
      */
     async getObjectById(requestParameters: GetObjectByIdRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SmartObject> {
         const response = await this.getObjectByIdRaw(requestParameters, initOverrides);
@@ -617,8 +719,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve detailed information about a specific smart object by its unique identifier. This endpoint returns comprehensive object data including faces, actions, metadata, and current state information. 
-     * Get Object by ID Public
+     * One object as anyone can see it: its name, description, picture, current owner, and the details its template publishes.  This is what a marketplace or a shared link shows. For your own organization\'s full view, use `GET /objects/{objectId}`.  Open to everyone. No sign-in needed. 
+     * Get a public object
      */
     async getObjectByIdPublicRaw(requestParameters: GetObjectByIdPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PublicSmartObject>> {
         const requestOptions = await this.getObjectByIdPublicRequestOpts(requestParameters);
@@ -628,8 +730,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve detailed information about a specific smart object by its unique identifier. This endpoint returns comprehensive object data including faces, actions, metadata, and current state information. 
-     * Get Object by ID Public
+     * One object as anyone can see it: its name, description, picture, current owner, and the details its template publishes.  This is what a marketplace or a shared link shows. For your own organization\'s full view, use `GET /objects/{objectId}`.  Open to everyone. No sign-in needed. 
+     * Get a public object
      */
     async getObjectByIdPublic(requestParameters: GetObjectByIdPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PublicSmartObject> {
         const response = await this.getObjectByIdPublicRaw(requestParameters, initOverrides);
@@ -664,8 +766,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve metadata information about a specific smart object by its unique identifier. This endpoint returns metadata details including creation timestamps, versioning, and other relevant metadata attributes. 
-     * Get public object metadata
+     * An object described in the shape wallets and marketplaces expect for a collectible: `name`, `description`, `image`, `external_url` and a list of `attributes` as trait and value pairs.  Point a collection\'s metadata at this address and the object shows up correctly wherever collectibles are displayed.  Open to everyone. No sign-in needed. 
+     * Get an object\'s collectible metadata
      */
     async getObjectMetadataByIdPublicRaw(requestParameters: GetObjectMetadataByIdPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PublicSmartObjectMetadata>> {
         const requestOptions = await this.getObjectMetadataByIdPublicRequestOpts(requestParameters);
@@ -675,8 +777,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve metadata information about a specific smart object by its unique identifier. This endpoint returns metadata details including creation timestamps, versioning, and other relevant metadata attributes. 
-     * Get public object metadata
+     * An object described in the shape wallets and marketplaces expect for a collectible: `name`, `description`, `image`, `external_url` and a list of `attributes` as trait and value pairs.  Point a collection\'s metadata at this address and the object shows up correctly wherever collectibles are displayed.  Open to everyone. No sign-in needed. 
+     * Get an object\'s collectible metadata
      */
     async getObjectMetadataByIdPublic(requestParameters: GetObjectMetadataByIdPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PublicSmartObjectMetadata> {
         const response = await this.getObjectMetadataByIdPublicRaw(requestParameters, initOverrides);
@@ -712,8 +814,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Deprecated compatibility alias for `/public/objects/{objectId}/metadata`. 
-     * Get public object metadata (legacy path)
+     * Legacy path for the same response as `/public/objects/{objectId}/metadata`. It remains available for collections that already reference it. New integrations should use the canonical path. 
+     * Get collectible metadata from the legacy path
      * @deprecated
      */
     async getObjectMetadataByIdPublicLegacyRaw(requestParameters: GetObjectMetadataByIdPublicLegacyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PublicSmartObjectMetadata>> {
@@ -724,8 +826,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Deprecated compatibility alias for `/public/objects/{objectId}/metadata`. 
-     * Get public object metadata (legacy path)
+     * Legacy path for the same response as `/public/objects/{objectId}/metadata`. It remains available for collections that already reference it. New integrations should use the canonical path. 
+     * Get collectible metadata from the legacy path
      * @deprecated
      */
     async getObjectMetadataByIdPublicLegacy(requestParameters: GetObjectMetadataByIdPublicLegacyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PublicSmartObjectMetadata> {
@@ -801,8 +903,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate counts of smart objects. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
-     * Organization object statistics
+     * How many objects your organization has issued.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  You have to be a member of the organization in the path. The figures never quietly widen to the whole network if a token is missing or expired — the request fails instead, so a dashboard cannot show network numbers under your own name.  For network-wide figures, use the matching endpoint under `/public/stats/`.  Requires the `stats.objects.read` permission. 
+     * Your object statistics
      */
     async getOrganizationObjectStatsRaw(requestParameters: GetOrganizationObjectStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
         const requestOptions = await this.getOrganizationObjectStatsRequestOpts(requestParameters);
@@ -812,8 +914,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate counts of smart objects. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
-     * Organization object statistics
+     * How many objects your organization has issued.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  You have to be a member of the organization in the path. The figures never quietly widen to the whole network if a token is missing or expired — the request fails instead, so a dashboard cannot show network numbers under your own name.  For network-wide figures, use the matching endpoint under `/public/stats/`.  Requires the `stats.objects.read` permission. 
+     * Your object statistics
      */
     async getOrganizationObjectStats(requestParameters: GetOrganizationObjectStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
         const response = await this.getOrganizationObjectStatsRaw(requestParameters, initOverrides);
@@ -868,8 +970,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate counts of smart objects. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
-     * Network-wide object statistics
+     * How many objects exist — tickets issued, cards created, and so on.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  These figures cover the whole network and take no sign-in. For your own organization\'s numbers, use the matching endpoint under `/organizations/{organizationId}/stats/`. 
+     * Object statistics
      */
     async getPublicObjectStatsRaw(requestParameters: GetPublicObjectStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
         const requestOptions = await this.getPublicObjectStatsRequestOpts(requestParameters);
@@ -879,8 +981,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate counts of smart objects. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
-     * Network-wide object statistics
+     * How many objects exist — tickets issued, cards created, and so on.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  These figures cover the whole network and take no sign-in. For your own organization\'s numbers, use the matching endpoint under `/organizations/{organizationId}/stats/`. 
+     * Object statistics
      */
     async getPublicObjectStats(requestParameters: GetPublicObjectStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
         const response = await this.getPublicObjectStatsRaw(requestParameters, initOverrides);
@@ -927,8 +1029,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve the current attribute projection for a smart object.
-     * List object attributes
+     * The named attributes attached to one object as they stand today — the extra details added after it was created, such as a seat upgrade, a stamp, or a verification result.  Each attribute says which action last changed it, so you can trace any value back to the moment it was set. `public: true` means the attribute is also visible to anyone, through the public view of the object.  Attributes are set and removed with the `set_attributes` and `delete_attributes` actions.  Requires the `objects.read` permission. 
+     * List an object\'s attributes
      */
     async listObjectAttributesRaw(requestParameters: ListObjectAttributesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListObjectAttributesOut>> {
         const requestOptions = await this.listObjectAttributesRequestOpts(requestParameters);
@@ -938,8 +1040,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve the current attribute projection for a smart object.
-     * List object attributes
+     * The named attributes attached to one object as they stand today — the extra details added after it was created, such as a seat upgrade, a stamp, or a verification result.  Each attribute says which action last changed it, so you can trace any value back to the moment it was set. `public: true` means the attribute is also visible to anyone, through the public view of the object.  Attributes are set and removed with the `set_attributes` and `delete_attributes` actions.  Requires the `objects.read` permission. 
+     * List an object\'s attributes
      */
     async listObjectAttributes(requestParameters: ListObjectAttributesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListObjectAttributesOut> {
         const response = await this.listObjectAttributesRaw(requestParameters, initOverrides);
@@ -986,8 +1088,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a cursor-paginated projection of attributes explicitly marked public by the object\'s owner. Private attributes and attribute integrity metadata are never included. 
-     * List public object attributes
+     * The extra details on an object that have been marked public — a tier, a stamp, a verification. Everything else stays private.  Open to everyone. No sign-in needed. 
+     * List an object\'s public attributes
      */
     async listObjectAttributesPublicRaw(requestParameters: ListObjectAttributesPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListPublicObjectAttributesOut>> {
         const requestOptions = await this.listObjectAttributesPublicRequestOpts(requestParameters);
@@ -997,8 +1099,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a cursor-paginated projection of attributes explicitly marked public by the object\'s owner. Private attributes and attribute integrity metadata are never included. 
-     * List public object attributes
+     * The extra details on an object that have been marked public — a tier, a stamp, a verification. Everything else stays private.  Open to everyone. No sign-in needed. 
+     * List an object\'s public attributes
      */
     async listObjectAttributesPublic(requestParameters: ListObjectAttributesPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListPublicObjectAttributesOut> {
         const response = await this.listObjectAttributesPublicRaw(requestParameters, initOverrides);
@@ -1133,7 +1235,7 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a paginated list of smart objects accessible to the authenticated user. This endpoint supports comprehensive filtering by various criteria including object type, ownership, location, template associations, and temporal ranges. Objects can be filtered by faces, actions, ownership, geographical location, and creation/modification timestamps. 
+     * Your organization\'s objects, newest first — every ticket, card or warranty it has issued.  When a user is signed in as an individual rather than as a company account, they see only the objects they own, which makes this the endpoint behind a personal wallet screen as well as an admin list.  **Showing them.** Add `include=display` and each object comes back with a ready-made way to show it: an address to load, the shape it draws in, and whether it is interactive. `display_variant` picks which look you want — `card` for a list, `detail` for a page, `share` for a link preview.  **Finding them.** Narrow by template, by owner, by whether an object has been left somewhere to be picked up, or by when it was created or last changed.  Requires the `objects.read` permission. 
      * List objects
      */
     async listObjectsRaw(requestParameters: ListObjectsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListSmartObjectsOut>> {
@@ -1144,7 +1246,7 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a paginated list of smart objects accessible to the authenticated user. This endpoint supports comprehensive filtering by various criteria including object type, ownership, location, template associations, and temporal ranges. Objects can be filtered by faces, actions, ownership, geographical location, and creation/modification timestamps. 
+     * Your organization\'s objects, newest first — every ticket, card or warranty it has issued.  When a user is signed in as an individual rather than as a company account, they see only the objects they own, which makes this the endpoint behind a personal wallet screen as well as an admin list.  **Showing them.** Add `include=display` and each object comes back with a ready-made way to show it: an address to load, the shape it draws in, and whether it is interactive. `display_variant` picks which look you want — `card` for a list, `detail` for a page, `share` for a link preview.  **Finding them.** Narrow by template, by owner, by whether an object has been left somewhere to be picked up, or by when it was created or last changed.  Requires the `objects.read` permission. 
      * List objects
      */
     async listObjects(requestParameters: ListObjectsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListSmartObjectsOut> {
@@ -1260,8 +1362,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a paginated list of smart objects accessible to the public. This endpoint supports comprehensive filtering by various criteria including object type, ownership, location, template associations, and temporal ranges. Objects can be filtered by faces, actions, ownership, geographical location, and creation/modification timestamps. 
-     * List Objects Public
+     * Objects on the network as anyone can see them — the view behind an explorer, a marketplace listing or a public gallery.  Each object shows its name, description, picture, current owner and the details its template chooses to publish. Anything an organization keeps to itself is left out.  Add `include=display` to get a ready-made way to show each object, in the look you name with `display_variant`.  Open to everyone. No sign-in needed. 
+     * List public objects
      */
     async listObjectsPublicRaw(requestParameters: ListObjectsPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListPublicSmartObjectsOut>> {
         const requestOptions = await this.listObjectsPublicRequestOpts(requestParameters);
@@ -1271,8 +1373,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a paginated list of smart objects accessible to the public. This endpoint supports comprehensive filtering by various criteria including object type, ownership, location, template associations, and temporal ranges. Objects can be filtered by faces, actions, ownership, geographical location, and creation/modification timestamps. 
-     * List Objects Public
+     * Objects on the network as anyone can see them — the view behind an explorer, a marketplace listing or a public gallery.  Each object shows its name, description, picture, current owner and the details its template chooses to publish. Anything an organization keeps to itself is left out.  Add `include=display` to get a ready-made way to show each object, in the look you name with `display_variant`.  Open to everyone. No sign-in needed. 
+     * List public objects
      */
     async listObjectsPublic(requestParameters: ListObjectsPublicRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListPublicSmartObjectsOut> {
         const response = await this.listObjectsPublicRaw(requestParameters, initOverrides);
@@ -1374,18 +1476,6 @@ export class ObjectsApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
-        if (this.configuration && this.configuration.accessToken) {
-            const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
-
-            if (tokenString) {
-                headerParameters["Authorization"] = `Bearer ${tokenString}`;
-            }
-        }
 
         let urlPath = `/objects/{objectId}/state-changes`;
         urlPath = urlPath.replace('{objectId}', encodeURIComponent(String(requestParameters['objectId'])));
@@ -1399,8 +1489,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a paginated list of state changes for a specific smart object. This endpoint provides access to the complete history of state modifications including action types, wallet interactions, nonce values, and state root transitions. State changes can be filtered by various criteria including wallet ID, action ID, change type, and temporal ranges. 
-     * List state changes
+     * Everything that has ever happened to one object, newest first: what was done, by whom, when, and which batch made it permanent.  Each entry records the owner before and after, the fingerprints of the object before and after, and the batch that settled it — enough to follow a ticket from the moment it was issued to the moment it was used, and to prove every step along the way.  This is the object\'s public audit history. No sign-in is needed. 
+     * List an object\'s history
      */
     async listStateChangesRaw(requestParameters: ListStateChangesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListStateChangesOut>> {
         const requestOptions = await this.listStateChangesRequestOpts(requestParameters);
@@ -1410,8 +1500,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a paginated list of state changes for a specific smart object. This endpoint provides access to the complete history of state modifications including action types, wallet interactions, nonce values, and state root transitions. State changes can be filtered by various criteria including wallet ID, action ID, change type, and temporal ranges. 
-     * List state changes
+     * Everything that has ever happened to one object, newest first: what was done, by whom, when, and which batch made it permanent.  Each entry records the owner before and after, the fingerprints of the object before and after, and the batch that settled it — enough to follow a ticket from the moment it was issued to the moment it was used, and to prove every step along the way.  This is the object\'s public audit history. No sign-in is needed. 
+     * List an object\'s history
      */
     async listStateChanges(requestParameters: ListStateChangesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListStateChangesOut> {
         const response = await this.listStateChangesRaw(requestParameters, initOverrides);
@@ -1454,8 +1544,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Render a smart object\'s assigned face using its public data projection. Variant lookup falls back to the face\'s default view and then legacy v1 content. 
-     * Render a public object display variant
+     * Draws an object with the face its template gives it, filled in with that object\'s own details — the finished picture or page, ready to embed, link to or share.  Ask for `card` for a tile, `detail` for a full page, or `share` for a link preview. If the face has no design for the look you asked for, the closest one is used instead.  Only the details the template publishes are drawn.  Open to everyone. No sign-in needed. 
+     * Show an object
      */
     async renderObjectDisplayByIdPublicRaw(requestParameters: RenderObjectDisplayByIdPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<string>> {
         const requestOptions = await this.renderObjectDisplayByIdPublicRequestOpts(requestParameters);
@@ -1469,8 +1559,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Render a smart object\'s assigned face using its public data projection. Variant lookup falls back to the face\'s default view and then legacy v1 content. 
-     * Render a public object display variant
+     * Draws an object with the face its template gives it, filled in with that object\'s own details — the finished picture or page, ready to embed, link to or share.  Ask for `card` for a tile, `detail` for a full page, or `share` for a link preview. If the face has no design for the look you asked for, the closest one is used instead.  Only the details the template publishes are drawn.  Open to everyone. No sign-in needed. 
+     * Show an object
      */
     async renderObjectDisplayByIdPublic(requestParameters: RenderObjectDisplayByIdPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<string> {
         const response = await this.renderObjectDisplayByIdPublicRaw(requestParameters, initOverrides);
@@ -1506,8 +1596,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Legacy v1 alias for /public/objects/{objectId}/display/detail. 
-     * Render a public object
+     * Legacy path for the same detail page as `/public/objects/{objectId}/display/detail`. It remains available for existing links. New integrations should use the canonical path. 
+     * Show an object from the legacy path
      * @deprecated
      */
     async renderObjectViewByIdPublicRaw(requestParameters: RenderObjectViewByIdPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<string>> {
@@ -1522,8 +1612,8 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Legacy v1 alias for /public/objects/{objectId}/display/detail. 
-     * Render a public object
+     * Legacy path for the same detail page as `/public/objects/{objectId}/display/detail`. It remains available for existing links. New integrations should use the canonical path. 
+     * Show an object from the legacy path
      * @deprecated
      */
     async renderObjectViewByIdPublic(requestParameters: RenderObjectViewByIdPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<string> {

@@ -2,8 +2,8 @@
 /* tslint:disable */
 /* eslint-disable */
 /**
- * DualOrg API
- * DualOrg API documentation
+ * Dual API
+ * Dual turns the things your product issues — tickets, warranties, memberships, loyalty cards — into **smart objects**: items that belong to a named owner, look the way you design them, and carry a complete, provable record of everything that has ever happened to them.  Nothing about an object changes quietly. Every change is signed by whoever made it, priced, and written into a history that is later recorded on a public blockchain. That lets you issue a ticket, let its owner transfer it, and still prove months later exactly where it came from.  Most integrations follow the same path:  1. Create a **wallet** to sign with and an **organization** to own the work    and pay for it. 2. Design a **template** — what one of your items is — and a **face**, which    is how it looks. 3. **Mint** items from that template, then transfer, update or redeem them. 4. Read where things stand whenever you like, and let **webhooks** tell you    the moment something happens.  ## Base URL  ``` https://api.dual.network ```  Every path in this reference hangs off that address, and everything is HTTPS.  ## Signing in  There are two ways to identify yourself, and some things need neither.  | What you send | Header | When to use it | | --- | --- | --- | | An access token | `Authorization: Bearer <access_token>` | Anything done on behalf of a signed-in person | | An API key | `x-api-key: <key>` | Backend-to-backend calls with no interactive sign-in | | Nothing | — | Public information, and signing up or in |  Each endpoint below shows which of these it accepts. An endpoint with none shown is open to everyone.  ### Access tokens  Signing in — with a password, a passkey or a crypto wallet — gives you an `access_token` and a `refresh_token`.  The access token is short-lived, about fifteen minutes, and goes on every request. When it runs out, send the refresh token to `POST /auth/refresh-token` and you will get a fresh pair back, without asking the person to sign in again.  Each refresh retires the token you sent and gives you a new one, so always keep the newest pair and discard the old. If an already-used refresh token turns up again, we treat it as stolen and end that session everywhere — so never keep an old one around \"just in case\".  ### API keys  Create a key with `POST /api-keys`. You see the secret once, in that response, and never again — store it at that moment, because a lost key can only be replaced. A key belongs to the organization that made it, does only what its creator was allowed to do, lasts up to a year, and cannot be used to sign anyone in.  ### Permissions  Everything that is not public needs a permission, such as `objects.read` or `webhooks.create`. A signed-in person has the permissions their role gives them; an API key has the ones it was created with. Ask for something you do not have permission for and you get a `401` — the same answer as an expired token — so check the message before assuming the token is the problem.  ## Working in one organization at a time  Authenticated management data — objects, templates, faces, files, webhooks and keys — is scoped to one organization, and you only see organizations your credential may access. Guessing another organization\'s identifier does not cross that boundary: the resource simply reads as missing. Public endpoints are the deliberate exception; they expose only published views and network-wide figures described on those endpoints.  Which organization you are working in is decided by the token or key you send. To move to another one, call `POST /organizations/switch`; it hands back a new access token for that organization, and the refresh token you already hold carries on working.  ## Pagination  Lists come back a page at a time, under a named array, with a `next` marker whenever there is more to fetch.  ```http GET /objects?limit=25 ```  ```json {   \"objects\": [ { \"id\": \"665f1c2d4b1a2c3d4e5f6a7b\" } ],   \"next\": \"7b226964...\" } ```  Send that value back as `?next=` for the following page, keeping every other parameter the same — `sortBy` and `order` are part of what the marker means. No `next` in the response means you have reached the end.  | Parameter | Default | Notes | | --- | --- | --- | | `limit` | 25 | Between 1 and 25 | | `order` | `desc` | Newest first, or `asc` for oldest first | | `sortBy` | `id` | Resource field to sort by; use a field documented by the endpoint | | `next` | — | Treat it as a token: pass it back, never build one |  ## Filtering  Every list has filters of its own, and they all share the same way of asking for a date range:  ```http GET /objects?when_created[$gte]=2026-01-01T00:00:00Z&when_created[$lt]=2026-02-01T00:00:00Z ```  `$gt` and `$gte` set the start of the window, `$lt` and `$lte` set the end; the `e` versions include the moment itself. The `/stats` endpoints use simple `from` and `to` instead. `to` is exclusive there, so back-to-back ranges never count the same record twice.  ## Identifiers, times and amounts  - Resource identifiers are normally 24-character hexadecimal strings. - Times are UTC, written like `2026-01-01T12:00:00Z`. - DUAL balances, fees and other precise amounts are sent as strings rather   than numbers, so nothing is rounded away in transit. A field ending in   `_wei` is in wei, the smallest unit of DUAL. - Blockchain addresses start with `0x`.  ## Errors  Every failure returns the same JSON body, whatever the status:  ```json {   \"code\": 3,   \"message\": \"limit must be 25 or less\",   \"details\": {} } ```  `code` is meant for your code and never changes meaning; `message` is meant for a person reading a log and may be reworded at any time. Make decisions on the status and on `code`.  | Status | What happened | | --- | --- | | `400` | Something in the request is wrong. Fix it before trying again | | `401` | Not signed in, signed in with something expired, or not allowed to do this | | `403` | Signed in, but this particular thing is not yours to touch | | `404` | The resource does not exist or is not visible to you | | `409` | The thing is not in a state where this makes sense right now | | `422` | The request is well formed but breaks a rule | | `429` | Too many requests. Slow down | | `500` | Something went wrong on our side | | `503` | We could not take the request safely. Try again shortly |  ### Error codes  | `code` | Meaning | Usually seen with | | --- | --- | --- | | 3 | Something in the request is wrong | 400, 422 | | 5 | Not found | 404 | | 7 | Not allowed | 403 | | 8 | Too many requests | 429 | | 10 | Another request got there first — try again | 409 | | 12 | Not available | 501 | | 13 | Something went wrong on our side | 500 | | 14 | A required service is temporarily unavailable | 503 | | 16 | Not signed in | 401 |  ## How often you can call  Each token or key gets roughly 5 requests a second, and can burst to 30 for a moment. Callers with no token are counted by network address instead. Go over and you get a `429`; wait a little longer each time before retrying, with a bit of randomness so that everyone does not come back at once.  ## Finding one request again  Every response carries an `x-request-id`. Send your own on the way in and we will keep it; otherwise we make one for you. Quote it when you contact support and we can find the exact call in seconds.  ## Why an action cannot be replayed  Actions are signed by the wallet behind them, not merely sent by someone holding a token. Each signature is tied to that wallet\'s next action number, which you read from `GET /ebus/nonce`, so a copy of an old request is worthless the moment the number moves on. **Actions & fees** walks through the whole sequence.  ## Stability  We add things without warning: a new endpoint, a new optional parameter, a new field in a response. Build your side to ignore anything it does not recognise and those additions will never disturb you.  We do not take things away without warning. Anything being retired is marked `deprecated` here first, keeps working while it carries that mark, and is announced before it goes. 
  *
  * The version of the OpenAPI document: 1.0.0
  * 
@@ -24,6 +24,16 @@ import {
     EoaInFromJSON,
     EoaInToJSON,
 } from '../models/EoaIn';
+import {
+    type GoogleLoginIn,
+    GoogleLoginInFromJSON,
+    GoogleLoginInToJSON,
+} from '../models/GoogleLoginIn';
+import {
+    type ListWalletSessionsOut,
+    ListWalletSessionsOutFromJSON,
+    ListWalletSessionsOutToJSON,
+} from '../models/ListWalletSessionsOut';
 import {
     type LoginIn,
     LoginInFromJSON,
@@ -119,14 +129,16 @@ export interface ConnectEoaRequest {
 
 export interface DeleteWalletByIdRequest {
     /**
-     * Unique identifier of the target wallet
+     * Identifier of the wallet to delete.
      */
     id: string;
 }
 
 export interface GetOrganizationWalletStatsRequest {
     /**
-     * Unique identifier of the organization
+     * Identifier of the organization. Each endpoint states whether it must be the
+     * caller's active organization or may be used without authentication.
+     * 
      */
     organizationId: string;
     /**
@@ -150,7 +162,10 @@ export interface GetOrganizationWalletStatsRequest {
      */
     include?: Array<GetOrganizationWalletStatsIncludeEnum>;
     /**
-     * Time interval for grouping time-series statistics and analytics data
+     * Bucket size for a time series. It fixes how many points the series has over
+     * the requested window, so a long window with a small interval is an expensive
+     * request.
+     * 
      */
     interval?: GetOrganizationWalletStatsIntervalEnum;
     /**
@@ -196,7 +211,10 @@ export interface GetPublicWalletStatsRequest {
      */
     include?: Array<GetPublicWalletStatsIncludeEnum>;
     /**
-     * Time interval for grouping time-series statistics and analytics data
+     * Bucket size for a time series. It fixes how many points the series has over
+     * the requested window, so a long window with a small interval is an expensive
+     * request.
+     * 
      */
     interval?: GetPublicWalletStatsIntervalEnum;
     /**
@@ -222,9 +240,16 @@ export interface GetPublicWalletStatsRequest {
 
 export interface GetWalletByIdRequest {
     /**
-     * Unique identifier of the target wallet
+     * Identifier of the wallet to read.
      */
     id: string;
+}
+
+export interface GoogleLoginRequest {
+    /**
+     * 
+     */
+    googleLoginIn: GoogleLoginIn;
 }
 
 export interface LoginWalletRequest {
@@ -283,6 +308,13 @@ export interface ResetPasswordRequest {
     resetPasswordIn: ResetPasswordIn;
 }
 
+export interface RevokeWalletSessionRequest {
+    /**
+     * Identifier of the login session, from `GET /wallets/sessions`.
+     */
+    sessionId: string;
+}
+
 export interface SetNewPasswordRequest {
     /**
      * 
@@ -299,7 +331,7 @@ export interface UpdateWalletRequest {
 
 export interface UpdateWalletByIdRequest {
     /**
-     * Unique identifier of the target wallet
+     * Identifier of the wallet to update.
      */
     id: string;
     /**
@@ -350,8 +382,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Authenticates (and if necessary registers) an externally-owned account (EOA) wallet via `eth_personal_sign`. Handles both first-time registration and returning users transparently.  **Flow:** 1. `GET /auth/challenge` — obtain a short-lived challenge string 2. `eth_personal_sign(challenge, privateKey)` — sign with the EOA key 3. POST here — the server runs `ecrecover` to derive the signer\'s address  On first connect the wallet record is created automatically. On subsequent connects the existing wallet is looked up by address and a new session is issued. 
-     * Connect an EOA wallet
+     * Let a user sign in with a crypto wallet they already own — MetaMask, Rainbow, Ledger — as their identity here. One endpoint covers both first time and every time after.  1. `GET /auth/challenge` — get a one-off string to sign. 2. Ask their wallet to sign it with `personal_sign`. 3. Send the signature here.  We recover the address from the signature, so nothing but the signature itself proves who they are. On a first connection we create their Dual wallet for them; afterwards we recognise the address and start a new session. Either way the response carries their wallet and a session.  No sign-in needed — this is the sign-in. 
+     * Sign in with a crypto wallet
      */
     async connectEoaRaw(requestParameters: ConnectEoaRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LoginOut>> {
         const requestOptions = await this.connectEoaRequestOpts(requestParameters);
@@ -361,8 +393,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Authenticates (and if necessary registers) an externally-owned account (EOA) wallet via `eth_personal_sign`. Handles both first-time registration and returning users transparently.  **Flow:** 1. `GET /auth/challenge` — obtain a short-lived challenge string 2. `eth_personal_sign(challenge, privateKey)` — sign with the EOA key 3. POST here — the server runs `ecrecover` to derive the signer\'s address  On first connect the wallet record is created automatically. On subsequent connects the existing wallet is looked up by address and a new session is issued. 
-     * Connect an EOA wallet
+     * Let a user sign in with a crypto wallet they already own — MetaMask, Rainbow, Ledger — as their identity here. One endpoint covers both first time and every time after.  1. `GET /auth/challenge` — get a one-off string to sign. 2. Ask their wallet to sign it with `personal_sign`. 3. Send the signature here.  We recover the address from the signature, so nothing but the signature itself proves who they are. On a first connection we create their Dual wallet for them; afterwards we recognise the address and start a new session. Either way the response carries their wallet and a session.  No sign-in needed — this is the sign-in. 
+     * Sign in with a crypto wallet
      */
     async connectEoa(requestParameters: ConnectEoaRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LoginOut> {
         const response = await this.connectEoaRaw(requestParameters, initOverrides);
@@ -401,8 +433,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Delete the current wallet
-     * Delete current wallet
+     * Close the signed-in account for good. Every session ends and every API key it created is revoked, so nothing is left that can act as this person.  This cannot be undone. Objects they own are not deleted — transfer anything that matters to another account first, or it will be left with an owner who no longer has an account.  Requires the `wallets.delete` permission. 
+     * Delete my wallet
      */
     async deleteWalletRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
         const requestOptions = await this.deleteWalletRequestOpts();
@@ -412,8 +444,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Delete the current wallet
-     * Delete current wallet
+     * Close the signed-in account for good. Every session ends and every API key it created is revoked, so nothing is left that can act as this person.  This cannot be undone. Objects they own are not deleted — transfer anything that matters to another account first, or it will be left with an owner who no longer has an account.  Requires the `wallets.delete` permission. 
+     * Delete my wallet
      */
     async deleteWallet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
         const response = await this.deleteWalletRaw(initOverrides);
@@ -460,8 +492,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Delete a wallet by ID. The authenticated caller must own the target wallet or be an operator. 
-     * Delete wallet by ID
+     * Close one account by its identifier.  You can only close your own account this way — the same thing as `DELETE /wallets/me`, addressed differently. Anything else comes back as `403`. Every session ends and every API key is revoked; objects the account owns are left where they are.  Requires the `wallets.delete` permission. 
+     * Delete a wallet by id
      */
     async deleteWalletByIdRaw(requestParameters: DeleteWalletByIdRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
         const requestOptions = await this.deleteWalletByIdRequestOpts(requestParameters);
@@ -471,8 +503,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Delete a wallet by ID. The authenticated caller must own the target wallet or be an operator. 
-     * Delete wallet by ID
+     * Close one account by its identifier.  You can only close your own account this way — the same thing as `DELETE /wallets/me`, addressed differently. Anything else comes back as `403`. Every session ends and every API key is revoked; objects the account owns are left where they are.  Requires the `wallets.delete` permission. 
+     * Delete a wallet by id
      */
     async deleteWalletById(requestParameters: DeleteWalletByIdRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
         const response = await this.deleteWalletByIdRaw(requestParameters, initOverrides);
@@ -499,8 +531,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Returns a short-lived 32-byte random challenge (base64url-encoded, 60s TTL). Must be fetched immediately before the wallet operation — challenges are single-use and expire after 60 seconds.  Usage by auth type: - type=passkey (login): pass as the `challenge` in navigator.credentials.get() - type=eoa (connect/login): sign with eth_personal_sign, submit with the request - type=passkey (register): NOT required — the P-256 pubkey is self-proving 
-     * Issue an authentication challenge
+     * Ask for a one-off random string to sign, which proves that whoever answers holds the key right now rather than replaying an old signature.  Fetch it immediately before you need it: it can be used once and expires after 60 seconds.  Sign it with the crypto wallet\'s `personal_sign` method, then send the challenge and signature to `POST /wallets/connect/eoa`.  Passkey registration and sign-in use the challenges returned by their own `/wallets/connect/passkey/_*_/options` endpoints instead.  No sign-in needed. 
+     * Get a sign-in challenge
      */
     async getAuthChallengeRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AuthChallenge>> {
         const requestOptions = await this.getAuthChallengeRequestOpts();
@@ -510,8 +542,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Returns a short-lived 32-byte random challenge (base64url-encoded, 60s TTL). Must be fetched immediately before the wallet operation — challenges are single-use and expire after 60 seconds.  Usage by auth type: - type=passkey (login): pass as the `challenge` in navigator.credentials.get() - type=eoa (connect/login): sign with eth_personal_sign, submit with the request - type=passkey (register): NOT required — the P-256 pubkey is self-proving 
-     * Issue an authentication challenge
+     * Ask for a one-off random string to sign, which proves that whoever answers holds the key right now rather than replaying an old signature.  Fetch it immediately before you need it: it can be used once and expires after 60 seconds.  Sign it with the crypto wallet\'s `personal_sign` method, then send the challenge and signature to `POST /wallets/connect/eoa`.  Passkey registration and sign-in use the challenges returned by their own `/wallets/connect/passkey/_*_/options` endpoints instead.  No sign-in needed. 
+     * Get a sign-in challenge
      */
     async getAuthChallenge(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AuthChallenge> {
         const response = await this.getAuthChallengeRaw(initOverrides);
@@ -582,8 +614,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate counts of registered wallets. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
-     * Organization wallet statistics
+     * How many wallets belong to your organization.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  You have to be a member of the organization in the path. The figures never quietly widen to the whole network if a token is missing or expired — the request fails instead, so a dashboard cannot show network numbers under your own name.  For network-wide figures, use the matching endpoint under `/public/stats/`.  Requires the `stats.wallets.read` permission. 
+     * Your wallet statistics
      */
     async getOrganizationWalletStatsRaw(requestParameters: GetOrganizationWalletStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
         const requestOptions = await this.getOrganizationWalletStatsRequestOpts(requestParameters);
@@ -593,8 +625,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate counts of registered wallets. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the organization in {organizationId}, and the caller must be a member of it. Because the scope is the path and not the credential, an expired or missing token fails the request instead of quietly widening it to network-wide figures. 
-     * Organization wallet statistics
+     * How many wallets belong to your organization.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  You have to be a member of the organization in the path. The figures never quietly widen to the whole network if a token is missing or expired — the request fails instead, so a dashboard cannot show network numbers under your own name.  For network-wide figures, use the matching endpoint under `/public/stats/`.  Requires the `stats.wallets.read` permission. 
+     * Your wallet statistics
      */
     async getOrganizationWalletStats(requestParameters: GetOrganizationWalletStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
         const response = await this.getOrganizationWalletStatsRaw(requestParameters, initOverrides);
@@ -645,8 +677,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate counts of registered wallets. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
-     * Network-wide wallet statistics
+     * How many wallets there are — the people and accounts on the network.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  These figures cover the whole network and take no sign-in. For your own organization\'s numbers, use the matching endpoint under `/organizations/{organizationId}/stats/`. 
+     * Wallet statistics
      */
     async getPublicWalletStatsRaw(requestParameters: GetPublicWalletStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
         const requestOptions = await this.getPublicWalletStatsRequestOpts(requestParameters);
@@ -656,8 +688,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Aggregate counts of registered wallets. Returns the total for the window, and optionally a breakdown by one dimension and a time series, each requested through the include parameter.  Scope is fixed by the path: this endpoint always reports the whole network and never reads a credential. A token sent here is ignored rather than honoured, so the route cannot return one organization\'s figures even if the caller holds a valid session. That is what makes the response safe to cache by URL alone. 
-     * Network-wide wallet statistics
+     * How many wallets there are — the people and accounts on the network.  Ask for `include=breakdown` to split it by one dimension, and `include=series` to get it over time; both are extra work, so the plain total is what you get by default.  These figures cover the whole network and take no sign-in. For your own organization\'s numbers, use the matching endpoint under `/organizations/{organizationId}/stats/`. 
+     * Wallet statistics
      */
     async getPublicWalletStats(requestParameters: GetPublicWalletStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
         const response = await this.getPublicWalletStatsRaw(requestParameters, initOverrides);
@@ -696,8 +728,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve the current authenticated user\'s wallet information. This endpoint returns detailed wallet data including profile information, account status, and associated metadata. Authentication is required via bearer token or API key. 
-     * Get current wallet
+     * Everything about the signed-in account: their address, the ways they can sign in, their display name and language, and whether the account is confirmed and in good standing.  Passwords and keys are never part of this. Use it to fill in a profile screen, or to check `activated` before letting the user get started.  Requires the `wallets.read` permission. 
+     * Get my wallet
      */
     async getWalletRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Wallet>> {
         const requestOptions = await this.getWalletRequestOpts();
@@ -707,8 +739,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve the current authenticated user\'s wallet information. This endpoint returns detailed wallet data including profile information, account status, and associated metadata. Authentication is required via bearer token or API key. 
-     * Get current wallet
+     * Everything about the signed-in account: their address, the ways they can sign in, their display name and language, and whether the account is confirmed and in good standing.  Passwords and keys are never part of this. Use it to fill in a profile screen, or to check `activated` before letting the user get started.  Requires the `wallets.read` permission. 
+     * Get my wallet
      */
     async getWallet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Wallet> {
         const response = await this.getWalletRaw(initOverrides);
@@ -755,8 +787,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a wallet by ID. The authenticated caller must own the target wallet or be an operator. 
-     * Get wallet by ID
+     * Read one account by its identifier.  You can only read your own account this way — the same answer as `GET /wallets/me`, addressed differently. Anything else comes back as `403`.  Requires the `wallets.read` permission. 
+     * Get a wallet by id
      */
     async getWalletByIdRaw(requestParameters: GetWalletByIdRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Wallet>> {
         const requestOptions = await this.getWalletByIdRequestOpts(requestParameters);
@@ -766,11 +798,111 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Retrieve a wallet by ID. The authenticated caller must own the target wallet or be an operator. 
-     * Get wallet by ID
+     * Read one account by its identifier.  You can only read your own account this way — the same answer as `GET /wallets/me`, addressed differently. Anything else comes back as `403`.  Requires the `wallets.read` permission. 
+     * Get a wallet by id
      */
     async getWalletById(requestParameters: GetWalletByIdRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Wallet> {
         const response = await this.getWalletByIdRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for googleLogin without sending the request
+     */
+    async googleLoginRequestOpts(requestParameters: GoogleLoginRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['googleLoginIn'] == null) {
+            throw new runtime.RequiredError(
+                'googleLoginIn',
+                'Required parameter "googleLoginIn" was null or undefined when calling googleLogin().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/auth/provider/google`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: GoogleLoginInToJSON(requestParameters['googleLoginIn']),
+        };
+    }
+
+    /**
+     * Exchange a Google Identity Services ID token for a Dual session. This one endpoint handles both new and returning users: the first successful request creates a wallet, and later requests sign in to that same wallet.  **Client integration:**  1. Configure Google Identity Services with your application\'s web client ID. 2. Read `credential` from the Google callback. 3. Send that value here as `id_token`. 4. Store the returned access and refresh tokens as you would for any other    Dual sign-in method.  The `credential` value is a Google **ID token**. Do not send a Google OAuth access token or authorization code. Dual verifies the token\'s signature, issuer, audience, expiry, stable Google account identifier, and verified email address before issuing a session.  Include `organization_id` when the account belongs to a particular organization. Leave it out for an account in the open network scope. The same Google account may have a separate Dual wallet in each scope.  A new wallet is active immediately because Google has already verified the email address. Google is never linked to an existing wallet by email alone: if that email belongs to a wallet using another sign-in method, this request returns `409`. Sign in through the existing method instead.  No existing Dual session is required — this endpoint creates one. 
+     * Sign in or register with Google
+     */
+    async googleLoginRaw(requestParameters: GoogleLoginRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LoginOut>> {
+        const requestOptions = await this.googleLoginRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => LoginOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Exchange a Google Identity Services ID token for a Dual session. This one endpoint handles both new and returning users: the first successful request creates a wallet, and later requests sign in to that same wallet.  **Client integration:**  1. Configure Google Identity Services with your application\'s web client ID. 2. Read `credential` from the Google callback. 3. Send that value here as `id_token`. 4. Store the returned access and refresh tokens as you would for any other    Dual sign-in method.  The `credential` value is a Google **ID token**. Do not send a Google OAuth access token or authorization code. Dual verifies the token\'s signature, issuer, audience, expiry, stable Google account identifier, and verified email address before issuing a session.  Include `organization_id` when the account belongs to a particular organization. Leave it out for an account in the open network scope. The same Google account may have a separate Dual wallet in each scope.  A new wallet is active immediately because Google has already verified the email address. Google is never linked to an existing wallet by email alone: if that email belongs to a wallet using another sign-in method, this request returns `409`. Sign in through the existing method instead.  No existing Dual session is required — this endpoint creates one. 
+     * Sign in or register with Google
+     */
+    async googleLogin(requestParameters: GoogleLoginRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LoginOut> {
+        const response = await this.googleLoginRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for listWalletSessions without sending the request
+     */
+    async listWalletSessionsRequestOpts(): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearer-auth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/wallets/sessions`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Where this account is signed in — one entry per browser or device, newest first. This is the \"your devices\" list, and the way a user spots a session they do not recognise.  Sessions that have been ended or have expired are not listed. An account keeps up to ten at a time; opening an eleventh ends the oldest, so the list is always short.  End one with `DELETE /wallets/sessions/{sessionId}`, or all of them with `POST /auth/logout-all`.  Requires the `wallets.read` permission. 
+     * List the wallet\'s login sessions
+     */
+    async listWalletSessionsRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListWalletSessionsOut>> {
+        const requestOptions = await this.listWalletSessionsRequestOpts();
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => ListWalletSessionsOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Where this account is signed in — one entry per browser or device, newest first. This is the \"your devices\" list, and the way a user spots a session they do not recognise.  Sessions that have been ended or have expired are not listed. An account keeps up to ten at a time; opening an eleventh ends the oldest, so the list is always short.  End one with `DELETE /wallets/sessions/{sessionId}`, or all of them with `POST /auth/logout-all`.  Requires the `wallets.read` permission. 
+     * List the wallet\'s login sessions
+     */
+    async listWalletSessions(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListWalletSessionsOut> {
+        const response = await this.listWalletSessionsRaw(initOverrides);
         return await response.value();
     }
 
@@ -804,8 +936,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Authenticate a user with their credentials and return access tokens. This endpoint accepts email/phone and password combinations to verify user identity. Upon successful authentication, the system returns both access and refresh tokens for secure API access. 
-     * Login
+     * Sign in a user with an email address or phone number, and either their password or a one-time code.  Send `password` for the ordinary case, or `otp` after `POST /auth/otp` has emailed them a code — the second is how a person signs in without ever setting a password. Send one or the other, not both.  Include `organization_id` when the account belongs to a particular organization: the same email address can exist as a separate account in several of them, and in the open network scope. Leave it out for an account that is not tied to an organization.  You get back the wallet, an access token to use straight away, and a refresh token to keep the session going. A wrong password, a wrong code and an unknown account all give the same answer, so this cannot be used to find out who has an account.  Signing in with a one-time code also confirms the address the code was sent to.  No sign-in needed — this is the sign-in. 
+     * Sign in
      */
     async loginWalletRaw(requestParameters: LoginWalletRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LoginOut>> {
         const requestOptions = await this.loginWalletRequestOpts(requestParameters);
@@ -815,8 +947,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Authenticate a user with their credentials and return access tokens. This endpoint accepts email/phone and password combinations to verify user identity. Upon successful authentication, the system returns both access and refresh tokens for secure API access. 
-     * Login
+     * Sign in a user with an email address or phone number, and either their password or a one-time code.  Send `password` for the ordinary case, or `otp` after `POST /auth/otp` has emailed them a code — the second is how a person signs in without ever setting a password. Send one or the other, not both.  Include `organization_id` when the account belongs to a particular organization: the same email address can exist as a separate account in several of them, and in the open network scope. Leave it out for an account that is not tied to an organization.  You get back the wallet, an access token to use straight away, and a refresh token to keep the session going. A wrong password, a wrong code and an unknown account all give the same answer, so this cannot be used to find out who has an account.  Signing in with a one-time code also confirms the address the code was sent to.  No sign-in needed — this is the sign-in. 
+     * Sign in
      */
     async loginWallet(requestParameters: LoginWalletRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LoginOut> {
         const response = await this.loginWalletRaw(requestParameters, initOverrides);
@@ -833,7 +965,7 @@ export class WalletsApi extends runtime.BaseAPI {
 
         if (this.configuration && this.configuration.accessToken) {
             const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
+            const tokenString = await token("refresh-token-auth", []);
 
             if (tokenString) {
                 headerParameters["Authorization"] = `Bearer ${tokenString}`;
@@ -851,8 +983,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * End the session the presented refresh token belongs to. The refresh token stops rotating immediately, so the session cannot be continued.  Present the refresh token, not the access token — the session is identified by the token family the refresh token names. Any access token already issued for the session stays valid until it expires, so a client should discard both tokens after calling this.  Logging out a session that is already revoked or expired succeeds, so a client retrying a failed logout does not have to special-case it. 
-     * Log out the current session
+     * End the session this refresh token belongs to. It stops working immediately, so the session cannot be continued.  **Send the refresh token, not the access token**, as `Authorization: Bearer <refresh_token>` — the session is the one that token belongs to.  An access token already in hand keeps working until it expires, for up to about fifteen minutes, so throw both tokens away once this returns.  Signing out a session that has already ended succeeds, so a client retrying after a failed call has nothing special to handle.  To end every session at once, use `POST /auth/logout-all`. 
+     * Sign out
      */
     async logoutRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
         const requestOptions = await this.logoutRequestOpts();
@@ -862,8 +994,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * End the session the presented refresh token belongs to. The refresh token stops rotating immediately, so the session cannot be continued.  Present the refresh token, not the access token — the session is identified by the token family the refresh token names. Any access token already issued for the session stays valid until it expires, so a client should discard both tokens after calling this.  Logging out a session that is already revoked or expired succeeds, so a client retrying a failed logout does not have to special-case it. 
-     * Log out the current session
+     * End the session this refresh token belongs to. It stops working immediately, so the session cannot be continued.  **Send the refresh token, not the access token**, as `Authorization: Bearer <refresh_token>` — the session is the one that token belongs to.  An access token already in hand keeps working until it expires, for up to about fifteen minutes, so throw both tokens away once this returns.  Signing out a session that has already ended succeeds, so a client retrying after a failed call has nothing special to handle.  To end every session at once, use `POST /auth/logout-all`. 
+     * Sign out
      */
     async logout(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
         const response = await this.logoutRaw(initOverrides);
@@ -902,7 +1034,7 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * End every session belonging to the authenticated wallet, on every device. Use it after a suspected compromise, or to sign out a lost device.  Unlike the single-session logout this is authenticated with the access token, because it revokes sessions rather than acting on one. Access tokens already issued stay valid until they expire; only refreshing is stopped. 
+     * Sign out everywhere, on every device at once. Use it after a lost phone or a password that may have been exposed.  Unlike ordinary sign-out, this one takes the **access token**, because it is something the signed-in person is doing rather than an act on one particular session.  Access tokens already in hand keep working until they expire, for up to about fifteen minutes. Nothing can be refreshed afterwards, so everyone has to sign in again.  To end one session and leave the rest alone, use `DELETE /wallets/sessions/{sessionId}`. 
      * Log out every session
      */
     async logoutAllRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
@@ -913,7 +1045,7 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * End every session belonging to the authenticated wallet, on every device. Use it after a suspected compromise, or to sign out a lost device.  Unlike the single-session logout this is authenticated with the access token, because it revokes sessions rather than acting on one. Access tokens already issued stay valid until they expire; only refreshing is stopped. 
+     * Sign out everywhere, on every device at once. Use it after a lost phone or a password that may have been exposed.  Unlike ordinary sign-out, this one takes the **access token**, because it is something the signed-in person is doing rather than an act on one particular session.  Access tokens already in hand keep working until they expire, for up to about fifteen minutes. Nothing can be refreshed afterwards, so everyone has to sign in again.  To end one session and leave the rest alone, use `DELETE /wallets/sessions/{sessionId}`. 
      * Log out every session
      */
     async logoutAll(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
@@ -944,8 +1076,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Issues a challenge and returns `PublicKeyCredentialRequestOptions`. Pass the response body directly to `navigator.credentials.get({ publicKey: response })`.  **Flow:** 1. POST here (no body required) 2. Call `navigator.credentials.get({ publicKey: <response> })` in the browser 3. POST the resulting assertion to `POST /wallets/passkey/login/verify` 
-     * Get WebAuthn login options
+     * Step one of signing in a user with an existing passkey.  Convert the JSON response into the binary values WebAuthn expects, then give it to the browser:  ```js const optionsJSON = await fetch(\'/wallets/connect/passkey/login/options\', { method: \'POST\' })   .then(r => r.json()); const options = PublicKeyCredential.parseRequestOptionsFromJSON(optionsJSON); const assertion = await navigator.credentials.get({ publicKey: options }); ```  Then serialize the result with `assertion.toJSON()` and send it to `POST /wallets/connect/passkey/login/verify`.  There is nothing to send here, and nothing to identify: the browser knows which passkeys it holds for us and offers the right one.  No sign-in needed — this is the sign-in. 
+     * Start signing in with a passkey
      */
     async passkeyLoginOptionsRaw(requestParameters: PasskeyLoginOptionsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PasskeyLoginOptionsOut>> {
         const requestOptions = await this.passkeyLoginOptionsRequestOpts(requestParameters);
@@ -955,8 +1087,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Issues a challenge and returns `PublicKeyCredentialRequestOptions`. Pass the response body directly to `navigator.credentials.get({ publicKey: response })`.  **Flow:** 1. POST here (no body required) 2. Call `navigator.credentials.get({ publicKey: <response> })` in the browser 3. POST the resulting assertion to `POST /wallets/passkey/login/verify` 
-     * Get WebAuthn login options
+     * Step one of signing in a user with an existing passkey.  Convert the JSON response into the binary values WebAuthn expects, then give it to the browser:  ```js const optionsJSON = await fetch(\'/wallets/connect/passkey/login/options\', { method: \'POST\' })   .then(r => r.json()); const options = PublicKeyCredential.parseRequestOptionsFromJSON(optionsJSON); const assertion = await navigator.credentials.get({ publicKey: options }); ```  Then serialize the result with `assertion.toJSON()` and send it to `POST /wallets/connect/passkey/login/verify`.  There is nothing to send here, and nothing to identify: the browser knows which passkeys it holds for us and offers the right one.  No sign-in needed — this is the sign-in. 
+     * Start signing in with a passkey
      */
     async passkeyLoginOptions(requestParameters: PasskeyLoginOptionsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PasskeyLoginOptionsOut> {
         const response = await this.passkeyLoginOptionsRaw(requestParameters, initOverrides);
@@ -993,8 +1125,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Verifies the WebAuthn assertion produced by `navigator.credentials.get()` and, on success, returns a session for the wallet identified by the credential.  **Server-side steps:** 1. Look up the wallet by credential ID to retrieve `(pubkey_x, pubkey_y)` 2. Decode the DER-encoded signature into `(r, s)` scalars 3. Compute `messageHash = sha256(authenticatorData || sha256(clientDataJSON))` 4. Verify P-256 signature `(r, s)` over `messageHash` against the stored public key 5. Verify `clientDataJSON.challenge` matches the issued challenge (consumed after use) 6. Verify `clientDataJSON.origin`, `rpIdHash`, and WebAuthn flags (UP, UV) 7. Issue JWT tokens 
-     * Verify WebAuthn login assertion
+     * Step two of signing in a user with a passkey. Serialize what `navigator.credentials.get()` returned with `assertion.toJSON()` and send that JSON here.  We recognise the passkey, check the signature against the one we stored when it was created, and confirm it was used in this browser, for us, just now and only once. Then we sign the person in.  No sign-in needed — this is the sign-in. 
+     * Finish signing in with a passkey
      */
     async passkeyLoginVerifyRaw(requestParameters: PasskeyLoginVerifyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LoginOut>> {
         const requestOptions = await this.passkeyLoginVerifyRequestOpts(requestParameters);
@@ -1004,8 +1136,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Verifies the WebAuthn assertion produced by `navigator.credentials.get()` and, on success, returns a session for the wallet identified by the credential.  **Server-side steps:** 1. Look up the wallet by credential ID to retrieve `(pubkey_x, pubkey_y)` 2. Decode the DER-encoded signature into `(r, s)` scalars 3. Compute `messageHash = sha256(authenticatorData || sha256(clientDataJSON))` 4. Verify P-256 signature `(r, s)` over `messageHash` against the stored public key 5. Verify `clientDataJSON.challenge` matches the issued challenge (consumed after use) 6. Verify `clientDataJSON.origin`, `rpIdHash`, and WebAuthn flags (UP, UV) 7. Issue JWT tokens 
-     * Verify WebAuthn login assertion
+     * Step two of signing in a user with a passkey. Serialize what `navigator.credentials.get()` returned with `assertion.toJSON()` and send that JSON here.  We recognise the passkey, check the signature against the one we stored when it was created, and confirm it was used in this browser, for us, just now and only once. Then we sign the person in.  No sign-in needed — this is the sign-in. 
+     * Finish signing in with a passkey
      */
     async passkeyLoginVerify(requestParameters: PasskeyLoginVerifyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LoginOut> {
         const response = await this.passkeyLoginVerifyRaw(requestParameters, initOverrides);
@@ -1032,8 +1164,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Issues a challenge and returns `PublicKeyCredentialCreationOptions`. Pass the response body directly to `navigator.credentials.create({ publicKey: response })`.  **Flow:** 1. GET here to receive a challenge and creation options 2. Call `navigator.credentials.create({ publicKey: <response> })` in the browser 3. POST the resulting credential to `POST /wallets/passkey/register/verify` 
-     * Get WebAuthn registration options
+     * Step one of registering a user with a passkey — Face ID, Touch ID, Windows Hello or a hardware key. No password, nothing to remember, nothing to phish.  Convert the JSON response into the binary values WebAuthn expects, then give it to the browser:  ```js const optionsJSON = await fetch(\'/wallets/connect/passkey/register/options\')   .then(r => r.json()); const options = PublicKeyCredential.parseCreationOptionsFromJSON(optionsJSON); const credential = await navigator.credentials.create({ publicKey: options }); ```  Then serialize the result with `credential.toJSON()`, add the required `organization_id`, and send it to `POST /wallets/connect/passkey/register/verify`, which creates the wallet and signs them in.  No sign-in needed — this is how a new user signs up. 
+     * Start creating a passkey
      */
     async passkeyRegisterOptionsRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PasskeyRegisterOptionsOut>> {
         const requestOptions = await this.passkeyRegisterOptionsRequestOpts();
@@ -1043,8 +1175,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Issues a challenge and returns `PublicKeyCredentialCreationOptions`. Pass the response body directly to `navigator.credentials.create({ publicKey: response })`.  **Flow:** 1. GET here to receive a challenge and creation options 2. Call `navigator.credentials.create({ publicKey: <response> })` in the browser 3. POST the resulting credential to `POST /wallets/passkey/register/verify` 
-     * Get WebAuthn registration options
+     * Step one of registering a user with a passkey — Face ID, Touch ID, Windows Hello or a hardware key. No password, nothing to remember, nothing to phish.  Convert the JSON response into the binary values WebAuthn expects, then give it to the browser:  ```js const optionsJSON = await fetch(\'/wallets/connect/passkey/register/options\')   .then(r => r.json()); const options = PublicKeyCredential.parseCreationOptionsFromJSON(optionsJSON); const credential = await navigator.credentials.create({ publicKey: options }); ```  Then serialize the result with `credential.toJSON()`, add the required `organization_id`, and send it to `POST /wallets/connect/passkey/register/verify`, which creates the wallet and signs them in.  No sign-in needed — this is how a new user signs up. 
+     * Start creating a passkey
      */
     async passkeyRegisterOptions(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PasskeyRegisterOptionsOut> {
         const response = await this.passkeyRegisterOptionsRaw(initOverrides);
@@ -1081,8 +1213,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Verifies the WebAuthn attestation produced by `navigator.credentials.create()` and, on success, creates a new wallet and returns a session.  **Server-side steps:** 1. Decode the `attestationObject` (CBOR) and extract the credential\'s P-256 public key 2. Verify `clientDataJSON.challenge` matches the issued challenge (consumed after use) 3. Verify `clientDataJSON.origin` and `rpIdHash` 4. Derive the smart wallet address from `(pubkey_x, pubkey_y)` via the factory 5. Store the credential and issue JWT tokens 
-     * Verify WebAuthn registration and create wallet
+     * Step two of registering a user with a passkey. Serialize the browser credential with `credential.toJSON()`, add the organization the new wallet belongs to, and send the resulting JSON here.  We check the passkey really was made for us, in this browser, just now. Then we create the wallet, tie the passkey to it, and sign the person in — the response carries their wallet and a session, with nothing to confirm afterwards.  From then on, the same passkey signs both sign-ins and the actions they take, so nothing about the account depends on a password.  A passkey already tied to another wallet is refused.  No sign-in needed — this is how a new user signs up. 
+     * Finish creating a passkey
      */
     async passkeyRegisterVerifyRaw(requestParameters: PasskeyRegisterVerifyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LoginOut>> {
         const requestOptions = await this.passkeyRegisterVerifyRequestOpts(requestParameters);
@@ -1092,8 +1224,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Verifies the WebAuthn attestation produced by `navigator.credentials.create()` and, on success, creates a new wallet and returns a session.  **Server-side steps:** 1. Decode the `attestationObject` (CBOR) and extract the credential\'s P-256 public key 2. Verify `clientDataJSON.challenge` matches the issued challenge (consumed after use) 3. Verify `clientDataJSON.origin` and `rpIdHash` 4. Derive the smart wallet address from `(pubkey_x, pubkey_y)` via the factory 5. Store the credential and issue JWT tokens 
-     * Verify WebAuthn registration and create wallet
+     * Step two of registering a user with a passkey. Serialize the browser credential with `credential.toJSON()`, add the organization the new wallet belongs to, and send the resulting JSON here.  We check the passkey really was made for us, in this browser, just now. Then we create the wallet, tie the passkey to it, and sign the person in — the response carries their wallet and a session, with nothing to confirm afterwards.  From then on, the same passkey signs both sign-ins and the actions they take, so nothing about the account depends on a password.  A passkey already tied to another wallet is refused.  No sign-in needed — this is how a new user signs up. 
+     * Finish creating a passkey
      */
     async passkeyRegisterVerify(requestParameters: PasskeyRegisterVerifyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LoginOut> {
         const response = await this.passkeyRegisterVerifyRaw(requestParameters, initOverrides);
@@ -1108,13 +1240,9 @@ export class WalletsApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
         if (this.configuration && this.configuration.accessToken) {
             const token = this.configuration.accessToken;
-            const tokenString = await token("bearer-auth", []);
+            const tokenString = await token("refresh-token-auth", []);
 
             if (tokenString) {
                 headerParameters["Authorization"] = `Bearer ${tokenString}`;
@@ -1132,8 +1260,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * refresh access token
-     * Refresh access token
+     * Exchange a refresh token for a fresh access token, without asking anybody to sign in again. Call it when an access token has expired, or shortly before.  **Send the refresh token, not the access token**, as `Authorization: Bearer <refresh_token>`.  You get a new access token and a new refresh token. Store the new pair and throw the old one away: a refresh token works once. If one that has already been used turns up again we treat it as stolen and end that session everywhere, so never keep an old one as a spare.  Refreshing also re-checks the account. A user whose account was disabled or deleted since they signed in cannot refresh their way back in. 
+     * Stay signed in
      */
     async refreshTokenRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RefreshTokenOut>> {
         const requestOptions = await this.refreshTokenRequestOpts();
@@ -1143,8 +1271,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * refresh access token
-     * Refresh access token
+     * Exchange a refresh token for a fresh access token, without asking anybody to sign in again. Call it when an access token has expired, or shortly before.  **Send the refresh token, not the access token**, as `Authorization: Bearer <refresh_token>`.  You get a new access token and a new refresh token. Store the new pair and throw the old one away: a refresh token works once. If one that has already been used turns up again we treat it as stolen and end that session everywhere, so never keep an old one as a spare.  Refreshing also re-checks the account. A user whose account was disabled or deleted since they signed in cannot refresh their way back in. 
+     * Stay signed in
      */
     async refreshToken(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RefreshTokenOut> {
         const response = await this.refreshTokenRaw(initOverrides);
@@ -1181,8 +1309,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Register a new wallet in the system. This endpoint allows users to create a new wallet account with basic information such as email, phone number, and password. Upon successful registration, the system returns authentication tokens for immediate access to the platform. 
-     * Register a new wallet
+     * Create a member account with an email address and password inside an existing organization. `organization_id` is required on this route.  They are signed in straight away — the response carries the wallet and a session — and a confirmation email goes out at the same time. Until they confirm, `activated` on their wallet stays `false`; resend the code with `POST /auth/verification-code` if the first one goes astray.  The email address has to be free within that organization. The same address may belong to different organizations, but cannot identify two accounts in the same one.  For a passkey instead of a password, use `/wallets/connect/passkey/register/_*`. For a crypto wallet they already own, use `/wallets/connect/eoa`. To create a standalone account that can start an organization, use `POST /organizations/wallets`.  No sign-in needed — this is the sign-up. 
+     * Sign up
      */
     async registerWalletRaw(requestParameters: RegisterWalletRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LoginOut>> {
         const requestOptions = await this.registerWalletRequestOpts(requestParameters);
@@ -1192,8 +1320,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Register a new wallet in the system. This endpoint allows users to create a new wallet account with basic information such as email, phone number, and password. Upon successful registration, the system returns authentication tokens for immediate access to the platform. 
-     * Register a new wallet
+     * Create a member account with an email address and password inside an existing organization. `organization_id` is required on this route.  They are signed in straight away — the response carries the wallet and a session — and a confirmation email goes out at the same time. Until they confirm, `activated` on their wallet stays `false`; resend the code with `POST /auth/verification-code` if the first one goes astray.  The email address has to be free within that organization. The same address may belong to different organizations, but cannot identify two accounts in the same one.  For a passkey instead of a password, use `/wallets/connect/passkey/register/_*`. For a crypto wallet they already own, use `/wallets/connect/eoa`. To create a standalone account that can start an organization, use `POST /organizations/wallets`.  No sign-in needed — this is the sign-up. 
+     * Sign up
      */
     async registerWallet(requestParameters: RegisterWalletRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LoginOut> {
         const response = await this.registerWalletRaw(requestParameters, initOverrides);
@@ -1230,8 +1358,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Request a one-time password (OTP) code to be sent to the user\'s email or phone number. This endpoint is used for multi-factor authentication and account security verification. 
-     * Request OTP code
+     * Email the user a short code they can sign in with, instead of a password. They then send it to `POST /auth/login` as `otp`.  This is how passwordless sign-in works, and it doubles as a way back in for a user who has forgotten their password.  The answer is always the same, whether or not an account exists at that address, so this cannot be used to find out who has one. If the account belongs to a particular organization, include `organization_id`.  No sign-in needed. 
+     * Send a one-time code
      */
     async requestOTPCodeRaw(requestParameters: RequestOTPCodeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
         const requestOptions = await this.requestOTPCodeRequestOpts(requestParameters);
@@ -1241,8 +1369,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Request a one-time password (OTP) code to be sent to the user\'s email or phone number. This endpoint is used for multi-factor authentication and account security verification. 
-     * Request OTP code
+     * Email the user a short code they can sign in with, instead of a password. They then send it to `POST /auth/login` as `otp`.  This is how passwordless sign-in works, and it doubles as a way back in for a user who has forgotten their password.  The answer is always the same, whether or not an account exists at that address, so this cannot be used to find out who has one. If the account belongs to a particular organization, include `organization_id`.  No sign-in needed. 
+     * Send a one-time code
      */
     async requestOTPCode(requestParameters: RequestOTPCodeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
         const response = await this.requestOTPCodeRaw(requestParameters, initOverrides);
@@ -1266,6 +1394,14 @@ export class WalletsApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearer-auth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
 
         let urlPath = `/auth/verification-code`;
 
@@ -1279,8 +1415,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Request a verification code to be sent to the user\'s email or phone number. This endpoint initiates the account verification process by generating and delivering a secure code for wallet activation. 
-     * Request verification code
+     * Send the signed-in person another code to confirm their email address — useful when the first one never arrived.  The code goes to the address on their account; the request body is not consulted. They then confirm with `POST /auth/verify`.  Only for an account that has not been confirmed yet. 
+     * Resend a confirmation code
      */
     async requestVerificationCodeRaw(requestParameters: RequestVerificationCodeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
         const requestOptions = await this.requestVerificationCodeRequestOpts(requestParameters);
@@ -1290,8 +1426,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Request a verification code to be sent to the user\'s email or phone number. This endpoint initiates the account verification process by generating and delivering a secure code for wallet activation. 
-     * Request verification code
+     * Send the signed-in person another code to confirm their email address — useful when the first one never arrived.  The code goes to the address on their account; the request body is not consulted. They then confirm with `POST /auth/verify`.  Only for an account that has not been confirmed yet. 
+     * Resend a confirmation code
      */
     async requestVerificationCode(requestParameters: RequestVerificationCodeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
         const response = await this.requestVerificationCodeRaw(requestParameters, initOverrides);
@@ -1328,8 +1464,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * request password reset
-     * Request password reset
+     * Email the user a link to set a new password. The link carries a one-time token, which the page behind it sends to `POST /auth/set-password`.  The answer is always the same, whether or not an account exists at that address, so this cannot be used to find out who has one.  No sign-in needed — this is for a user who cannot sign in. 
+     * Start a password reset
      */
     async resetPasswordRaw(requestParameters: ResetPasswordRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
         const requestOptions = await this.resetPasswordRequestOpts(requestParameters);
@@ -1339,11 +1475,70 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * request password reset
-     * Request password reset
+     * Email the user a link to set a new password. The link carries a one-time token, which the page behind it sends to `POST /auth/set-password`.  The answer is always the same, whether or not an account exists at that address, so this cannot be used to find out who has one.  No sign-in needed — this is for a user who cannot sign in. 
+     * Start a password reset
      */
     async resetPassword(requestParameters: ResetPasswordRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
         const response = await this.resetPasswordRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for revokeWalletSession without sending the request
+     */
+    async revokeWalletSessionRequestOpts(requestParameters: RevokeWalletSessionRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['sessionId'] == null) {
+            throw new runtime.RequiredError(
+                'sessionId',
+                'Required parameter "sessionId" was null or undefined when calling revokeWalletSession().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearer-auth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/wallets/sessions/{sessionId}`;
+        urlPath = urlPath.replace('{sessionId}', encodeURIComponent(String(requestParameters['sessionId'])));
+
+        return {
+            path: urlPath,
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Sign out one device without disturbing the others — for example, a lost phone or an unrecognized browser.  Only your own sessions can be ended. A session belonging to another user reads as missing, exactly like one that never existed, so this cannot be used to discover other people\'s sessions.  Ending the session you are calling from is allowed, and signs you out. An access token already in hand keeps working until it expires, for up to about fifteen minutes.  To end every session at once, use `POST /auth/logout-all`.  Requires the `wallets.update` permission. 
+     * End one login session
+     */
+    async revokeWalletSessionRaw(requestParameters: RevokeWalletSessionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
+        const requestOptions = await this.revokeWalletSessionRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse<any>(response);
+    }
+
+    /**
+     * Sign out one device without disturbing the others — for example, a lost phone or an unrecognized browser.  Only your own sessions can be ended. A session belonging to another user reads as missing, exactly like one that never existed, so this cannot be used to discover other people\'s sessions.  Ending the session you are calling from is allowed, and signs you out. An access token already in hand keeps working until it expires, for up to about fifteen minutes.  To end every session at once, use `POST /auth/logout-all`.  Requires the `wallets.update` permission. 
+     * End one login session
+     */
+    async revokeWalletSession(requestParameters: RevokeWalletSessionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
+        const response = await this.revokeWalletSessionRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1377,8 +1572,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Set a new password for the user account using a security token. This endpoint allows users to reset their password when they have forgotten it, using a token received via email or SMS. 
-     * Set new password
+     * Set a new password using the one-time token from the reset email.  Resetting a password signs the account out everywhere. That is the point of it: whoever knew the old password loses access immediately, on every device. The person resetting will need to sign in again with their new password.  The token can be used once. If something goes wrong the whole reset is undone, so the same link can simply be tried again.  No sign-in needed — this is for a user who cannot sign in. 
+     * Finish a password reset
      */
     async setNewPasswordRaw(requestParameters: SetNewPasswordRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
         const requestOptions = await this.setNewPasswordRequestOpts(requestParameters);
@@ -1388,8 +1583,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Set a new password for the user account using a security token. This endpoint allows users to reset their password when they have forgotten it, using a token received via email or SMS. 
-     * Set new password
+     * Set a new password using the one-time token from the reset email.  Resetting a password signs the account out everywhere. That is the point of it: whoever knew the old password loses access immediately, on every device. The person resetting will need to sign in again with their new password.  The token can be used once. If something goes wrong the whole reset is undone, so the same link can simply be tried again.  No sign-in needed — this is for a user who cannot sign in. 
+     * Finish a password reset
      */
     async setNewPassword(requestParameters: SetNewPasswordRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
         const response = await this.setNewPasswordRaw(requestParameters, initOverrides);
@@ -1413,10 +1608,6 @@ export class WalletsApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
-        }
-
         if (this.configuration && this.configuration.accessToken) {
             const token = this.configuration.accessToken;
             const tokenString = await token("bearer-auth", []);
@@ -1438,8 +1629,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Update the current authenticated user\'s wallet information. This endpoint allows users to modify their profile details, contact information, and account preferences. Only the authenticated user can update their own wallet data. 
-     * Update wallet
+     * Change the signed-in account\'s display name, language, avatar, phone number, onboarding state or email. Send only what you want to change.  **Changing the email.** Send `email` together with `current_password`. The account becomes unverified until the code sent to the new address is redeemed. The email change and delivery of that code commit together.  **Changing the password.** Send `password` together with `current_password`. Knowing the current password is what proves it is really them, rather than an attacker who obtained a token. Once changed, every other session on the account ends — including on their other devices — so anyone who had the old password loses access. The session making the change carries on.  A user who has never set a password — an invited colleague setting their first one — does not need to send `current_password`.  Only for the signed-in person\'s own account, with a signed-in session rather than an API key. Requires the `wallets.update` permission. 
+     * Update my wallet
      */
     async updateWalletRaw(requestParameters: UpdateWalletRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
         const requestOptions = await this.updateWalletRequestOpts(requestParameters);
@@ -1449,8 +1640,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Update the current authenticated user\'s wallet information. This endpoint allows users to modify their profile details, contact information, and account preferences. Only the authenticated user can update their own wallet data. 
-     * Update wallet
+     * Change the signed-in account\'s display name, language, avatar, phone number, onboarding state or email. Send only what you want to change.  **Changing the email.** Send `email` together with `current_password`. The account becomes unverified until the code sent to the new address is redeemed. The email change and delivery of that code commit together.  **Changing the password.** Send `password` together with `current_password`. Knowing the current password is what proves it is really them, rather than an attacker who obtained a token. Once changed, every other session on the account ends — including on their other devices — so anyone who had the old password loses access. The session making the change carries on.  A user who has never set a password — an invited colleague setting their first one — does not need to send `current_password`.  Only for the signed-in person\'s own account, with a signed-in session rather than an API key. Requires the `wallets.update` permission. 
+     * Update my wallet
      */
     async updateWallet(requestParameters: UpdateWalletRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
         const response = await this.updateWalletRaw(requestParameters, initOverrides);
@@ -1507,8 +1698,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Update a wallet by ID. The authenticated caller must own the target wallet or be an operator. 
-     * Update wallet by ID
+     * Change one account by its identifier.  You can only change your own account this way — the same thing as `PATCH /wallets/me`, addressed differently. Anything else comes back as `403`. The authentication-field rules are the same: send `current_password` with a new `password` or `email`; a password change ends every session and an email change starts verification of the new address.  Requires the `wallets.update` permission. 
+     * Update a wallet by id
      */
     async updateWalletByIdRaw(requestParameters: UpdateWalletByIdRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
         const requestOptions = await this.updateWalletByIdRequestOpts(requestParameters);
@@ -1518,8 +1709,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Update a wallet by ID. The authenticated caller must own the target wallet or be an operator. 
-     * Update wallet by ID
+     * Change one account by its identifier.  You can only change your own account this way — the same thing as `PATCH /wallets/me`, addressed differently. Anything else comes back as `403`. The authentication-field rules are the same: send `current_password` with a new `password` or `email`; a password change ends every session and an email change starts verification of the new address.  Requires the `wallets.update` permission. 
+     * Update a wallet by id
      */
     async updateWalletById(requestParameters: UpdateWalletByIdRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
         const response = await this.updateWalletByIdRaw(requestParameters, initOverrides);
@@ -1556,8 +1747,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Verify a wallet account using a verification code sent to the user\'s email or phone number. This endpoint is used to confirm account ownership and activate the wallet for full platform access. 
-     * Verify wallet
+     * Confirm an account with the code sent to its email address, which activates it for full use.  Send the same email address the code went to, along with the code, plus `organization_id` if the account belongs to a particular organization — the code is checked against that one account rather than against every outstanding code.  Signing in with a one-time code confirms an address too, so an account that goes that route never needs this.  No sign-in needed — this is part of signing up. 
+     * Confirm an email address
      */
     async verifyWalletRaw(requestParameters: VerifyWalletRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
         const requestOptions = await this.verifyWalletRequestOpts(requestParameters);
@@ -1567,8 +1758,8 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Verify a wallet account using a verification code sent to the user\'s email or phone number. This endpoint is used to confirm account ownership and activate the wallet for full platform access. 
-     * Verify wallet
+     * Confirm an account with the code sent to its email address, which activates it for full use.  Send the same email address the code went to, along with the code, plus `organization_id` if the account belongs to a particular organization — the code is checked against that one account rather than against every outstanding code.  Signing in with a one-time code confirms an address too, so an account that goes that route never needs this.  No sign-in needed — this is part of signing up. 
+     * Confirm an email address
      */
     async verifyWallet(requestParameters: VerifyWalletRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
         const response = await this.verifyWalletRaw(requestParameters, initOverrides);
