@@ -12,7 +12,7 @@ export interface TenantContext {
 
 // The organization a request falls back to when no entry link named one. It is
 // deployment configuration, not a constant: this repository belongs to no single
-// tenant. Unset, host resolution yields nothing and the BFF answers
+// tenant. Unset, a request that no entry link named an organization for answers
 // tenantRequired, which is the honest failure for a wallet that was never told
 // whose it is.
 export const DEFAULT_ORGANIZATION_ID =
@@ -65,6 +65,7 @@ function isValidHost(host: string) {
 export function organizationIdFromHost(
   rawHost: string,
   baseDomain = process.env.VIEWER_BASE_DOMAIN,
+  fallbackOrganizationId?: string,
 ): TenantContext | undefined {
   const host = normalizeHost(rawHost);
   if (!host || !isValidHost(host)) return undefined;
@@ -98,7 +99,11 @@ export function organizationIdFromHost(
     return undefined;
   }
 
-  const organizationId = organizationIdForHost(host, subdomain);
+  // A valid host that maps to no organization is still a usable host when an
+  // entry link chose one. Without the fallback, an unset DEFAULT_ORGANIZATION_ID
+  // rejects every request, entry link or not.
+  const organizationId =
+    organizationIdForHost(host, subdomain) || fallbackOrganizationId;
   if (!organizationId) return undefined;
   return { organizationId, subdomain, host };
 }
@@ -118,12 +123,12 @@ export function tenantFromRequest(request: NextRequest) {
   const forwardedHost = request.headers.get("x-forwarded-host");
   const host =
     forwardedHost || request.headers.get("host") || request.nextUrl.host;
-  const tenant = organizationIdFromHost(host);
-  if (!tenant) return undefined;
   // The host still has to be a valid one, and it stays the host the session is
   // bound to. Only the organization comes from the link.
   const chosen = chosenOrganizationId(
     request.cookies.get(ORGANIZATION_COOKIE_NAME)?.value,
   );
+  const tenant = organizationIdFromHost(host, undefined, chosen);
+  if (!tenant) return undefined;
   return chosen ? { ...tenant, organizationId: chosen } : tenant;
 }

@@ -121,3 +121,38 @@ describe("tenantFromRequest", () => {
     ).toBeUndefined();
   });
 });
+
+// The production failure: with DEFAULT_ORGANIZATION_ID unset, every request was
+// rejected, including the entry link that names its own organization.
+describe("without a default organization", () => {
+  const CHOSEN = "6a188923d5a314400c196005";
+
+  async function isolatedTenant() {
+    jest.resetModules();
+    process.env.DEFAULT_ORGANIZATION_ID = "";
+    return import("@/api/tenant");
+  }
+
+  afterEach(() => {
+    process.env.DEFAULT_ORGANIZATION_ID = DEFAULT_ORGANIZATION_ID;
+    jest.resetModules();
+  });
+
+  it("resolves the organization an entry link chose", async () => {
+    const { tenantFromRequest: resolve } = await isolatedTenant();
+    expect(
+      resolve(
+        new NextRequest("http://localhost/api/session/login", {
+          headers: { cookie: `smarttoken_viewer_org=${CHOSEN}` },
+        }),
+      ),
+    ).toEqual({ organizationId: CHOSEN, subdomain: "*", host: "localhost" });
+  });
+
+  it("still rejects a request that named no organization", async () => {
+    const { tenantFromRequest: resolve } = await isolatedTenant();
+    expect(
+      resolve(new NextRequest("http://localhost/api/session/login")),
+    ).toBeUndefined();
+  });
+});
