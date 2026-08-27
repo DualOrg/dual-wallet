@@ -567,6 +567,95 @@ export interface ListActionLogsRequest {
     whenCreated$lte?: Date;
 }
 
+export interface ListActionLogsPublicRequest {
+    /**
+     * Return only the resource with this identifier. Equivalent to fetching it by
+     * path, but usable together with the other list filters.
+     * 
+     */
+    id?: string;
+    /**
+     * How many items to return in one page. The default and the maximum are both
+     * 25; a larger value is rejected with `400`.
+     * 
+     */
+    limit?: number;
+    /**
+     * Search the endpoint's supported text and identifier fields. Matching may be
+     * an exact identifier lookup or a case-insensitive prefix search, depending on
+     * the resource. Alphanumeric characters only.
+     * 
+     */
+    autocomplete?: string;
+    /**
+     * Cursor for the next page, taken verbatim from the `next` field of the previous
+     * response. Keep every other query parameter the same between pages: `sortBy`
+     * and `order` are part of what the cursor means. An absent or empty `next` in a
+     * response means there are no more pages.
+     * 
+     * The value is opaque. Do not parse it or build one yourself.
+     * 
+     */
+    next?: string;
+    /**
+     * Sort direction. Defaults to `desc`, newest first.
+     */
+    order?: ListActionLogsPublicOrderEnum;
+    /**
+     * Field used to sort the result. Supported fields depend on the endpoint; use
+     * `when_created` for chronological ordering where it is available. The default
+     * is the resource identifier, and identifiers break ties so cursor paging stays
+     * stable.
+     * 
+     */
+    sortBy?: string;
+    /**
+     * Return only this action.
+     */
+    actionId?: string;
+    /**
+     * Return only the action with this hash.
+     */
+    hash?: string;
+    /**
+     * Return only actions settled in this batch.
+     */
+    batchId?: string;
+    /**
+     * Return only actions run by this wallet.
+     */
+    walletId?: string;
+    /**
+     * Return only actions that touched this object.
+     */
+    objectId?: string;
+    /**
+     * Return only actions run from this address.
+     */
+    account?: string;
+    /**
+     * Return only actions in this state: `pending`, `completed` or `failed`.
+     * 
+     */
+    status?: string;
+    /**
+     * Run strictly after this moment.
+     */
+    whenCreated$gt?: Date;
+    /**
+     * Run strictly before this moment.
+     */
+    whenCreated$lt?: Date;
+    /**
+     * Run at or after this moment.
+     */
+    whenCreated$gte?: Date;
+    /**
+     * Run at or before this moment.
+     */
+    whenCreated$lte?: Date;
+}
+
 export interface ListBatchesRequest {
     /**
      * Return only the resource with this identifier. Equivalent to fetching it by
@@ -2233,6 +2322,18 @@ export class ExplorerApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearer-auth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
 
         let urlPath = `/ebus/action-logs`;
 
@@ -2245,7 +2346,7 @@ export class ExplorerApi extends runtime.BaseAPI {
     }
 
     /**
-     * Everything that has been done, newest first — the audit trail. Each entry records what was done, who signed it, what it affected, what it cost, and which batch settled it.  `status` follows an action to the chain: `pending` while it is waiting to be settled, `completed` once its batch is anchored, `failed` if settling could not be completed.  This is a public explorer endpoint. Use `org_id`, `account`, `wallet_id`, or the other filters to narrow the public record. 
+     * Everything your organization has done, newest first — the audit trail. Each entry records what was done, who signed it, what it affected, what it cost, and which batch settled it.  `status` follows an action to the chain: `pending` while it is waiting to be settled, `completed` once its batch is anchored, `failed` if settling could not be completed.  The answer is scoped to the organization your token or key belongs to, so `org_id` is not needed and changes nothing for an ordinary caller. Use `account`, `wallet_id` or the other filters to narrow it further.  For the whole network, with no sign-in, call `GET /public/action-logs`. 
      * List actions
      */
     async listActionLogsRaw(requestParameters: ListActionLogsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListActionLogsOut>> {
@@ -2256,11 +2357,118 @@ export class ExplorerApi extends runtime.BaseAPI {
     }
 
     /**
-     * Everything that has been done, newest first — the audit trail. Each entry records what was done, who signed it, what it affected, what it cost, and which batch settled it.  `status` follows an action to the chain: `pending` while it is waiting to be settled, `completed` once its batch is anchored, `failed` if settling could not be completed.  This is a public explorer endpoint. Use `org_id`, `account`, `wallet_id`, or the other filters to narrow the public record. 
+     * Everything your organization has done, newest first — the audit trail. Each entry records what was done, who signed it, what it affected, what it cost, and which batch settled it.  `status` follows an action to the chain: `pending` while it is waiting to be settled, `completed` once its batch is anchored, `failed` if settling could not be completed.  The answer is scoped to the organization your token or key belongs to, so `org_id` is not needed and changes nothing for an ordinary caller. Use `account`, `wallet_id` or the other filters to narrow it further.  For the whole network, with no sign-in, call `GET /public/action-logs`. 
      * List actions
      */
     async listActionLogs(requestParameters: ListActionLogsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListActionLogsOut> {
         const response = await this.listActionLogsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for listActionLogsPublic without sending the request
+     */
+    async listActionLogsPublicRequestOpts(requestParameters: ListActionLogsPublicRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        if (requestParameters['id'] != null) {
+            queryParameters['id'] = requestParameters['id'];
+        }
+
+        if (requestParameters['limit'] != null) {
+            queryParameters['limit'] = requestParameters['limit'];
+        }
+
+        if (requestParameters['autocomplete'] != null) {
+            queryParameters['autocomplete'] = requestParameters['autocomplete'];
+        }
+
+        if (requestParameters['next'] != null) {
+            queryParameters['next'] = requestParameters['next'];
+        }
+
+        if (requestParameters['order'] != null) {
+            queryParameters['order'] = requestParameters['order'];
+        }
+
+        if (requestParameters['sortBy'] != null) {
+            queryParameters['sortBy'] = requestParameters['sortBy'];
+        }
+
+        if (requestParameters['actionId'] != null) {
+            queryParameters['action_id'] = requestParameters['actionId'];
+        }
+
+        if (requestParameters['hash'] != null) {
+            queryParameters['hash'] = requestParameters['hash'];
+        }
+
+        if (requestParameters['batchId'] != null) {
+            queryParameters['batch_id'] = requestParameters['batchId'];
+        }
+
+        if (requestParameters['walletId'] != null) {
+            queryParameters['wallet_id'] = requestParameters['walletId'];
+        }
+
+        if (requestParameters['objectId'] != null) {
+            queryParameters['object_id'] = requestParameters['objectId'];
+        }
+
+        if (requestParameters['account'] != null) {
+            queryParameters['account'] = requestParameters['account'];
+        }
+
+        if (requestParameters['status'] != null) {
+            queryParameters['status'] = requestParameters['status'];
+        }
+
+        if (requestParameters['whenCreated$gt'] != null) {
+            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
+        }
+
+        if (requestParameters['whenCreated$lt'] != null) {
+            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
+        }
+
+        if (requestParameters['whenCreated$gte'] != null) {
+            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
+        }
+
+        if (requestParameters['whenCreated$lte'] != null) {
+            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/public/action-logs`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Everything the network has done, newest first — the audit trail behind a public explorer. Each entry records what was done, who signed it, what it affected, what it cost, and which batch settled it.  `status` follows an action to the chain: `pending` while it is waiting to be settled, `completed` once its batch is anchored, `failed` if settling could not be completed.  This is the whole network, and it has no organization filter. To read the actions of one organization, sign in and call `GET /ebus/action-logs` instead; that endpoint answers for the organization your token belongs to.  Open to everyone. No sign-in needed. 
+     * List public actions
+     */
+    async listActionLogsPublicRaw(requestParameters: ListActionLogsPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListActionLogsOut>> {
+        const requestOptions = await this.listActionLogsPublicRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => ListActionLogsOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Everything the network has done, newest first — the audit trail behind a public explorer. Each entry records what was done, who signed it, what it affected, what it cost, and which batch settled it.  `status` follows an action to the chain: `pending` while it is waiting to be settled, `completed` once its batch is anchored, `failed` if settling could not be completed.  This is the whole network, and it has no organization filter. To read the actions of one organization, sign in and call `GET /ebus/action-logs` instead; that endpoint answers for the organization your token belongs to.  Open to everyone. No sign-in needed. 
+     * List public actions
+     */
+    async listActionLogsPublic(requestParameters: ListActionLogsPublicRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListActionLogsOut> {
+        const response = await this.listActionLogsPublicRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -3276,6 +3484,14 @@ export const ListActionLogsOrderEnum = {
     Desc: 'desc',
 } as const;
 export type ListActionLogsOrderEnum = typeof ListActionLogsOrderEnum[keyof typeof ListActionLogsOrderEnum];
+/**
+ * @export
+ */
+export const ListActionLogsPublicOrderEnum = {
+    Asc: 'asc',
+    Desc: 'desc',
+} as const;
+export type ListActionLogsPublicOrderEnum = typeof ListActionLogsPublicOrderEnum[keyof typeof ListActionLogsPublicOrderEnum];
 /**
  * @export
  */
