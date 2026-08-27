@@ -6,6 +6,7 @@ import { LoaderCircle, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Alert } from "@/app/_components/design-system/alert";
 import { Button } from "@/app/_components/design-system/button";
+import { CopyButton } from "@/app/_components/design-system/copy-button";
 import { Field, SelectField } from "@/app/_components/design-system/field";
 import { PageHeader } from "@/app/_components/design-system/page-header";
 import { Truncated } from "@/app/_components/design-system/truncated";
@@ -256,11 +257,10 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
           <dl className="security-grid">
             <div className="security-item">
               <dt>{t("smartAccountAddress")}</dt>
-              <dd>
-                <Truncated
-                  value={wallet.account.address}
-                  short={shortId(wallet.account.address, 10)}
-                />
+              <dd className="security-item-full">
+                <CopyButton value={wallet.account.address}>
+                  {wallet.account.address}
+                </CopyButton>
               </dd>
             </div>
             <div className="security-item">

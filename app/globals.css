@@ -92,6 +92,27 @@ select {
 button {
   cursor: pointer;
 }
+.copy-button {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+}
+.copy-button svg {
+  flex: none;
+  color: var(--muted);
+}
+.copy-button:hover svg,
+.copy-button:focus-visible svg {
+  color: var(--ink);
+}
+.copy-button > span[aria-hidden] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 ::selection {
   color: var(--on-action-primary);
   background: var(--action-primary);
@@ -1474,11 +1495,20 @@ button {
   flex: 1 1 auto;
   flex-direction: column;
 }
+/*
+ * The scrolling box clips the focus outline on every side: sideways because
+ * overflow-y makes overflow-x compute to auto, and at the ends because an
+ * outline adds nothing to the scrollable area. Reserve the 5px the outline
+ * reaches, then pull the box back out by the same amount, so the fields keep
+ * their width and the spacing around them does not change.
+ */
 .object-pass-detail-actions .object-action-params {
   min-height: 0;
   flex: 1 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
+  margin: -6px;
+  padding: 6px;
 }
 .object-pass-detail-actions .form-actions {
   flex: 0 0 auto;
@@ -1576,6 +1606,10 @@ button {
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.security-item dd.security-item-full {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .danger-card {
   border-color: color-mix(in srgb, var(--danger) 35%, var(--border));

@@ -7,11 +7,15 @@ export interface ActionFieldDefinition {
   name: string;
   kind: ActionFieldKind;
   required?: boolean;
+  /** Placeholder message key when the field name alone is too generic. */
+  placeholder?: string;
 }
 
 const definitions = {
   burn: [],
-  transfer: [{ name: "to", kind: "text", required: true }],
+  transfer: [
+    { name: "to", kind: "text", required: true, placeholder: "walletAddress" },
+  ],
   drop: [
     { name: "latitude", kind: "number", required: true },
     { name: "longitude", kind: "number", required: true },

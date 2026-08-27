@@ -23,6 +23,30 @@ import {
 // this to a `destructive` flag on the action definitions.
 const destructive = (name: InventoryActionName) => name === "burn";
 
+// ponytail: shape checks only; checksum validation needs keccak and a dependency.
+const evmAddress = /^0x[0-9a-fA-F]{40}$/;
+const objectId = /^[0-9a-fA-F]{24}$/;
+const zeroAddress = `0x${"0".repeat(40)}`;
+
+/**
+ * A destination that is the zero address or has an unknown shape gets a
+ * confirmation step, not an error: the server remains the authority. Transfer
+ * expects an Ethereum address; connect also accepts an object ID. The empty
+ * case belongs to the required check.
+ */
+function destinationWarning(name: InventoryActionName, to: string | undefined) {
+  if (name !== "transfer" && name !== "connect") return null;
+  const value = to?.trim();
+  if (!value) return null;
+  if (value.toLowerCase() === zeroAddress)
+    return "confirmTransferZero" as const;
+  if (evmAddress.test(value)) return null;
+  if (name === "connect") {
+    return objectId.test(value) ? null : ("confirmConnectUnknown" as const);
+  }
+  return "confirmTransferUnknown" as const;
+}
+
 export function ObjectActions({
   item,
   requestedAction,
@@ -66,6 +90,7 @@ export function ObjectActions({
   if (!actions.length || !selected) return null;
   const fields = actionFields(selected);
   const fieldLabel = (name: string) => t(`fields.${name}`);
+  const suspectDestination = destinationWarning(selected, input.to);
   const needsConfirmation = destructive(selected);
 
   const reset = () => {
@@ -89,7 +114,7 @@ export function ObjectActions({
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (needsConfirmation) {
+    if (needsConfirmation || suspectDestination) {
       setConfirming(true);
       return;
     }
@@ -159,7 +184,9 @@ export function ObjectActions({
                   label: fieldLabel(field.name),
                   required: field.required,
                   value: input[field.name] ?? "",
-                  placeholder: String(t.raw(`placeholders.${field.name}`)),
+                  placeholder: String(
+                    t.raw(`placeholders.${field.placeholder ?? field.name}`),
+                  ),
                   error:
                     fieldError?.field === field.name
                       ? fieldError.message
@@ -200,16 +227,26 @@ export function ObjectActions({
         {confirming ? (
           <>
             <Alert>
-              {t("confirmDestructive", { action: t(`names.${selected}`) })}
+              {needsConfirmation
+                ? t("confirmDestructive", { action: t(`names.${selected}`) })
+                : suspectDestination
+                  ? t(suspectDestination)
+                  : null}
             </Alert>
             <div className="form-actions">
+              {/*
+               * Cancel leaves in one click, like the button it replaces. A
+               * second identical Cancel underneath it reads as a click that
+               * did nothing. Editing a field already withdraws the
+               * confirmation, so stepping back has its own way out.
+               */}
               <Button
                 ref={cancelConfirm}
                 variant="secondary"
                 disabled={execution.isPending}
-                onClick={() => setConfirming(false)}
+                onClick={onCancel ?? (() => setConfirming(false))}
               >
-                {t("cancel")}
+                {t(requestedAction && onCancel ? "deny" : "cancel")}
               </Button>
               <Button
                 variant="danger"

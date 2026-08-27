@@ -213,6 +213,9 @@
     "executing": "Authorizing…",
     "confirm": "Yes, run {action}",
     "confirmDestructive": "{action} is permanent and cannot be undone. Confirm to continue.",
+    "confirmTransferZero": "The destination is the zero address. An object sent there is lost forever. Confirm to continue.",
+    "confirmTransferUnknown": "The destination is not a valid address. Confirm to continue.",
+    "confirmConnectUnknown": "The destination is not a valid address or object ID. Confirm to continue.",
     "cancel": "Cancel",
     "deny": "Deny",
     "optional": "Optional",
@@ -254,6 +257,7 @@
     },
     "placeholders": {
       "to": "Wallet address or object ID",
+      "walletAddress": "Wallet address",
       "latitude": "47.3769",
       "longitude": "8.5417",
       "templateId": "Optional destination template ID",
