@@ -135,10 +135,11 @@ export interface GetOrganizationActionStatsRequest {
      */
     top?: number;
     /**
-     * Split the figures by this. It shapes the breakdown, and with
-     * `include=series` it splits the series too — one line per group, with the
-     * group named in each point's `key`. Only the values listed here work;
-     * anything else is refused.
+     * Dimension used for optional breakdowns and split series. Use `action`
+     * for the action name, such as `mint` or `transfer`; use `status` for
+     * `pending`, `completed` or `failed`. With `include=series`, each point's
+     * `key` identifies its action or status group. Values outside this list
+     * are rejected.
      * 
      */
     groupBy?: GetOrganizationActionStatsGroupByEnum;
@@ -286,10 +287,11 @@ export interface GetPublicActionStatsRequest {
      */
     top?: number;
     /**
-     * Split the figures by this. It shapes the breakdown, and with
-     * `include=series` it splits the series too — one line per group, with the
-     * group named in each point's `key`. Only the values listed here work;
-     * anything else is refused.
+     * Dimension used for optional breakdowns and split series. Use `action`
+     * for the action name, such as `mint` or `transfer`; use `status` for
+     * `pending`, `completed` or `failed`. With `include=series`, each point's
+     * `key` identifies its action or status group. Values outside this list
+     * are rejected.
      * 
      */
     groupBy?: GetPublicActionStatsGroupByEnum;
@@ -1438,6 +1440,7 @@ export type GetOrganizationActionStatsIntervalEnum = typeof GetOrganizationActio
  */
 export const GetOrganizationActionStatsGroupByEnum = {
     Action: 'action',
+    Status: 'status',
 } as const;
 export type GetOrganizationActionStatsGroupByEnum = typeof GetOrganizationActionStatsGroupByEnum[keyof typeof GetOrganizationActionStatsGroupByEnum];
 /**
@@ -1512,6 +1515,7 @@ export type GetPublicActionStatsIntervalEnum = typeof GetPublicActionStatsInterv
  */
 export const GetPublicActionStatsGroupByEnum = {
     Action: 'action',
+    Status: 'status',
 } as const;
 export type GetPublicActionStatsGroupByEnum = typeof GetPublicActionStatsGroupByEnum[keyof typeof GetPublicActionStatsGroupByEnum];
 /**

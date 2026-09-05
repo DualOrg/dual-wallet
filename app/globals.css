@@ -434,6 +434,23 @@ button {
   margin: -6px 0 0 auto;
   font-size: 0.86rem;
 }
+.remember-session {
+  display: flex;
+  width: max-content;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.remember-session input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand-strong);
+}
 .tablist {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

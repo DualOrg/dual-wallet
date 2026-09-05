@@ -4,7 +4,7 @@ import type { PasskeyLoginOptionsOut } from "@/api/web-sdk/models/PasskeyLoginOp
 import type { PasskeyRegisterOptionsOut } from "@/api/web-sdk/models/PasskeyRegisterOptionsOut";
 import { createPasskey, getPasskey } from "@/app/_adapters/webauthn.client";
 import type { ViewerWallet } from "@/app/_domain/wallet";
-import { requestJson } from "@/app/_utils/client-api";
+import { ClientApiError, requestJson } from "@/app/_utils/client-api";
 
 export interface AuthResult {
   authenticated: true;
@@ -13,7 +13,10 @@ export interface AuthResult {
 }
 
 export type AuthFlowErrorCode =
-  "wallet_unavailable" | "wallet_account_missing" | "wallet_signature_missing";
+  | "wallet_unavailable"
+  | "wallet_account_missing"
+  | "wallet_signature_missing"
+  | "account_exists";
 
 export class AuthFlowError extends Error {
   constructor(public readonly code: AuthFlowErrorCode) {
@@ -37,10 +40,10 @@ function messageHex(value: string) {
   return `0x${Array.from(new TextEncoder().encode(value), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
-export function emailLogin(email: string, password: string) {
+export function emailLogin(email: string, password: string, remember = false) {
   return requestJson<AuthResult>("/api/session/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, remember }),
   });
 }
 
@@ -49,22 +52,29 @@ export function emailLogin(email: string, password: string) {
 export function otpLogin(email: string, otp: string) {
   return requestJson<AuthResult>("/api/session/login", {
     method: "POST",
-    body: JSON.stringify({ email, otp }),
+    body: JSON.stringify({ email, otp, remember: true }),
   });
 }
 
-export function emailRegister(
+export async function emailRegister(
   email: string,
   password: string,
   nickname: string,
 ) {
-  return requestJson<AuthResult>("/api/session/register", {
-    method: "POST",
-    body: JSON.stringify({ email, password, nickname }),
-  });
+  try {
+    return await requestJson<AuthResult>("/api/session/register", {
+      method: "POST",
+      body: JSON.stringify({ email, password, nickname }),
+    });
+  } catch (error) {
+    if (error instanceof ClientApiError && error.status === 409) {
+      throw new AuthFlowError("account_exists");
+    }
+    throw error;
+  }
 }
 
-export async function connectEoa() {
+export async function connectEoa(remember = false) {
   if (!window.ethereum) throw new AuthFlowError("wallet_unavailable");
   const accounts = await window.ethereum.request({
     method: "eth_requestAccounts",
@@ -86,11 +96,11 @@ export async function connectEoa() {
   }
   return requestJson<AuthResult>("/api/session/eoa/connect", {
     method: "POST",
-    body: JSON.stringify({ challenge, signature }),
+    body: JSON.stringify({ challenge, signature, remember }),
   });
 }
 
-export async function loginWithPasskey() {
+export async function loginWithPasskey(remember = false) {
   const options = await requestJson<PasskeyLoginOptionsOut>(
     "/api/session/passkey/login/options",
     { method: "POST" },
@@ -98,7 +108,7 @@ export async function loginWithPasskey() {
   const credential = await getPasskey(options);
   return requestJson<AuthResult>("/api/session/passkey/login/verify", {
     method: "POST",
-    body: JSON.stringify(credential),
+    body: JSON.stringify({ ...credential, remember }),
   });
 }
 

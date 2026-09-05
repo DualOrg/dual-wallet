@@ -609,6 +609,100 @@ export interface ListStateChangesRequest {
     whenCreated$lte?: Date;
 }
 
+export interface ListStateChangesPublicRequest {
+    /**
+     * Identifier of the smart object.
+     */
+    objectId: string;
+    /**
+     * Return only the resource with this identifier. Equivalent to fetching it by
+     * path, but usable together with the other list filters.
+     * 
+     */
+    id?: string;
+    /**
+     * How many items to return in one page. The default and the maximum are both
+     * 25; a larger value is rejected with `400`.
+     * 
+     */
+    limit?: number;
+    /**
+     * Cursor for the next page, taken verbatim from the `next` field of the previous
+     * response. Keep every other query parameter the same between pages: `sortBy`
+     * and `order` are part of what the cursor means. An absent or empty `next` in a
+     * response means there are no more pages.
+     * 
+     * The value is opaque. Do not parse it or build one yourself.
+     * 
+     */
+    next?: string;
+    /**
+     * Sort direction. Defaults to `desc`, newest first.
+     */
+    order?: ListStateChangesPublicOrderEnum;
+    /**
+     * Field used to sort the result. Supported fields depend on the endpoint; use
+     * `when_created` for chronological ordering where it is available. The default
+     * is the resource identifier, and identifiers break ties so cursor paging stays
+     * stable.
+     * 
+     */
+    sortBy?: string;
+    /**
+     * Return only the change made by this action.
+     */
+    actionId?: string;
+    /**
+     * Return only changes settled in this batch.
+     */
+    batchId?: string;
+    /**
+     * Return only changes of this kind: `create` when the object came into
+     * being, `update` when it changed, `delete` when it was destroyed.
+     * 
+     */
+    changeType?: string;
+    /**
+     * Return only changes made by this action, such as `transfer` or `redeem`.
+     * 
+     */
+    actionType?: string;
+    /**
+     * Return only changes after this point in the object's life. Each change
+     * raises the object's count by one, so this walks its history in order.
+     * 
+     */
+    nonce$gt?: number;
+    /**
+     * Return only changes before this point in the object's life.
+     */
+    nonce$lt?: number;
+    /**
+     * Return the change that started from this fingerprint.
+     */
+    prevStateRoot?: string;
+    /**
+     * Return the change that produced this fingerprint.
+     */
+    nextStateRoot?: string;
+    /**
+     * Happened strictly after this moment.
+     */
+    whenCreated$gt?: Date;
+    /**
+     * Happened strictly before this moment.
+     */
+    whenCreated$lt?: Date;
+    /**
+     * Happened at or after this moment.
+     */
+    whenCreated$gte?: Date;
+    /**
+     * Happened at or before this moment.
+     */
+    whenCreated$lte?: Date;
+}
+
 export interface RenderObjectDisplayByIdPublicRequest {
     /**
      * Identifier of the smart object.
@@ -1383,6 +1477,7 @@ export class ObjectsApi extends runtime.BaseAPI {
 
     /**
      * Creates request options for listStateChanges without sending the request
+     * @deprecated
      */
     async listStateChangesRequestOpts(requestParameters: ListStateChangesRequest): Promise<runtime.RequestOpts> {
         if (requestParameters['objectId'] == null) {
@@ -1489,8 +1584,9 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Everything that has ever happened to one object, newest first: what was done, by whom, when, and which batch made it permanent.  Each entry records the owner before and after, the fingerprints of the object before and after, and the batch that settled it — enough to follow a ticket from the moment it was issued to the moment it was used, and to prove every step along the way.  This is the object\'s public audit history. No sign-in is needed. 
+     * Deprecated: use `GET /public/objects/{objectId}/state-changes` instead. This path keeps working while it carries this notice.  Everything that has ever happened to one object, newest first: what was done, by whom, when, and which batch made it permanent.  Each entry records the owner before and after, the fingerprints of the object before and after, and the batch that settled it — enough to follow a ticket from the moment it was issued to the moment it was used, and to prove every step along the way.  This is the object\'s public audit history. No sign-in is needed. 
      * List an object\'s history
+     * @deprecated
      */
     async listStateChangesRaw(requestParameters: ListStateChangesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListStateChangesOut>> {
         const requestOptions = await this.listStateChangesRequestOpts(requestParameters);
@@ -1500,11 +1596,127 @@ export class ObjectsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Everything that has ever happened to one object, newest first: what was done, by whom, when, and which batch made it permanent.  Each entry records the owner before and after, the fingerprints of the object before and after, and the batch that settled it — enough to follow a ticket from the moment it was issued to the moment it was used, and to prove every step along the way.  This is the object\'s public audit history. No sign-in is needed. 
+     * Deprecated: use `GET /public/objects/{objectId}/state-changes` instead. This path keeps working while it carries this notice.  Everything that has ever happened to one object, newest first: what was done, by whom, when, and which batch made it permanent.  Each entry records the owner before and after, the fingerprints of the object before and after, and the batch that settled it — enough to follow a ticket from the moment it was issued to the moment it was used, and to prove every step along the way.  This is the object\'s public audit history. No sign-in is needed. 
      * List an object\'s history
+     * @deprecated
      */
     async listStateChanges(requestParameters: ListStateChangesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListStateChangesOut> {
         const response = await this.listStateChangesRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for listStateChangesPublic without sending the request
+     */
+    async listStateChangesPublicRequestOpts(requestParameters: ListStateChangesPublicRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['objectId'] == null) {
+            throw new runtime.RequiredError(
+                'objectId',
+                'Required parameter "objectId" was null or undefined when calling listStateChangesPublic().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['id'] != null) {
+            queryParameters['id'] = requestParameters['id'];
+        }
+
+        if (requestParameters['limit'] != null) {
+            queryParameters['limit'] = requestParameters['limit'];
+        }
+
+        if (requestParameters['next'] != null) {
+            queryParameters['next'] = requestParameters['next'];
+        }
+
+        if (requestParameters['order'] != null) {
+            queryParameters['order'] = requestParameters['order'];
+        }
+
+        if (requestParameters['sortBy'] != null) {
+            queryParameters['sortBy'] = requestParameters['sortBy'];
+        }
+
+        if (requestParameters['actionId'] != null) {
+            queryParameters['action_id'] = requestParameters['actionId'];
+        }
+
+        if (requestParameters['batchId'] != null) {
+            queryParameters['batch_id'] = requestParameters['batchId'];
+        }
+
+        if (requestParameters['changeType'] != null) {
+            queryParameters['change_type'] = requestParameters['changeType'];
+        }
+
+        if (requestParameters['actionType'] != null) {
+            queryParameters['action_type'] = requestParameters['actionType'];
+        }
+
+        if (requestParameters['nonce$gt'] != null) {
+            queryParameters['nonce[$gt]'] = requestParameters['nonce$gt'];
+        }
+
+        if (requestParameters['nonce$lt'] != null) {
+            queryParameters['nonce[$lt]'] = requestParameters['nonce$lt'];
+        }
+
+        if (requestParameters['prevStateRoot'] != null) {
+            queryParameters['prev_state_root'] = requestParameters['prevStateRoot'];
+        }
+
+        if (requestParameters['nextStateRoot'] != null) {
+            queryParameters['next_state_root'] = requestParameters['nextStateRoot'];
+        }
+
+        if (requestParameters['whenCreated$gt'] != null) {
+            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
+        }
+
+        if (requestParameters['whenCreated$lt'] != null) {
+            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
+        }
+
+        if (requestParameters['whenCreated$gte'] != null) {
+            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
+        }
+
+        if (requestParameters['whenCreated$lte'] != null) {
+            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/public/objects/{objectId}/state-changes`;
+        urlPath = urlPath.replace('{objectId}', encodeURIComponent(String(requestParameters['objectId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Everything that has ever happened to one object, newest first: what was done, by whom, when, and which batch made it permanent.  Each entry records the owner before and after, the fingerprints of the object before and after, and the batch that settled it — enough to follow a ticket from the moment it was issued to the moment it was used, and to prove every step along the way.  This is the object\'s public audit history. No sign-in is needed. 
+     * List an object\'s history
+     */
+    async listStateChangesPublicRaw(requestParameters: ListStateChangesPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListStateChangesOut>> {
+        const requestOptions = await this.listStateChangesPublicRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => ListStateChangesOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Everything that has ever happened to one object, newest first: what was done, by whom, when, and which batch made it permanent.  Each entry records the owner before and after, the fingerprints of the object before and after, and the batch that settled it — enough to follow a ticket from the moment it was issued to the moment it was used, and to prove every step along the way.  This is the object\'s public audit history. No sign-in is needed. 
+     * List an object\'s history
+     */
+    async listStateChangesPublic(requestParameters: ListStateChangesPublicRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListStateChangesOut> {
+        const response = await this.listStateChangesPublicRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1731,3 +1943,11 @@ export const ListStateChangesOrderEnum = {
     Desc: 'desc',
 } as const;
 export type ListStateChangesOrderEnum = typeof ListStateChangesOrderEnum[keyof typeof ListStateChangesOrderEnum];
+/**
+ * @export
+ */
+export const ListStateChangesPublicOrderEnum = {
+    Asc: 'asc',
+    Desc: 'desc',
+} as const;
+export type ListStateChangesPublicOrderEnum = typeof ListStateChangesPublicOrderEnum[keyof typeof ListStateChangesPublicOrderEnum];

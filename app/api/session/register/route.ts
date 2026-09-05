@@ -8,11 +8,13 @@ import {
   mutationGuard,
   optionalString,
   readJsonRecord,
+  requiredSecret,
   requiredString,
   tenantRequired,
 } from "@/api/request";
 import { getWalletsApi } from "@/api/web-sdk-client";
 import { toViewerWallet } from "@/app/_adapters/wallet";
+import { isValidNewPassword } from "@/app/_domain/password";
 
 export async function POST(request: NextRequest) {
   const invalidOrigin = mutationGuard(request);
@@ -21,12 +23,13 @@ export async function POST(request: NextRequest) {
   if (!tenant) return tenantRequired();
   const body = await readJsonRecord(request);
   const email = body && requiredString(body, "email", 320);
-  const password = body && requiredString(body, "password", 255);
+  const password = body && requiredSecret(body, "password", 72);
   const nickname = body && optionalString(body, "nickname", 255);
-  if (!email || !password || password.length < 8) {
+  if (!email || !password || !isValidNewPassword(password)) {
     return NextResponse.json(
       {
-        message: "Enter a valid email and a password of at least 8 characters.",
+        message:
+          "Enter a valid email and a password between 8 characters and 72 bytes.",
       },
       { status: 400 },
     );
@@ -47,11 +50,11 @@ export async function POST(request: NextRequest) {
     );
     const response = NextResponse.json({
       authenticated: true,
-      needsVerification: !login.wallet.activated,
+      needsVerification: !login.wallet.emailVerified,
       wallet: toViewerWallet(login.wallet),
     });
     response.headers.set("Cache-Control", "private, no-store");
-    if (!establishSession(response, login, tenant, "email")) {
+    if (!establishSession(response, login, tenant, "email", true)) {
       return NextResponse.json(
         { message: "The account was created outside this organization." },
         { status: 403 },

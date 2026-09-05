@@ -14,126 +14,131 @@
  */
 
 import { mapValues } from '../runtime';
-import type { Asset } from './Asset';
+import type { StatsBucket } from './StatsBucket';
 import {
-    AssetFromJSON,
-    AssetFromJSONTyped,
-    AssetToJSON,
-    AssetToJSONTyped,
-} from './Asset';
+    StatsBucketFromJSON,
+    StatsBucketFromJSONTyped,
+    StatsBucketToJSON,
+    StatsBucketToJSONTyped,
+} from './StatsBucket';
+import type { StatsPoint } from './StatsPoint';
+import {
+    StatsPointFromJSON,
+    StatsPointFromJSONTyped,
+    StatsPointToJSON,
+    StatsPointToJSONTyped,
+} from './StatsPoint';
+import type { Interval } from './Interval';
+import {
+    IntervalFromJSON,
+    IntervalFromJSONTyped,
+    IntervalToJSON,
+    IntervalToJSONTyped,
+} from './Interval';
 
 /**
- * A support message. `title`, `content` and `assets` are what you send;
- * everything else is set by the server.
+ * Aggregates for batches selected by creation time. `total` is always present.
+ * Other headline fields are omitted when the window contains too little data
+ * to calculate them, while `breakdown` and `series` appear only when requested
+ * with `include`.
  * 
  * @export
- * @interface SupportMessage
+ * @interface BatchStatsOut
  */
-export interface SupportMessage {
+export interface BatchStatsOut {
     /**
-     * Identifier of the message.
+     * Number of batches created in the requested window.
      */
-    readonly id: string;
+    total: number;
     /**
-     * The organization the sender was working in. Taken from your credential,
-     * never from the request body.
+     * Highest sequence number among batches created in the requested window.
+     */
+    latestSequence?: number;
+    /**
+     * Mean `actions_count` across batches created in the requested window.
+     */
+    avgActionsPerBatch?: number;
+    /**
+     * How many seconds passed between one batch and the next, on average.
+     * Omitted unless the window contains at least two batches.
      * 
      */
-    readonly orgId?: string;
+    avgIntervalSeconds?: number;
     /**
-     * The wallet that sent the message. Taken from your credential, never from
-     * the request body.
+     * Mean seconds from `when_created` to `when_completed`, calculated only
+     * across finalized batches in the requested window. Omitted when none have
+     * completed.
      * 
      */
-    readonly walletId: string;
+    avgFinalitySeconds?: number;
     /**
-     * Email of the wallet that sent the message, copied when it was sent. It is
-     * a snapshot, so it still says where to reply even if the account later
-     * changes address.
      * 
      */
-    readonly email?: string;
+    interval?: Interval;
     /**
-     * Name of the organization the sender was working in, copied when the
-     * message was sent.
+     * Batches in the requested window grouped by their current status. Present
+     * with `include=breakdown&group_by=status`.
      * 
      */
-    readonly orgName?: string;
+    breakdown?: Array<StatsBucket>;
     /**
-     * Subject of the message.
-     */
-    title?: string;
-    /**
-     * The message itself. Include the `x-request-id` of any request you are
-     * asking about.
+     * Batch creation counts over time, one point per interval. Present with
+     * `include=series`.
      * 
      */
-    content: string;
-    /**
-     * Files to attach. Upload them with `POST /assets` first and reference them
-     * here.
-     * 
-     */
-    assets?: Array<Asset>;
-    /**
-     * When the message was last changed.
-     */
-    readonly whenModified: Date;
-    /**
-     * When the message was sent.
-     */
-    readonly whenCreated: Date;
+    series?: Array<StatsPoint>;
 }
 
+
+
 /**
- * Check if a given object implements the SupportMessage interface.
+ * Check if a given object implements the BatchStatsOut interface.
  */
-export function instanceOfSupportMessage(value: object): value is SupportMessage {
-    if (!('id' in value) || value['id'] === undefined) return false;
-    if ((!('walletId' in (value as Record<string, any>)) && !('wallet_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['walletId'] === undefined && (value as Record<string, any>)['wallet_id'] === undefined)) return false;
-    if (!('content' in value) || value['content'] === undefined) return false;
-    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
-    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
+export function instanceOfBatchStatsOut(value: object): value is BatchStatsOut {
+    if (!('total' in value) || value['total'] === undefined) return false;
     return true;
 }
 
-export function SupportMessageFromJSON(json: any): SupportMessage {
-    return SupportMessageFromJSONTyped(json, false);
+export function BatchStatsOutFromJSON(json: any): BatchStatsOut {
+    return BatchStatsOutFromJSONTyped(json, false);
 }
 
-export function SupportMessageFromJSONTyped(json: any, ignoreDiscriminator: boolean): SupportMessage {
+export function BatchStatsOutFromJSONTyped(json: any, ignoreDiscriminator: boolean): BatchStatsOut {
     if (json == null) {
         return json;
     }
     return {
         
-        'id': json['id'],
-        'orgId': json['org_id'] == null ? undefined : json['org_id'],
-        'walletId': json['wallet_id'],
-        'email': json['email'] == null ? undefined : json['email'],
-        'orgName': json['org_name'] == null ? undefined : json['org_name'],
-        'title': json['title'] == null ? undefined : json['title'],
-        'content': json['content'],
-        'assets': json['assets'] == null ? undefined : ((json['assets'] as Array<any>).map(AssetFromJSON)),
-        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
-        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
+        'total': json['total'],
+        'latestSequence': json['latest_sequence'] == null ? undefined : json['latest_sequence'],
+        'avgActionsPerBatch': json['avg_actions_per_batch'] == null ? undefined : json['avg_actions_per_batch'],
+        'avgIntervalSeconds': json['avg_interval_seconds'] == null ? undefined : json['avg_interval_seconds'],
+        'avgFinalitySeconds': json['avg_finality_seconds'] == null ? undefined : json['avg_finality_seconds'],
+        'interval': json['interval'] == null ? undefined : IntervalFromJSON(json['interval']),
+        'breakdown': json['breakdown'] == null ? undefined : ((json['breakdown'] as Array<any>).map(StatsBucketFromJSON)),
+        'series': json['series'] == null ? undefined : ((json['series'] as Array<any>).map(StatsPointFromJSON)),
     };
 }
 
-export function SupportMessageToJSON(json: any): SupportMessage {
-    return SupportMessageToJSONTyped(json, false);
+export function BatchStatsOutToJSON(json: any): BatchStatsOut {
+    return BatchStatsOutToJSONTyped(json, false);
 }
 
-export function SupportMessageToJSONTyped(value?: Omit<SupportMessage, 'id'|'orgId'|'walletId'|'email'|'orgName'|'whenModified'|'whenCreated'> | null, ignoreDiscriminator: boolean = false): any {
+export function BatchStatsOutToJSONTyped(value?: BatchStatsOut | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
 
     return {
         
-        'title': value['title'],
-        'content': value['content'],
-        'assets': value['assets'] == null ? undefined : ((value['assets'] as Array<any>).map(AssetToJSON)),
+        'total': value['total'],
+        'latest_sequence': value['latestSequence'],
+        'avg_actions_per_batch': value['avgActionsPerBatch'],
+        'avg_interval_seconds': value['avgIntervalSeconds'],
+        'avg_finality_seconds': value['avgFinalitySeconds'],
+        'interval': IntervalToJSON(value['interval']),
+        'breakdown': value['breakdown'] == null ? undefined : ((value['breakdown'] as Array<any>).map(StatsBucketToJSON)),
+        'series': value['series'] == null ? undefined : ((value['series'] as Array<any>).map(StatsPointToJSON)),
     };
 }
 

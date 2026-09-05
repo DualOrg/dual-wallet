@@ -25,7 +25,15 @@ test("email login opens the wallet inventory", async ({ page }) => {
   await page
     .getByLabel("Password", { exact: true })
     .fill("correct-horse-battery-staple");
+  await page.getByLabel("Keep me signed in").check();
+  const loginRequest = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api/session/login",
+  );
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
+
+  expect((await loginRequest).postDataJSON()).toMatchObject({ remember: true });
 
   await expect(page).toHaveURL(/\/inventory$/);
   await expect(

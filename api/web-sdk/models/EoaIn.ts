@@ -44,7 +44,7 @@ export interface EoaIn {
      */
     organizationId: string;
     /**
-     * Display name for the wallet, alphanumeric, max 255 chars.
+     * Display name for the wallet, including spaces and punctuation, max 255 chars.
      */
     nickname?: string;
     /**

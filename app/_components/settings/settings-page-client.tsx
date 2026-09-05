@@ -11,6 +11,7 @@ import { Field, SelectField } from "@/app/_components/design-system/field";
 import { PageHeader } from "@/app/_components/design-system/page-header";
 import { Truncated } from "@/app/_components/design-system/truncated";
 import { shortId } from "@/app/_domain/inventory";
+import { passwordPolicyViolation } from "@/app/_domain/password";
 import {
   isViewerLanguage,
   type ViewerLanguage,
@@ -45,6 +46,8 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [mismatch, setMismatch] = useState(false);
+  const [passwordError, setPasswordError] = useState<string>();
+  const newPasswordField = useRef<HTMLInputElement>(null);
   const confirmPasswordField = useRef<HTMLInputElement>(null);
   const controllerType =
     wallet.controller.type === "WEBAUTHN"
@@ -72,6 +75,17 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
 
   const savePassword = async (event: React.FormEvent) => {
     event.preventDefault();
+    const violation = passwordPolicyViolation(newPassword);
+    if (violation) {
+      setMismatch(false);
+      setPasswordError(
+        auth(
+          violation === "too_short" ? "passwordTooShort" : "passwordTooLong",
+        ),
+      );
+      newPasswordField.current?.focus();
+      return;
+    }
     const invalid = newPassword !== confirmPassword;
     setMismatch(invalid);
     if (invalid) {
@@ -201,16 +215,18 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
                 autoComplete="current-password"
               />
               <Field
+                ref={newPasswordField}
                 type="password"
                 name="new-password"
                 label={t("newPassword")}
                 value={newPassword}
+                error={passwordError}
                 onChange={(event) => {
                   changePassword.reset();
                   setMismatch(false);
+                  setPasswordError(undefined);
                   setNewPassword(event.target.value);
                 }}
-                minLength={8}
                 required
                 autoComplete="new-password"
               />
@@ -226,7 +242,6 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
                   setMismatch(false);
                   setConfirmPassword(event.target.value);
                 }}
-                minLength={8}
                 required
                 autoComplete="new-password"
               />
@@ -316,8 +331,18 @@ function SettingsContent({ wallet }: { wallet: ViewerWallet }) {
               <dd>{wallet.email || common("notAvailable")}</dd>
             </div>
             <div className="security-item">
-              <dt>{t("status")}</dt>
-              <dd>{wallet.activated ? t("verified") : t("unverified")}</dd>
+              <dt>{t("accountStatus")}</dt>
+              <dd>{wallet.activated ? t("active") : t("inactive")}</dd>
+            </div>
+            <div className="security-item">
+              <dt>{t("emailStatus")}</dt>
+              <dd>
+                {!wallet.email
+                  ? common("notAvailable")
+                  : wallet.emailVerified
+                    ? t("verified")
+                    : t("unverified")}
+              </dd>
             </div>
           </dl>
         </section>

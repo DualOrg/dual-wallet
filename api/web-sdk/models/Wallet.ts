@@ -89,12 +89,23 @@ export interface Wallet {
      */
     fqdn: string;
     /**
-     * Whether they have confirmed their email address. Until they have, some
-     * things stay out of reach; resend the code with
-     * `POST /auth/verification-code`.
+     * Whether the account has completed activation for its authentication
+     * method. Password accounts activate by confirming their email; EOA and
+     * passkey accounts activate by proving control of their signing credential.
      * 
      */
     activated: boolean;
+    /**
+     * Whether the account's current email address has been verified. This is
+     * false when there is no email or when an activated EOA/passkey account has
+     * not separately completed email verification.
+     *
+     */
+    emailVerified: boolean;
+    /**
+     * Whether Google sign-in is connected to this wallet. The Google account identifier is never exposed.
+     */
+    readonly googleLinked?: boolean;
     /**
      * Whether the account has been switched off. A disabled account cannot sign
      * in or continue an existing session.
@@ -141,6 +152,7 @@ export function instanceOfWallet(value: object): value is Wallet {
     if (!('language' in value) || value['language'] === undefined) return false;
     if (!('fqdn' in value) || value['fqdn'] === undefined) return false;
     if (!('activated' in value) || value['activated'] === undefined) return false;
+    if ((!('emailVerified' in (value as Record<string, any>)) && !('email_verified' in (value as Record<string, any>))) || ((value as Record<string, any>)['emailVerified'] === undefined && (value as Record<string, any>)['email_verified'] === undefined)) return false;
     if (!('disabled' in value) || value['disabled'] === undefined) return false;
     if (!('account' in value) || value['account'] === undefined) return false;
     if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
@@ -166,6 +178,8 @@ export function WalletFromJSONTyped(json: any, ignoreDiscriminator: boolean): Wa
         'language': LanguageFromJSON(json['language']),
         'fqdn': json['fqdn'],
         'activated': json['activated'],
+        'emailVerified': json['email_verified'],
+        'googleLinked': json['google_linked'] == null ? undefined : json['google_linked'],
         'disabled': json['disabled'],
         'account': AccountFromJSON(json['account']),
         'passkey': json['passkey'] == null ? undefined : PasskeyCredentialFromJSON(json['passkey']),
@@ -180,7 +194,7 @@ export function WalletToJSON(json: any): Wallet {
     return WalletToJSONTyped(json, false);
 }
 
-export function WalletToJSONTyped(value?: Wallet | null, ignoreDiscriminator: boolean = false): any {
+export function WalletToJSONTyped(value?: Omit<Wallet, 'googleLinked'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -195,6 +209,7 @@ export function WalletToJSONTyped(value?: Wallet | null, ignoreDiscriminator: bo
         'language': LanguageToJSON(value['language']),
         'fqdn': value['fqdn'],
         'activated': value['activated'],
+        'email_verified': value['emailVerified'],
         'disabled': value['disabled'],
         'account': AccountToJSON(value['account']),
         'passkey': PasskeyCredentialToJSON(value['passkey']),

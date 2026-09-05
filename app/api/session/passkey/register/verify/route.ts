@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       wallet: toViewerWallet(login.wallet),
     });
     response.headers.set("Cache-Control", "private, no-store");
-    if (!establishSession(response, login, tenant, "passkey")) {
+    if (!establishSession(response, login, tenant, "passkey", true)) {
       return NextResponse.json(
         { message: "The passkey was created outside this organization." },
         { status: 403 },

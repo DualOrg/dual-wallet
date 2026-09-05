@@ -41,14 +41,6 @@ export interface WalletUpdate {
      */
     nickname?: string;
     /**
-     * A new email address for authentication and communications. Changing it
-     * requires `current_password`, marks the account unverified, and sends a
-     * verification code to the new address. The address, code and notification
-     * are committed together.
-     * 
-     */
-    email?: string;
-    /**
      * User's phone number in E.164 international format for verification or notifications
      */
     phoneNumber?: string;
@@ -57,11 +49,14 @@ export interface WalletUpdate {
      */
     language?: Language;
     /**
-     * New account password. Sending it requires current_password, and it ends every other session on the wallet.
+     * New account password. It must contain at least 8 characters and fit within
+     * bcrypt's 72-byte input limit. Sending it requires current_password, and it
+     * ends every other session on the wallet.
+     *
      */
     password?: string;
     /**
-     * The password in force now. Required when password or email is sent, to prove the caller owns the account rather than merely holding a token for it.
+     * The password in force now. Required when password is sent, to prove the caller owns the account rather than merely holding a token for it.
      */
     currentPassword?: string;
     /**
@@ -94,7 +89,6 @@ export function WalletUpdateFromJSONTyped(json: any, ignoreDiscriminator: boolea
     return {
         
         'nickname': json['nickname'] == null ? undefined : json['nickname'],
-        'email': json['email'] == null ? undefined : json['email'],
         'phoneNumber': json['phone_number'] == null ? undefined : json['phone_number'],
         'language': json['language'] == null ? undefined : LanguageFromJSON(json['language']),
         'password': json['password'] == null ? undefined : json['password'],
@@ -116,7 +110,6 @@ export function WalletUpdateToJSONTyped(value?: WalletUpdate | null, ignoreDiscr
     return {
         
         'nickname': value['nickname'],
-        'email': value['email'],
         'phone_number': value['phoneNumber'],
         'language': LanguageToJSON(value['language']),
         'password': value['password'],

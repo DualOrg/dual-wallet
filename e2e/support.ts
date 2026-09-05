@@ -9,6 +9,7 @@ export const viewerWallet: ViewerWallet = {
   language: "en",
   fqdn: "demo.localhost",
   activated: true,
+  emailVerified: true,
   disabled: false,
   account: {
     address: "0x1234567890abcdef1234567890abcdef12345678",
@@ -269,10 +270,14 @@ export async function mockViewerApi(
   if (authenticated) await setSessionCookie(page);
   await mockBackend(page);
 
-  const authenticate = async (activated = true, method = "email") => {
+  const authenticate = async (
+    activated = true,
+    method = "email",
+    emailVerified = activated,
+  ) => {
     signedIn = true;
     authenticationMethod = method;
-    wallet = { ...viewerWallet, activated };
+    wallet = { ...viewerWallet, activated, emailVerified };
     await setSessionCookie(page);
     return wallet;
   };
@@ -299,7 +304,7 @@ export async function mockViewerApi(
   });
 
   await page.route("**/api/session/verify", async (route) => {
-    wallet = { ...wallet, activated: true };
+    wallet = { ...wallet, activated: true, emailVerified: true };
     return json(route, { ok: true, wallet });
   });
   await page.route("**/api/session/verification-code", (route) =>

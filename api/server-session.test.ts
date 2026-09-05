@@ -45,18 +45,24 @@ function login(padding = 0) {
     refreshToken: jwt({ exp: Math.floor(Date.now() / 1000) + 900 }, padding),
     wallet: {
       account: { controller: {}, smartAccount: {} },
+      emailVerified: true,
       whenCreated: new Date(),
       whenModified: new Date(),
     },
   } as unknown as LoginOut;
 }
 
-function signIn(padding = 0) {
+function signInResponse(padding = 0, persistent = false) {
   const response = NextResponse.json({});
-  expect(establishSession(response, login(padding), tenant, "email")).toBe(
-    true,
-  );
-  return response.cookies.get("smarttoken_viewer")!.value;
+  expect(
+    establishSession(response, login(padding), tenant, "email", persistent),
+  ).toBe(true);
+  return response;
+}
+
+function signIn(padding = 0, persistent = false) {
+  return signInResponse(padding, persistent).cookies.get("smarttoken_viewer")!
+    .value;
 }
 
 function requestWith(cookie: string) {
@@ -86,6 +92,18 @@ test("the cookie never exposes the tokens and fits the browser limit", () => {
     "signature",
   );
   expect(cookie.length).toBeLessThan(4096);
+});
+
+test("an unremembered login writes a browser-session cookie", () => {
+  const cookie = signInResponse().headers.get("set-cookie")!;
+
+  expect(cookie).not.toMatch(/(?:expires|max-age)=/i);
+});
+
+test("a remembered login expires with its refresh token", () => {
+  const cookie = signInResponse(0, true).headers.get("set-cookie")!;
+
+  expect(cookie).toMatch(/expires=/i);
 });
 
 test("a tampered cookie is rejected", () => {
@@ -126,6 +144,19 @@ test("parallel requests share one rotation", async () => {
   release({ accessToken: minted });
 
   const [first, second] = await inFlight;
+
+  expect(refreshToken).toHaveBeenCalledTimes(1);
+  expect(first?.status === "active" && first.state.accessToken).toBe(minted);
+  expect(second?.status === "active" && second.state.accessToken).toBe(minted);
+});
+
+test("sequential helpers in one request reuse a completed rotation", async () => {
+  const request = requestWith(signIn());
+  const minted = jwt({ exp: Math.floor(Date.now() / 1000) + 900 });
+  refreshToken.mockResolvedValue({ accessToken: minted });
+
+  const first = await activeSession(request);
+  const second = await activeSession(request);
 
   expect(refreshToken).toHaveBeenCalledTimes(1);
   expect(first?.status === "active" && first.state.accessToken).toBe(minted);

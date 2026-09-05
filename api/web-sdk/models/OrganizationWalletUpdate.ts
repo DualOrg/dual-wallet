@@ -14,6 +14,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { Language } from './Language';
+import {
+    LanguageFromJSON,
+    LanguageFromJSONTyped,
+    LanguageToJSON,
+    LanguageToJSONTyped,
+} from './Language';
 import type { Asset } from './Asset';
 import {
     AssetFromJSON,
@@ -23,117 +30,93 @@ import {
 } from './Asset';
 
 /**
- * A support message. `title`, `content` and `assets` are what you send;
- * everything else is set by the server.
+ * The details of an end user's account an organization administrator may
+ * change. Send only what you want changed.
+ * 
+ * This is deliberately narrower than `WalletUpdate`. Administrators cannot
+ * change another person's sign-in credentials. Email is immutable for every
+ * caller. The account holder can change their password on `PATCH /wallets/me`,
+ * where the password in force now has to be sent as `current_password`.
  * 
  * @export
- * @interface SupportMessage
+ * @interface OrganizationWalletUpdate
  */
-export interface SupportMessage {
+export interface OrganizationWalletUpdate {
     /**
-     * Identifier of the message.
+     * What the end user would like to be called.
      */
-    readonly id: string;
+    nickname?: string;
     /**
-     * The organization the sender was working in. Taken from your credential,
-     * never from the request body.
+     * Their phone number, in E.164 international format.
+     */
+    phoneNumber?: string;
+    /**
+     * The language to write to them in.
+     */
+    language?: Language;
+    /**
      * 
      */
-    readonly orgId?: string;
+    avatar?: Asset;
     /**
-     * The wallet that sent the message. Taken from your credential, never from
-     * the request body.
+     * Whether the account is switched off. `true` locks the person out: they
+     * cannot sign in, and every session they already had ends at once, so an
+     * access token still in flight stops working immediately rather than lasting
+     * out its quarter of an hour.
+     * 
+     * `false` lets them sign in again. It does not restore the sessions that
+     * were ended — they sign in afresh.
+     * 
+     * Nothing else about the account is touched. Their objects, their address and
+     * their history stay exactly as they are; this is not a deletion.
      * 
      */
-    readonly walletId: string;
-    /**
-     * Email of the wallet that sent the message, copied when it was sent. It is
-     * a snapshot, so it still says where to reply even if the account later
-     * changes address.
-     * 
-     */
-    readonly email?: string;
-    /**
-     * Name of the organization the sender was working in, copied when the
-     * message was sent.
-     * 
-     */
-    readonly orgName?: string;
-    /**
-     * Subject of the message.
-     */
-    title?: string;
-    /**
-     * The message itself. Include the `x-request-id` of any request you are
-     * asking about.
-     * 
-     */
-    content: string;
-    /**
-     * Files to attach. Upload them with `POST /assets` first and reference them
-     * here.
-     * 
-     */
-    assets?: Array<Asset>;
-    /**
-     * When the message was last changed.
-     */
-    readonly whenModified: Date;
-    /**
-     * When the message was sent.
-     */
-    readonly whenCreated: Date;
+    disabled?: boolean;
 }
 
+
+
 /**
- * Check if a given object implements the SupportMessage interface.
+ * Check if a given object implements the OrganizationWalletUpdate interface.
  */
-export function instanceOfSupportMessage(value: object): value is SupportMessage {
-    if (!('id' in value) || value['id'] === undefined) return false;
-    if ((!('walletId' in (value as Record<string, any>)) && !('wallet_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['walletId'] === undefined && (value as Record<string, any>)['wallet_id'] === undefined)) return false;
-    if (!('content' in value) || value['content'] === undefined) return false;
-    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
-    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
+export function instanceOfOrganizationWalletUpdate(value: object): value is OrganizationWalletUpdate {
     return true;
 }
 
-export function SupportMessageFromJSON(json: any): SupportMessage {
-    return SupportMessageFromJSONTyped(json, false);
+export function OrganizationWalletUpdateFromJSON(json: any): OrganizationWalletUpdate {
+    return OrganizationWalletUpdateFromJSONTyped(json, false);
 }
 
-export function SupportMessageFromJSONTyped(json: any, ignoreDiscriminator: boolean): SupportMessage {
+export function OrganizationWalletUpdateFromJSONTyped(json: any, ignoreDiscriminator: boolean): OrganizationWalletUpdate {
     if (json == null) {
         return json;
     }
     return {
         
-        'id': json['id'],
-        'orgId': json['org_id'] == null ? undefined : json['org_id'],
-        'walletId': json['wallet_id'],
-        'email': json['email'] == null ? undefined : json['email'],
-        'orgName': json['org_name'] == null ? undefined : json['org_name'],
-        'title': json['title'] == null ? undefined : json['title'],
-        'content': json['content'],
-        'assets': json['assets'] == null ? undefined : ((json['assets'] as Array<any>).map(AssetFromJSON)),
-        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
-        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
+        'nickname': json['nickname'] == null ? undefined : json['nickname'],
+        'phoneNumber': json['phone_number'] == null ? undefined : json['phone_number'],
+        'language': json['language'] == null ? undefined : LanguageFromJSON(json['language']),
+        'avatar': json['avatar'] == null ? undefined : AssetFromJSON(json['avatar']),
+        'disabled': json['disabled'] == null ? undefined : json['disabled'],
     };
 }
 
-export function SupportMessageToJSON(json: any): SupportMessage {
-    return SupportMessageToJSONTyped(json, false);
+export function OrganizationWalletUpdateToJSON(json: any): OrganizationWalletUpdate {
+    return OrganizationWalletUpdateToJSONTyped(json, false);
 }
 
-export function SupportMessageToJSONTyped(value?: Omit<SupportMessage, 'id'|'orgId'|'walletId'|'email'|'orgName'|'whenModified'|'whenCreated'> | null, ignoreDiscriminator: boolean = false): any {
+export function OrganizationWalletUpdateToJSONTyped(value?: OrganizationWalletUpdate | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
 
     return {
         
-        'title': value['title'],
-        'content': value['content'],
-        'assets': value['assets'] == null ? undefined : ((value['assets'] as Array<any>).map(AssetToJSON)),
+        'nickname': value['nickname'],
+        'phone_number': value['phoneNumber'],
+        'language': LanguageToJSON(value['language']),
+        'avatar': AssetToJSON(value['avatar']),
+        'disabled': value['disabled'],
     };
 }
 

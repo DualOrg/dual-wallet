@@ -15,9 +15,13 @@ export function AuthMethods({
   emailPanel,
 }: {
   mode: "login" | "register";
-  emailPanel: (auth: ReturnType<typeof useAuthActions>) => React.ReactNode;
+  emailPanel: (
+    auth: ReturnType<typeof useAuthActions>,
+    remember: boolean,
+  ) => React.ReactNode;
 }) {
   const [method, setMethod] = useState<Method>("email");
+  const [remember, setRemember] = useState(false);
   const t = useTranslations("auth");
   const auth = useAuthActions();
   const methods: { id: Method; label: string }[] = [
@@ -38,7 +42,7 @@ export function AuthMethods({
         }}
       >
         {auth.error ? <Alert takeFocus>{auth.error}</Alert> : null}
-        {method === "email" ? emailPanel(auth) : null}
+        {method === "email" ? emailPanel(auth, remember) : null}
         {method === "wallet" ? (
           <div className="method-panel">
             <span className="method-icon">
@@ -46,7 +50,11 @@ export function AuthMethods({
             </span>
             <h2>{t("walletMethod")}</h2>
             <p>{t("connectWalletDescription")}</p>
-            <Button block disabled={Boolean(auth.pending)} onClick={auth.eoa}>
+            <Button
+              block
+              disabled={Boolean(auth.pending)}
+              onClick={() => auth.eoa(mode === "login" ? remember : true)}
+            >
               {auth.pending === "wallet" ? (
                 <LoaderCircle size={18} className="animate-spin" aria-hidden />
               ) : (
@@ -67,7 +75,9 @@ export function AuthMethods({
               block
               disabled={Boolean(auth.pending)}
               onClick={
-                mode === "login" ? auth.passkeyLogin : auth.passkeyRegister
+                mode === "login"
+                  ? () => auth.passkeyLogin(remember)
+                  : auth.passkeyRegister
               }
             >
               {auth.pending === "passkey" ? (
@@ -80,6 +90,17 @@ export function AuthMethods({
           </div>
         ) : null}
       </Tabs>
+      {mode === "login" ? (
+        <label className="remember-session">
+          <input
+            type="checkbox"
+            name="remember"
+            checked={remember}
+            onChange={(event) => setRemember(event.target.checked)}
+          />
+          <span>{t("rememberMe")}</span>
+        </label>
+      ) : null}
     </>
   );
 }

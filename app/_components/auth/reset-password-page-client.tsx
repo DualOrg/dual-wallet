@@ -10,6 +10,7 @@ import { Field } from "@/app/_components/design-system/field";
 import { useSetNewPassword } from "@/app/_hooks/use-account-mutations";
 import { useErrorMessage } from "@/app/_hooks/use-error-message";
 import { useFocusOnMount } from "@/app/_hooks/use-focus-on-mount";
+import { passwordPolicyViolation } from "@/app/_domain/password";
 
 export function ResetPasswordPageClient({ token }: { token?: string }) {
   const t = useTranslations("recovery");
@@ -17,6 +18,8 @@ export function ResetPasswordPageClient({ token }: { token?: string }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [mismatch, setMismatch] = useState(false);
+  const [passwordError, setPasswordError] = useState<string>();
+  const passwordField = useRef<HTMLInputElement>(null);
   const confirmField = useRef<HTMLInputElement>(null);
   const errorMessage = useErrorMessage();
   const passwordUpdate = useSetNewPassword();
@@ -26,6 +29,15 @@ export function ResetPasswordPageClient({ token }: { token?: string }) {
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
+    const violation = passwordPolicyViolation(password);
+    if (violation) {
+      setMismatch(false);
+      setPasswordError(
+        t(violation === "too_short" ? "passwordTooShort" : "passwordTooLong"),
+      );
+      passwordField.current?.focus();
+      return;
+    }
     const invalid = password !== confirm;
     setMismatch(invalid);
     if (invalid) {
@@ -63,16 +75,18 @@ export function ResetPasswordPageClient({ token }: { token?: string }) {
       ) : null}
       <form className="auth-form" onSubmit={submit}>
         <Field
+          ref={passwordField}
           type="password"
           name="password"
           label={t("newPassword")}
           value={password}
+          error={passwordError}
           onChange={(event) => {
             passwordUpdate.reset();
             setMismatch(false);
+            setPasswordError(undefined);
             setPassword(event.target.value);
           }}
-          minLength={8}
           required
           autoComplete="new-password"
         />
@@ -88,7 +102,6 @@ export function ResetPasswordPageClient({ token }: { token?: string }) {
             setMismatch(false);
             setConfirm(event.target.value);
           }}
-          minLength={8}
           required
           autoComplete="new-password"
         />

@@ -25,6 +25,7 @@ const wallet = {
   language: "en",
   fqdn: "demo.localhost",
   activated: true,
+  emailVerified: true,
   disabled: false,
   account: {
     address: "0x1234567890abcdef1234567890abcdef12345f45",

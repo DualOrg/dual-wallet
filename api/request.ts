@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { MAX_BFF_BODY_BYTES } from "@/api/settings";
 import { normalizeApiError } from "@/api/web-sdk-client";
+import { utf8ByteLength } from "@/app/_domain/password";
 
 export function validRequestOrigin(request: NextRequest) {
   const origin = request.headers.get("origin");
@@ -59,6 +60,34 @@ export function optionalString(
   return typeof value === "string" && value.length <= maxLength
     ? value.trim()
     : undefined;
+}
+
+// Credentials are exact values. Trimming here would make a password accepted
+// during registration impossible to use later when it starts or ends in a
+// space.
+export function optionalSecret(
+  body: Record<string, unknown>,
+  name: string,
+  maxBytes = 512,
+) {
+  const value = body[name];
+  if (value == null || value === "") return undefined;
+  return typeof value === "string" && utf8ByteLength(value) <= maxBytes
+    ? value
+    : undefined;
+}
+
+export function requiredSecret(
+  body: Record<string, unknown>,
+  name: string,
+  maxBytes = 512,
+) {
+  return optionalSecret(body, name, maxBytes);
+}
+
+export function optionalBoolean(body: Record<string, unknown>, name: string) {
+  const value = body[name];
+  return typeof value === "boolean" ? value : undefined;
 }
 
 export function mutationGuard(request: NextRequest) {

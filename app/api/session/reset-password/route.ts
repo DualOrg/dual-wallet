@@ -4,11 +4,13 @@ import {
   apiErrorResponse,
   mutationGuard,
   readJsonRecord,
+  requiredSecret,
   requiredString,
   tenantRequired,
 } from "@/api/request";
 import { tenantFromRequest } from "@/api/tenant";
 import { getWalletsApi } from "@/api/web-sdk-client";
+import { isValidNewPassword } from "@/app/_domain/password";
 
 export async function POST(request: NextRequest) {
   const invalidOrigin = mutationGuard(request);
@@ -16,8 +18,8 @@ export async function POST(request: NextRequest) {
   if (!tenantFromRequest(request)) return tenantRequired();
   const body = await readJsonRecord(request);
   const token = body && requiredString(body, "token", 512);
-  const password = body && requiredString(body, "password", 255);
-  if (!token || !password || password.length < 8) {
+  const password = body && requiredSecret(body, "password", 72);
+  if (!token || !password || !isValidNewPassword(password)) {
     return NextResponse.json(
       { message: "A valid reset token and password are required." },
       { status: 400 },

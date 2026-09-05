@@ -39,6 +39,7 @@ export interface ViewerWallet {
   language: ViewerLanguage;
   fqdn: string;
   activated: boolean;
+  emailVerified: boolean;
   disabled: boolean;
   account: ViewerExecutionAccount;
   controller: ViewerAccountController;

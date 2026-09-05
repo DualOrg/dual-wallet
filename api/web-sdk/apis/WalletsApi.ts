@@ -25,6 +25,11 @@ import {
     EoaInToJSON,
 } from '../models/EoaIn';
 import {
+    type GoogleLinkIn,
+    GoogleLinkInFromJSON,
+    GoogleLinkInToJSON,
+} from '../models/GoogleLinkIn';
+import {
     type GoogleLoginIn,
     GoogleLoginInFromJSON,
     GoogleLoginInToJSON,
@@ -34,6 +39,11 @@ import {
     ListWalletSessionsOutFromJSON,
     ListWalletSessionsOutToJSON,
 } from '../models/ListWalletSessionsOut';
+import {
+    type ListWalletsOut,
+    ListWalletsOutFromJSON,
+    ListWalletsOutToJSON,
+} from '../models/ListWalletsOut';
 import {
     type LoginIn,
     LoginInFromJSON,
@@ -49,6 +59,11 @@ import {
     ModelErrorFromJSON,
     ModelErrorToJSON,
 } from '../models/ModelError';
+import {
+    type OrganizationWalletUpdate,
+    OrganizationWalletUpdateFromJSON,
+    OrganizationWalletUpdateToJSON,
+} from '../models/OrganizationWalletUpdate';
 import {
     type PasskeyLoginOptionsOut,
     PasskeyLoginOptionsOutFromJSON,
@@ -252,6 +267,67 @@ export interface GoogleLoginRequest {
     googleLoginIn: GoogleLoginIn;
 }
 
+export interface LinkGoogleAccountRequest {
+    /**
+     * 
+     */
+    googleLinkIn: GoogleLinkIn;
+}
+
+export interface ListOrganizationWalletsRequest {
+    /**
+     * Identifier of the organization. Each endpoint states whether it must be the
+     * caller's active organization or may be used without authentication.
+     * 
+     */
+    organizationId: string;
+    /**
+     * Return only the resource with this identifier. Equivalent to fetching it by
+     * path, but usable together with the other list filters.
+     * 
+     */
+    id?: string;
+    /**
+     * Search the accounts by nickname, email address or on-chain address. The match
+     * is case-insensitive and anywhere in the field, so `acme.com` finds everyone at
+     * that domain, `ale` finds `alexf`, and a pasted `0x1234...` finds the account
+     * that owns it.
+     * 
+     * Unlike `autocomplete` on other lists this one accepts the punctuation an email
+     * address needs, because a whole address is a thing you would paste in.
+     * 
+     */
+    autocomplete?: string;
+    /**
+     * How many items to return in one page. The default and the maximum are both
+     * 25; a larger value is rejected with `400`.
+     * 
+     */
+    limit?: number;
+    /**
+     * Cursor for the next page, taken verbatim from the `next` field of the previous
+     * response. Keep every other query parameter the same between pages: `sortBy`
+     * and `order` are part of what the cursor means. An absent or empty `next` in a
+     * response means there are no more pages.
+     * 
+     * The value is opaque. Do not parse it or build one yourself.
+     * 
+     */
+    next?: string;
+    /**
+     * Sort direction. Defaults to `desc`, newest first.
+     */
+    order?: ListOrganizationWalletsOrderEnum;
+    /**
+     * Field used to sort the result. Supported fields depend on the endpoint; use
+     * `when_created` for chronological ordering where it is available. The default
+     * is the resource identifier, and identifiers break ties so cursor paging stays
+     * stable.
+     * 
+     */
+    sortBy?: string;
+}
+
 export interface LoginWalletRequest {
     /**
      * 
@@ -320,6 +396,23 @@ export interface SetNewPasswordRequest {
      * 
      */
     setNewPasswordIn: SetNewPasswordIn;
+}
+
+export interface UpdateOrganizationWalletRequest {
+    /**
+     * Identifier of the organization. Each endpoint states whether it must be the
+     * caller's active organization or may be used without authentication.
+     * 
+     */
+    organizationId: string;
+    /**
+     * Identifier of the end user's account to update.
+     */
+    id: string;
+    /**
+     * 
+     */
+    organizationWalletUpdate: OrganizationWalletUpdate;
 }
 
 export interface UpdateWalletRequest {
@@ -433,7 +526,7 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Close the signed-in account for good. Every session ends and every API key it created is revoked, so nothing is left that can act as this person.  This cannot be undone. Objects they own are not deleted — transfer anything that matters to another account first, or it will be left with an owner who no longer has an account.  Requires the `wallets.delete` permission. 
+     * Close the signed-in account for good. Every session ends and every API key it created is revoked, so nothing is left that can act as this person.  This cannot be undone. The account cannot be deleted while it is the owner of an organization; delete that organization first. Objects they own are not deleted, so transfer anything that matters to another account too.  Requires the `wallets.delete` permission.
      * Delete my wallet
      */
     async deleteWalletRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
@@ -444,7 +537,7 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Close the signed-in account for good. Every session ends and every API key it created is revoked, so nothing is left that can act as this person.  This cannot be undone. Objects they own are not deleted — transfer anything that matters to another account first, or it will be left with an owner who no longer has an account.  Requires the `wallets.delete` permission. 
+     * Close the signed-in account for good. Every session ends and every API key it created is revoked, so nothing is left that can act as this person.  This cannot be undone. The account cannot be deleted while it is the owner of an organization; delete that organization first. Objects they own are not deleted, so transfer anything that matters to another account too.  Requires the `wallets.delete` permission.
      * Delete my wallet
      */
     async deleteWallet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
@@ -492,7 +585,7 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Close one account by its identifier.  You can only close your own account this way — the same thing as `DELETE /wallets/me`, addressed differently. Anything else comes back as `403`. Every session ends and every API key is revoked; objects the account owns are left where they are.  Requires the `wallets.delete` permission. 
+     * Close one account by its identifier.  You can only close your own account this way — the same thing as `DELETE /wallets/me`, addressed differently. Anything else comes back as `403`. Every session ends and every API key is revoked. The account cannot be deleted while it owns an organization; delete that organization first. Objects the account owns are left where they are.  Requires the `wallets.delete` permission.
      * Delete a wallet by id
      */
     async deleteWalletByIdRaw(requestParameters: DeleteWalletByIdRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
@@ -503,7 +596,7 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Close one account by its identifier.  You can only close your own account this way — the same thing as `DELETE /wallets/me`, addressed differently. Anything else comes back as `403`. Every session ends and every API key is revoked; objects the account owns are left where they are.  Requires the `wallets.delete` permission. 
+     * Close one account by its identifier.  You can only close your own account this way — the same thing as `DELETE /wallets/me`, addressed differently. Anything else comes back as `403`. Every session ends and every API key is revoked. The account cannot be deleted while it owns an organization; delete that organization first. Objects the account owns are left where they are.  Requires the `wallets.delete` permission.
      * Delete a wallet by id
      */
     async deleteWalletById(requestParameters: DeleteWalletByIdRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
@@ -728,7 +821,7 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Everything about the signed-in account: their address, the ways they can sign in, their display name and language, and whether the account is confirmed and in good standing.  Passwords and keys are never part of this. Use it to fill in a profile screen, or to check `activated` before letting the user get started.  Requires the `wallets.read` permission. 
+     * Everything about the signed-in account: their address, the ways they can sign in, their display name and language, and whether the account is confirmed and in good standing.  Passwords and keys are never part of this. Use it to fill in a profile screen, check `activated` for account readiness, and check `email_verified` before starting an email-gated flow.  Requires the `wallets.read` permission.
      * Get my wallet
      */
     async getWalletRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Wallet>> {
@@ -739,7 +832,7 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Everything about the signed-in account: their address, the ways they can sign in, their display name and language, and whether the account is confirmed and in good standing.  Passwords and keys are never part of this. Use it to fill in a profile screen, or to check `activated` before letting the user get started.  Requires the `wallets.read` permission. 
+     * Everything about the signed-in account: their address, the ways they can sign in, their display name and language, and whether the account is confirmed and in good standing.  Passwords and keys are never part of this. Use it to fill in a profile screen, check `activated` for account readiness, and check `email_verified` before starting an email-gated flow.  Requires the `wallets.read` permission.
      * Get my wallet
      */
     async getWallet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Wallet> {
@@ -836,7 +929,7 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Exchange a Google Identity Services ID token for a Dual session. This one endpoint handles both new and returning users: the first successful request creates a wallet, and later requests sign in to that same wallet.  **Client integration:**  1. Configure Google Identity Services with your application\'s web client ID. 2. Read `credential` from the Google callback. 3. Send that value here as `id_token`. 4. Store the returned access and refresh tokens as you would for any other    Dual sign-in method.  The `credential` value is a Google **ID token**. Do not send a Google OAuth access token or authorization code. Dual verifies the token\'s signature, issuer, audience, expiry, stable Google account identifier, and verified email address before issuing a session.  Include `organization_id` when the account belongs to a particular organization. Leave it out for an account in the open network scope. The same Google account may have a separate Dual wallet in each scope.  A new wallet is active immediately because Google has already verified the email address. Google is never linked to an existing wallet by email alone: if that email belongs to a wallet using another sign-in method, this request returns `409`. Sign in through the existing method instead.  No existing Dual session is required — this endpoint creates one. 
+     * Exchange a Google Identity Services ID token for a Dual session. This one endpoint handles both new and returning users: the first successful request creates a wallet, and later requests sign in to that same wallet.  **Client integration:**  1. Configure Google Identity Services with your application\'s web client ID. 2. Read `credential` from the Google callback. 3. Send that value here as `id_token`. 4. Store the returned access and refresh tokens as you would for any other    Dual sign-in method.  The `credential` value is a Google **ID token**. Do not send a Google OAuth access token or authorization code. Dual verifies the token\'s signature, issuer, audience, expiry, stable Google account identifier, and verified email address before issuing a session.  Include `organization_id` when the account belongs to a particular organization. Leave it out for an account in the open network scope. The same Google account may have a separate Dual wallet in each scope.  A new wallet is active immediately because Google has already verified the email address. Google is never linked to an existing wallet by email alone: if that email belongs to a wallet using another sign-in method, this request returns `409`. Sign in through the existing method, then connect Google with `POST /auth/provider/google/link` to use either method on the same wallet.  No existing Dual session is required — this endpoint creates one.
      * Sign in or register with Google
      */
     async googleLoginRaw(requestParameters: GoogleLoginRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LoginOut>> {
@@ -847,11 +940,151 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Exchange a Google Identity Services ID token for a Dual session. This one endpoint handles both new and returning users: the first successful request creates a wallet, and later requests sign in to that same wallet.  **Client integration:**  1. Configure Google Identity Services with your application\'s web client ID. 2. Read `credential` from the Google callback. 3. Send that value here as `id_token`. 4. Store the returned access and refresh tokens as you would for any other    Dual sign-in method.  The `credential` value is a Google **ID token**. Do not send a Google OAuth access token or authorization code. Dual verifies the token\'s signature, issuer, audience, expiry, stable Google account identifier, and verified email address before issuing a session.  Include `organization_id` when the account belongs to a particular organization. Leave it out for an account in the open network scope. The same Google account may have a separate Dual wallet in each scope.  A new wallet is active immediately because Google has already verified the email address. Google is never linked to an existing wallet by email alone: if that email belongs to a wallet using another sign-in method, this request returns `409`. Sign in through the existing method instead.  No existing Dual session is required — this endpoint creates one. 
+     * Exchange a Google Identity Services ID token for a Dual session. This one endpoint handles both new and returning users: the first successful request creates a wallet, and later requests sign in to that same wallet.  **Client integration:**  1. Configure Google Identity Services with your application\'s web client ID. 2. Read `credential` from the Google callback. 3. Send that value here as `id_token`. 4. Store the returned access and refresh tokens as you would for any other    Dual sign-in method.  The `credential` value is a Google **ID token**. Do not send a Google OAuth access token or authorization code. Dual verifies the token\'s signature, issuer, audience, expiry, stable Google account identifier, and verified email address before issuing a session.  Include `organization_id` when the account belongs to a particular organization. Leave it out for an account in the open network scope. The same Google account may have a separate Dual wallet in each scope.  A new wallet is active immediately because Google has already verified the email address. Google is never linked to an existing wallet by email alone: if that email belongs to a wallet using another sign-in method, this request returns `409`. Sign in through the existing method, then connect Google with `POST /auth/provider/google/link` to use either method on the same wallet.  No existing Dual session is required — this endpoint creates one.
      * Sign in or register with Google
      */
     async googleLogin(requestParameters: GoogleLoginRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LoginOut> {
         const response = await this.googleLoginRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for linkGoogleAccount without sending the request
+     */
+    async linkGoogleAccountRequestOpts(requestParameters: LinkGoogleAccountRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['googleLinkIn'] == null) {
+            throw new runtime.RequiredError(
+                'googleLinkIn',
+                'Required parameter "googleLinkIn" was null or undefined when calling linkGoogleAccount().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearer-auth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/auth/provider/google/link`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: GoogleLinkInToJSON(requestParameters['googleLinkIn']),
+        };
+    }
+
+    /**
+     * Sign in with an existing method, then send a Google Identity Services ID token to add Google as another way to access the same wallet. The wallet, password, signing account, organizations, and memberships are preserved.  Requires a user access-token session. API keys cannot connect sign-in methods. The target is always the signed-in wallet, including when its session is switched into an organization; the caller cannot name a target.  The Google token must pass signature, issuer, audience, expiry, stable subject, and verified-email checks. Its normalized email must match this wallet\'s current email. Disabled wallets are refused. Successful linking also confirms this email, and returns the current wallet.  A wallet can have one Google identity. Linking the same identity again is idempotent; replacing it, or using one linked to another wallet in the same wallet scope, returns 409. The binding is atomic with respect to concurrent linking, email changes, and disabling. No accounts are merged by email.
+     * Connect Google sign-in to your account
+     */
+    async linkGoogleAccountRaw(requestParameters: LinkGoogleAccountRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Wallet>> {
+        const requestOptions = await this.linkGoogleAccountRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => WalletFromJSON(jsonValue));
+    }
+
+    /**
+     * Sign in with an existing method, then send a Google Identity Services ID token to add Google as another way to access the same wallet. The wallet, password, signing account, organizations, and memberships are preserved.  Requires a user access-token session. API keys cannot connect sign-in methods. The target is always the signed-in wallet, including when its session is switched into an organization; the caller cannot name a target.  The Google token must pass signature, issuer, audience, expiry, stable subject, and verified-email checks. Its normalized email must match this wallet\'s current email. Disabled wallets are refused. Successful linking also confirms this email, and returns the current wallet.  A wallet can have one Google identity. Linking the same identity again is idempotent; replacing it, or using one linked to another wallet in the same wallet scope, returns 409. The binding is atomic with respect to concurrent linking, email changes, and disabling. No accounts are merged by email.
+     * Connect Google sign-in to your account
+     */
+    async linkGoogleAccount(requestParameters: LinkGoogleAccountRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Wallet> {
+        const response = await this.linkGoogleAccountRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for listOrganizationWallets without sending the request
+     */
+    async listOrganizationWalletsRequestOpts(requestParameters: ListOrganizationWalletsRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['organizationId'] == null) {
+            throw new runtime.RequiredError(
+                'organizationId',
+                'Required parameter "organizationId" was null or undefined when calling listOrganizationWallets().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['id'] != null) {
+            queryParameters['id'] = requestParameters['id'];
+        }
+
+        if (requestParameters['autocomplete'] != null) {
+            queryParameters['autocomplete'] = requestParameters['autocomplete'];
+        }
+
+        if (requestParameters['limit'] != null) {
+            queryParameters['limit'] = requestParameters['limit'];
+        }
+
+        if (requestParameters['next'] != null) {
+            queryParameters['next'] = requestParameters['next'];
+        }
+
+        if (requestParameters['order'] != null) {
+            queryParameters['order'] = requestParameters['order'];
+        }
+
+        if (requestParameters['sortBy'] != null) {
+            queryParameters['sortBy'] = requestParameters['sortBy'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearer-auth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/organizations/{organizationId}/wallets`;
+        urlPath = urlPath.replace('{organizationId}', encodeURIComponent(String(requestParameters['organizationId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Every end-user account that belongs to the organization in the path — the people who sign in, hold an address and own objects, as opposed to the team members who administer the organization. For the team, use `GET /organizations/{organizationId}/members`.  Narrow it with `autocomplete` to search by nickname, email address or on-chain address, and with `id` to fetch one account.  The list is paginated: read `next` from the response and send it back to get the following page.  You have to be a member of the organization in the path, and the scope never widens beyond it.  Requires the `organizations.wallets.read` permission — the one that covers the organization\'s end users, not `wallets`, which is an account\'s own. 
+     * List the organization\'s accounts
+     */
+    async listOrganizationWalletsRaw(requestParameters: ListOrganizationWalletsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListWalletsOut>> {
+        const requestOptions = await this.listOrganizationWalletsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => ListWalletsOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Every end-user account that belongs to the organization in the path — the people who sign in, hold an address and own objects, as opposed to the team members who administer the organization. For the team, use `GET /organizations/{organizationId}/members`.  Narrow it with `autocomplete` to search by nickname, email address or on-chain address, and with `id` to fetch one account.  The list is paginated: read `next` from the response and send it back to get the following page.  You have to be a member of the organization in the path, and the scope never widens beyond it.  Requires the `organizations.wallets.read` permission — the one that covers the organization\'s end users, not `wallets`, which is an account\'s own. 
+     * List the organization\'s accounts
+     */
+    async listOrganizationWallets(requestParameters: ListOrganizationWalletsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListWalletsOut> {
+        const response = await this.listOrganizationWalletsRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1592,6 +1825,83 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
+     * Creates request options for updateOrganizationWallet without sending the request
+     */
+    async updateOrganizationWalletRequestOpts(requestParameters: UpdateOrganizationWalletRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['organizationId'] == null) {
+            throw new runtime.RequiredError(
+                'organizationId',
+                'Required parameter "organizationId" was null or undefined when calling updateOrganizationWallet().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling updateOrganizationWallet().'
+            );
+        }
+
+        if (requestParameters['organizationWalletUpdate'] == null) {
+            throw new runtime.RequiredError(
+                'organizationWalletUpdate',
+                'Required parameter "organizationWalletUpdate" was null or undefined when calling updateOrganizationWallet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearer-auth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/organizations/{organizationId}/wallets/{id}`;
+        urlPath = urlPath.replace('{organizationId}', encodeURIComponent(String(requestParameters['organizationId'])));
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: OrganizationWalletUpdateToJSON(requestParameters['organizationWalletUpdate']),
+        };
+    }
+
+    /**
+     * Change one end-user account belonging to the organization in the path: their display name, phone number, language or avatar, and whether the account is switched off.  Sending `disabled: true` locks the person out at once — every session they hold ends with the write, so a token already in flight stops working rather than lasting out its quarter of an hour. `disabled: false` lets them sign in again, without restoring those sessions.  The account has to belong to that organization. One that belongs to another reads as `404`, the same as an identifier that does not exist, so this cannot be used to find out where an account lives.  The email address and the password are not here on purpose. They are how the person signs in, and only the account holder changes them, on `PATCH /wallets/me` with the password in force now. An administrator who could set them could take the account over.  Requires the `organizations.wallets.update` permission — the one that covers the organization\'s end users, not `wallets`, which is an account\'s own. 
+     * Update an end user\'s account
+     */
+    async updateOrganizationWalletRaw(requestParameters: UpdateOrganizationWalletRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
+        const requestOptions = await this.updateOrganizationWalletRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse<any>(response);
+    }
+
+    /**
+     * Change one end-user account belonging to the organization in the path: their display name, phone number, language or avatar, and whether the account is switched off.  Sending `disabled: true` locks the person out at once — every session they hold ends with the write, so a token already in flight stops working rather than lasting out its quarter of an hour. `disabled: false` lets them sign in again, without restoring those sessions.  The account has to belong to that organization. One that belongs to another reads as `404`, the same as an identifier that does not exist, so this cannot be used to find out where an account lives.  The email address and the password are not here on purpose. They are how the person signs in, and only the account holder changes them, on `PATCH /wallets/me` with the password in force now. An administrator who could set them could take the account over.  Requires the `organizations.wallets.update` permission — the one that covers the organization\'s end users, not `wallets`, which is an account\'s own. 
+     * Update an end user\'s account
+     */
+    async updateOrganizationWallet(requestParameters: UpdateOrganizationWalletRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
+        const response = await this.updateOrganizationWalletRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for updateWallet without sending the request
      */
     async updateWalletRequestOpts(requestParameters: UpdateWalletRequest): Promise<runtime.RequestOpts> {
@@ -1629,7 +1939,7 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Change the signed-in account\'s display name, language, avatar, phone number, onboarding state or email. Send only what you want to change.  **Changing the email.** Send `email` together with `current_password`. The account becomes unverified until the code sent to the new address is redeemed. The email change and delivery of that code commit together.  **Changing the password.** Send `password` together with `current_password`. Knowing the current password is what proves it is really them, rather than an attacker who obtained a token. Once changed, every other session on the account ends — including on their other devices — so anyone who had the old password loses access. The session making the change carries on.  A user who has never set a password — an invited colleague setting their first one — does not need to send `current_password`.  Only for the signed-in person\'s own account, with a signed-in session rather than an API key. Requires the `wallets.update` permission. 
+     * Change the signed-in account\'s display name, language, avatar, phone number or onboarding state. Send only what you want to change. The email address is the account\'s immutable identity and cannot be changed.  **Changing the password.** Send `password` together with `current_password`. Knowing the current password is what proves it is really them, rather than an attacker who obtained a token. Once changed, every other session on the account ends — including on their other devices — so anyone who had the old password loses access. The session making the change carries on.  A user who has never set a password — an invited colleague setting their first one — does not need to send `current_password`.  Only for the signed-in person\'s own account, with a signed-in session rather than an API key. Requires the `wallets.update` permission. 
      * Update my wallet
      */
     async updateWalletRaw(requestParameters: UpdateWalletRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
@@ -1640,7 +1950,7 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Change the signed-in account\'s display name, language, avatar, phone number, onboarding state or email. Send only what you want to change.  **Changing the email.** Send `email` together with `current_password`. The account becomes unverified until the code sent to the new address is redeemed. The email change and delivery of that code commit together.  **Changing the password.** Send `password` together with `current_password`. Knowing the current password is what proves it is really them, rather than an attacker who obtained a token. Once changed, every other session on the account ends — including on their other devices — so anyone who had the old password loses access. The session making the change carries on.  A user who has never set a password — an invited colleague setting their first one — does not need to send `current_password`.  Only for the signed-in person\'s own account, with a signed-in session rather than an API key. Requires the `wallets.update` permission. 
+     * Change the signed-in account\'s display name, language, avatar, phone number or onboarding state. Send only what you want to change. The email address is the account\'s immutable identity and cannot be changed.  **Changing the password.** Send `password` together with `current_password`. Knowing the current password is what proves it is really them, rather than an attacker who obtained a token. Once changed, every other session on the account ends — including on their other devices — so anyone who had the old password loses access. The session making the change carries on.  A user who has never set a password — an invited colleague setting their first one — does not need to send `current_password`.  Only for the signed-in person\'s own account, with a signed-in session rather than an API key. Requires the `wallets.update` permission. 
      * Update my wallet
      */
     async updateWallet(requestParameters: UpdateWalletRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
@@ -1698,7 +2008,7 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Change one account by its identifier.  You can only change your own account this way — the same thing as `PATCH /wallets/me`, addressed differently. Anything else comes back as `403`. The authentication-field rules are the same: send `current_password` with a new `password` or `email`; a password change ends every session and an email change starts verification of the new address.  Requires the `wallets.update` permission. 
+     * Change one account by its identifier.  You can only change your own account this way — the same thing as `PATCH /wallets/me`, addressed differently. Anything else comes back as `403`. Email is not an update field. Send `current_password` with a new `password`; a password change ends every other session on the account.  Requires the `wallets.update` permission. 
      * Update a wallet by id
      */
     async updateWalletByIdRaw(requestParameters: UpdateWalletByIdRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<object>> {
@@ -1709,7 +2019,7 @@ export class WalletsApi extends runtime.BaseAPI {
     }
 
     /**
-     * Change one account by its identifier.  You can only change your own account this way — the same thing as `PATCH /wallets/me`, addressed differently. Anything else comes back as `403`. The authentication-field rules are the same: send `current_password` with a new `password` or `email`; a password change ends every session and an email change starts verification of the new address.  Requires the `wallets.update` permission. 
+     * Change one account by its identifier.  You can only change your own account this way — the same thing as `PATCH /wallets/me`, addressed differently. Anything else comes back as `403`. Email is not an update field. Send `current_password` with a new `password`; a password change ends every other session on the account.  Requires the `wallets.update` permission. 
      * Update a wallet by id
      */
     async updateWalletById(requestParameters: UpdateWalletByIdRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<object> {
@@ -1820,3 +2130,11 @@ export const GetPublicWalletStatsGroupByEnum = {
     Activated: 'activated',
 } as const;
 export type GetPublicWalletStatsGroupByEnum = typeof GetPublicWalletStatsGroupByEnum[keyof typeof GetPublicWalletStatsGroupByEnum];
+/**
+ * @export
+ */
+export const ListOrganizationWalletsOrderEnum = {
+    Asc: 'asc',
+    Desc: 'desc',
+} as const;
+export type ListOrganizationWalletsOrderEnum = typeof ListOrganizationWalletsOrderEnum[keyof typeof ListOrganizationWalletsOrderEnum];

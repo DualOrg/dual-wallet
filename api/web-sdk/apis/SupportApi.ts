@@ -122,7 +122,7 @@ export interface SendSupportMessageRequest {
     /**
      * 
      */
-    supportMessage: Omit<SupportMessage, 'id'|'walletId'|'whenModified'|'whenCreated'>;
+    supportMessage: Omit<SupportMessage, 'id'|'orgId'|'walletId'|'email'|'orgName'|'whenModified'|'whenCreated'>;
 }
 
 /**
@@ -375,7 +375,7 @@ export class SupportApi extends runtime.BaseAPI {
     }
 
     /**
-     * Ask the Dual team for help.  Send a subject and a message. You can attach files too — upload them with `POST /assets` first, then mention them here. If it is about one particular request that went wrong, include the `x-request-id` from its response; that is the quickest way for us to find it.  The message is filed under the signed-in account, so it cannot be sent in another user\'s name.  You get an identifier back. You will not be able to read the message again afterwards, so keep your own copy if you need one. 
+     * Ask the Dual team for help.  Send a subject and a message. You can attach files too — upload them with `POST /assets` first, then mention them here. If it is about one particular request that went wrong, include the `x-request-id` from its response; that is the quickest way for us to find it.  The message is filed under the signed-in account, so it cannot be sent in another user\'s name.  You get an identifier back. You will not be able to read the message again afterwards, so keep your own copy if you need one.  There is a limit on how often one account may write in. Go over it and you get a `429`. 
      * Send a support message
      */
     async sendSupportMessageRaw(requestParameters: SendSupportMessageRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<InlineObject>> {
@@ -386,7 +386,7 @@ export class SupportApi extends runtime.BaseAPI {
     }
 
     /**
-     * Ask the Dual team for help.  Send a subject and a message. You can attach files too — upload them with `POST /assets` first, then mention them here. If it is about one particular request that went wrong, include the `x-request-id` from its response; that is the quickest way for us to find it.  The message is filed under the signed-in account, so it cannot be sent in another user\'s name.  You get an identifier back. You will not be able to read the message again afterwards, so keep your own copy if you need one. 
+     * Ask the Dual team for help.  Send a subject and a message. You can attach files too — upload them with `POST /assets` first, then mention them here. If it is about one particular request that went wrong, include the `x-request-id` from its response; that is the quickest way for us to find it.  The message is filed under the signed-in account, so it cannot be sent in another user\'s name.  You get an identifier back. You will not be able to read the message again afterwards, so keep your own copy if you need one.  There is a limit on how often one account may write in. Go over it and you get a `429`. 
      * Send a support message
      */
     async sendSupportMessage(requestParameters: SendSupportMessageRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<InlineObject> {

@@ -5,6 +5,8 @@ import { tenantFromRequest } from "@/api/tenant";
 import {
   apiErrorResponse,
   mutationGuard,
+  optionalBoolean,
+  optionalSecret,
   optionalString,
   readJsonRecord,
   requiredString,
@@ -23,8 +25,9 @@ export async function POST(request: NextRequest) {
   // A password and a one-time code are alternatives, not a pair: the code is
   // what someone signs in with when they cannot use the password, so requiring
   // both would close the door this exists to open.
-  const password = body ? optionalString(body, "password", 255) : undefined;
+  const password = body ? optionalSecret(body, "password", 72) : undefined;
   const otp = body ? optionalString(body, "otp", 64) : undefined;
+  const remember = body ? (optionalBoolean(body, "remember") ?? false) : false;
   if (!email || (!password && !otp)) {
     return NextResponse.json(
       {
@@ -48,10 +51,11 @@ export async function POST(request: NextRequest) {
     );
     const response = NextResponse.json({
       authenticated: true,
+      needsVerification: !login.wallet.emailVerified,
       wallet: toViewerWallet(login.wallet),
     });
     response.headers.set("Cache-Control", "private, no-store");
-    if (!establishSession(response, login, tenant, "email")) {
+    if (!establishSession(response, login, tenant, "email", remember)) {
       return NextResponse.json(
         { message: "This account belongs to another organization." },
         { status: 403 },

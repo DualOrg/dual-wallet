@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     return failure;
   }
 
-  // Re-read so the session carries the activated flag the page renders from.
+  // Re-read so the response carries the completed email-proof state.
   // The access token in hand is the live one — a second currentWallet would
   // present the refresh token this request already spent.
   const wallet = await getWalletsApi(current.state.accessToken)

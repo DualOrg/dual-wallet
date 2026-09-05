@@ -59,7 +59,7 @@ export interface PasskeyRegisterVerifyIn {
      */
     organizationId: string;
     /**
-     * Display name for the wallet.
+     * Display name for the wallet, including spaces and punctuation.
      */
     nickname?: string;
     /**

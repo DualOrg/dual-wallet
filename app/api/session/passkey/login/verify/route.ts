@@ -4,6 +4,7 @@ import { parsePasskeyLogin } from "@/api/passkey";
 import {
   apiErrorResponse,
   mutationGuard,
+  optionalBoolean,
   readJsonRecord,
   tenantRequired,
 } from "@/api/request";
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest) {
   if (!tenant) return tenantRequired();
   const body = await readJsonRecord(request);
   const credential = body && parsePasskeyLogin(body);
+  const remember = body ? (optionalBoolean(body, "remember") ?? false) : false;
   if (!credential) {
     return NextResponse.json(
       { message: "Invalid passkey response." },
@@ -35,7 +37,7 @@ export async function POST(request: NextRequest) {
       wallet: toViewerWallet(login.wallet),
     });
     response.headers.set("Cache-Control", "private, no-store");
-    if (!establishSession(response, login, tenant, "passkey")) {
+    if (!establishSession(response, login, tenant, "passkey", remember)) {
       return NextResponse.json(
         { message: "This passkey belongs to another organization." },
         { status: 403 },

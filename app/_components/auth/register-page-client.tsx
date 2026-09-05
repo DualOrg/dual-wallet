@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { AuthMethods } from "@/app/_components/auth/auth-methods";
 import { Button } from "@/app/_components/design-system/button";
 import { Field } from "@/app/_components/design-system/field";
+import { passwordPolicyViolation } from "@/app/_domain/password";
 
 export function RegisterPageClient() {
   const t = useTranslations("auth");
@@ -15,6 +16,8 @@ export function RegisterPageClient() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [mismatch, setMismatch] = useState(false);
+  const [passwordError, setPasswordError] = useState<string>();
+  const passwordField = useRef<HTMLInputElement>(null);
   const confirmField = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -28,6 +31,19 @@ export function RegisterPageClient() {
             className="auth-form"
             onSubmit={(event) => {
               event.preventDefault();
+              const violation = passwordPolicyViolation(password);
+              if (violation) {
+                setMismatch(false);
+                setPasswordError(
+                  t(
+                    violation === "too_short"
+                      ? "passwordTooShort"
+                      : "passwordTooLong",
+                  ),
+                );
+                passwordField.current?.focus();
+                return;
+              }
               const invalid = password !== confirm;
               setMismatch(invalid);
               // Failed submission keeps the values and lands on the field.
@@ -54,12 +70,16 @@ export function RegisterPageClient() {
               required
             />
             <Field
+              ref={passwordField}
               type="password"
               name="password"
               label={t("password")}
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              minLength={8}
+              error={passwordError}
+              onChange={(event) => {
+                setPasswordError(undefined);
+                setPassword(event.target.value);
+              }}
               autoComplete="new-password"
               required
             />
@@ -74,7 +94,6 @@ export function RegisterPageClient() {
                 setMismatch(false);
                 setConfirm(event.target.value);
               }}
-              minLength={8}
               autoComplete="new-password"
               required
             />

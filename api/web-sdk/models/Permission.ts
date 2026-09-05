@@ -48,12 +48,13 @@ export interface Permission {
      * | `organizations` | The organization itself, and its balance |
      * | `organizations.members` | Inviting and managing people |
      * | `organizations.roles` | Defining what people may do |
+     * | `organizations.wallets` | Reading and editing the organization's end users |
      * | `sequencer.batches` | Reading batches |
      * | `stats.actions`, `stats.objects`, `stats.wallets` | Reading your own figures |
      * | `storage` | Uploading and reading files |
      * | `support` | Support messages |
      * | `templates` | Designing kinds of objects |
-     * | `wallets` | Wallets and sessions |
+     * | `wallets` | Your own account and its sessions |
      * | `webhooks` | Subscribing to events |
      * 
      */
@@ -80,6 +81,7 @@ export const PermissionResourceEnum = {
     Organizations: 'organizations',
     OrganizationsMembers: 'organizations.members',
     OrganizationsRoles: 'organizations.roles',
+    OrganizationsWallets: 'organizations.wallets',
     SequencerBatches: 'sequencer.batches',
     StatsActions: 'stats.actions',
     StatsObjects: 'stats.objects',

@@ -33,6 +33,7 @@ interface SessionState {
   organizationId: string;
   host: string;
   authenticationMethod: AuthenticationMethod;
+  persistent?: boolean;
 }
 
 export type SessionResult =
@@ -137,7 +138,9 @@ export function writeSession(response: NextResponse, state: SessionState) {
     secure: isProduction,
     sameSite: "strict",
     path: "/",
-    maxAge: THIRTY_DAYS_MS / 1000,
+    ...(state.persistent
+      ? { expires: new Date(jwtExpiry(state.refreshToken, THIRTY_DAYS_MS)) }
+      : {}),
   });
 }
 
@@ -173,6 +176,7 @@ export function establishSession(
   login: LoginOut,
   tenant: TenantContext,
   authenticationMethod: AuthenticationMethod,
+  persistent = false,
 ) {
   try {
     const payload = login.accessToken.split(".")[1];
@@ -194,6 +198,7 @@ export function establishSession(
     organizationId: tenant.organizationId,
     host: tenant.host,
     authenticationMethod,
+    persistent,
   });
   return true;
 }
@@ -219,33 +224,53 @@ export function readSession(request: NextRequest): SessionState | undefined {
 // responses each carry their own sealed cookie, and only the last one to reach
 // the browser survives.
 //
-// One rotation per refresh token instead, shared by every request that asks
-// while it runs. The entry goes as soon as it settles, so the next renewal
-// starts fresh.
+// One in-flight rotation per refresh token is shared by concurrent requests.
+// Each request also retains that promise after it settles, because a later
+// helper call in the same request still sees the original cookie and must not
+// replay the refresh token the first call consumed.
 //
 // ponytail: single-flight holds inside one instance. Requests that land on two
 // containers still race, and narrowing renewal to /api/session alone is the fix
 // if that shows up in the logs.
-const rotations = new Map<string, Promise<RefreshTokenOut>>();
+const inFlightRotations = new Map<string, Promise<RefreshTokenOut>>();
+const requestRotations = new WeakMap<
+  object,
+  Map<string, Promise<RefreshTokenOut>>
+>();
 
-function rotate(refreshToken: string) {
-  const running = rotations.get(refreshToken);
-  if (running) return running;
+function rotate(request: object, refreshToken: string) {
+  let rotations = requestRotations.get(request);
+  if (!rotations) {
+    rotations = new Map();
+    requestRotations.set(request, rotations);
+  }
+  const retained = rotations.get(refreshToken);
+  if (retained) return retained;
+
+  const running = inFlightRotations.get(refreshToken);
+  if (running) {
+    rotations.set(refreshToken, running);
+    return running;
+  }
 
   const rotation = getWalletsApi(refreshToken)
     .refreshToken({ cache: "no-store" })
-    .finally(() => rotations.delete(refreshToken));
+    .finally(() => inFlightRotations.delete(refreshToken));
 
+  inFlightRotations.set(refreshToken, rotation);
   rotations.set(refreshToken, rotation);
 
   return rotation;
 }
 
-// renew takes the state rather than the request, because the caller may hold a
-// newer one than the cookie the request arrived with.
-export async function renew(state: SessionState): Promise<SessionResult> {
+// renew also takes the current state because the caller may hold a newer one
+// than the cookie the request arrived with.
+export async function renew(
+  request: object,
+  state: SessionState,
+): Promise<SessionResult> {
   try {
-    const result = await rotate(state.refreshToken);
+    const result = await rotate(request, state.refreshToken);
     return {
       status: "active",
       rotated: true,
@@ -274,7 +299,7 @@ export async function activeSession(
   if (!force && state.accessExpiresAt > Date.now() + REFRESH_MARGIN_MS) {
     return { status: "active", state, rotated: false };
   }
-  return renew(state);
+  return renew(request, state);
 }
 
 export async function currentWallet(
@@ -356,7 +381,7 @@ export async function authenticatedUpstreamFetch(
     // From the state in hand: the call above may already have spent the refresh
     // token the request arrived with, and presenting that one again reads as a
     // replay rather than a retry.
-    const retry = await renew(state);
+    const retry = await renew(request, state);
     if (retry.status !== "active") {
       return {
         response,

@@ -25,8 +25,9 @@ export interface SetNewPasswordIn {
      */
     token: string;
     /**
-     * The password to set. Everything else signed in on this account is
-     * signed out.
+     * The password to set. It must contain at least 8 characters and fit
+     * within bcrypt's 72-byte input limit. Everything else signed in on
+     * this account is signed out.
      * 
      */
     newPassword: string;

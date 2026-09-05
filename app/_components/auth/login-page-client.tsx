@@ -19,12 +19,12 @@ export function LoginPageClient() {
       <p className="auth-description">{t("welcomeDescription")}</p>
       <AuthMethods
         mode="login"
-        emailPanel={(auth) => (
+        emailPanel={(auth, remember) => (
           <form
             className="auth-form"
             onSubmit={(event) => {
               event.preventDefault();
-              auth.emailLogin(email, password);
+              auth.emailLogin(email, password, remember);
             }}
           >
             <Field

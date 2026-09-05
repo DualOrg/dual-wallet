@@ -16,6 +16,7 @@ describe("wallet adapter", () => {
       language: "en",
       fqdn: "demo.localhost",
       activated: true,
+      emailVerified: true,
       disabled: false,
       account: {
         address: "0xkernel",
@@ -60,5 +61,6 @@ describe("wallet adapter", () => {
     });
     expect(toViewerWallet(wallet)).not.toHaveProperty("address");
     expect(toViewerWallet(wallet)).not.toHaveProperty("custody");
+    expect(toViewerWallet(wallet).emailVerified).toBe(true);
   });
 });

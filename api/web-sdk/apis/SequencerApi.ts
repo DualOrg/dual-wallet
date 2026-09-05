@@ -20,6 +20,11 @@ import {
     BatchToJSON,
 } from '../models/Batch';
 import {
+    type BatchStatsOut,
+    BatchStatsOutFromJSON,
+    BatchStatsOutToJSON,
+} from '../models/BatchStatsOut';
+import {
     type BatchStatus,
     BatchStatusFromJSON,
     BatchStatusToJSON,
@@ -49,6 +54,11 @@ import {
     ModelErrorFromJSON,
     ModelErrorToJSON,
 } from '../models/ModelError';
+import {
+    type StatsOut,
+    StatsOutFromJSON,
+    StatsOutToJSON,
+} from '../models/StatsOut';
 
 export interface GetBatchRequest {
     /**
@@ -64,6 +74,81 @@ export interface GetCheckpointRequest {
     checkpointId: string;
 }
 
+export interface GetPublicBatchStatsRequest {
+    /**
+     * Start of the window, inclusive. Omit for "since the beginning".
+     * Replaces the when_created[$gt] and when_created[$gte] pair: an aggregate has
+     * no use for both an open and a closed lower bound.
+     * 
+     */
+    from?: Date;
+    /**
+     * End of the window, exclusive. Omit for "up to now". Half-open with from, so
+     * adjacent windows tile without double-counting the boundary record.
+     * 
+     */
+    to?: Date;
+    /**
+     * Which optional parts of the aggregate to compute. The total is always
+     * returned; a breakdown and a series each cost a grouping pass, so a caller
+     * that only needs the headline number does not pay for them.
+     * 
+     */
+    include?: Array<GetPublicBatchStatsIncludeEnum>;
+    /**
+     * Bucket size for a time series. It fixes how many points the series has over
+     * the requested window, so a long window with a small interval is an expensive
+     * request.
+     * 
+     */
+    interval?: GetPublicBatchStatsIntervalEnum;
+    /**
+     * How many groups to keep in a breakdown, largest first. Bounds the response
+     * for a high-cardinality dimension such as template, where an organization may
+     * have thousands.
+     * 
+     * It does not bound a series. The number of buckets in a series is already
+     * fixed by from, to and interval; capping it separately would silently truncate
+     * the window a caller explicitly asked for.
+     * 
+     */
+    top?: number;
+    /**
+     * Group the optional breakdown by each batch's current pipeline `status`.
+     * This does not split the time series, which always counts all new batches
+     * in each interval.
+     * 
+     */
+    groupBy?: GetPublicBatchStatsGroupByEnum;
+}
+
+export interface GetPublicCheckpointStatsRequest {
+    /**
+     * Start of the window, inclusive. Omit for "since the beginning".
+     * Replaces the when_created[$gt] and when_created[$gte] pair: an aggregate has
+     * no use for both an open and a closed lower bound.
+     * 
+     */
+    from?: Date;
+    /**
+     * End of the window, exclusive. Omit for "up to now". Half-open with from, so
+     * adjacent windows tile without double-counting the boundary record.
+     * 
+     */
+    to?: Date;
+    /**
+     * Optional aggregate to compute. This endpoint supports only a creation series.
+     */
+    include?: Array<GetPublicCheckpointStatsIncludeEnum>;
+    /**
+     * Bucket size for a time series. It fixes how many points the series has over
+     * the requested window, so a long window with a small interval is an expensive
+     * request.
+     * 
+     */
+    interval?: GetPublicCheckpointStatsIntervalEnum;
+}
+
 export interface ListBatchesRequest {
     /**
      * Return only the resource with this identifier. Equivalent to fetching it by
@@ -71,10 +156,6 @@ export interface ListBatchesRequest {
      * 
      */
     id?: string;
-    /**
-     * An organization identifier.
-     */
-    orgId?: string;
     /**
      * Look up one batch by id or by hash. A 24-character hexadecimal value is
      * treated as an id, anything else as a batch hash.
@@ -114,14 +195,6 @@ export interface ListBatchesRequest {
      */
     sequence?: number;
     /**
-     * An action identifier.
-     */
-    actionId?: string;
-    /**
-     * A batch identifier.
-     */
-    batchId?: string;
-    /**
      * Return the batch with this hash.
      */
     hash?: string;
@@ -130,9 +203,9 @@ export interface ListBatchesRequest {
      */
     status?: BatchStatus;
     /**
-     * A signer address.
+     * Return the batch containing this action identifier.
      */
-    signer?: string;
+    actionId?: string;
     /**
      * Built strictly after this instant.
      */
@@ -191,10 +264,6 @@ export interface ListCheckpointsRequest {
      */
     id?: string;
     /**
-     * An organization identifier.
-     */
-    orgId?: string;
-    /**
      * Look up one checkpoint by id or by hash. A 24-character hexadecimal
      * value is treated as an id, anything else as a checkpoint hash.
      * 
@@ -237,15 +306,11 @@ export interface ListCheckpointsRequest {
      */
     status?: CheckpointStatus;
     /**
-     * A signer address.
-     */
-    signer?: string;
-    /**
-     * Built after this instant.
+     * Built strictly after this instant.
      */
     whenCreated$gt?: Date;
     /**
-     * Built before this instant.
+     * Built strictly before this instant.
      */
     whenCreated$lt?: Date;
     /**
@@ -257,11 +322,11 @@ export interface ListCheckpointsRequest {
      */
     whenCreated$lte?: Date;
     /**
-     * Last advanced after this instant.
+     * Last advanced strictly after this instant.
      */
     whenModified$gt?: Date;
     /**
-     * Last advanced before this instant.
+     * Last advanced strictly before this instant.
      */
     whenModified$lt?: Date;
     /**
@@ -295,7 +360,7 @@ export class SequencerApi extends runtime.BaseAPI {
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/batches/{batchId}`;
+        let urlPath = `/public/batches/{batchId}`;
         urlPath = urlPath.replace('{batchId}', encodeURIComponent(String(requestParameters['batchId'])));
 
         return {
@@ -307,7 +372,7 @@ export class SequencerApi extends runtime.BaseAPI {
     }
 
     /**
-     * Everything about one batch: where it sits in the chain of batches, which actions it carried, the fingerprints of network state before and after it, and the on-chain transactions that recorded and settled it.  This is what you need to check a batch for yourself. `commitment` is the value written on chain, `integrity_root` and `prev_integrity_root` fingerprint the network\'s state after and before the batch, `actions_hash` pins the exact list of actions, and `ipfs_url` points to the published data all of it was computed from.  Open to everyone. No sign-in needed. 
+     * Retrieve one batch by its Dual identifier. The response shows its position in the batch chain, the actions it contains, the network-state roots before and after those actions, and its proof and on-chain settlement details.  This is what you need to check a batch for yourself. `commitment` is the value written on chain, `integrity_root` and `prev_integrity_root` fingerprint the network\'s state after and before the batch, `actions_hash` pins the exact list of actions, and `ipfs_url` points to the published data all of it was computed from.  Recent batches may still be moving through the pipeline. Proof, storage and transaction fields appear as those stages complete; use `status` to decide which fields should be present. A `finalized` batch has completed its challenge window and includes its finalization transaction.  Open to everyone. No sign-in needed. 
      * Get a batch
      */
     async getBatchRaw(requestParameters: GetBatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Batch>> {
@@ -318,7 +383,7 @@ export class SequencerApi extends runtime.BaseAPI {
     }
 
     /**
-     * Everything about one batch: where it sits in the chain of batches, which actions it carried, the fingerprints of network state before and after it, and the on-chain transactions that recorded and settled it.  This is what you need to check a batch for yourself. `commitment` is the value written on chain, `integrity_root` and `prev_integrity_root` fingerprint the network\'s state after and before the batch, `actions_hash` pins the exact list of actions, and `ipfs_url` points to the published data all of it was computed from.  Open to everyone. No sign-in needed. 
+     * Retrieve one batch by its Dual identifier. The response shows its position in the batch chain, the actions it contains, the network-state roots before and after those actions, and its proof and on-chain settlement details.  This is what you need to check a batch for yourself. `commitment` is the value written on chain, `integrity_root` and `prev_integrity_root` fingerprint the network\'s state after and before the batch, `actions_hash` pins the exact list of actions, and `ipfs_url` points to the published data all of it was computed from.  Recent batches may still be moving through the pipeline. Proof, storage and transaction fields appear as those stages complete; use `status` to decide which fields should be present. A `finalized` batch has completed its challenge window and includes its finalization transaction.  Open to everyone. No sign-in needed. 
      * Get a batch
      */
     async getBatch(requestParameters: GetBatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Batch> {
@@ -342,7 +407,7 @@ export class SequencerApi extends runtime.BaseAPI {
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/checkpoints/{checkpointId}`;
+        let urlPath = `/public/checkpoints/{checkpointId}`;
         urlPath = urlPath.replace('{checkpointId}', encodeURIComponent(String(requestParameters['checkpointId'])));
 
         return {
@@ -354,7 +419,7 @@ export class SequencerApi extends runtime.BaseAPI {
     }
 
     /**
-     * One checkpoint: which batches it covers, the fingerprints at each end of that range, where it sits among the other checkpoints, and the transaction that recorded it on chain.  Open to everyone. No sign-in needed. 
+     * Retrieve one checkpoint by its Dual identifier. The response identifies the first and last batch in the covered range, the checkpoint\'s position in its own sequence, and the proof, published data and transaction produced as it moves through the pipeline.  Recent checkpoints may not have a proof, `ipfs_url` or `l2_tx_hash` yet. These fields appear as their corresponding stages complete; a `finalized` checkpoint has been anchored on chain.  Open to everyone. No sign-in needed. 
      * Get a checkpoint
      */
     async getCheckpointRaw(requestParameters: GetCheckpointRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Checkpoint>> {
@@ -365,11 +430,129 @@ export class SequencerApi extends runtime.BaseAPI {
     }
 
     /**
-     * One checkpoint: which batches it covers, the fingerprints at each end of that range, where it sits among the other checkpoints, and the transaction that recorded it on chain.  Open to everyone. No sign-in needed. 
+     * Retrieve one checkpoint by its Dual identifier. The response identifies the first and last batch in the covered range, the checkpoint\'s position in its own sequence, and the proof, published data and transaction produced as it moves through the pipeline.  Recent checkpoints may not have a proof, `ipfs_url` or `l2_tx_hash` yet. These fields appear as their corresponding stages complete; a `finalized` checkpoint has been anchored on chain.  Open to everyone. No sign-in needed. 
      * Get a checkpoint
      */
     async getCheckpoint(requestParameters: GetCheckpointRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Checkpoint> {
         const response = await this.getCheckpointRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getPublicBatchStats without sending the request
+     */
+    async getPublicBatchStatsRequestOpts(requestParameters: GetPublicBatchStatsRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        if (requestParameters['from'] != null) {
+            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+        }
+
+        if (requestParameters['to'] != null) {
+            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+        }
+
+        if (requestParameters['include'] != null) {
+            queryParameters['include'] = requestParameters['include']!.join(runtime.COLLECTION_FORMATS["csv"]);
+        }
+
+        if (requestParameters['interval'] != null) {
+            queryParameters['interval'] = requestParameters['interval'];
+        }
+
+        if (requestParameters['top'] != null) {
+            queryParameters['top'] = requestParameters['top'];
+        }
+
+        if (requestParameters['groupBy'] != null) {
+            queryParameters['group_by'] = requestParameters['groupBy'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/public/stats/batches`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Summarize batches created in a selected time window. `from` is inclusive and `to` is exclusive; omit both to cover the network\'s complete batch history.  The response always includes `total`. When the window is not empty it also reports its highest sequence number, average actions per batch and average creation interval. Finalized batches contribute an average duration from batch creation to finalization.  Add `include=breakdown&group_by=status` to count the selected batches by their current pipeline stage. Add `include=series` to count batch creation by time bucket. These optional aggregations require extra work, so they are omitted by default.  These figures cover the whole network and take no sign-in. 
+     * Batch statistics
+     */
+    async getPublicBatchStatsRaw(requestParameters: GetPublicBatchStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BatchStatsOut>> {
+        const requestOptions = await this.getPublicBatchStatsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => BatchStatsOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Summarize batches created in a selected time window. `from` is inclusive and `to` is exclusive; omit both to cover the network\'s complete batch history.  The response always includes `total`. When the window is not empty it also reports its highest sequence number, average actions per batch and average creation interval. Finalized batches contribute an average duration from batch creation to finalization.  Add `include=breakdown&group_by=status` to count the selected batches by their current pipeline stage. Add `include=series` to count batch creation by time bucket. These optional aggregations require extra work, so they are omitted by default.  These figures cover the whole network and take no sign-in. 
+     * Batch statistics
+     */
+    async getPublicBatchStats(requestParameters: GetPublicBatchStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BatchStatsOut> {
+        const response = await this.getPublicBatchStatsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getPublicCheckpointStats without sending the request
+     */
+    async getPublicCheckpointStatsRequestOpts(requestParameters: GetPublicCheckpointStatsRequest): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        if (requestParameters['from'] != null) {
+            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+        }
+
+        if (requestParameters['to'] != null) {
+            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+        }
+
+        if (requestParameters['include'] != null) {
+            queryParameters['include'] = requestParameters['include']!.join(runtime.COLLECTION_FORMATS["csv"]);
+        }
+
+        if (requestParameters['interval'] != null) {
+            queryParameters['interval'] = requestParameters['interval'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/public/stats/checkpoints`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Count checkpoints created in a selected time window. `from` is inclusive and `to` is exclusive; omit both to cover the network\'s complete checkpoint history.  The response always includes `total`. Add `include=series` to count checkpoint creation by time bucket; because that aggregation requires extra work, the series is omitted by default.  These figures cover the whole network and take no sign-in. 
+     * Checkpoint statistics
+     */
+    async getPublicCheckpointStatsRaw(requestParameters: GetPublicCheckpointStatsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<StatsOut>> {
+        const requestOptions = await this.getPublicCheckpointStatsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => StatsOutFromJSON(jsonValue));
+    }
+
+    /**
+     * Count checkpoints created in a selected time window. `from` is inclusive and `to` is exclusive; omit both to cover the network\'s complete checkpoint history.  The response always includes `total`. Add `include=series` to count checkpoint creation by time bucket; because that aggregation requires extra work, the series is omitted by default.  These figures cover the whole network and take no sign-in. 
+     * Checkpoint statistics
+     */
+    async getPublicCheckpointStats(requestParameters: GetPublicCheckpointStatsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<StatsOut> {
+        const response = await this.getPublicCheckpointStatsRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -381,10 +564,6 @@ export class SequencerApi extends runtime.BaseAPI {
 
         if (requestParameters['id'] != null) {
             queryParameters['id'] = requestParameters['id'];
-        }
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
         }
 
         if (requestParameters['autocomplete'] != null) {
@@ -411,14 +590,6 @@ export class SequencerApi extends runtime.BaseAPI {
             queryParameters['sequence'] = requestParameters['sequence'];
         }
 
-        if (requestParameters['actionId'] != null) {
-            queryParameters['action_id'] = requestParameters['actionId'];
-        }
-
-        if (requestParameters['batchId'] != null) {
-            queryParameters['batch_id'] = requestParameters['batchId'];
-        }
-
         if (requestParameters['hash'] != null) {
             queryParameters['hash'] = requestParameters['hash'];
         }
@@ -427,8 +598,8 @@ export class SequencerApi extends runtime.BaseAPI {
             queryParameters['status'] = requestParameters['status'];
         }
 
-        if (requestParameters['signer'] != null) {
-            queryParameters['signer'] = requestParameters['signer'];
+        if (requestParameters['actionId'] != null) {
+            queryParameters['action_id'] = requestParameters['actionId'];
         }
 
         if (requestParameters['whenCreated$gt'] != null) {
@@ -482,7 +653,7 @@ export class SequencerApi extends runtime.BaseAPI {
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/batches`;
+        let urlPath = `/public/batches`;
 
         return {
             path: urlPath,
@@ -493,7 +664,7 @@ export class SequencerApi extends runtime.BaseAPI {
     }
 
     /**
-     * Batches, newest first. A batch is a group of actions that were put in order, proved and written to the blockchain together — the step that makes them permanent.  `status` tells you how far along a batch is:  ``` building → requesting → proving → storing → anchoring → nfts → settling → finalized ```  `finalized` means it is on chain and settled for good. `failed` means it could not be completed. Anything in between is still under way, which is normal for a recent batch.  To find the batch behind one of your actions, look the action up in `GET /ebus/action-logs` and follow the batch it names.  Open to everyone. No sign-in needed. 
+     * Browse the batches that turn individual actions into permanent network history. Each batch contains an ordered group of actions, a proof of their state changes, and the commitment anchored on chain. Results are newest first unless you change `sortBy` or `order`.  `status` tells you how far along a batch is:  ``` building → requesting → proving → storing → anchoring → nfts → settling → finalized ```  `finalized` means the challenge window has closed and the batch is settled. `failed` is terminal; every other value means processing is still under way, which is normal for a recent batch.  To find the batch behind one of your actions, look the action up in `GET /public/action-logs` and follow the batch it names, or filter here with `action_id`.  Open to everyone. No sign-in needed. 
      * List batches
      */
     async listBatchesRaw(requestParameters: ListBatchesRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListBatchesOut>> {
@@ -504,7 +675,7 @@ export class SequencerApi extends runtime.BaseAPI {
     }
 
     /**
-     * Batches, newest first. A batch is a group of actions that were put in order, proved and written to the blockchain together — the step that makes them permanent.  `status` tells you how far along a batch is:  ``` building → requesting → proving → storing → anchoring → nfts → settling → finalized ```  `finalized` means it is on chain and settled for good. `failed` means it could not be completed. Anything in between is still under way, which is normal for a recent batch.  To find the batch behind one of your actions, look the action up in `GET /ebus/action-logs` and follow the batch it names.  Open to everyone. No sign-in needed. 
+     * Browse the batches that turn individual actions into permanent network history. Each batch contains an ordered group of actions, a proof of their state changes, and the commitment anchored on chain. Results are newest first unless you change `sortBy` or `order`.  `status` tells you how far along a batch is:  ``` building → requesting → proving → storing → anchoring → nfts → settling → finalized ```  `finalized` means the challenge window has closed and the batch is settled. `failed` is terminal; every other value means processing is still under way, which is normal for a recent batch.  To find the batch behind one of your actions, look the action up in `GET /public/action-logs` and follow the batch it names, or filter here with `action_id`.  Open to everyone. No sign-in needed. 
      * List batches
      */
     async listBatches(requestParameters: ListBatchesRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListBatchesOut> {
@@ -520,10 +691,6 @@ export class SequencerApi extends runtime.BaseAPI {
 
         if (requestParameters['id'] != null) {
             queryParameters['id'] = requestParameters['id'];
-        }
-
-        if (requestParameters['orgId'] != null) {
-            queryParameters['org_id'] = requestParameters['orgId'];
         }
 
         if (requestParameters['autocomplete'] != null) {
@@ -552,10 +719,6 @@ export class SequencerApi extends runtime.BaseAPI {
 
         if (requestParameters['status'] != null) {
             queryParameters['status'] = requestParameters['status'];
-        }
-
-        if (requestParameters['signer'] != null) {
-            queryParameters['signer'] = requestParameters['signer'];
         }
 
         if (requestParameters['whenCreated$gt'] != null) {
@@ -593,7 +756,7 @@ export class SequencerApi extends runtime.BaseAPI {
         const headerParameters: runtime.HTTPHeaders = {};
 
 
-        let urlPath = `/checkpoints`;
+        let urlPath = `/public/checkpoints`;
 
         return {
             path: urlPath,
@@ -604,7 +767,7 @@ export class SequencerApi extends runtime.BaseAPI {
     }
 
     /**
-     * Checkpoints, newest first. A checkpoint stands in for a long run of settled batches at once, so that checking a stretch of history does not mean walking through every batch inside it.  Each one names the first and last batch it covers, so the range it speaks for is `start_sequence` to `end_sequence`.  A checkpoint goes through the same stages as a batch, without the on-chain collectible and settlement steps:  ``` building → requesting → proving → storing → anchoring → finalized ```  Open to everyone. No sign-in needed. 
+     * Browse checkpoints, newest first unless you change `sortBy` or `order`. A checkpoint commits to a consecutive range of finalized batches, making it possible to verify a long stretch of history without processing every batch individually.  Each one names the first and last batch it covers, so the range it speaks for is `start_sequence` to `end_sequence`.  A checkpoint goes through the same proof-and-anchor stages as a batch, without the NFT and challenge-window settlement stages:  ``` building → requesting → proving → storing → anchoring → finalized ```  `finalized` means the checkpoint commitment has been anchored. `failed` is terminal; every other value means the checkpoint is still being processed.  Open to everyone. No sign-in needed. 
      * List checkpoints
      */
     async listCheckpointsRaw(requestParameters: ListCheckpointsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ListCheckpointsOut>> {
@@ -615,7 +778,7 @@ export class SequencerApi extends runtime.BaseAPI {
     }
 
     /**
-     * Checkpoints, newest first. A checkpoint stands in for a long run of settled batches at once, so that checking a stretch of history does not mean walking through every batch inside it.  Each one names the first and last batch it covers, so the range it speaks for is `start_sequence` to `end_sequence`.  A checkpoint goes through the same stages as a batch, without the on-chain collectible and settlement steps:  ``` building → requesting → proving → storing → anchoring → finalized ```  Open to everyone. No sign-in needed. 
+     * Browse checkpoints, newest first unless you change `sortBy` or `order`. A checkpoint commits to a consecutive range of finalized batches, making it possible to verify a long stretch of history without processing every batch individually.  Each one names the first and last batch it covers, so the range it speaks for is `start_sequence` to `end_sequence`.  A checkpoint goes through the same proof-and-anchor stages as a batch, without the NFT and challenge-window settlement stages:  ``` building → requesting → proving → storing → anchoring → finalized ```  `finalized` means the checkpoint commitment has been anchored. `failed` is terminal; every other value means the checkpoint is still being processed.  Open to everyone. No sign-in needed. 
      * List checkpoints
      */
     async listCheckpoints(requestParameters: ListCheckpointsRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListCheckpointsOut> {
@@ -625,6 +788,50 @@ export class SequencerApi extends runtime.BaseAPI {
 
 }
 
+/**
+ * @export
+ */
+export const GetPublicBatchStatsIncludeEnum = {
+    Breakdown: 'breakdown',
+    Series: 'series',
+} as const;
+export type GetPublicBatchStatsIncludeEnum = typeof GetPublicBatchStatsIncludeEnum[keyof typeof GetPublicBatchStatsIncludeEnum];
+/**
+ * @export
+ */
+export const GetPublicBatchStatsIntervalEnum = {
+    Hour: 'hour',
+    Day: 'day',
+    Week: 'week',
+    Month: 'month',
+    Year: 'year',
+} as const;
+export type GetPublicBatchStatsIntervalEnum = typeof GetPublicBatchStatsIntervalEnum[keyof typeof GetPublicBatchStatsIntervalEnum];
+/**
+ * @export
+ */
+export const GetPublicBatchStatsGroupByEnum = {
+    Status: 'status',
+} as const;
+export type GetPublicBatchStatsGroupByEnum = typeof GetPublicBatchStatsGroupByEnum[keyof typeof GetPublicBatchStatsGroupByEnum];
+/**
+ * @export
+ */
+export const GetPublicCheckpointStatsIncludeEnum = {
+    Series: 'series',
+} as const;
+export type GetPublicCheckpointStatsIncludeEnum = typeof GetPublicCheckpointStatsIncludeEnum[keyof typeof GetPublicCheckpointStatsIncludeEnum];
+/**
+ * @export
+ */
+export const GetPublicCheckpointStatsIntervalEnum = {
+    Hour: 'hour',
+    Day: 'day',
+    Week: 'week',
+    Month: 'month',
+    Year: 'year',
+} as const;
+export type GetPublicCheckpointStatsIntervalEnum = typeof GetPublicCheckpointStatsIntervalEnum[keyof typeof GetPublicCheckpointStatsIntervalEnum];
 /**
  * @export
  */

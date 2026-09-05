@@ -30,7 +30,7 @@ import {
 } from './Asset';
 
 /**
- * A new account to create.
+ * A new account to create with an email address and password.
  * @export
  * @interface WalletCreate
  */
@@ -42,7 +42,7 @@ export interface WalletCreate {
      */
     organizationId?: string;
     /**
-     * What they would like to be called. Letters and numbers only.
+     * What they would like to be called, including spaces and punctuation.
      */
     nickname?: string;
     /**
@@ -65,11 +65,12 @@ export interface WalletCreate {
      */
     avatar?: Asset;
     /**
-     * The password they choose. It is never returned by anything, so it cannot
-     * be read back — only replaced.
+     * The password they choose. It must contain at least 8 characters and fit
+     * within bcrypt's 72-byte input limit. It is never returned by anything, so
+     * it cannot be read back — only replaced.
      * 
      */
-    password?: string;
+    password: string;
 }
 
 
@@ -78,6 +79,7 @@ export interface WalletCreate {
  * Check if a given object implements the WalletCreate interface.
  */
 export function instanceOfWalletCreate(value: object): value is WalletCreate {
+    if (!('password' in value) || value['password'] === undefined) return false;
     return true;
 }
 
@@ -97,7 +99,7 @@ export function WalletCreateFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'phoneNumber': json['phone_number'] == null ? undefined : json['phone_number'],
         'language': json['language'] == null ? undefined : LanguageFromJSON(json['language']),
         'avatar': json['avatar'] == null ? undefined : AssetFromJSON(json['avatar']),
-        'password': json['password'] == null ? undefined : json['password'],
+        'password': json['password'],
     };
 }
 

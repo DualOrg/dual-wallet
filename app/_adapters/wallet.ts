@@ -10,6 +10,7 @@ export function toViewerWallet(wallet: Wallet): ViewerWallet {
     language: wallet.language,
     fqdn: wallet.fqdn,
     activated: wallet.activated,
+    emailVerified: wallet.emailVerified,
     disabled: wallet.disabled,
     account: {
       address: wallet.account.address,

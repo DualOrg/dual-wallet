@@ -39,6 +39,7 @@ const walletRecord = (activated: boolean) => ({
   id: "wallet-id",
   email: "session@example.com",
   activated,
+  emailVerified: activated,
   account: { controller: {}, smartAccount: {} },
   whenCreated: new Date(),
   whenModified: new Date(),
@@ -135,13 +136,13 @@ describe("the renewed session", () => {
     });
   });
 
-  it("reads the session once and reports the activated wallet", async () => {
+  it("reads the session once and reports the verified wallet", async () => {
     const response = await post({ code: "abc123" });
 
     expect(currentWallet).toHaveBeenCalledTimes(1);
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
-      wallet: { activated: true },
+      wallet: { activated: true, emailVerified: true },
     });
   });
 

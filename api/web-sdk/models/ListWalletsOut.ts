@@ -14,126 +14,67 @@
  */
 
 import { mapValues } from '../runtime';
-import type { Asset } from './Asset';
+import type { Wallet } from './Wallet';
 import {
-    AssetFromJSON,
-    AssetFromJSONTyped,
-    AssetToJSON,
-    AssetToJSONTyped,
-} from './Asset';
+    WalletFromJSON,
+    WalletFromJSONTyped,
+    WalletToJSON,
+    WalletToJSONTyped,
+} from './Wallet';
 
 /**
- * A support message. `title`, `content` and `assets` are what you send;
- * everything else is set by the server.
- * 
+ * One page of the organization's end-user accounts.
  * @export
- * @interface SupportMessage
+ * @interface ListWalletsOut
  */
-export interface SupportMessage {
+export interface ListWalletsOut {
     /**
-     * Identifier of the message.
+     * The accounts on this page.
      */
-    readonly id: string;
+    wallets: Array<Wallet>;
     /**
-     * The organization the sender was working in. Taken from your credential,
-     * never from the request body.
+     * Cursor for the next page. Absent or empty on the last page.
      * 
      */
-    readonly orgId?: string;
-    /**
-     * The wallet that sent the message. Taken from your credential, never from
-     * the request body.
-     * 
-     */
-    readonly walletId: string;
-    /**
-     * Email of the wallet that sent the message, copied when it was sent. It is
-     * a snapshot, so it still says where to reply even if the account later
-     * changes address.
-     * 
-     */
-    readonly email?: string;
-    /**
-     * Name of the organization the sender was working in, copied when the
-     * message was sent.
-     * 
-     */
-    readonly orgName?: string;
-    /**
-     * Subject of the message.
-     */
-    title?: string;
-    /**
-     * The message itself. Include the `x-request-id` of any request you are
-     * asking about.
-     * 
-     */
-    content: string;
-    /**
-     * Files to attach. Upload them with `POST /assets` first and reference them
-     * here.
-     * 
-     */
-    assets?: Array<Asset>;
-    /**
-     * When the message was last changed.
-     */
-    readonly whenModified: Date;
-    /**
-     * When the message was sent.
-     */
-    readonly whenCreated: Date;
+    next?: string;
 }
 
 /**
- * Check if a given object implements the SupportMessage interface.
+ * Check if a given object implements the ListWalletsOut interface.
  */
-export function instanceOfSupportMessage(value: object): value is SupportMessage {
-    if (!('id' in value) || value['id'] === undefined) return false;
-    if ((!('walletId' in (value as Record<string, any>)) && !('wallet_id' in (value as Record<string, any>))) || ((value as Record<string, any>)['walletId'] === undefined && (value as Record<string, any>)['wallet_id'] === undefined)) return false;
-    if (!('content' in value) || value['content'] === undefined) return false;
-    if ((!('whenModified' in (value as Record<string, any>)) && !('when_modified' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenModified'] === undefined && (value as Record<string, any>)['when_modified'] === undefined)) return false;
-    if ((!('whenCreated' in (value as Record<string, any>)) && !('when_created' in (value as Record<string, any>))) || ((value as Record<string, any>)['whenCreated'] === undefined && (value as Record<string, any>)['when_created'] === undefined)) return false;
+export function instanceOfListWalletsOut(value: object): value is ListWalletsOut {
+    if (!('wallets' in value) || value['wallets'] === undefined) return false;
     return true;
 }
 
-export function SupportMessageFromJSON(json: any): SupportMessage {
-    return SupportMessageFromJSONTyped(json, false);
+export function ListWalletsOutFromJSON(json: any): ListWalletsOut {
+    return ListWalletsOutFromJSONTyped(json, false);
 }
 
-export function SupportMessageFromJSONTyped(json: any, ignoreDiscriminator: boolean): SupportMessage {
+export function ListWalletsOutFromJSONTyped(json: any, ignoreDiscriminator: boolean): ListWalletsOut {
     if (json == null) {
         return json;
     }
     return {
         
-        'id': json['id'],
-        'orgId': json['org_id'] == null ? undefined : json['org_id'],
-        'walletId': json['wallet_id'],
-        'email': json['email'] == null ? undefined : json['email'],
-        'orgName': json['org_name'] == null ? undefined : json['org_name'],
-        'title': json['title'] == null ? undefined : json['title'],
-        'content': json['content'],
-        'assets': json['assets'] == null ? undefined : ((json['assets'] as Array<any>).map(AssetFromJSON)),
-        'whenModified': (json['when_modified'] == null ? json['when_modified'] : new Date(json['when_modified'])),
-        'whenCreated': (json['when_created'] == null ? json['when_created'] : new Date(json['when_created'])),
+        'wallets': ((json['wallets'] as Array<any>).map(WalletFromJSON)),
+        'next': json['next'] == null ? undefined : json['next'],
     };
 }
 
-export function SupportMessageToJSON(json: any): SupportMessage {
-    return SupportMessageToJSONTyped(json, false);
+export function ListWalletsOutToJSON(json: any): ListWalletsOut {
+    return ListWalletsOutToJSONTyped(json, false);
 }
 
-export function SupportMessageToJSONTyped(value?: Omit<SupportMessage, 'id'|'orgId'|'walletId'|'email'|'orgName'|'whenModified'|'whenCreated'> | null, ignoreDiscriminator: boolean = false): any {
+export function ListWalletsOutToJSONTyped(value?: ListWalletsOut | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
 
     return {
         
-        'title': value['title'],
-        'content': value['content'],
-        'assets': value['assets'] == null ? undefined : ((value['assets'] as Array<any>).map(AssetToJSON)),
+        'wallets': ((value['wallets'] as Array<any>).map(WalletToJSON)),
+        'next': value['next'],
     };
 }
 

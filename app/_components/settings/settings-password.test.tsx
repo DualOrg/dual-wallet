@@ -100,6 +100,21 @@ describe("the settings password card", () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
+  it("does not send a password beyond bcrypt's byte limit", async () => {
+    renderSettings();
+    type("currentPassword", "the old one");
+    type("newPassword", "🙂".repeat(19));
+    type("confirmPassword", "🙂".repeat(19));
+    fireEvent.click(screen.getByRole("button", { name: "changePassword" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(
+        "passwordTooLong",
+      ),
+    );
+    expect(changePassword).not.toHaveBeenCalled();
+  });
+
   // A refused change must leave the user signed in and on the page, which is
   // the whole reason the API answers a wrong current password with a 400.
   it("keeps the session when the API refuses the change", async () => {
