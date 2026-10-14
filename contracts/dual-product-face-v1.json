@@ -1,0 +1,116 @@
+{
+  "contract": "dual-product-face-v1",
+  "revision": 1,
+  "status": "first_source_delivery",
+  "summary": "Full-size, first-party reviewed product face inside the authenticated Dual wallet. Uses the existing dual.face.bridge v1 envelope, handshake and limits; adds a programme ('application') context variant and named capability modules. No second postMessage protocol, no generic fetch/proxy/token operation.",
+  "protocol": {
+    "name": "dual.face.bridge",
+    "version": 1,
+    "messageTypes": ["dual.face.bootstrap", "dual.face.ready", "dual.face.initialize", "dual.face.request", "dual.face.response", "dual.face.event"],
+    "limits": { "maxRequestBytes": 65536, "maxResponseBytes": 524288, "readyTimeoutMs": 5000, "requestsPerMinute": 30, "maxRequestIds": 2048 },
+    "contextVariants": { "card": "existing v1, unchanged", "detail": "existing v1, unchanged", "application": "new; sent ONLY to a product-application binding; object_id and object are null" }
+  },
+  "applicationBinding": {
+    "source": "wallet server-only registry PRODUCT_FACE_APPLICATIONS (JSON array); resolved by an authenticated wallet BFF route, never from face, object custom data or URL",
+    "fields": {
+      "slug": "wallet route segment, ^[a-z0-9][a-z0-9-]{1,62}$",
+      "applicationId": "^[a-z0-9][a-z0-9._-]{1,127}$",
+      "version": "exact semver (pinned artifact version)",
+      "publisher": "^[a-z0-9][a-z0-9._-]{1,63}$",
+      "programmeId": "^[a-z0-9][a-z0-9._-]{1,63}$",
+      "programmeName": "display name",
+      "origin": "exact https origin (http only for loopback outside production)",
+      "path": "/face/<applicationId>/<version>/ (exact versioned prefix, trailing slash)",
+      "artifactHash": "sha256:<64 hex> of the emitted artifact manifest",
+      "templateIds": "Dual template ids (24 hex) that belong to the programme",
+      "projectionFields": "public custom fields the host may project to the face, subset of [recordId,title,serialNumber,model,manufacturer,state]"
+    },
+    "readyIdentity": "dual.face.ready.application must be {id, version, publisher, programme, artifact, contract:'dual-product-face-v1'} and EVERY value must equal the binding exactly (version exact, not just major); mismatch closes the channel"
+  },
+  "initializeContext": {
+    "variant": "application",
+    "object_id": null,
+    "public": false,
+    "keys": ["object_id", "variant", "public", "locale", "theme", "object", "config", "actions", "capabilities", "application", "programme", "task"],
+    "application": { "id": "", "version": "", "publisher": "" },
+    "programme": { "id": "", "name": "" },
+    "task": { "path": "validated task path or '/'" },
+    "excludes": ["wallet id", "wallet address", "tokens", "cookies", "assertions", "signatures", "raw DTOs"]
+  },
+  "taskPath": {
+    "pattern": "^/(?:[a-z0-9][a-z0-9-]{0,47}(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,79}){0,3})?$",
+    "maxLength": 200,
+    "walletUrl": "/products/<slug><taskPath>",
+    "rule": "a path segment that names a product is a hint only; the host re-selects through programme.product.select"
+  },
+  "operations": {
+    "bridge.ping": { "payload": {}, "result": { "pong": true } },
+    "programme.context.read": { "payload": {}, "result": { "application": {}, "programme": {}, "selected": "null | {context_id, object_id}", "signed_in": true } },
+    "programme.products.list": { "payload": { "next?": "opaque cursor from previous result" }, "result": { "products": "[ProductProjection]", "next": "string|null" }, "authority": "wallet BFF -> api-v3 listObjects for the session wallet, filtered to binding.templateIds; server authorises person and resource" },
+    "programme.product.select": { "payload": { "object_id": "24 hex" }, "result": { "context_id": "random per selection", "product": "ProductProjection" }, "authority": "host re-reads getObjectById; must be owned by the session wallet AND in binding.templateIds; otherwise not_in_programme / not_owned; replaces any previous selection and invalidates its context_id" },
+    "programme.product.read": { "payload": { "context_id": "" }, "result": { "context_id": "", "product": "ProductProjection" } },
+    "programme.product.attributes.read": { "payload": { "context_id": "" }, "result": { "context_id": "", "attributes": "[{key,value}] minimized", "next": null } },
+    "programme.product.history.read": { "payload": { "context_id": "" }, "result": { "context_id": "", "entries": "[{action_id, action, status, when}] no params/signatures/fees-raw" } },
+    "navigation.task.update": { "payload": { "path": "taskPath", "title?": "<=80 chars plain text" }, "result": { "path": "" }, "effect": "host mirrors to wallet URL (push for new task, replace when same); Back/Forward and reload restore it" },
+    "programme.registration.authorize": {
+      "payload": { "object_id": "24 hex (Dual object of the exact unit, resolved by the runtime from handover evidence)", "operation_id": "^[a-z0-9-]{8,64}$ (face-generated idempotency id)" },
+      "result": { "status": "authorized", "operation_id": "", "assertion": "one-time wallet assertion (scope register, bound to op + object + audience)" },
+      "authority": "host reads the PUBLIC object projection, requires template in binding.templateIds and owner != session wallet; shows NATIVE confirmation with canonical facts (name, serial/model from public projection, programme, publisher, the user's own wallet); persists the operation OUTSIDE the iframe BEFORE issuing the assertion; never accepts a recipient/wallet from the face",
+      "errors": ["user_cancelled (before submission: nothing sent)", "operation_already_submitted (no re-mint for an issued operation)", "already_registered_to_you", "not_in_programme", "action_in_progress", "assertion_unprovisioned"]
+    },
+    "programme.session.assert": { "payload": { "scope": "read" }, "result": { "assertion": "one-time wallet assertion (scope read)" }, "authority": "for runtime private reads and read-only reconciliation; never authorises a write" },
+    "programme.operation.status": { "payload": { "operation_id": "" }, "result": { "operation_id": "", "status": "RegistrationStatus", "object_id": "", "readback": "host canonical readback: owner == session wallet" }, "authority": "read-only; reconciles from the host journal + api-v3 readback; never retries or re-mints" }
+  },
+  "events": {
+    "programme.context.changed": { "payload": { "context_id": "string|null", "reason": "selected|cleared|account_changed" } },
+    "navigation.task.restore": { "payload": { "path": "taskPath" } },
+    "session.ended": { "payload": { "reason": "logout|expired|account_changed" }, "rule": "host then closes the channel and removes the frame; face must drop all private state" },
+    "operation.updated": { "payload": { "operation_id": "", "status": "RegistrationStatus" } }
+  },
+  "productProjection": { "object_id": "", "template_id": "", "name": "", "image_url": "https only|null", "fields": "subset of binding.projectionFields", "owned_by_you": true, "when_modified": "ISO" },
+  "registrationStatus": ["not_submitted", "authorized", "pending", "review_required", "already_registered", "registered", "refused", "recovery_required", "outcome_unknown"],
+  "registrationRules": [
+    "Register product is the reviewed Passport first-owner handoff: owner-link grant (handover evidence) + request_transfer with the requester's own verified wallet + issuer-signed Dual transfer + exact readback.",
+    "NEVER map Register product to the Dual standard action claim_ownership (that claims an object ON CHAIN as a collectible and is not holder ownership). Neither host nor face may request claim_ownership for registration.",
+    "A serial number, login, bookmark, object id or task link is not ownership. 'Registered' requires the runtime's verified transfer readback AND the host's api-v3 readback owner == session wallet.",
+    "Cancellation before the assertion is issued = not_submitted. After issue, a lost frame/confirmation is outcome_unknown until read-only reconciliation; the original operation is retained; no blind retry, remint or replacement.",
+    "Unknown counters are null, never inferred zero."
+  ],
+  "walletAssertion": {
+    "format": "compact JWS, alg EdDSA (Ed25519), typ dual-face-assertion+jwt",
+    "issuer": "wallet BFF only (server-only signing key FACE_ASSERTION_SIGNING_KEY + FACE_ASSERTION_KEY_ID); absent key => 503 face_assertion_unprovisioned (fail closed)",
+    "claims": ["iss (wallet tenant origin)", "aud (<applicationId>@<face origin>)", "app_version", "publisher", "programme", "sub (wallet id)", "wallet_address (session wallet account address read server-side)", "scope (read|register)", "op_id (register only)", "object_id (register only)", "sid_hash", "iat", "exp (<= iat+60)", "jti"],
+    "verifier": "Studio runtime only; keys from TIG_PRODUCT_FACE_WALLET_ASSERTION_KEYS (JSON {kid: spki PEM}) + TIG_PRODUCT_FACE_WALLET_ISSUERS; jti consumed atomically once; any mismatch refuses with zero writes",
+    "gap": "G1: no canonical Dual/api-v3 launch or identity contract exists for a wallet person to reach a Studio runtime. This assertion is the secure seam; production requires provisioning both keys. It is not a wallet token, refresh cookie or role session."
+  },
+  "runtime": {
+    "artifactPath": "/face/<applicationId>/<version>/{index.html,face.js,face.css,manifest.json,content.json}",
+    "framing": "CSP frame-ancestors = exact configured wallet origins (TIG_PRODUCT_FACE_WALLET_ORIGINS); no X-Frame-Options DENY on this route only; every other route unchanged",
+    "endpoints": {
+      "POST /api/product-face/v1/evidence": { "body": { "grant": "owner-link grant (or full owner link)" }, "result": { "status": "evidence_accepted", "evidence": "opaque in-memory handle, <=15 min", "units": "[{recordId, objectId, title, serialNumber, model, registration}]" } },
+      "POST /api/product-face/v1/registrations": { "body": { "evidence": "", "recordId": "", "operationId": "", "assertion": "register scope" }, "result": { "status": "RegistrationStatus", "operationId": "", "objectId": "", "actionId": "string|null", "writeOutcome": "", "accounting": "{providerWritesExecuted, dualWritesExecuted, readbacksExecuted, unknownWriteOutcomes} integer or null" } },
+      "POST /api/product-face/v1/registrations/status": { "body": { "operationId": "", "assertion": "read scope" }, "result": "read-only reconcile of the durable intent/outbox; same shape" }
+    }
+  },
+  "brandConfig": {
+    "schema": "tig-product-face-brand-v1",
+    "controls": ["typography", "colour", "imagery", "content", "layout", "navigation"],
+    "locked": ["semantic state colours and labels (registered/pending/review/unknown/refused)", "host-owned confirmations", "focus/contrast minimums"],
+    "references": ["morrow-home (Arc grinder) - reference brand", "tidewell - second brand"]
+  },
+  "localHarness": {
+    "walletApp": "http://demo.localhost:3000 (actual wallet, next dev)",
+    "walletFakeDual": "http://127.0.0.1:4010 (wallet e2e/mock-api.mjs, labelled local fake)",
+    "walletE2eFaceFixture": "http://localhost:4101 (pinned emitted Studio artifact + labelled fake runtime, wallet e2e only)",
+    "studioFaceRuntime": "http://localhost:4180 (actual Studio runtime + emitted artifact, scripts/product-face-harness.mjs)",
+    "studioFakeDual": "http://127.0.0.1:4011 (Studio local fake Dual, labelled; serves api-v3 shaped GET /objects/:id, GET /objects?template_id=&owner=, GET /ebus/action-logs?object_id= for programme objects)",
+    "integratedMode": "wallet mock-api forwards programme-template object reads to MOCK_PROGRAMME_DUAL_URL=http://127.0.0.1:4011 so both sides read one fake Dual state"
+  },
+  "knownGaps": {
+    "G1": "wallet->runtime person identity/launch contract (assertion seam above; provisioning required)",
+    "G2": "generated apps send frame-ancestors 'none' and SameSite=Strict cookies; the face uses its own versioned framable route and an in-memory face handle, not role-session cookies",
+    "G3": "Claims pack has no info-request or quote approve/decline actions (customer: open_claim, submit_evidence, appeal_claim only)",
+    "G4": "Passport model content has no setup/troubleshooting/manual fields; supplied as versioned face content",
+    "G5": "no backend face-application registry; wallet uses a deployment-configured server-only registry"
+  }
+}
