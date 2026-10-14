@@ -30,7 +30,12 @@ export interface TrustedReadRequest {
 }
 
 /** sha256 of the canonical runtime request body, excluding the assertion. */
-export function runtimeRequestHash(request: TrustedReadRequest) {
+export function runtimeRequestHash(request: {
+  operation: string;
+  operationId: string;
+  target: AssertionTarget;
+  input: Record<string, unknown>;
+}) {
   return sha256Hash(
     canonicalJson({
       operation: request.operation,
@@ -222,6 +227,103 @@ export async function reserveSettle(
         : code(body.status),
     reason: code(body.reason),
     reached: true,
+  };
+}
+
+export interface TransferRuntimeRequest {
+  operation:
+    | "transfer.propose"
+    | "transfer.reserve"
+    | "transfer.verify"
+    | "transfer.status";
+  operationId: string;
+  target: AssertionTarget;
+  input: Record<string, unknown>;
+}
+
+export type TransferRuntimeResult =
+  | { ok: true; status: number; body: Record<string, unknown> }
+  | {
+      ok: false;
+      code: "runtime_unavailable" | "runtime_refused";
+      status?: number;
+      /** The runtime's plain refusal codes (status, reason). */
+      reason?: string;
+      detail?: string;
+      /** The runtime's answer, when readable (never shown to the face). */
+      body?: Record<string, unknown>;
+    };
+
+/**
+ * G8 (contract r16 transfer.sign): one of the holder's host's own
+ * server-to-server transfer calls to the bound runtime. Fixed endpoint, four
+ * allowlisted operations, bounded response, timeout, no cookies and no
+ * redirects. A 202 (an outcome not yet known) is an answer, not a failure.
+ */
+export async function transferRuntimeCall(
+  binding: Pick<ProductFaceBinding, "origin" | "applicationId">,
+  request: TransferRuntimeRequest,
+  assertion: string,
+): Promise<TransferRuntimeResult> {
+  if (
+    ![
+      "transfer.propose",
+      "transfer.reserve",
+      "transfer.verify",
+      "transfer.status",
+    ].includes(request.operation)
+  ) {
+    return { ok: false, code: "runtime_refused" };
+  }
+  let response: Awaited<ReturnType<typeof fetchBounded>>;
+  try {
+    response = await fetchBounded(
+      `${binding.origin}${RUNTIME_ENDPOINT}`,
+      MAX_RESPONSE_BYTES,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "x-tig-product-face-application": binding.applicationId,
+        },
+        body: JSON.stringify({
+          operation: request.operation,
+          operationId: request.operationId,
+          target: request.target,
+          input: request.input,
+          assertion,
+        }),
+      },
+      TIMEOUT_MS,
+    );
+  } catch {
+    return { ok: false, code: "runtime_unavailable" };
+  }
+  if (!response) return { ok: false, code: "runtime_unavailable" };
+  let body: Record<string, unknown> | undefined;
+  try {
+    const parsed: unknown = JSON.parse(response.body.toString("utf8"));
+    if (record(parsed)) body = parsed;
+  } catch {
+    body = undefined;
+  }
+  const plainCode = (value: unknown) =>
+    typeof value === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(value)
+      ? value
+      : undefined;
+  if ((response.status === 200 || response.status === 202) && body) {
+    return { ok: true, status: response.status, body };
+  }
+  const reason = plainCode(body?.status);
+  const detail = plainCode(body?.reason);
+  return {
+    ok: false,
+    code: response.status >= 500 ? "runtime_unavailable" : "runtime_refused",
+    status: response.status,
+    ...(reason ? { reason } : {}),
+    ...(detail ? { detail } : {}),
+    ...(body ? { body } : {}),
   };
 }
 

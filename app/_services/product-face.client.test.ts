@@ -177,7 +177,10 @@ describe("launch-local handover tickets (contract r14)", () => {
     );
     expect(context).not.toHaveProperty("handover");
     expect(takeFaceHandoverTicket("launch-b")).toBeUndefined();
-    expect(takeFaceHandoverTicket("launch-a")).toBe(TICKET);
+    expect(takeFaceHandoverTicket("launch-a")).toEqual({
+      kind: "handover",
+      ticket: TICKET,
+    });
     expect(takeFaceHandoverTicket("launch-a")).toBeUndefined();
   });
 

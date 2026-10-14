@@ -429,6 +429,71 @@ describe("face handover entry (contract r14)", () => {
 
 // Account isolation is enforced by the server: the ticket is sealed with the
 // session that may take it, never left to the client's best-effort DELETE.
+describe("transfer acceptance through the same entry (G8, contract r16)", () => {
+  const accept = (
+    browser: Browser,
+    ticket: unknown = TICKET,
+    kind: unknown = "accept",
+  ) =>
+    browser.call(handoverPOST, `/api/faces/${SLUG}/handover`, {
+      method: "POST",
+      body: { ticket, kind },
+    });
+
+  it("stores an acceptance ticket and answers the accept task; only the accept task's context read hands it over, as acceptance", async () => {
+    const browser = new Browser();
+    const stored = await accept(browser);
+    expect(stored).toMatchObject({
+      status: 200,
+      body: { next: "/products/morrow-home/accept" },
+    });
+    expect(stored.cookie?.value).not.toContain(TICKET);
+    browser.signIn();
+    // Never on the register task, and never as a handover.
+    const register = await browser.context("/register");
+    expect(register.body).not.toHaveProperty("handover");
+    expect(register.body).not.toHaveProperty("acceptance");
+    const read = await browser.context("/accept");
+    expect(read.body.acceptance).toEqual({ ticket: TICKET });
+    expect(read.body).not.toHaveProperty("handover");
+    expect(read.cookie?.value).toBe("");
+    expect((await browser.context("/accept")).body).not.toHaveProperty(
+      "acceptance",
+    );
+  });
+
+  it("a registration handover is never handed over on the accept task", async () => {
+    const browser = new Browser().signIn();
+    await browser.handover();
+    expect((await browser.context("/accept")).body).not.toHaveProperty(
+      "acceptance",
+    );
+    expect((await browser.context("/register")).body.handover).toEqual({
+      ticket: TICKET,
+    });
+  });
+
+  it("refuses another kind or extra keys and stores nothing", async () => {
+    const browser = new Browser();
+    for (const kind of ["transfer", "", 1]) {
+      const refused = await accept(browser, TICKET, kind);
+      expect(refused.status).toBe(400);
+      expect(refused.cookie).toBeUndefined();
+    }
+  });
+
+  it("stays bound to the account that signs in: another account's session is denied", async () => {
+    const browser = new Browser();
+    await accept(browser);
+    await browser.login("wallet-a");
+    const other = new Browser();
+    other.cookies = new Map(browser.cookies);
+    await other.login("wallet-b");
+    const read = await other.context("/accept");
+    expect(read.body).not.toHaveProperty("acceptance");
+  });
+});
+
 describe("face handover account isolation (contract r14)", () => {
   it("signed-in A stores it; B's session in the same browser, with A's client deletion lost, is denied and the cookie cleared", async () => {
     getWallet.mockResolvedValue(walletDto("wallet-a"));

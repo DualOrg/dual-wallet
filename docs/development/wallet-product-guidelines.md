@@ -31,6 +31,10 @@ activity, settings, sharing, or external-face behavior.
   works signed-out. It strips a face handover ticket from its fragment, hands
   it to the BFF only for a programme whose binding enables handover, and
   leaves for `/products/<slug>/register`. It is never a sign-in return path.
+  A G8 transfer acceptance (`#accept=<ticket>`, contract r16) uses the same
+  entry, a kind in the same sealed cookie, and leaves for
+  `/products/<slug>/accept`, where the context read hands it to the face as
+  `acceptance: {ticket}`.
 - A signed-out visit to a protected route returns there after sign-in only
   through a validated same-origin relative `next` path to a protected route.
 - Public object viewing is owned by the sibling `../viewer` application. This

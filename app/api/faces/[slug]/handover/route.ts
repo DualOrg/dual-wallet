@@ -1,6 +1,11 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { isFaceHandoverTicket, writeFaceHandover } from "@/api/face-handover";
+import {
+  FACE_HANDOVER_TASKS,
+  isFaceHandoverTicket,
+  writeFaceHandover,
+  type FaceHandoverKind,
+} from "@/api/face-handover";
 import { productFaceBinding } from "@/api/product-face-registry";
 import { readJsonRecord, validRequestOrigin } from "@/api/request";
 import {
@@ -44,19 +49,31 @@ export async function POST(request: NextRequest, { params }: Params) {
   const binding = productFaceBinding(slug);
   if (!binding?.handover.enabled) return refuse("handover_unavailable", 404);
   const body = await readJsonRecord(request);
+  // {ticket} is a registration handover (r14); {ticket, kind: "accept"} a G8
+  // transfer acceptance (r16), redeemed on the accept task.
+  const keys = body ? Object.keys(body).sort().join(",") : "";
   if (
     !body ||
-    Object.keys(body).length !== 1 ||
+    (keys !== "ticket" &&
+      !(keys === "kind,ticket" && body.kind === "accept")) ||
     !isFaceHandoverTicket(body.ticket)
   ) {
     return refuse("invalid_request", 400);
   }
+  const kind: FaceHandoverKind = body.kind === "accept" ? "accept" : "handover";
   const response = NextResponse.json(
-    { next: `/products/${binding.slug}/register` },
+    { next: `/products/${binding.slug}${FACE_HANDOVER_TASKS[kind]}` },
     { headers: NO_STORE },
   );
   if (!readSession(request)) {
-    writeFaceHandover(response, binding.slug, body.ticket, null);
+    writeFaceHandover(
+      response,
+      binding.slug,
+      body.ticket,
+      null,
+      Date.now(),
+      kind,
+    );
     return response;
   }
   const session = await currentWallet(request);
@@ -66,15 +83,26 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (session.status === "expired") {
     // The session is over: this is a signed-out arrival.
     clearSessionCookie(response);
-    writeFaceHandover(response, binding.slug, body.ticket, null);
+    writeFaceHandover(
+      response,
+      binding.slug,
+      body.ticket,
+      null,
+      Date.now(),
+      kind,
+    );
     return response;
   }
   // Keep a renewed session (and a session id given to an older cookie).
   const state = withSessionId(session.state);
   writeSession(response, state);
-  writeFaceHandover(response, binding.slug, body.ticket, {
-    walletId: session.wallet.id,
-    sidHash: sessionIdHash(state)!,
-  });
+  writeFaceHandover(
+    response,
+    binding.slug,
+    body.ticket,
+    { walletId: session.wallet.id, sidHash: sessionIdHash(state)! },
+    Date.now(),
+    kind,
+  );
   return response;
 }

@@ -271,7 +271,7 @@ function login(id = PROGRAMME.walletId) {
   };
 }
 
-function actionLog(id, name, objectId, account) {
+function actionLog(id, name, objectId, account, changeType = "update") {
   const when = new Date().toISOString();
   return {
     id,
@@ -290,7 +290,7 @@ function actionLog(id, name, objectId, account) {
         prev_integrity_hash: "0xprev",
         integrity_hash: "0xnext",
         state_change_id: `${id}-change`,
-        change_type: "update",
+        change_type: changeType,
       },
     ],
     status: "completed",
@@ -548,6 +548,35 @@ async function handleProgramme(request, response, url) {
   if (method === "POST" && path === "/ebus/execute" && authorized(request)) {
     const body = await readBody(request);
     const update = body?.action?.update;
+    const transfer = body?.action?.transfer;
+    // The signer is the session's own account (never the issuer).
+    const signer =
+      bearerAccount(request) === SECOND_ACCOUNT.walletId
+        ? SECOND_ACCOUNT.walletAddress
+        : PROGRAMME.walletAddress;
+    if (transfer) {
+      // G8: the holder's own Dual transfer of their unit to the recipient.
+      const moving = objects.get(transfer.id);
+      if (
+        !moving ||
+        moving.owner.toLowerCase() !== signer.toLowerCase() ||
+        !/^0x[0-9a-fA-F]{40}$/.test(String(transfer.to))
+      ) {
+        return respond(response, 403, { message: "Not the holder" });
+      }
+      moving.owner = transfer.to;
+      moving.when_modified = new Date().toISOString();
+      const id = `action-${randomBytes(6).toString("hex")}`;
+      actionLogs.unshift(
+        actionLog(id, "transfer", moving.id, signer, "transfer"),
+      );
+      if (loseExecuteResponses > 0) {
+        loseExecuteResponses -= 1;
+        request.socket.destroy();
+        return true;
+      }
+      return respond(response, 200, { action_id: id, steps: [] });
+    }
     if (update && integrated(update.id)) {
       // The holder's own settle executes on the Studio fake Dual as the
       // session holder; it never carries issuer authority.
@@ -561,7 +590,7 @@ async function handleProgramme(request, response, url) {
       });
     }
     const object = update && objects.get(update.id);
-    if (!object || object.owner !== PROGRAMME.walletAddress) {
+    if (!object || object.owner.toLowerCase() !== signer.toLowerCase()) {
       return respond(response, 403, { message: "Not the holder" });
     }
     // The holder signs a standard update of their own unit's custom data.
@@ -569,7 +598,7 @@ async function handleProgramme(request, response, url) {
     object.when_modified = new Date().toISOString();
     const id = `action-${randomBytes(6).toString("hex")}`;
     actionLogs.unshift({
-      ...actionLog(id, "update", object.id, PROGRAMME.walletAddress),
+      ...actionLog(id, "update", object.id, signer),
       // The executed custom update, so a reconcile can match it to a proposal.
       executed: { custom: update.data?.custom ?? {} },
     });

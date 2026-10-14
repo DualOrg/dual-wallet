@@ -443,7 +443,11 @@
       "unavailable": "This registration link can't be opened in this wallet.",
       "invalid": "This registration link is incomplete. Open it again from the message you received.",
       "failed": "We couldn't open your registration right now. Open the link again in a moment.",
-      "home": "Go to your wallet"
+      "home": "Go to your wallet",
+      "acceptWorking": "Opening the product transfer…",
+      "acceptUnavailable": "This transfer link can't be opened in this wallet.",
+      "acceptInvalid": "This transfer link is incomplete. Ask the sender to share it again.",
+      "acceptFailed": "We couldn't open this transfer right now. Open the link again in a moment."
     },
     "back": "Back to products",
     "backShort": "Back",
@@ -487,7 +491,9 @@
           "case_evidence_submit": "Add evidence to a case",
           "case_information_provide": "Send requested information",
           "case_quote_approve": "Approve a service quote",
-          "case_quote_decline": "Decline a service quote"
+          "case_quote_decline": "Decline a service quote",
+          "transfer_offer": "Create a one-time transfer link for this product",
+          "transfer_cancel": "Cancel this product's transfer"
         }
       },
       "quote": {
@@ -515,6 +521,25 @@
         "model": "Model",
         "manufacturer": "Manufacturer",
         "state": "Status"
+      },
+      "transfer": {
+        "recipient": "To wallet",
+        "check": "Check this is the wallet of the person you shared the link with. If it is not, cancel: the link reached someone else.",
+        "request": {
+          "title": "Start transferring this product?",
+          "description": "Your wallet signs the transfer request for this product. Ownership moves to the wallet below in the next step.",
+          "confirm": "Sign transfer request"
+        },
+        "transfer": {
+          "title": "Move ownership of this product?",
+          "description": "Your wallet signs the transfer. Ownership of this product moves to the wallet below and it leaves your wallet.",
+          "confirm": "Sign and move ownership"
+        }
+      },
+      "transferAccept": {
+        "title": "Accept this product into your wallet?",
+        "description": "The sender's wallet still has to confirm the transfer. You will not see the previous owner's private details or service requests.",
+        "confirm": "Accept"
       }
     },
     "notices": {

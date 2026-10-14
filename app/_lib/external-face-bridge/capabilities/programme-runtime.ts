@@ -10,6 +10,8 @@ import {
   isRequestHash,
   isRuntimeOperation,
   isRuntimeWriteOperation,
+  isUnscopedTransferOperation,
+  transferOperationTargetsNothing,
   ProductFaceError,
   runtimeOperationNeedsCase,
   type RuntimeOperation,
@@ -103,6 +105,47 @@ export function runtimeCapabilities(): ProductFaceCapability[] {
         const operation = payload.operation;
         const operationId = payload.operation_id;
         const requestHash = payload.request_hash;
+        // G8: the recipient's preview and acceptance name no unit (target {}),
+        // and either party reads an offer's progress by its unit without a
+        // selected owned product; the runtime authorises each by the holder.
+        if (isUnscopedTransferOperation(operation)) {
+          const unscoped = transferOperationTargetsNothing(operation)
+            ? isRecord(payload.target) &&
+              Object.keys(payload.target).length === 0
+              ? {}
+              : undefined
+            : parseTarget(payload.target, operation);
+          if (!unscoped) throw faceError("invalid_request");
+          session.assertLive();
+          if (operation === "transfer.accept") {
+            // Accepting binds THIS wallet as the recipient: the wallet's own
+            // confirmation first. No product or recipient text is shown from
+            // the face; ownership moves only when the holder signs.
+            if (session.pendingConfirmation) {
+              throw faceError("action_in_progress");
+            }
+            session.pendingConfirmation = true;
+            try {
+              const confirmed = await handlers.confirm({
+                kind: "transfer_accept",
+              });
+              session.assertLive();
+              if (!confirmed) throw faceError("user_cancelled");
+            } finally {
+              session.pendingConfirmation = false;
+            }
+          }
+          const assertion = await call(() =>
+            handlers.mintAssertion({
+              operation,
+              operation_id: operationId,
+              target: unscoped,
+              request_hash: requestHash,
+            }),
+          );
+          session.assertLive();
+          return { assertion };
+        }
         const target = parseTarget(payload.target, operation);
         if (!target) throw faceError("invalid_request");
         session.assertLive();

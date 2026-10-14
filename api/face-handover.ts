@@ -29,6 +29,25 @@ export const FACE_HANDOVER_TTL_SECONDS = 10 * 60;
 export const FACE_HANDOVER_TICKET = /^[A-Za-z0-9_-]{32,256}$/;
 export const FACE_HANDOVER_TASK = "/register";
 
+/**
+ * G8 (contract r16 acceptanceLink): the same entry also carries a transfer
+ * acceptance ticket, which the face redeems on its accept task. The cookie
+ * names its kind; a ticket is handed over only on its own kind's task.
+ */
+export type FaceHandoverKind = "handover" | "accept";
+export const FACE_HANDOVER_TASKS: Record<FaceHandoverKind, string> = {
+  handover: FACE_HANDOVER_TASK,
+  accept: "/accept",
+};
+
+export function faceHandoverKindOfTask(task: unknown) {
+  return task === FACE_HANDOVER_TASKS.handover
+    ? ("handover" as const)
+    : task === FACE_HANDOVER_TASKS.accept
+      ? ("accept" as const)
+      : undefined;
+}
+
 /** The authenticated session a ticket belongs to. */
 export interface FaceHandoverOwner {
   walletId: string;
@@ -38,6 +57,8 @@ export interface FaceHandoverOwner {
 interface SealedHandover {
   v: 2;
   slug: string;
+  /** Absent in cookies written before G8: a registration handover. */
+  kind?: FaceHandoverKind;
   ticket: string;
   exp: number;
   /** null: stored signed out, not yet bound to an account. */
@@ -99,12 +120,14 @@ export function writeFaceHandover(
   ticket: string,
   owner: FaceHandoverOwner | null,
   now = Date.now(),
+  kind: FaceHandoverKind = "handover",
 ) {
   seal(
     response,
     {
       v: 2,
       slug,
+      ...(kind === "accept" ? { kind } : {}),
       ticket,
       exp: now + FACE_HANDOVER_TTL_SECONDS * 1000,
       owner: owner
@@ -135,6 +158,11 @@ export function inspectFaceHandover(
     opened.v !== 2 ||
     typeof opened.slug !== "string" ||
     !isFaceHandoverTicket(opened.ticket) ||
+    !(
+      opened.kind === undefined ||
+      opened.kind === "handover" ||
+      opened.kind === "accept"
+    ) ||
     typeof opened.exp !== "number" ||
     opened.exp <= now ||
     !(opened.owner === null || ownerValid(opened.owner))
@@ -147,6 +175,8 @@ export function inspectFaceHandover(
 export type FaceHandoverRead = {
   /** Present only when it is handed over now. */
   ticket?: string;
+  /** "accept" for a handed-over G8 acceptance ticket (absent: a handover). */
+  kind?: "accept";
   /** Clear the cookie in this response. */
   clear: boolean;
   /** Rewrite it bound to this owner in this response (first authenticated read). */
@@ -160,8 +190,9 @@ export type FaceHandoverRead = {
  * - Another account's or session's ticket (any slug) is refused and cleared.
  * - An unusable cookie (tampered, expired, malformed) is cleared.
  * - Another programme's own ticket is left alone.
- * - On the register task (`consume`), this account's or an anonymous ticket
- *   for this slug is handed over and cleared in the same response.
+ * - On its kind's task (`consume`: the register task for a handover, the
+ *   accept task for a transfer acceptance), this account's or an anonymous
+ *   ticket for this slug is handed over and cleared in the same response.
  * - Otherwise an anonymous ticket is bound to this session (first
  *   authenticated read) and kept for the register task.
  */
@@ -169,7 +200,8 @@ export function readFaceHandover(
   request: NextRequest,
   slug: string,
   owner: FaceHandoverOwner,
-  { consume }: { consume: boolean },
+  // true: the register task (a registration handover), as before G8.
+  { consume }: { consume: boolean | FaceHandoverKind },
   now = Date.now(),
 ): FaceHandoverRead {
   const found = inspectFaceHandover(request, now);
@@ -180,7 +212,15 @@ export function readFaceHandover(
     return { clear: true, refused: true };
   }
   if (entry.slug !== slug) return { clear: false };
-  if (consume) return { ticket: entry.ticket, clear: true };
+  const kind = entry.kind ?? "handover";
+  const wanted = consume === true ? "handover" : consume;
+  if (wanted && wanted === kind) {
+    return {
+      ticket: entry.ticket,
+      ...(kind === "accept" ? { kind } : {}),
+      clear: true,
+    };
+  }
   return entry.owner
     ? { clear: false }
     : { clear: false, bind: { ...entry, owner } };

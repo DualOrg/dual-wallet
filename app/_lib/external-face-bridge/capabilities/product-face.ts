@@ -7,6 +7,7 @@ import { productCapabilities } from "@/app/_lib/external-face-bridge/capabilitie
 import { registrationCapabilities } from "@/app/_lib/external-face-bridge/capabilities/programme-registration";
 import { runtimeCapabilities } from "@/app/_lib/external-face-bridge/capabilities/programme-runtime";
 import { settleCapabilities } from "@/app/_lib/external-face-bridge/capabilities/programme-settle";
+import { transferCapabilities } from "@/app/_lib/external-face-bridge/capabilities/programme-transfer";
 import { faceError } from "@/app/_lib/external-face-bridge/core/product-session";
 import type { BridgeRequest } from "@/app/_lib/external-face-bridge/core/protocol";
 
@@ -22,6 +23,7 @@ export function productFaceCapabilities(): ProductFaceCapability[] {
     ...registrationCapabilities(),
     ...runtimeCapabilities(),
     ...settleCapabilities(),
+    ...transferCapabilities(),
   ];
 }
 

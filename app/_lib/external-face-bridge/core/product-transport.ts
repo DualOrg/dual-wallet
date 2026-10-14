@@ -49,8 +49,11 @@ export function startProductFaceBridge({
   application: ProductFaceApplication;
   holder: string;
   task: string;
-  /** contract r14: a one-time handover ticket for the register task. */
-  handover?: string;
+  /**
+   * contract r14: a one-time handover ticket for the register task; G8 (r16):
+   * a one-time transfer acceptance ticket for the accept task.
+   */
+  handover?: { kind: "handover" | "accept"; ticket: string };
   handlers: ProductFaceHandlers;
   onInitialized?: (host: ProductFaceBridgeHost) => void;
 }): ProductFaceBridgeHost | undefined {
@@ -81,17 +84,23 @@ export function startProductFaceBridge({
     verifyReady: (ready) => productFaceApplicationMatches(application, ready),
     initializationContext: () => {
       // The ticket is handed over at most once, and only when the face opens
-      // on the register task; it is then forgotten either way.
-      const ticket =
-        pendingHandover && session.task === "/register"
-          ? pendingHandover
-          : undefined;
+      // on its kind's task (register, or accept); it is then forgotten.
+      const pending = pendingHandover;
       pendingHandover = undefined;
+      const ticket =
+        pending?.kind === "handover" && session.task === "/register"
+          ? pending.ticket
+          : undefined;
+      const acceptance =
+        pending?.kind === "accept" && session.task === "/accept"
+          ? pending.ticket
+          : undefined;
       return productFaceInitializeContext(
         application,
         session.task,
         productFaceOperationNames(),
         ticket,
+        acceptance,
       );
     },
     resolve: (request) => resolveProductFaceRequest(request, runtime),

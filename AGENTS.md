@@ -61,7 +61,9 @@ remains. Keep the guides synchronized with architectural changes.
     strips a face handover ticket from its fragment, hands it to the BFF only
     for a registry slug whose binding enables handover, and continues to
     `/products/[slug]/register` (through sign-in when signed out). It is never
-    a sign-in return path.
+    a sign-in return path. A G8 transfer acceptance (`#accept=<ticket>`,
+    contract r16) takes the same entry and continues to
+    `/products/[slug]/accept`.
 - The anonymous public object view lives in the sibling `../viewer`
   repository. This app serves no public object route; it keeps only the
   display proxy that its own authenticated faces load through.

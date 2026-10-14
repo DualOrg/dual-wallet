@@ -82,6 +82,9 @@ const DEFAULT_MODE = {
   proposalUnavailable: "",
   // Reserve answers lost after the reservation was made (the BFF never sees them).
   loseReserveResponses: 0,
+  // G8 cancel race: the holder's cancel lands inside the next transfer
+  // reserve's window (after the reservation, before the offer decision).
+  cancelInsideNextTransferReserve: false,
 };
 let mode = { ...DEFAULT_MODE };
 const freshStats = () => ({
@@ -90,6 +93,17 @@ const freshStats = () => ({
   jti: new Set(),
   reserve: { won: 0, already_claimed: 0, already_reserved: 0, lost: 0 },
   handover: { issued: 0, redeemed: 0, refused: 0 },
+  transfer: {
+    offered: 0,
+    accepted: 0,
+    cancelled: 0,
+    won: 0,
+    refused: 0,
+    already_claimed: 0,
+    committed: 0,
+    acceptIssued: 0,
+    acceptRedeemed: 0,
+  },
 });
 let stats = freshStats();
 const evidence = new Map();
@@ -102,9 +116,23 @@ const proposals = new Map(); // registration operationId -> proposal
 const reservations = new Map(); // objectId -> reservation
 // r14 one-time handover tickets: ticket -> {evidence, units, exp, used}.
 const handoverTickets = new Map();
+// G8 (contract r16): offers by id, offer tickets, each unit's live offer, the
+// step proposals and reservations, and one-time acceptance tickets.
+const offers = new Map();
+const offerTickets = new Map();
+const unitOffers = new Map();
+const transferProposals = new Map(); // `${offerId}:${step}` -> proposal
+const transferReservations = new Map(); // `${offerId}:${step}` -> reservation
+const acceptTickets = new Map();
 const resetState = () => {
   evidence.clear();
   handoverTickets.clear();
+  offers.clear();
+  offerTickets.clear();
+  unitOffers.clear();
+  transferProposals.clear();
+  transferReservations.clear();
+  acceptTickets.clear();
   registrations.clear();
   unitOperations.clear();
   proposals.clear();
@@ -445,6 +473,74 @@ async function runtime(request, response, url, manifest) {
       200,
       await evidenceAnswer(entry.evidence, entry.units),
     );
+  }
+
+  if (route === "/accept") {
+    // G8 acceptance entry (r16, the r14 pattern): the open offer's ticket for a
+    // one-time acceptance ticket; the wallet entry comes from this runtime's
+    // own configuration. The offer itself is not consumed here.
+    if (request.headers.origin !== ORIGIN) {
+      return send(response, 403, {
+        status: "face_accept_same_origin_required",
+        ...ZERO,
+      });
+    }
+    if (!WALLET_ENTRY_URL) {
+      return send(response, 503, {
+        status: "face_wallet_entry_unprovisioned",
+        ...ZERO,
+      });
+    }
+    const offer = offerByTicket(body.offer);
+    if (!offer)
+      return send(response, 404, {
+        status: "transfer_offer_not_found",
+        ...ZERO,
+      });
+    if (offer.state !== "offered") {
+      return send(response, 409, {
+        status:
+          offer.state === "cancelled"
+            ? "transfer_offer_cancelled"
+            : "transfer_offer_used",
+        ...ZERO,
+      });
+    }
+    const ticket = randomBytes(32).toString("base64url");
+    acceptTickets.set(ticket, {
+      offer: body.offer,
+      exp: Date.now() + HANDOVER_TICKET_TTL_MS,
+      used: false,
+    });
+    stats.transfer.acceptIssued += 1;
+    return send(response, 200, { walletEntryUrl: WALLET_ENTRY_URL, ticket });
+  }
+
+  if (route === "/accept/redeem") {
+    if (request.headers.origin !== ORIGIN) {
+      return send(response, 403, {
+        status: "face_accept_same_origin_required",
+        ...ZERO,
+      });
+    }
+    const entry = acceptTickets.get(String(body.ticket || ""));
+    const code = !entry
+      ? "face_accept_ticket_unknown"
+      : entry.used
+        ? "face_accept_ticket_used"
+        : entry.exp <= Date.now()
+          ? "face_accept_ticket_expired"
+          : "";
+    if (code) return send(response, 409, { ok: false, status: code, ...ZERO });
+    entry.used = true;
+    stats.transfer.acceptRedeemed += 1;
+    return send(response, 200, {
+      ok: true,
+      status: "transfer_offer_ticket",
+      offer: entry.offer,
+      ...ZERO,
+      secretReturned: true,
+    });
   }
 
   if (route === "/evidence") {
@@ -830,9 +926,452 @@ async function runtime(request, response, url, manifest) {
       if (answer.status === "registered") reservation.state = "committed";
       return send(response, 200, answer);
     }
+    if (String(body.operation).startsWith("transfer.")) {
+      return transferOperation(request, response, body, holder, manifest);
+    }
     return send(response, 200, { status: "ok", ...ZERO });
   }
   return send(response, 404, { status: "not_found" });
+}
+
+// ---------------------------------------------------------------- G8
+// LOCAL FAKE of the runtime's protected transfer (contract r16): the same
+// one-CAS offer state machine (offered -> accepted -> submitted, or ->
+// cancelled), a one-use reservation per step, holder-signed steps verified
+// against the fake api-v3 action log. Nothing here signs or executes.
+const TRANSFERABLE = [
+  "Registered",
+  "Authenticity verified",
+  "In service",
+  "Transferred",
+];
+const OFFER_TTL_MS = 24 * 60 * 60 * 1000;
+const offerView = (offer, role) => ({
+  offer_id: offer.offerId,
+  state: offer.state,
+  role,
+  expires_at: offer.expiresAt,
+  submitted: offer.submitted,
+  steps: {
+    request: offer.steps.request?.state ?? "not_started",
+    transfer: offer.steps.transfer?.state ?? "not_started",
+  },
+  nextStep:
+    offer.state === "offered"
+      ? role === "holder"
+        ? "share_acceptance_link"
+        : "accept"
+      : ["accepted", "request_committed"].includes(offer.state)
+        ? role === "holder"
+          ? "sign_transfer_on_wallet"
+          : "wait_for_holder"
+        : null,
+});
+const sameWallet = (a, b) =>
+  String(a).toLowerCase() === String(b).toLowerCase();
+const stepOf = (offer) =>
+  offer.state === "accepted"
+    ? "request"
+    : offer.state === "request_committed"
+      ? "transfer"
+      : "";
+const refusal = (response, status, code, extra = {}) =>
+  send(response, status, {
+    ok: false,
+    status: code,
+    reason: code,
+    ...ZERO,
+    ...extra,
+  });
+
+async function objectNow(objectId) {
+  const found = await fetch(`${MOCK_API}/__test__/objects/${objectId}`);
+  return found.ok ? found.json() : undefined;
+}
+
+async function stepAction(objectId, holder, name, sinceIso) {
+  const found = await fetch(
+    `${MOCK_API}/__test__/action-logs?object_id=${objectId}`,
+  );
+  if (!found.ok) return undefined;
+  const { action_logs: logs } = await found.json();
+  const since = Date.parse(sinceIso) - 1000;
+  return logs.find(
+    (log) =>
+      log.name === name &&
+      sameWallet(log.account, holder) &&
+      Date.parse(log.when_created) >= since,
+  );
+}
+
+function offerByTicket(ticket) {
+  const offerId = offerTickets.get(String(ticket || ""));
+  return offerId ? offers.get(offerId) : undefined;
+}
+
+async function commitStep(response, offer, step, holder, action) {
+  if (step === "transfer") {
+    const object = await objectNow(offer.objectId);
+    if (!object || !sameWallet(object.owner, offer.recipient)) {
+      return refusal(response, 409, "transfer_recipient_not_owner");
+    }
+  }
+  offer.steps[step] = {
+    ...offer.steps[step],
+    state: "committed",
+    actionId: action.id,
+  };
+  offer.state = step === "request" ? "request_committed" : "transferred";
+  const reservation = transferReservations.get(`${offer.offerId}:${step}`);
+  if (reservation) reservation.state = "committed";
+  stats.transfer.committed += 1;
+  return send(response, 200, {
+    ok: true,
+    status: step === "request" ? "transfer_request_committed" : "transferred",
+    step,
+    offer: offerView(offer, "holder"),
+    dual: {
+      actionId: action.id,
+      executedBy: "holder_wallet",
+      runtimeDualWritesExecuted: 0,
+    },
+    ...ZERO,
+  });
+}
+
+async function transferOperation(request, response, body, holder, manifest) {
+  const operation = body.operation;
+  const input = body.input ?? {};
+  const target = body.target ?? {};
+  const serverOnly = ["transfer.propose", "transfer.reserve"].includes(
+    operation,
+  );
+  if (serverOnly && request.headers.origin) {
+    return refusal(response, 403, "face_trusted_read_server_only");
+  }
+  if (operation === "transfer.offer") {
+    const object = await objectNow(target.object_id);
+    if (!object || !sameWallet(object.owner, holder)) {
+      return refusal(response, 403, "face_holder_not_record_owner");
+    }
+    if (!TRANSFERABLE.includes(object.custom?.state)) {
+      return refusal(response, 409, "transfer_not_available");
+    }
+    const live = offers.get(unitOffers.get(target.object_id));
+    if (live && !["cancelled", "expired", "transferred"].includes(live.state)) {
+      return refusal(response, 409, "transfer_in_progress", {
+        offer: offerView(live, "holder"),
+      });
+    }
+    const ticket = randomBytes(32).toString("base64url");
+    const offer = {
+      offerId: `pto-${randomBytes(12).toString("hex")}`,
+      objectId: target.object_id,
+      holder: holder.toLowerCase(),
+      state: "offered",
+      expiresAt: new Date(Date.now() + OFFER_TTL_MS).toISOString(),
+      submitted: false,
+      steps: {},
+      recipient: null,
+      acceptOperationId: null,
+      ticketHash: sha256(ticket),
+    };
+    offers.set(offer.offerId, offer);
+    offerTickets.set(ticket, offer.offerId);
+    unitOffers.set(target.object_id, offer.offerId);
+    stats.transfer.offered += 1;
+    return send(response, 200, {
+      ok: true,
+      status: "transfer_offered",
+      offer: offerView(offer, "holder"),
+      acceptance: {
+        link: `${ORIGIN}/face/accept/${manifest.applicationId}#offer=${ticket}`,
+        expiresAt: offer.expiresAt,
+        oneTime: true,
+      },
+      ...ZERO,
+      secretReturned: true,
+    });
+  }
+  if (operation === "transfer.offer.read" || operation === "transfer.accept") {
+    const offer = offerByTicket(input.ticket);
+    if (!offer) return refusal(response, 404, "transfer_offer_not_found");
+    if (sameWallet(offer.holder, holder)) {
+      return refusal(response, 409, "transfer_recipient_is_holder");
+    }
+    const mine = offer.recipient && sameWallet(offer.recipient, holder);
+    if (operation === "transfer.offer.read") {
+      if (!mine && offer.state !== "offered") {
+        return refusal(response, 404, "transfer_offer_not_found");
+      }
+      const object = await objectNow(offer.objectId);
+      return send(response, 200, {
+        ok: true,
+        status: "transfer_offer",
+        offer: offerView(offer, mine ? "recipient" : "invitee"),
+        product: {
+          object_id: offer.objectId,
+          title: object?.metadata?.name ?? "",
+          serialNumber: object?.custom?.serialNumber ?? "",
+          model: object?.custom?.model ?? "",
+          programme: manifest.applicationId,
+        },
+        ...ZERO,
+      });
+    }
+    if (offer.state !== "offered") {
+      if (mine && offer.acceptOperationId === body.operationId) {
+        return send(response, 200, {
+          ok: true,
+          status: "transfer_accepted",
+          idempotent: true,
+          offer: offerView(offer, "recipient"),
+          object_id: offer.objectId,
+          operationId: body.operationId,
+          ...ZERO,
+        });
+      }
+      return refusal(
+        response,
+        409,
+        offer.state === "cancelled"
+          ? "transfer_offer_cancelled"
+          : "transfer_offer_used",
+      );
+    }
+    offer.state = "accepted";
+    offer.recipient = holder.toLowerCase();
+    offer.acceptOperationId = body.operationId;
+    stats.transfer.accepted += 1;
+    return send(response, 200, {
+      ok: true,
+      status: "transfer_accepted",
+      offer: offerView(offer, "recipient"),
+      object_id: offer.objectId,
+      operationId: body.operationId,
+      ...ZERO,
+    });
+  }
+  // Unit-scoped: the holder (or, for reads, the bound recipient) of the unit's offer.
+  const offer = offers.get(unitOffers.get(target.object_id));
+  const asHolder = offer && sameWallet(offer.holder, holder);
+  const asRecipient = offer?.recipient && sameWallet(offer.recipient, holder);
+  if (!offer || !(asHolder || (operation === "transfer.read" && asRecipient))) {
+    return refusal(response, 404, "transfer_offer_not_found");
+  }
+  if (operation === "transfer.read") {
+    return send(response, 200, {
+      ok: true,
+      status: "transfer_read",
+      offer: offerView(offer, asHolder ? "holder" : "recipient"),
+      ...ZERO,
+    });
+  }
+  if (input.offer_id !== offer.offerId) {
+    return refusal(response, 404, "transfer_offer_not_found");
+  }
+  if (operation === "transfer.cancel") {
+    if (offer.state === "cancelled") {
+      return send(response, 200, {
+        ok: true,
+        status: "transfer_cancelled",
+        idempotent: true,
+        offer: offerView(offer, "holder"),
+        ...ZERO,
+      });
+    }
+    if (offer.submitted || !["offered", "accepted"].includes(offer.state)) {
+      return refusal(response, 409, "transfer_submitted", {
+        offer: offerView(offer, "holder"),
+      });
+    }
+    offer.state = "cancelled";
+    stats.transfer.cancelled += 1;
+    return send(response, 200, {
+      ok: true,
+      status: "transfer_cancelled",
+      offer: offerView(offer, "holder"),
+      ...ZERO,
+    });
+  }
+  if (operation === "transfer.propose") {
+    const step = stepOf(offer);
+    if (!step) {
+      return refusal(
+        response,
+        409,
+        offer.state === "offered"
+          ? "transfer_not_accepted"
+          : "transfer_step_unavailable",
+      );
+    }
+    const key = `${offer.offerId}:${step}`;
+    if (transferReservations.has(key)) {
+      return refusal(response, 409, "transfer_step_reserved", {
+        nextStep: "check_transfer_status",
+      });
+    }
+    const proposalInput =
+      step === "transfer"
+        ? { to: offer.recipient }
+        : {
+            data: {
+              custom: {
+                state: "Transfer pending",
+                lifecycle: { target_state: "Transfer pending" },
+                dual_object_id: offer.objectId,
+                proof_event: {
+                  public_fields: [
+                    "state:Transfer pending",
+                    `recipientReferenceHash:${sha256(offer.recipient)}`,
+                  ],
+                },
+              },
+            },
+          };
+    const action = step === "transfer" ? "transfer" : "update";
+    const proposal = {
+      proposal_id: `ptp-${randomBytes(12).toString("hex")}`,
+      step,
+      offer_id: offer.offerId,
+      object_id: offer.objectId,
+      action,
+      input: proposalInput,
+      proposal_hash: sha256(
+        canonical({ object_id: offer.objectId, action, input: proposalInput }),
+      ),
+      expires_at: new Date(Date.now() + PROPOSAL_TTL_MS).toISOString(),
+    };
+    transferProposals.set(key, proposal);
+    return send(response, 200, {
+      ok: true,
+      status: "transfer_step_proposed",
+      ...proposal,
+      recipient: offer.recipient,
+      ...ZERO,
+    });
+  }
+  if (operation === "transfer.reserve") {
+    const refused = (code, status) => {
+      stats.transfer.refused += 1;
+      return refusal(response, status, code, {
+        dispatch: "refused",
+        executionPermitted: false,
+      });
+    };
+    const step = stepOf(offer);
+    if (!step) {
+      return refused(
+        offer.state === "cancelled"
+          ? "transfer_offer_cancelled"
+          : "transfer_step_unavailable",
+        409,
+      );
+    }
+    const key = `${offer.offerId}:${step}`;
+    const proposal = transferProposals.get(key);
+    if (!proposal || proposal.proposal_id !== input.proposal_id) {
+      return refused("transfer_proposal_required", 409);
+    }
+    if (transferReservations.has(key)) {
+      stats.transfer.already_claimed += 1;
+      return refusal(response, 409, "already_claimed", {
+        dispatch: "already_claimed",
+        executionPermitted: false,
+      });
+    }
+    const reservation = {
+      step,
+      stepOperationId: body.operationId,
+      proposalId: proposal.proposal_id,
+      state: "granted",
+      reservedAt: new Date().toISOString(),
+    };
+    transferReservations.set(key, reservation);
+    // The holder's cancel lands inside this window: it wins the offer decision.
+    if (mode.cancelInsideNextTransferReserve) {
+      mode.cancelInsideNextTransferReserve = false;
+      if (!offer.submitted && ["offered", "accepted"].includes(offer.state)) {
+        offer.state = "cancelled";
+        stats.transfer.cancelled += 1;
+      }
+    }
+    if (stepOf(offer) !== step) {
+      reservation.state = "refused";
+      return refused(
+        offer.state === "cancelled"
+          ? "transfer_offer_cancelled"
+          : "transfer_changed",
+        409,
+      );
+    }
+    offer.submitted = true;
+    offer.steps[step] = {
+      state: "reserved",
+      stepOperationId: body.operationId,
+      proposalId: proposal.proposal_id,
+    };
+    stats.transfer.won += 1;
+    return send(response, 200, {
+      ok: true,
+      status: "granted",
+      dispatch: "won",
+      executionPermitted: true,
+      reservation: {
+        step,
+        state: "granted",
+        step_operation_id: body.operationId,
+        proposal_id: proposal.proposal_id,
+      },
+      ...ZERO,
+    });
+  }
+  if (operation === "transfer.verify" || operation === "transfer.status") {
+    const entry = [...transferReservations.entries()].find(
+      ([key, item]) =>
+        key.startsWith(`${offer.offerId}:`) &&
+        item.stepOperationId === input.step_operation_id,
+    );
+    if (!entry) return refusal(response, 404, "transfer_reservation_not_found");
+    const [key, reservation] = entry;
+    const step = key.split(":")[1];
+    if (reservation.state === "refused") {
+      return refusal(response, 409, "transfer_reservation_refused", {
+        status: "refused",
+      });
+    }
+    if (offer.steps[step]?.state === "committed") {
+      return send(response, 200, {
+        ok: true,
+        status:
+          step === "request" ? "transfer_request_committed" : "transferred",
+        step,
+        offer: offerView(offer, "holder"),
+        ...ZERO,
+      });
+    }
+    const action = await stepAction(
+      offer.objectId,
+      holder,
+      step === "request" ? "update" : "transfer",
+      reservation.reservedAt,
+    );
+    if (
+      !action ||
+      (operation === "transfer.verify" && action.id !== input.action_id)
+    ) {
+      return send(response, 202, {
+        ok: false,
+        status: "outcome_unknown",
+        reason: "transfer_action_not_found",
+        step,
+        nextStep: "check_transfer_status",
+        ...ZERO,
+      });
+    }
+    return commitStep(response, offer, step, holder, action);
+  }
+  return refusal(response, 400, "face_request_invalid");
 }
 
 const server = createServer(async (request, response) => {
@@ -853,12 +1392,36 @@ const server = createServer(async (request, response) => {
       resetState();
       return send(response, 200, { ok: true });
     }
+    // Test hook: the unit's open offer accepted by `recipient`, as the
+    // recipient's own face would (used where the recipient's UI is not the
+    // subject of the test).
+    if (
+      url.pathname === "/__test__/accept-offer" &&
+      request.method === "POST"
+    ) {
+      const hook = await readJson(request);
+      const offer = offers.get(unitOffers.get(hook?.object_id));
+      if (!offer || offer.state !== "offered") {
+        return send(response, 409, { status: "transfer_offer_not_open" });
+      }
+      offer.state = "accepted";
+      offer.recipient = String(hook.recipient).toLowerCase();
+      offer.acceptOperationId = "accept-test-hook";
+      stats.transfer.accepted += 1;
+      return send(response, 200, { ok: true });
+    }
     if (url.pathname === "/__test__/stats") {
       return send(response, 200, {
         assertions: stats.assertions,
         registrations: stats.registrations,
         reserve: stats.reserve,
         handover: stats.handover,
+        transfer: stats.transfer,
+        offers: [...offers.values()].map((offer) => ({
+          state: offer.state,
+          submitted: offer.submitted,
+          steps: offer.steps,
+        })),
         reservations: Object.fromEntries(reservations),
         // Leaves under data.custom of each originated proposal.
         proposalLeaves: [...proposals.values()].map((proposal) => {
@@ -886,6 +1449,42 @@ const server = createServer(async (request, response) => {
       response.end(
         `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Opening your wallet (fixture)</title></head><body><p id="status">Opening your wallet… (labelled local fixture)</p><script src="/face/handover-page.js"></script></body></html>`,
       );
+      return;
+    }
+    // G8 (r16): the runtime's acceptance page, the same pattern for #offer=.
+    if (/^\/face\/accept\/[a-z0-9._-]+\/?$/.test(url.pathname)) {
+      response.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy":
+          "default-src 'none'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+        "Referrer-Policy": "no-referrer",
+        "X-Frame-Options": "DENY",
+        "Cache-Control": "no-store",
+      });
+      response.end(
+        `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Opening your wallet (fixture)</title></head><body><p id="status">Opening your wallet… (labelled local fixture)</p><script src="/face/accept-page.js"></script></body></html>`,
+      );
+      return;
+    }
+    if (url.pathname === "/face/accept-page.js") {
+      response.writeHead(200, {
+        "Content-Type": "text/javascript; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
+      response.end(`(async () => {
+        const fragment = new URLSearchParams(location.hash.slice(1));
+        history.replaceState(null, "", location.pathname + location.search);
+        const offer = fragment.get("offer");
+        const status = document.getElementById("status");
+        if (!offer) { status.textContent = "This link is incomplete."; return; }
+        const answer = await fetch("/api/product-face/v1/accept", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ offer }),
+        }).then((r) => r.json()).catch(() => ({}));
+        if (!answer.walletEntryUrl || !answer.ticket) { status.textContent = "This link cannot be used."; return; }
+        location.replace(answer.walletEntryUrl + "#accept=" + encodeURIComponent(answer.ticket));
+      })();`);
       return;
     }
     if (url.pathname === "/face/handover-page.js") {

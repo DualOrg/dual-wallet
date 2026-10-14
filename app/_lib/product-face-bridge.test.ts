@@ -88,6 +88,12 @@ function handlers(overrides: Partial<ProductFaceHandlers> = {}) {
     mintAssertion: jest.fn(async () => "header.claims.signature"),
     readSettleProposal: jest.fn(),
     executeSettle: jest.fn(async () => ({ actionId: "action-settle-1" })),
+    readTransferProposal: jest.fn(),
+    executeTransfer: jest.fn(async () => ({ actionId: "action-transfer-1" })),
+    transferProgress: jest.fn(async () => ({
+      status: "transfer_request_committed" as const,
+      step: "request" as const,
+    })),
     confirm: jest.fn(async () => true),
     navigate: jest.fn(),
     sha256: jest.fn(async () => `sha256:${"0".repeat(64)}`),
@@ -121,11 +127,18 @@ describe("product face contract consistency", () => {
       join(process.cwd(), "contracts/dual-product-face-v1.json"),
       "utf8",
     ),
-  ) as { operations: Record<string, unknown> };
+  ) as {
+    operations: Record<string, unknown>;
+    protectedTransfer: { hostOperation: string };
+  };
 
   it("implements exactly the contract operations and no extra authority", () => {
+    // contract r16: protectedTransfer.hostOperation names the one additive
+    // host operation (programme.product.transfer.sign {context_id, ...}).
+    const transferSign = contract.protectedTransfer.hostOperation.split(" ")[0];
+    expect(transferSign).toBe("programme.product.transfer.sign");
     expect([...productFaceOperationNames()].sort()).toEqual(
-      Object.keys(contract.operations).sort(),
+      [...Object.keys(contract.operations), transferSign].sort(),
     );
     const names = productFaceOperationNames();
     expect(names).not.toContain("object.action.request");
@@ -1027,6 +1040,370 @@ describe("holder settle (G6)", () => {
   });
 });
 
+describe("holder transfer (G8, contract r16 transfer.sign)", () => {
+  const OFFER = "pto-0123456789abcdef01234567";
+  const RECIPIENT = "0x00000000000000000000000000000000000000b2";
+  const ownedProduct = product(UNIT_A, {
+    custom: { state: "Authenticity verified", serialNumber: "MH-ARC-0001" },
+  });
+  const requestStep = {
+    step: "request" as const,
+    proposalId: "ptp-0123456789abcdef01234567",
+    offerId: OFFER,
+    objectId: UNIT_A,
+    action: "update" as const,
+    input: { data: { custom: { state: "Transfer pending" } } },
+    proposalHash: `sha256:${"0".repeat(64)}`,
+    expiresAt: new Date(Date.now() + 60_000),
+    recipient: RECIPIENT,
+  };
+  const transferStep = {
+    ...requestStep,
+    step: "transfer" as const,
+    proposalId: "ptp-89abcdef0123456789abcdef",
+    action: "transfer" as const,
+    input: { to: RECIPIENT },
+  };
+
+  async function transferRuntime(overrides: Partial<ProductFaceHandlers> = {}) {
+    const order: string[] = [];
+    const handlerSet = handlers({
+      selectProduct: jest.fn(async () => ({
+        contextId: "context-transfer-xxxxxxxxxx",
+        product: ownedProduct,
+      })),
+      readProduct: jest.fn(async () => ownedProduct),
+      readTransferProposal: jest.fn(async () => requestStep),
+      journal: jest.fn(async (request) => {
+        order.push(`journal:${request.transition}`);
+        return request.transition === "submit"
+          ? { reservation: "won" as const }
+          : {};
+      }),
+      executeTransfer: jest.fn(async () => {
+        order.push("execute");
+        return { actionId: "action-transfer-1" };
+      }),
+      transferProgress: jest.fn(async () => {
+        order.push("progress");
+        return {
+          status: "transfer_request_committed" as const,
+          step: "request" as const,
+        };
+      }),
+      ...overrides,
+    });
+    const runtime = runtimeFor(handlerSet);
+    const { context_id } = (await runtime.call("programme.product.select", {
+      object_id: UNIT_A,
+    })) as { context_id: string };
+    const request = {
+      context_id,
+      offer_id: OFFER,
+      step_operation_id: "xfer-step-0001",
+    };
+    return { ...runtime, order, request };
+  }
+
+  it("signs exactly the host-read step as the holder: journalled, confirmed natively with the bound recipient, reserved, executed on won, verified", async () => {
+    const run = await transferRuntime();
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).resolves.toEqual({
+      status: "transfer_request_committed",
+      step: "request",
+    });
+    expect(run.order).toEqual([
+      "journal:begin",
+      "journal:confirm",
+      "journal:submit",
+      "execute",
+      "journal:record_action",
+      "progress",
+    ]);
+    expect(run.handlers.journal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transition: "begin",
+        kind: "transfer",
+        operation: "transfer.request",
+        proposal_id: requestStep.proposalId,
+        offer_id: OFFER,
+      }),
+    );
+    expect(run.handlers.confirm).toHaveBeenCalledWith({
+      kind: "transfer",
+      product: { objectId: UNIT_A, name: ownedProduct.name },
+      step: "request",
+      recipient: RECIPIENT,
+    });
+    expect(run.handlers.executeTransfer).toHaveBeenCalledWith({
+      objectId: UNIT_A,
+      action: "update",
+      input: requestStep.input,
+    });
+  });
+
+  it("the recipient shown and signed is the host-read one; the face cannot name or change it", async () => {
+    // The face names no recipient: an extra payload key is refused outright.
+    const refused = await transferRuntime();
+    await expect(
+      refused.call("programme.product.transfer.sign", {
+        ...refused.request,
+        recipient: "0x00000000000000000000000000000000000000ff",
+      }),
+    ).rejects.toMatchObject({ code: "invalid_request" });
+    expect(refused.handlers.readTransferProposal).not.toHaveBeenCalled();
+    // Whatever the face displays, the confirmation and the executed transfer
+    // carry the runtime-bound recipient the wallet read itself.
+    const run = await transferRuntime({
+      readTransferProposal: jest.fn(async () => transferStep),
+      transferProgress: jest.fn(async () => ({
+        status: "transferred" as const,
+        step: "transfer" as const,
+      })),
+    });
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).resolves.toEqual({ status: "transferred", step: "transfer" });
+    expect(run.handlers.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ step: "transfer", recipient: RECIPIENT }),
+    );
+    expect(run.handlers.executeTransfer).toHaveBeenCalledWith({
+      objectId: UNIT_A,
+      action: "transfer",
+      input: { to: RECIPIENT },
+    });
+  });
+
+  it.each([
+    [
+      "a transfer to another wallet than the bound recipient",
+      {
+        ...transferStep,
+        input: { to: "0x00000000000000000000000000000000000000cc" },
+      },
+    ],
+    [
+      "a transfer back to the holder",
+      {
+        ...transferStep,
+        recipient: HOLDER.toLowerCase(),
+        input: { to: HOLDER.toLowerCase() },
+      },
+    ],
+    ["another unit", { ...requestStep, objectId: UNIT_B }],
+    [
+      "another offer",
+      { ...requestStep, offerId: "pto-ffffffffffffffffffffffff" },
+    ],
+    [
+      "an expired step",
+      { ...requestStep, expiresAt: new Date(Date.now() - 1) },
+    ],
+    [
+      "a request step that is not an update",
+      { ...requestStep, action: "transfer" as const },
+    ],
+  ])("refuses %s before anything is journalled", async (_label, proposal) => {
+    const run = await transferRuntime({
+      readTransferProposal: jest.fn(async () => proposal),
+    });
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).rejects.toMatchObject({ code: "proposal_rejected" });
+    expect(run.order).toEqual([]);
+    expect(run.handlers.executeTransfer).not.toHaveBeenCalled();
+  });
+
+  it("refuses a step whose hash is not the runtime's proposal hash", async () => {
+    const run = await transferRuntime({
+      sha256: jest.fn(async () => `sha256:${"9".repeat(64)}`),
+    });
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).rejects.toMatchObject({ code: "proposal_rejected" });
+    expect(run.handlers.executeTransfer).not.toHaveBeenCalled();
+  });
+
+  it("validates the payload: offer and step operation ids, a current selection", async () => {
+    const run = await transferRuntime();
+    for (const payload of [
+      { ...run.request, offer_id: "offer-1" },
+      { ...run.request, step_operation_id: "X" },
+      { context_id: run.request.context_id, offer_id: OFFER },
+    ]) {
+      await expect(
+        run.call("programme.product.transfer.sign", payload),
+      ).rejects.toMatchObject({ code: "invalid_request" });
+    }
+    await expect(
+      run.call("programme.product.transfer.sign", {
+        ...run.request,
+        context_id: "context-other-xxxxxxxxxxxx",
+      }),
+    ).rejects.toMatchObject({ code: "stale_context" });
+    const none = runtimeFor(handlers());
+    await expect(
+      none.call("programme.product.transfer.sign", run.request),
+    ).rejects.toMatchObject({ code: "no_selection" });
+  });
+
+  it("cancelled natively: the journal entry is cancelled and nothing is reserved or executed", async () => {
+    const run = await transferRuntime({ confirm: jest.fn(async () => false) });
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).rejects.toMatchObject({ code: "user_cancelled" });
+    expect(run.order).toEqual(["journal:begin", "journal:cancel"]);
+    expect(run.handlers.executeTransfer).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["no won reservation (replay, already claimed)", async () => ({})],
+    [
+      "a lost or refused reserve answer",
+      async () => {
+        throw new ProductFaceError("outcome_unknown", 409);
+      },
+    ],
+    [
+      "a lost BFF response",
+      async () => {
+        throw new ProductFaceError("temporarily_unavailable");
+      },
+    ],
+  ])(
+    "executes only on won: %s is outcome_unknown, never executed or re-submitted",
+    async (_label, submit) => {
+      const order: string[] = [];
+      const run = await transferRuntime({
+        journal: jest.fn(async (request) => {
+          order.push(`journal:${request.transition}`);
+          return request.transition === "submit" ? submit() : {};
+        }),
+      });
+      await expect(
+        run.call("programme.product.transfer.sign", run.request),
+      ).rejects.toMatchObject({ code: "outcome_unknown" });
+      expect(run.handlers.executeTransfer).not.toHaveBeenCalled();
+      expect(order).toEqual([
+        "journal:begin",
+        "journal:confirm",
+        "journal:submit",
+      ]);
+    },
+  );
+
+  it("the runtime's offer decision went to a cancel: transfer_cancelled, nothing executed", async () => {
+    const run = await transferRuntime({
+      journal: jest.fn(async (request) => {
+        if (request.transition === "submit") {
+          throw new ProductFaceError("transfer_cancelled", 409);
+        }
+        return {};
+      }),
+    });
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).rejects.toMatchObject({ code: "transfer_cancelled" });
+    expect(run.handlers.executeTransfer).not.toHaveBeenCalled();
+  });
+
+  it("an unknown after submit is never executed again: asking again with the same step only reads its status", async () => {
+    const run = await transferRuntime({
+      executeTransfer: jest.fn(async () => {
+        throw new Error("connection reset");
+      }),
+    });
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).rejects.toMatchObject({ code: "outcome_unknown" });
+    expect(run.handlers.executeTransfer).toHaveBeenCalledTimes(1);
+    // Asked again: the BFF says the step already left the wallet; only its
+    // status is read (here still unknown, then committed).
+    const journal = jest.fn(async (request: { transition: string }) => {
+      if (request.transition === "begin") {
+        throw new ProductFaceError("operation_already_submitted", 409);
+      }
+      return {};
+    });
+    run.handlers.journal.mockImplementation(journal);
+    run.handlers.transferProgress
+      .mockResolvedValueOnce({ status: "outcome_unknown", step: "request" })
+      .mockResolvedValueOnce({
+        status: "transfer_request_committed",
+        step: "request",
+      });
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).rejects.toMatchObject({ code: "outcome_unknown" });
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).resolves.toEqual({
+      status: "transfer_request_committed",
+      step: "request",
+    });
+    expect(run.handlers.executeTransfer).toHaveBeenCalledTimes(1);
+    expect(run.handlers.confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("the recipient's acceptance is confirmed natively and minted with an empty target; progress reads need no selection", async () => {
+    const run = runtimeFor(handlers());
+    await expect(
+      run.call("programme.runtime.authorize", {
+        operation: "transfer.accept",
+        operation_id: "accept-op-0001",
+        target: {},
+        request_hash: `sha256:${"1".repeat(64)}`,
+      }),
+    ).resolves.toEqual({ assertion: "header.claims.signature" });
+    expect(run.handlers.confirm).toHaveBeenCalledWith({
+      kind: "transfer_accept",
+    });
+    expect(run.handlers.mintAssertion).toHaveBeenCalledWith({
+      operation: "transfer.accept",
+      operation_id: "accept-op-0001",
+      target: {},
+      request_hash: `sha256:${"1".repeat(64)}`,
+    });
+    await expect(
+      run.call("programme.runtime.authorize", {
+        operation: "transfer.read",
+        operation_id: "xread-op-0001",
+        target: { object_id: UNIT_A },
+        request_hash: `sha256:${"2".repeat(64)}`,
+      }),
+    ).resolves.toEqual({ assertion: "header.claims.signature" });
+    // A declined acceptance mints nothing; a face cannot ask for host-only steps.
+    const declined = runtimeFor(
+      handlers({ confirm: jest.fn(async () => false) }),
+    );
+    await expect(
+      declined.call("programme.runtime.authorize", {
+        operation: "transfer.accept",
+        operation_id: "accept-op-0002",
+        target: {},
+        request_hash: `sha256:${"1".repeat(64)}`,
+      }),
+    ).rejects.toMatchObject({ code: "user_cancelled" });
+    expect(declined.handlers.mintAssertion).not.toHaveBeenCalled();
+    for (const operation of [
+      "transfer.propose",
+      "transfer.reserve",
+      "transfer.verify",
+      "transfer.status",
+    ]) {
+      await expect(
+        run.call("programme.runtime.authorize", {
+          operation,
+          operation_id: "host-op-00001",
+          target: { object_id: UNIT_A },
+          request_hash: `sha256:${"3".repeat(64)}`,
+        }),
+      ).rejects.toMatchObject({ code: "invalid_request" });
+    }
+  });
+});
+
 describe("application-variant transport", () => {
   class FakePort {
     peer!: FakePort;
@@ -1086,6 +1463,7 @@ describe("application-variant transport", () => {
       handlers?: ProductFaceHandlers;
       task?: string;
       handover?: string;
+      acceptance?: string;
     } = {},
   ) {
     const postMessage = jest.fn();
@@ -1098,7 +1476,11 @@ describe("application-variant transport", () => {
       application,
       holder: HOLDER,
       task: options.task ?? "/register",
-      handover: options.handover,
+      handover: options.handover
+        ? { kind: "handover", ticket: options.handover }
+        : options.acceptance
+          ? { kind: "accept", ticket: options.acceptance }
+          : undefined,
       handlers: options.handlers ?? handlers(),
     });
     if (!host) throw new Error("bridge refused to start");
@@ -1221,6 +1603,33 @@ describe("application-variant transport", () => {
     await tick();
     expect(plain.received[0].context).not.toHaveProperty("handover");
     plain.host.close();
+  });
+
+  it("hands a transfer acceptance ticket over on the accept task only, never as a handover (G8, r16)", async () => {
+    const ticket = "a".repeat(43);
+    const onAccept = open({ acceptance: ticket, task: "/accept" });
+    onAccept.ready();
+    await tick();
+    const context = onAccept.received[0].context as Record<string, unknown>;
+    expect(context.acceptance).toEqual({ ticket });
+    expect(context).not.toHaveProperty("handover");
+    onAccept.host.close();
+    // On the register task (or any other) an acceptance ticket is dropped.
+    for (const task of ["/register", "/products"]) {
+      const elsewhere = open({ acceptance: ticket, task });
+      elsewhere.ready();
+      await tick();
+      expect(elsewhere.received[0].context).not.toHaveProperty("acceptance");
+      expect(elsewhere.received[0].context).not.toHaveProperty("handover");
+      elsewhere.host.close();
+    }
+    // A registration handover is never handed over on the accept task.
+    const handover = open({ handover: ticket, task: "/accept" });
+    handover.ready();
+    await tick();
+    expect(handover.received[0].context).not.toHaveProperty("handover");
+    expect(handover.received[0].context).not.toHaveProperty("acceptance");
+    handover.host.close();
   });
 
   it.each([

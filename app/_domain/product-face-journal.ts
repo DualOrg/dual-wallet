@@ -13,7 +13,13 @@ import {
 // confirmed and what authority it has already issued. It holds only
 // non-secret facts: no assertion, signature, token or face-supplied text.
 
-export const journalKinds = ["registration", "runtime", "settle"] as const;
+export const journalKinds = [
+  "registration",
+  "runtime",
+  "settle",
+  // G8: one holder-signed transfer step (contract r16 transfer.sign).
+  "transfer",
+] as const;
 export type JournalKind = (typeof journalKinds)[number];
 
 export const journalPhases = [
@@ -47,6 +53,8 @@ export interface FaceJournalEntry {
   requestHash?: string;
   /** The runtime proposal a settle executes; its id only, never its input. */
   proposalId?: string;
+  /** G8: the transfer offer a transfer step belongs to (its id only). */
+  offerId?: string;
   /**
    * The host-read quote a quote approval or decline is bound to, as a hash of
    * its {quote_version, amount, currency}; never the quote itself.
@@ -68,6 +76,8 @@ const SLUG = /^[a-z0-9][a-z0-9-]{1,62}$/;
 const PROGRAMME = /^[a-z0-9][a-z0-9._-]{1,63}$/;
 const ACTION_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 const OPERATION = /^[a-z_][a-z0-9_.]{1,63}$/;
+const OFFER_ID = /^pto-[0-9a-f]{24}$/;
+const TRANSFER_OPERATIONS = ["transfer.request", "transfer.transfer"];
 
 function timestamp(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
@@ -98,6 +108,8 @@ export function parseJournalEntry(
     (entry.proposalId !== undefined &&
       (typeof entry.proposalId !== "string" ||
         !ACTION_ID.test(entry.proposalId))) ||
+    (entry.offerId !== undefined &&
+      (typeof entry.offerId !== "string" || !OFFER_ID.test(entry.offerId))) ||
     (entry.quoteHash !== undefined && !isRequestHash(entry.quoteHash)) ||
     (entry.recordId !== undefined && !isRecordId(entry.recordId)) ||
     (entry.requestHash !== undefined && !isRequestHash(entry.requestHash)) ||
@@ -113,6 +125,14 @@ export function parseJournalEntry(
   ) {
     return undefined;
   }
+  if (
+    entry.kind === "transfer" &&
+    (!TRANSFER_OPERATIONS.includes(entry.operation) ||
+      !entry.offerId ||
+      !entry.proposalId)
+  ) {
+    return undefined;
+  }
   return {
     operationId: entry.operationId,
     kind: entry.kind as JournalKind,
@@ -125,6 +145,7 @@ export function parseJournalEntry(
     ...(entry.status ? { status: entry.status as RegistrationStatus } : {}),
     ...(entry.actionId ? { actionId: entry.actionId as string } : {}),
     ...(entry.proposalId ? { proposalId: entry.proposalId as string } : {}),
+    ...(entry.offerId ? { offerId: entry.offerId as string } : {}),
     ...(entry.quoteHash ? { quoteHash: entry.quoteHash as string } : {}),
     ...(entry.recordId ? { recordId: entry.recordId as string } : {}),
     ...(entry.requestHash ? { requestHash: entry.requestHash as string } : {}),
@@ -302,6 +323,7 @@ export function applyJournalTransition(
       }
       if (
         existing.kind === "settle" ||
+        existing.kind === "transfer" ||
         existing.phase !== "confirmed" ||
         existing.objectId !== transition.objectId ||
         (existing.caseId ?? undefined) !== transition.caseId
@@ -319,7 +341,7 @@ export function applyJournalTransition(
         return { ok: false, error: "operation_already_submitted" };
       }
       if (
-        existing.kind !== "settle" ||
+        (existing.kind !== "settle" && existing.kind !== "transfer") ||
         existing.phase !== "confirmed" ||
         existing.objectId !== transition.objectId
       ) {
@@ -333,7 +355,7 @@ export function applyJournalTransition(
       });
     case "record_action":
       if (
-        existing.kind !== "settle" ||
+        (existing.kind !== "settle" && existing.kind !== "transfer") ||
         existing.phase !== "submitted" ||
         (existing.actionId && existing.actionId !== transition.actionId)
       ) {
@@ -373,6 +395,10 @@ export function journalOperationStatus(
 ): RegistrationStatus {
   if (!authorityLeft(entry.phase)) return "not_submitted";
   if (entry.kind === "runtime") return "authorized";
+  // G8: a transfer step is known only from the runtime's own verify/status.
+  if (entry.kind === "transfer") {
+    return entry.phase === "settled" ? "registered" : "outcome_unknown";
+  }
   if (evaluation === undefined) return "outcome_unknown";
   if (entry.kind === "settle") {
     if (evaluation === "not_owned") return "recovery_required";

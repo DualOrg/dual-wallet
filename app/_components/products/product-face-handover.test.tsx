@@ -46,7 +46,11 @@ describe("ProductFaceHandover (contract r14)", () => {
     );
     expect(hashWhenSent).toBe("");
     expect(submitFaceHandover).toHaveBeenCalledTimes(1);
-    expect(submitFaceHandover).toHaveBeenCalledWith("morrow-home", TICKET);
+    expect(submitFaceHandover).toHaveBeenCalledWith(
+      "morrow-home",
+      TICKET,
+      "handover",
+    );
     expect(
       screen.getByRole("heading", { name: "Morrow Home Arc" }),
     ).toBeTruthy();

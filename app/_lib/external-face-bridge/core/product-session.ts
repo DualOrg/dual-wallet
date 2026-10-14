@@ -13,6 +13,7 @@ import type {
   SettleProposal,
   SettleProposalUnavailableReason,
 } from "@/app/_domain/product-face";
+import type { TransferProposal } from "@/app/_domain/product-face-transfer";
 import { ProductFaceError } from "@/app/_domain/product-face";
 import type { RuntimeAssertionTarget } from "@/app/_lib/external-face-bridge/core/product-context";
 import { ExternalFaceBridgeError } from "@/app/_lib/external-face-bridge/core/errors";
@@ -26,13 +27,14 @@ export interface ProductFaceSelection {
 export interface JournalTransitionRequest {
   transition: "begin" | "confirm" | "cancel" | "submit" | "record_action";
   operation_id: string;
-  kind?: "registration" | "runtime" | "settle";
+  kind?: "registration" | "runtime" | "settle" | "transfer";
   operation?: string;
   object_id?: string;
   case_id?: string;
   context_id?: string;
   action_id?: string;
   proposal_id?: string;
+  offer_id?: string;
   record_id?: string;
   request_hash?: string;
 }
@@ -97,6 +99,23 @@ export interface ProductFaceHandlers {
     alias?: string;
     input: Record<string, unknown>;
   }): Promise<{ actionId: string }>;
+  /** G8: the next transfer step, read by the wallet itself (trusted read). */
+  readTransferProposal(input: {
+    contextId: string;
+    offerId: string;
+    objectId: string;
+  }): Promise<TransferProposal>;
+  /** G8: executes exactly a validated transfer step as the holder. */
+  executeTransfer(input: {
+    objectId: string;
+    action: "update" | "transfer";
+    input: Record<string, unknown>;
+  }): Promise<{ actionId: string }>;
+  /** G8: verify or read the status of a submitted step; never executes. */
+  transferProgress(operationId: string): Promise<{
+    status: "transfer_request_committed" | "transferred" | "outcome_unknown";
+    step: "request" | "transfer";
+  }>;
   confirm(request: ProductFaceConfirmation): Promise<boolean>;
   /** Shows a host notice (for example why no settle proposal exists). */
   notice?(notice: ProductFaceHostNotice): void;
@@ -165,6 +184,9 @@ const faceErrorMessages: Record<string, string> = {
   settle_proposal_unavailable:
     "The brand has no confirmation for this product right now.",
   outcome_unknown: "The outcome is not yet known.",
+  transfer_not_accepted: "The recipient has not accepted the transfer yet.",
+  transfer_cancelled:
+    "The transfer was cancelled or has expired; nothing was signed.",
   quote_changed: "The quote has changed.",
   unknown_operation: "The wallet has no record of this operation.",
   invalid_request: "The request is invalid.",

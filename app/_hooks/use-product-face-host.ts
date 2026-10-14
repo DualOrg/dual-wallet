@@ -21,6 +21,7 @@ import type { ProductFaceHostNotice } from "@/app/_lib/external-face-bridge/core
 import { useSession } from "@/app/_providers/session-provider";
 import {
   executeSettleAction,
+  executeTransferAction,
   listFaceOperations,
   listProgrammeProducts,
   mintFaceAssertion,
@@ -31,6 +32,8 @@ import {
   readProgrammeProductHistory,
   readProgrammeUnit,
   readSettleProposal,
+  readTransferProgress,
+  readTransferProposal,
   selectProgrammeProduct,
   sha256Hash,
   takeFaceHandoverTicket,
@@ -218,6 +221,21 @@ export function useProductFaceHost({
             controllerAddress: wallet?.controller.address,
           });
         },
+        readTransferProposal: (input) =>
+          guard(() => readTransferProposal(face, input)),
+        executeTransfer: (input) => {
+          const { authenticationMethod, wallet } = sessionRef.current;
+          if (!authenticationMethod) {
+            return Promise.reject(new ProductFaceError("session_expired", 401));
+          }
+          return executeTransferAction({
+            ...input,
+            authenticationMethod,
+            controllerAddress: wallet?.controller.address,
+          });
+        },
+        transferProgress: (operationId) =>
+          guard(() => readTransferProgress(face, operationId)),
         confirm: (request) =>
           new Promise<boolean>((resolve) => {
             // One native confirmation per face; the capability enforces it too.
@@ -243,7 +261,8 @@ export function useProductFaceHost({
         holder,
         task,
         // contract r14: a handover the context read took for this launch;
-        // handed to the face once, on the register task only.
+        // handed to the face once, on the register task only (G8: an
+        // acceptance ticket, on the accept task only).
         handover: takeFaceHandoverTicket(launchId),
         handlers,
         onInitialized: (started) => {
@@ -253,9 +272,12 @@ export function useProductFaceHost({
           void listFaceOperations(face)
             .then(async (operations) => {
               for (const operation of operations) {
+                // A transfer step's status is the runtime's (the face asks
+                // through transfer.sign again); it is not a registration.
                 if (
-                  operation.phase !== "assertion_issued" &&
-                  operation.phase !== "submitted"
+                  operation.kind === "transfer" ||
+                  (operation.phase !== "assertion_issued" &&
+                    operation.phase !== "submitted")
                 ) {
                   continue;
                 }

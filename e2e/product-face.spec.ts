@@ -714,10 +714,13 @@ test("a face-enabled handover link opens the register task through sign-in and h
   await page.getByLabel("Email address").fill(EMAIL);
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page).toHaveURL("/products/morrow-home/register");
+  // The face (contract r14 client) redeems the handed-over ticket itself, once,
+  // and goes straight to choosing the unit its evidence covers.
   await expect(
-    face(page).getByRole("button", { name: "Check link" }),
+    face(page).getByRole("heading", { name: "Choose the product" }),
   ).toBeVisible();
+  await expect(page).toHaveURL("/products/morrow-home/register/choose");
+  await expect(face(page).getByText("MH-ARC-0001")).toBeVisible();
 
   // The host handed exactly one ticket to the face, and the cookie is gone.
   const handovers = (await handedOver(page)) as Array<{
@@ -728,20 +731,12 @@ test("a face-enabled handover link opens the register task through sign-in and h
   expect(ticket).toMatch(/^[A-Za-z0-9_-]{43}$/);
   expect(await handoverCookie(page)).toBeUndefined();
 
-  // The face redeems it once at its runtime: the evidence for unit A.
-  const redeemed = await redeemFromFace(page, ticket);
-  expect(redeemed).toMatchObject({
-    status: 200,
-    body: {
-      status: "evidence_accepted",
-      units: [{ objectId: UNIT_A }],
-    },
-  });
+  // It was redeemed once at the runtime; a second redemption is refused.
   expect((await redeemFromFace(page, ticket)).body).toMatchObject({
     reason: "face_handover_ticket_used",
   });
 
-  // A reload hands nothing over again.
+  // A reload hands nothing over again (the face falls back to the paste form).
   await page.reload();
   await expect(
     face(page).getByRole("button", { name: "Check link" }),
@@ -767,10 +762,11 @@ test("a signed-in arrival goes straight to the register task", async ({
   ).toBeVisible();
   await recordInitializeContexts(page);
   await page.goto(HANDOVER_LINK);
-  await expect(page).toHaveURL("/products/morrow-home/register");
+  // The face redeems the ticket itself and opens the unit choice.
   await expect(
-    face(page).getByRole("button", { name: "Check link" }),
+    face(page).getByRole("heading", { name: "Choose the product" }),
   ).toBeVisible();
+  await expect(page).toHaveURL("/products/morrow-home/register/choose");
   const handovers = (await handedOver(page)) as Array<{
     ticket: string;
   } | null>;
@@ -949,4 +945,214 @@ test("anonymous arrival, A signs in, then B signs in before any context read: B 
   expect(await handedOver(page)).toEqual([null]);
   expect(await handoverCookie(page)).toBeUndefined();
   expect((await stats()).handover).toMatchObject({ issued: 1, redeemed: 0 });
+});
+
+// ------------------------------------------------------------------ G8
+// contract r16 protectedTransfer through the actual wallet: the holder (A)
+// creates a one-time link in the face; the recipient (B) opens it signed out,
+// is taken through sign-in to the face's accept task and accepts in their own
+// wallet; A's wallet then signs both reviewed steps natively, naming B's
+// wallet, and executes each only on its own won reservation.
+
+const SECOND_WALLET = "0x00000000000000000000000000000000000000b2";
+
+async function actionLogs(objectId: string) {
+  const { action_logs: logs } = (await (
+    await fetch(`${MOCK_API}/__test__/action-logs?object_id=${objectId}`)
+  ).json()) as { action_logs: Array<{ name: string; account: string }> };
+  return logs;
+}
+
+/** A's face on the transfer task of OWNED_B, with a fresh transfer link. */
+async function offerFromA(page: Page) {
+  await signIn(page, `/products/morrow-home/products/${OWNED_B}/transfer`);
+  await expect(page).toHaveURL(
+    `/products/morrow-home/products/${OWNED_B}/transfer`,
+  );
+  await face(page).getByRole("button", { name: "Transfer to someone" }).click();
+  const create = page.getByRole("dialog", { name: "Confirm this request" });
+  await expect(
+    create.getByText("Create a one-time transfer link for this product"),
+  ).toBeVisible();
+  await create.getByRole("button", { name: "Confirm" }).click();
+  const link = face(page).locator("#pf-transfer-link");
+  await expect(link).toBeVisible();
+  const value = await link.inputValue();
+  expect(value).toMatch(
+    /^http:\/\/localhost:4101\/face\/accept\/studio\.morrow-home#offer=[A-Za-z0-9_-]{43}$/,
+  );
+  return value;
+}
+
+test("G8: A transfers to B through a one-time link; B accepts through sign-in; A's wallet signs both steps naming B, once each", async ({
+  page,
+  browser,
+}) => {
+  const link = await offerFromA(page);
+
+  // B opens the link signed out: the runtime page, the wallet entry, sign-in.
+  const recipient = await browser.newContext();
+  const pageB = await recipient.newPage();
+  await pageB.goto(link);
+  await expect(pageB).toHaveURL(
+    `/login?next=${encodeURIComponent("/products/morrow-home/accept")}`,
+  );
+  expect(pageB.url()).not.toContain("offer=");
+  expect(pageB.url()).not.toContain("accept=");
+  await pageB.waitForLoadState("networkidle");
+  await pageB.getByLabel("Email address").fill(SECOND_EMAIL);
+  await pageB.getByLabel("Password", { exact: true }).fill(SECOND_PASSWORD);
+  await pageB.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(pageB).toHaveURL("/products/morrow-home/accept");
+  // The face redeemed the wallet's acceptance ticket and previews the unit.
+  await expect(face(pageB).getByText("MH-ARC-0102")).toBeVisible();
+  await face(pageB)
+    .getByRole("button", { name: "Accept into this wallet" })
+    .click();
+  const acceptDialog = pageB.getByRole("dialog", {
+    name: "Accept this product into your wallet?",
+  });
+  await acceptDialog.getByRole("button", { name: "Accept" }).click();
+  await expect(
+    face(pageB).getByText(
+      "Accepted. Waiting for the sender to confirm the transfer on their wallet.",
+    ),
+  ).toBeVisible();
+  expect((await stats()).transfer).toMatchObject({
+    acceptIssued: 1,
+    acceptRedeemed: 1,
+    accepted: 1,
+  });
+
+  // A signs step 1 natively: the product, that ownership moves, B's wallet.
+  await face(page).getByRole("button", { name: "Refresh" }).click();
+  await face(page)
+    .getByRole("button", { name: "Confirm transfer on your wallet" })
+    .click();
+  const step1 = page.getByRole("dialog", {
+    name: "Start transferring this product?",
+  });
+  await expect(step1.getByText("Morrow Arc grinder")).toBeVisible();
+  await expect(step1.getByText("0x00....0b2")).toBeVisible();
+  await step1.getByRole("button", { name: "Sign transfer request" }).click();
+  await face(page)
+    .getByRole("button", { name: "Confirm step 2 on your wallet" })
+    .click();
+  const step2 = page.getByRole("dialog", {
+    name: "Move ownership of this product?",
+  });
+  await expect(step2.getByText("0x00....0b2")).toBeVisible();
+  await step2.getByRole("button", { name: "Sign and move ownership" }).click();
+  await expect(
+    face(page).getByText(
+      "Transferred. The product now belongs to the recipient's wallet.",
+      { exact: false },
+    ),
+  ).toBeVisible();
+
+  // Exactly one holder-signed update and one transfer; B owns it now.
+  expect((await object(OWNED_B)).owner).toBe(SECOND_WALLET);
+  const signed = (await actionLogs(OWNED_B)).filter(
+    (log) => log.account.toLowerCase() === WALLET.toLowerCase(),
+  );
+  expect(signed.map((log) => log.name).sort()).toEqual(["transfer", "update"]);
+  expect((await stats()).transfer).toMatchObject({
+    won: 2,
+    committed: 2,
+    already_claimed: 0,
+    refused: 0,
+  });
+
+  // B follows the progress to the end.
+  await face(pageB).getByRole("button", { name: "Check progress" }).click();
+  await expect(
+    face(pageB).getByRole("button", { name: "Open the product" }),
+  ).toBeVisible();
+  await recipient.close();
+});
+
+test("G8 cancel race: a cancel from another tab wins while A's wallet confirmation is open; nothing is signed or executed", async ({
+  page,
+  context,
+}) => {
+  await offerFromA(page);
+  expect(
+    await post(`${FIXTURE}/__test__/accept-offer`, {
+      object_id: OWNED_B,
+      recipient: SECOND_WALLET,
+    }),
+  ).toMatchObject({ ok: true });
+  await face(page).getByRole("button", { name: "Refresh" }).click();
+  await face(page)
+    .getByRole("button", { name: "Confirm transfer on your wallet" })
+    .click();
+  const step1 = page.getByRole("dialog", {
+    name: "Start transferring this product?",
+  });
+  await expect(step1.getByText("0x00....0b2")).toBeVisible();
+
+  // Meanwhile a second tab of the same wallet cancels the transfer.
+  const other = await context.newPage();
+  await other.goto(`/products/morrow-home/products/${OWNED_B}/transfer`);
+  await face(other).getByRole("button", { name: "Cancel transfer" }).click();
+  await other
+    .getByRole("dialog", { name: "Confirm this request" })
+    .getByRole("button", { name: "Confirm" })
+    .click();
+  await expect(
+    face(other).getByText("The transfer is cancelled.", { exact: false }),
+  ).toBeVisible();
+
+  // The first tab's confirmation now meets the cancelled offer.
+  await step1.getByRole("button", { name: "Sign transfer request" }).click();
+  await expect(
+    face(page).getByText(
+      "This transfer was cancelled or expired before your wallet signed it. Nothing was sent.",
+    ),
+  ).toBeVisible();
+  expect(
+    (await actionLogs(OWNED_B)).filter(
+      (log) => log.account.toLowerCase() === WALLET.toLowerCase(),
+    ),
+  ).toEqual([]);
+  expect((await object(OWNED_B)).owner).toBe(WALLET);
+  expect((await stats()).transfer).toMatchObject({ won: 0, refused: 1 });
+  await other.close();
+});
+
+test("G8 cancel race inside the reserve window: the cancel wins the runtime's offer decision; the wallet executes nothing", async ({
+  page,
+}) => {
+  await offerFromA(page);
+  await post(`${FIXTURE}/__test__/accept-offer`, {
+    object_id: OWNED_B,
+    recipient: SECOND_WALLET,
+  });
+  await post(`${FIXTURE}/__test__/mode`, {
+    cancelInsideNextTransferReserve: true,
+  });
+  await face(page).getByRole("button", { name: "Refresh" }).click();
+  await face(page)
+    .getByRole("button", { name: "Confirm transfer on your wallet" })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Start transferring this product?" })
+    .getByRole("button", { name: "Sign transfer request" })
+    .click();
+  await expect(
+    face(page).getByText(
+      "This transfer was cancelled or expired before your wallet signed it. Nothing was sent.",
+    ),
+  ).toBeVisible();
+  const stat = await stats();
+  expect(stat.transfer).toMatchObject({ won: 0, refused: 1, cancelled: 1 });
+  expect(stat.offers.at(-1)).toMatchObject({
+    state: "cancelled",
+    submitted: false,
+  });
+  expect(
+    (await actionLogs(OWNED_B)).filter(
+      (log) => log.account.toLowerCase() === WALLET.toLowerCase(),
+    ),
+  ).toEqual([]);
 });

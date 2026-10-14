@@ -19,6 +19,11 @@ import {
   type SettleFieldChange,
   type SettleProposal,
 } from "@/app/_domain/product-face";
+import {
+  parseTransferProposal,
+  transferExecutorInput,
+  type TransferProposal,
+} from "@/app/_domain/product-face-transfer";
 import type { AuthenticationMethod } from "@/app/_domain/session";
 import { executeInventoryAction } from "@/app/_services/action-executor.client";
 import {
@@ -94,7 +99,12 @@ function base(slug: string) {
 // contract r14: a handover ticket the context read handed over, held in
 // memory for its launch only until the host's initialize takes it. It is
 // never part of the query cache, a URL or any storage.
-const handoverTickets = new Map<string, string>();
+// G8: a transfer acceptance ticket is held the same way, with its kind.
+export interface FaceHandoverTicket {
+  kind: "handover" | "accept";
+  ticket: string;
+}
+const handoverTickets = new Map<string, FaceHandoverTicket>();
 
 /** Takes (and forgets) the handover ticket handed over for this launch. */
 export function takeFaceHandoverTicket(launchId: string) {
@@ -116,13 +126,22 @@ export async function loadProductFaceContext(
   face: FaceLaunch,
   task: string = "/",
 ) {
-  const { handover, ...context } = await faceRequest<{
+  const { handover, acceptance, ...context } = await faceRequest<{
     application: ProductFaceApplication;
     frameUrl: string;
     handover?: { ticket?: unknown };
+    acceptance?: { ticket?: unknown };
   }>(face, `/context?task=${encodeURIComponent(task)}`);
   if (typeof handover?.ticket === "string") {
-    handoverTickets.set(face.launchId, handover.ticket);
+    handoverTickets.set(face.launchId, {
+      kind: "handover",
+      ticket: handover.ticket,
+    });
+  } else if (typeof acceptance?.ticket === "string") {
+    handoverTickets.set(face.launchId, {
+      kind: "accept",
+      ticket: acceptance.ticket,
+    });
   }
   return context;
 }
@@ -132,7 +151,11 @@ export async function loadProductFaceContext(
  * one-time ticket to the BFF, which keeps it in the sealed pre-auth cookie.
  * Answers where to go next (the register task).
  */
-export async function submitFaceHandover(slug: string, ticket: string) {
+export async function submitFaceHandover(
+  slug: string,
+  ticket: string,
+  kind: "handover" | "accept" = "handover",
+) {
   let response: Response;
   try {
     response = await fetch(`${base(slug)}/handover`, {
@@ -144,7 +167,7 @@ export async function submitFaceHandover(slug: string, ticket: string) {
         Accept: "application/json",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ ticket }),
+      body: JSON.stringify(kind === "accept" ? { ticket, kind } : { ticket }),
     });
   } catch {
     throw new ProductFaceError("temporarily_unavailable");
@@ -219,7 +242,7 @@ export function selectProgrammeProduct(face: FaceLaunch, objectId: string) {
 
 interface WireOperation {
   operation_id: string;
-  kind: "registration" | "runtime" | "settle";
+  kind: "registration" | "runtime" | "settle" | "transfer";
   operation: string;
   object_id: string;
   case_id: string | null;
@@ -488,6 +511,92 @@ export async function executeSettleAction({
   );
   const result = await executeInventoryAction(
     alias ? { ...request, alias } : request,
+    authenticationMethod,
+    controllerAddress,
+  );
+  return { actionId: result.actionId };
+}
+
+/** G8: the next transfer step the BFF read itself from the bound runtime. */
+export function readTransferProposal(
+  face: FaceLaunch,
+  input: { contextId: string; offerId: string; objectId: string },
+) {
+  return serialized(async () => {
+    const { proposal } = await faceRequest<{
+      proposal: Record<string, unknown>;
+    }>(face, "/transfer-proposal", {
+      method: "POST",
+      json: {
+        context_id: input.contextId,
+        offer_id: input.offerId,
+        object_id: input.objectId,
+      },
+    });
+    const parsed = parseTransferProposal({
+      ...proposal,
+      status: "transfer_step_proposed",
+    });
+    if (!parsed) throw new ProductFaceError("proposal_rejected");
+    return parsed satisfies TransferProposal;
+  });
+}
+
+/** G8: verify or read the status of one submitted step (read-only). */
+export function readTransferProgress(face: FaceLaunch, operationId: string) {
+  return serialized(async () => {
+    const result = await faceRequest<{ status: unknown; step: unknown }>(
+      face,
+      "/transfer-progress",
+      { method: "POST", json: { operation_id: operationId } },
+    );
+    const status = result.status;
+    const step = result.step;
+    if (
+      (status !== "transfer_request_committed" &&
+        status !== "transferred" &&
+        status !== "outcome_unknown") ||
+      (step !== "request" && step !== "transfer")
+    ) {
+      throw new ProductFaceError("temporarily_unavailable");
+    }
+    return { status, step } as {
+      status: "transfer_request_committed" | "transferred" | "outcome_unknown";
+      step: "request" | "transfer";
+    };
+  });
+}
+
+/**
+ * G8: executes exactly a validated transfer step as the holder through the
+ * wallet's existing executor: the request step's `update` of the unit's
+ * custom data, or the Dual `transfer` to the runtime-bound recipient.
+ * `claim_ownership` and issuer authority can never reach this path.
+ */
+export async function executeTransferAction({
+  objectId,
+  action,
+  input,
+  authenticationMethod,
+  controllerAddress,
+}: {
+  objectId: string;
+  action: "update" | "transfer";
+  input: Record<string, unknown>;
+  authenticationMethod: AuthenticationMethod;
+  controllerAddress?: string;
+}) {
+  const form = transferExecutorInput({ action, input });
+  if ((action !== "update" && action !== "transfer") || !form) {
+    throw new ProductFaceError("proposal_rejected");
+  }
+  const request = buildInventoryAction(
+    action,
+    objectId,
+    bridgeActionInput(action, form),
+  );
+  const result = await executeInventoryAction(
+    request,
     authenticationMethod,
     controllerAddress,
   );

@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import {
   applyFaceHandoverRead,
-  FACE_HANDOVER_TASK,
+  faceHandoverKindOfTask,
   readFaceHandover,
 } from "@/api/face-handover";
 import { withSelection } from "@/api/face-journal";
@@ -36,23 +36,28 @@ export async function GET(request: NextRequest, { params }: Params) {
   // this response); the host hands it to the face in its initialize context.
   // Only this session's own (or a still anonymous) ticket is ever handed
   // over; another account's is cleared here and nothing is handed over.
+  // G8: the same for a transfer acceptance ticket on the accept task.
   const task = request.nextUrl.searchParams.get("task");
-  const onRegisterTask =
-    isTaskPath(task) &&
-    task === FACE_HANDOVER_TASK &&
-    context.binding.handover.enabled;
+  const taskKind =
+    isTaskPath(task) && context.binding.handover.enabled
+      ? faceHandoverKindOfTask(task)
+      : undefined;
   const handover = readFaceHandover(
     request,
     context.binding.slug,
     context.owner,
-    { consume: onRegisterTask },
+    { consume: taskKind ?? false },
   );
   const response = faceResponse(
     context,
     {
       application: toProductFaceApplication(context.binding),
       frameUrl: `${context.binding.origin}${context.binding.path}`,
-      ...(handover.ticket ? { handover: { ticket: handover.ticket } } : {}),
+      ...(handover.ticket
+        ? handover.kind === "accept"
+          ? { acceptance: { ticket: handover.ticket } }
+          : { handover: { ticket: handover.ticket } }
+        : {}),
     },
     {
       journal: withSelection(context.journal, { slug, cleared: true }),

@@ -603,6 +603,35 @@ Account isolation is enforced on the server, never by the client:
   launch-local tickets on every session end, and on an account change asks
   `DELETE /api/session/face-handover`, but nothing depends on that request.
 
+**Protected transfer (G8, contract r16).** The holder's face asks for
+`programme.product.transfer.sign {context_id, offer_id, step_operation_id}`.
+The wallet reads the next reviewed step itself from the bound runtime
+(`POST /api/faces/[slug]/transfer-proposal`, a trusted server-to-server
+`transfer.propose` that also names the recipient the runtime bound from the
+recipient's own assertion), accepts it only for the selected owned unit and
+that recipient (request step: the holder's `update` to `Transfer pending`
+whose proof event names `recipientReferenceHash:<sha256 of the recipient>`;
+transfer step: exactly `transfer {to: <recipient>}`; never the holder, the
+proposal hash checked), and shows its own confirmation naming the product,
+that ownership moves, and the recipient's wallet (shortened). The step is
+journalled (`kind: "transfer"`, offer and proposal ids only) before anything
+leaves the wallet; the confirmed step is reserved at the runtime
+(`transfer.reserve`, server to server) and the holder executes it through the
+existing executor only on that request's own `dispatch: "won"` with
+`executionPermitted`. The runtime deciding for a cancel or an expiry first is
+`transfer_cancelled` (nothing executed); anything else is `outcome_unknown`.
+Afterwards `POST /api/faces/[slug]/transfer-progress` verifies the step with
+the recorded action, or reads `transfer.status`; asking again with the same
+step operation id only reads. `transfer.offer` and `transfer.cancel` are
+host-confirmed runtime writes for the selected product; the recipient's
+`transfer.offer.read` and `transfer.accept` (target `{}`) and either party's
+`transfer.read` need no selection, and `transfer.accept` is confirmed
+natively first. The acceptance link opens the runtime's accept page, which
+continues to `/products/<slug>/handover#accept=<ticket>`; the entry stores it
+as kind `accept` in the same sealed, account-bound cookie and continues to
+`/products/<slug>/accept`, where the context read (`?task=/accept`) hands it
+to the face once as `acceptance: {ticket}`.
+
 An unknown slug, a binding without
 handover or a malformed ticket shows an error and stores nothing. The ticket
 itself is a one-time capability at the face runtime (`/handover/redeem`);

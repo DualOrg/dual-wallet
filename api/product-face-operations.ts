@@ -20,6 +20,7 @@ import {
   parseSettleProposal,
   reserveSettle,
   runtimeRequestHash,
+  transferRuntimeCall,
   trustedRuntimeRead,
   type TrustedReadRequest,
 } from "@/api/face-runtime";
@@ -50,6 +51,8 @@ import {
   isRuntimeOperation,
   isRuntimeWriteOperation,
   isSettleProposalUnavailableReason,
+  isUnscopedTransferOperation,
+  transferOperationTargetsNothing,
   unlistedCustomKeys,
   proposalHashInput,
   quoteHashInput,
@@ -74,13 +77,13 @@ export type FaceOperationFailure = {
 export type FaceOperationResult<T> =
   ({ ok: true; journal?: FaceJournal } & T) | FaceOperationFailure;
 
-const fail = (code: string, status: number): FaceOperationFailure => ({
+export const fail = (code: string, status: number): FaceOperationFailure => ({
   ok: false,
   code,
   status,
 });
 
-const journalStatus: Record<JournalTransitionError, number> = {
+export const journalStatus: Record<JournalTransitionError, number> = {
   operation_already_submitted: 409,
   operation_conflict: 409,
   unknown_operation: 404,
@@ -116,7 +119,7 @@ export function resetIssueGuard() {
   issuing.clear();
 }
 
-function selectionMatches(
+export function selectionMatches(
   context: FaceRequestContext,
   journal: FaceJournal,
   contextId: unknown,
@@ -196,7 +199,7 @@ function linkedCaseRuntime(context: FaceRequestContext) {
 }
 
 /** Mints one assertion and records its expiry against the outstanding cap. */
-function mint(
+export function mint(
   context: FaceRequestContext,
   request: NextRequest,
   journal: FaceJournal,
@@ -322,6 +325,36 @@ export async function authorizeAssertion(
     return fail("invalid_request", 400);
   }
   const operationId = body.operation_id;
+  // G8: the recipient's preview/accept (target {}) and either party's
+  // progress read (target {object_id}) need no selected owned product; the
+  // runtime authorises each by the assertion holder alone. No journal: they
+  // move nothing (accepting binds the recipient's own wallet, and only the
+  // holder's signed steps move ownership).
+  if (isUnscopedTransferOperation(operation)) {
+    if (!isRequestHash(body.request_hash) || body.context_id !== undefined) {
+      return fail("invalid_request", 400);
+    }
+    const unscopedTarget = transferOperationTargetsNothing(operation)
+      ? record(body.target) && Object.keys(body.target).length === 0
+        ? {}
+        : undefined
+      : parseTarget(body.target, operation);
+    if (!unscopedTarget) return fail("invalid_request", 400);
+    const minted = mint(context, request, context.journal, {
+      operation,
+      operationId,
+      target: unscopedTarget,
+      requestHash: body.request_hash,
+    });
+    if (!minted.ok) return minted;
+    return {
+      ok: true,
+      assertion: minted.assertion,
+      expiresAt: minted.expiresAt,
+      operationId,
+      journal: minted.journal,
+    };
+  }
   const target = parseTarget(body.target, operation);
   if (!target?.object_id) return fail("invalid_request", 400);
   const objectId = target.object_id;
@@ -677,6 +710,7 @@ export async function transitionOperation(
       "context_id",
       "action_id",
       "proposal_id",
+      "offer_id",
       "record_id",
       "request_hash",
     ]) ||
@@ -731,6 +765,9 @@ export async function transitionOperation(
       if (recheck) return recheck;
       if (existing.kind === "settle") {
         return submitSettle(context, request, existing, now);
+      }
+      if (existing.kind === "transfer") {
+        return submitTransfer(context, request, existing, now);
       }
       return apply({
         kind: "submit",
@@ -905,7 +942,135 @@ export async function transitionOperation(
     });
   }
 
+  if (body.kind === "transfer") {
+    // G8: one holder-signed step of the holder's offer for the selected owned
+    // product, with the proposal the wallet read itself (transfer-proposal).
+    if (
+      (body.operation !== "transfer.request" &&
+        body.operation !== "transfer.transfer") ||
+      body.case_id !== undefined ||
+      typeof body.proposal_id !== "string" ||
+      !TRANSFER_PROPOSAL_ID.test(body.proposal_id) ||
+      typeof body.offer_id !== "string" ||
+      !TRANSFER_OFFER_ID.test(body.offer_id)
+    ) {
+      return fail("invalid_request", 400);
+    }
+    // A step of this unit that already left the wallet stays outcome_unknown
+    // under its own operation; it is never replaced from here.
+    const outstanding = journal.entries.find(
+      (item) =>
+        item.kind === "transfer" &&
+        item.objectId === objectId &&
+        item.operationId !== operationId &&
+        item.phase === "submitted",
+    );
+    if (outstanding) return fail("operation_conflict", 409);
+    return apply({
+      kind: "begin",
+      entry: {
+        ...base,
+        kind: "transfer",
+        operation: body.operation,
+        proposalId: body.proposal_id,
+        offerId: body.offer_id,
+      },
+    });
+  }
+
   return fail("invalid_request", 400);
+}
+
+const TRANSFER_PROPOSAL_ID = /^ptp-[0-9a-f]{24}$/;
+const TRANSFER_OFFER_ID = /^pto-[0-9a-f]{24}$/;
+
+/**
+ * contract r16 transfer.sign, with the r8/r11 reservation rules: a confirmed
+ * transfer step is reserved at the runtime, server to server, before ANY
+ * holder execution. The entry is persisted as submitted whatever the answer;
+ * the holder executes only when this request itself received
+ * dispatch:"won" with executionPermitted for exactly this step operation and
+ * proposal. The runtime's definite refusal because the offer was cancelled or
+ * expired first (its offer state machine decided) is "transfer_cancelled";
+ * anything else (a replay, already claimed, a lost answer, an error) is
+ * outcome_unknown: never executed, never re-reserved, read-only after that.
+ */
+async function submitTransfer(
+  context: FaceRequestContext,
+  request: NextRequest,
+  entry: FaceJournalEntry,
+  now: number,
+): Promise<
+  FaceOperationResult<{ entry: FaceJournalEntry; reservation?: "won" }>
+> {
+  if (!entry.proposalId || !entry.offerId) {
+    return fail("operation_conflict", 409);
+  }
+  const submitted = applyJournalTransition(
+    context.journal.entries,
+    {
+      kind: "submit",
+      operationId: entry.operationId,
+      objectId: entry.objectId,
+    },
+    now,
+  );
+  if (!submitted.ok) {
+    return fail(submitted.error, journalStatus[submitted.error]);
+  }
+  const reserve = {
+    operation: "transfer.reserve" as const,
+    operationId: entry.operationId,
+    target: { object_id: entry.objectId },
+    input: { offer_id: entry.offerId, proposal_id: entry.proposalId },
+  };
+  const minted = mint(
+    context,
+    request,
+    { ...context.journal, entries: submitted.entries },
+    {
+      operation: reserve.operation,
+      operationId: reserve.operationId,
+      target: reserve.target,
+      requestHash: runtimeRequestHash(reserve),
+    },
+  );
+  // Nothing was sent: the entry stays confirmed and may still be cancelled.
+  if (!minted.ok) return minted;
+  const result = await transferRuntimeCall(
+    context.binding,
+    reserve,
+    minted.assertion,
+  );
+  const answer = result.ok ? result.body : (result.body ?? {});
+  const reservation = record(answer.reservation) ? answer.reservation : {};
+  const won =
+    result.ok &&
+    result.status === 200 &&
+    answer.ok === true &&
+    answer.status === "granted" &&
+    answer.dispatch === "won" &&
+    answer.executionPermitted === true &&
+    reservation.step_operation_id === entry.operationId &&
+    reservation.proposal_id === entry.proposalId;
+  if (won) {
+    return {
+      ok: true,
+      entry: submitted.entry,
+      reservation: "won",
+      journal: minted.journal,
+    };
+  }
+  const refused =
+    !result.ok &&
+    answer.executionPermitted === false &&
+    answer.dispatch === "refused" &&
+    (answer.status === "transfer_offer_cancelled" ||
+      answer.status === "transfer_offer_expired");
+  return {
+    ...fail(refused ? "transfer_cancelled" : "outcome_unknown", 409),
+    journal: minted.journal,
+  };
 }
 
 /**
@@ -1041,7 +1206,11 @@ export async function reconcileOperation(
   let readback: { ownerIsYou: boolean; state: string | null } | undefined;
   let evaluation:
     ReturnType<typeof publicUnitFacts>["registration"] | undefined;
-  if (authorityLeft(entry.phase) && entry.kind !== "runtime") {
+  if (
+    authorityLeft(entry.phase) &&
+    entry.kind !== "runtime" &&
+    entry.kind !== "transfer"
+  ) {
     const unit = await readPublicUnit(entry.objectId);
     if (unit) {
       const facts = publicUnitFacts(context, unit);

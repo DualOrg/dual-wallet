@@ -72,5 +72,14 @@ textarea,select{width:100%;min-height:44px;padding:10px;border:1px solid var(--p
 .pf-history{padding-left:1.2em}.pf-history li{margin-bottom:6px}
 .pf-result .pf-state{margin:8px 0 16px}.pf-subject{font-weight:600}
 .pf-ended{text-align:left;max-width:40rem}
+input[type=text]{width:100%;min-height:44px;padding:10px;border:1px solid var(--pf-border);border-radius:8px;background:#fff;color:var(--pf-text);font:inherit}input:focus-visible{outline:3px solid var(--pf-focus);outline-offset:2px}
+.pf-cases{display:grid;gap:12px;margin:16px 0;padding:0;list-style:none}.pf-case-row{border:1px solid var(--pf-border);border-radius:14px;padding:16px;background:var(--pf-surface-alt);display:grid;gap:6px}
+.pf-case-title{font-size:var(--pf-size-1);margin:0}.pf-service-products{grid-template-columns:1fr}.pf-product-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.pf-progress{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0;padding:0;list-style:none;counter-reset:pf-step}.pf-progress li{padding:4px 10px;border:1px solid var(--pf-border);border-radius:999px;font-size:var(--pf-size-small)}
+.pf-progress .pf-progress-done{background:var(--pf-surface-alt)}.pf-progress [aria-current=step]{border:2px solid var(--pf-action);font-weight:600}.pf-progress .pf-progress-not_completed{text-decoration:line-through;color:var(--pf-text-muted)}
+.pf-quote,.pf-info-request{border:1px solid var(--pf-border);border-radius:14px;padding:16px;margin:16px 0;max-width:40rem}.pf-quote h2,.pf-info-request h2{margin-top:0;font-size:var(--pf-size-1)}
+.pf-outcome{padding:10px 14px;border-radius:6px;border-left:4px solid var(--pf-action);background:var(--pf-surface-alt)}.pf-outcome-unknown,.pf-outcome-refused{border-left-color:var(--pf-accent)}
+.pf-confirmed{padding:10px 14px;border-radius:6px;border-left:4px solid var(--pf-action);background:var(--pf-surface-alt)}.pf-transfer,.pf-accept{display:grid;gap:12px;max-width:640px}
+.pf-transfer-link{display:grid;gap:8px}.pf-transfer-link input{width:100%;font:inherit;font-size:var(--pf-size-small);padding:8px;border:1px solid var(--pf-border);border-radius:6px;background:var(--pf-surface)}.pf-steps{margin:0;padding-left:20px}.pf-steps [data-step=committed]{color:var(--pf-text-muted)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
 @media (max-width:480px){.pf-header{padding:10px 16px}.pf-main{padding:16px}.pf-button{width:100%}.pf-product-task .pf-tabs{margin:4px 0 12px}.pf-product-task .pf-switch{margin-bottom:8px}}

@@ -147,6 +147,28 @@ export function ProductFaceConfirmationDialog({
         ) : null}
       </>
     );
+  } else if (request.kind === "transfer") {
+    // G8: the unit, that ownership moves, and the runtime-bound recipient
+    // (read by the wallet itself) so an intercepted link is visible here.
+    title = t(`transfer.${request.step}.title`);
+    description = t(`transfer.${request.step}.description`);
+    confirmLabel = t(`transfer.${request.step}.confirm`);
+    body = (
+      <>
+        <Facts
+          rows={[
+            [t("product"), request.product.name],
+            [t("transfer.recipient"), shortAccountAddress(request.recipient)],
+          ]}
+        />
+        <p className="product-face-confirm-note">{t("transfer.check")}</p>
+      </>
+    );
+  } else if (request.kind === "transfer_accept") {
+    title = t("transferAccept.title");
+    description = t("transferAccept.description");
+    confirmLabel = t("transferAccept.confirm");
+    body = null;
   } else {
     title = t("settle.title");
     description = t("settle.description");

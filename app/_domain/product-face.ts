@@ -466,6 +466,16 @@ export const runtimeOperationNames = [
   "case.information.provide",
   "case.quote.approve",
   "case.quote.decline",
+  // contract r16 protectedTransfer (G8).
+  "transfer.offer",
+  "transfer.offer.read",
+  "transfer.accept",
+  "transfer.read",
+  "transfer.cancel",
+  "transfer.propose",
+  "transfer.reserve",
+  "transfer.verify",
+  "transfer.status",
 ] as const;
 export type RuntimeOperation = (typeof runtimeOperationNames)[number];
 
@@ -475,6 +485,10 @@ export const runtimeWriteOperations = [
   "case.information.provide",
   "case.quote.approve",
   "case.quote.decline",
+  // G8: the holder creates or cancels a transfer offer for the selected
+  // product (runtime store only; the wallet confirms natively first).
+  "transfer.offer",
+  "transfer.cancel",
 ] as const satisfies readonly RuntimeOperation[];
 export type RuntimeWriteOperation = (typeof runtimeWriteOperations)[number];
 
@@ -530,7 +544,33 @@ export function isLinkedCaseOperation(operation: RuntimeOperation) {
 export const hostOnlyRuntimeOperations = [
   "registration.settle.propose",
   "registration.settle.reserve",
+  // G8: the holder's host signs each transfer step itself (transfer.sign).
+  "transfer.propose",
+  "transfer.reserve",
+  "transfer.verify",
+  "transfer.status",
 ] as const satisfies readonly RuntimeOperation[];
+
+/**
+ * G8 operations a face may run without a selected owned product: the
+ * recipient previews and accepts an offer (target {}), and either party reads
+ * an offer's progress by its unit (target {object_id}). The runtime authorises
+ * each by the assertion holder alone (the offer's holder or bound recipient).
+ */
+export const unscopedTransferOperations = [
+  "transfer.offer.read",
+  "transfer.accept",
+  "transfer.read",
+] as const satisfies readonly RuntimeOperation[];
+
+export function isUnscopedTransferOperation(value: RuntimeOperation) {
+  return (unscopedTransferOperations as readonly string[]).includes(value);
+}
+
+/** Unscoped transfer operations whose target is empty (no unit named). */
+export function transferOperationTargetsNothing(value: RuntimeOperation) {
+  return value === "transfer.offer.read" || value === "transfer.accept";
+}
 
 export function isHostOnlyRuntimeOperation(value: RuntimeOperation) {
   return (hostOnlyRuntimeOperations as readonly string[]).includes(value);
@@ -898,6 +938,18 @@ export type ProductFaceConfirmation =
       product: { objectId: string; name: string };
       action: SettleActionName;
       changes: SettleFieldChange[];
+    }
+  | {
+      /** G8: one holder-signed transfer step; ownership moves. */
+      kind: "transfer";
+      product: { objectId: string; name: string };
+      step: "request" | "transfer";
+      /** The runtime-bound recipient, read by the wallet itself. */
+      recipient: string;
+    }
+  | {
+      /** G8: accept an offered product into this wallet. */
+      kind: "transfer_accept";
     };
 
 /**

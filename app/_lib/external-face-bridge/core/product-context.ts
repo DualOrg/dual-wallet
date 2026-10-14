@@ -43,7 +43,8 @@ export function toProductProjection(
 /**
  * The application-variant initialize context. It carries no object, wallet
  * ID, wallet address, token, cookie, assertion or raw DTO; the only
- * capability it may carry is a face runtime's own one-time handover ticket.
+ * capability it may carry is a face runtime's own one-time handover (or G8
+ * transfer acceptance) ticket.
  */
 export function productFaceInitializeContext(
   application: ProductFaceApplication,
@@ -51,6 +52,8 @@ export function productFaceInitializeContext(
   capabilities: string[],
   /** contract r14: a one-time handover ticket, on the register task only. */
   handoverTicket?: string,
+  /** G8 (r16): a one-time transfer acceptance ticket, on the accept task only. */
+  acceptanceTicket?: string,
 ) {
   return {
     object_id: null,
@@ -73,5 +76,6 @@ export function productFaceInitializeContext(
     },
     task: { path: task },
     ...(handoverTicket ? { handover: { ticket: handoverTicket } } : {}),
+    ...(acceptanceTicket ? { acceptance: { ticket: acceptanceTicket } } : {}),
   };
 }

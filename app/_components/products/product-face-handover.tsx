@@ -17,6 +17,9 @@ type HandoverState = "working" | "unavailable" | "invalid" | "failed";
  * fragment at once (before any request), and hands the ticket to the BFF,
  * which keeps it in a sealed pre-auth cookie. Then it leaves for the register
  * task; a signed-out visitor goes through sign-in and returns there.
+ *
+ * G8 (contract r16 acceptanceLink): `#accept=<ticket>` is a transfer
+ * acceptance the same way; it continues to the face's accept task.
  */
 export function ProductFaceHandover({
   slug,
@@ -35,6 +38,7 @@ export function ProductFaceHandover({
   // Everything is decided after the fragment is stripped (on hydration), so
   // no outcome is shown while the ticket is still in the address bar.
   const [state, setState] = useState<HandoverState>("working");
+  const [accepting, setAccepting] = useState(false);
   const started = useRef(false);
 
   useEffect(() => {
@@ -49,11 +53,20 @@ export function ProductFaceHandover({
       );
     }
     const handOver = async (): Promise<HandoverState> => {
+      const params = new URLSearchParams(fragment);
+      const accept = params.get("accept");
+      if (accept !== null) setAccepting(true);
       if (!available) return "unavailable";
-      const ticket = new URLSearchParams(fragment).get("ticket");
+      const ticket = accept ?? params.get("ticket");
       if (!ticket || !TICKET.test(ticket)) return "invalid";
       try {
-        leave(await submitFaceHandover(slug, ticket));
+        leave(
+          await submitFaceHandover(
+            slug,
+            ticket,
+            accept !== null ? "accept" : "handover",
+          ),
+        );
         return "working";
       } catch (error) {
         const code = error instanceof ProductFaceError ? error.code : "";
@@ -73,11 +86,18 @@ export function ProductFaceHandover({
       {state === "working" ? (
         <p className="product-face-status" role="status">
           <LoaderCircle size={18} className="animate-spin" aria-hidden />
-          {t("working")}
+          {t(accepting ? "acceptWorking" : "working")}
         </p>
       ) : (
         <>
-          <Alert>{t(state)}</Alert>
+          <Alert>
+            {t(
+              accepting
+                ? (`accept${state[0].toUpperCase()}${state.slice(1)}` as
+                    "acceptUnavailable" | "acceptInvalid" | "acceptFailed")
+                : state,
+            )}
+          </Alert>
           <p>
             <Link href="/inventory">{t("home")}</Link>
           </p>
