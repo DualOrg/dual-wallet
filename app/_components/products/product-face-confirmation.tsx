@@ -9,6 +9,7 @@ import {
   projectionFieldNames,
   type ProductFaceApplication,
   type ProductFaceConfirmation,
+  type SettleFieldChange,
 } from "@/app/_domain/product-face";
 import { shortAccountAddress } from "@/app/_domain/wallet";
 import { formatDecimalAmount } from "@/app/_utils/decimal";
@@ -23,6 +24,43 @@ function Facts({ rows }: { rows: Array<[string, string]> }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+function SettleChanges({
+  caption,
+  changes,
+}: {
+  caption: string;
+  changes: SettleFieldChange[];
+}) {
+  const t = useTranslations("products.confirm");
+  const label = (field: string) => {
+    const name = field.replace(/^(?:data\.)?custom\./, "");
+    return (projectionFieldNames as readonly string[]).includes(name)
+      ? t(`fields.${name as (typeof projectionFieldNames)[number]}`)
+      : name;
+  };
+  return (
+    <table className="product-face-changes">
+      <caption>{caption}</caption>
+      <thead>
+        <tr>
+          <th scope="col">{t("settle.field")}</th>
+          <th scope="col">{t("settle.from")}</th>
+          <th scope="col">{t("settle.to")}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {changes.map((change) => (
+          <tr key={change.field}>
+            <th scope="row">{label(change.field)}</th>
+            <td>{change.from ?? t("settle.empty")}</td>
+            <td>{change.to ?? t("settle.empty")}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -45,10 +83,6 @@ export function ProductFaceConfirmationDialog({
   const t = useTranslations("products.confirm");
   const locale = useLocale();
   const cancel = useRef<HTMLButtonElement>(null);
-  const fieldLabel = (field: string) =>
-    (projectionFieldNames as readonly string[]).includes(field)
-      ? t(`fields.${field as (typeof projectionFieldNames)[number]}`)
-      : field;
 
   let title: string;
   let description: string;
@@ -120,27 +154,27 @@ export function ProductFaceConfirmationDialog({
     body = (
       <>
         <Facts rows={[[t("product"), request.product.name]]} />
-        <table className="product-face-changes">
-          <caption>{t("settle.changes")}</caption>
-          <thead>
-            <tr>
-              <th scope="col">{t("settle.field")}</th>
-              <th scope="col">{t("settle.from")}</th>
-              <th scope="col">{t("settle.to")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {request.changes.map((change) => (
-              <tr key={change.field}>
-                <th scope="row">
-                  {fieldLabel(change.field.replace(/^(?:data\.)?custom\./, ""))}
-                </th>
-                <td>{change.from ?? t("settle.empty")}</td>
-                <td>{change.to}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <SettleChanges
+          caption={t("settle.changes")}
+          changes={request.changes.filter((change) => change.kind === "value")}
+        />
+        {request.changes.some((change) => change.kind === "technical") ? (
+          <details className="product-face-technical">
+            <summary>
+              {t("settle.technical", {
+                count: request.changes.filter(
+                  (change) => change.kind === "technical",
+                ).length,
+              })}
+            </summary>
+            <SettleChanges
+              caption={t("settle.technicalCaption")}
+              changes={request.changes.filter(
+                (change) => change.kind === "technical",
+              )}
+            />
+          </details>
+        ) : null}
       </>
     );
   }

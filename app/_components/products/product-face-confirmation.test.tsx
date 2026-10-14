@@ -29,6 +29,7 @@ describe("ProductFaceConfirmationDialog", () => {
         objectId: "aaaaaaaaaaaaaaaaaaaaaaaa",
         templateId: application.templateIds[0],
         name: "Arc grinder",
+        recordId: "rec-0001",
         fields: { serialNumber: "MH-ARC-0001", model: "Arc" },
         readback: { ownerIsYou: false, state: "Issued", lifecycleTarget: null },
         registration: "not_owned",
@@ -87,16 +88,23 @@ describe("ProductFaceConfirmationDialog", () => {
     expect(within(dialog).getByText("No payment is taken.")).toBeTruthy();
   });
 
-  it("lists the exact decoded settle changes", () => {
+  it("lists the exact decoded settle changes, technical values apart", () => {
     renderDialog({
       kind: "settle",
       product: { objectId: "aaaaaaaaaaaaaaaaaaaaaaaa", name: "Arc grinder" },
       action: "update",
       changes: [
         {
-          field: "custom.state",
+          field: "data.custom.state",
+          kind: "value",
           from: "Transfer pending",
           to: "Authenticity verified",
+        },
+        {
+          field: "data.custom.action_hash",
+          kind: "technical",
+          from: null,
+          to: "c".repeat(64),
         },
       ],
     });
@@ -106,5 +114,14 @@ describe("ProductFaceConfirmationDialog", () => {
     const row = within(table).getByRole("row", { name: /Status/ });
     expect(within(row).getByText("Transfer pending")).toBeTruthy();
     expect(within(row).getByText("Authenticity verified")).toBeTruthy();
+    expect(within(table).queryByText("c".repeat(64))).toBeNull();
+    expect(
+      screen.getByText("Technical record values that also change (1)"),
+    ).toBeTruthy();
+    const technical = screen.getByRole("table", {
+      name: "Technical record values issued for this confirmation",
+    });
+    expect(within(technical).getByText("action_hash")).toBeTruthy();
+    expect(within(technical).getByText("Not set")).toBeTruthy();
   });
 });

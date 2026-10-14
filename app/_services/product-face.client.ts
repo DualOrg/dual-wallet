@@ -278,9 +278,8 @@ export function listProgrammeProducts({
       order: "desc",
       sortBy: "when_modified",
     });
-    const objects = result.items?.map((item) => item.object) ?? result.objects;
     return {
-      products: objects.map(toProgrammeProduct),
+      products: result.objects.map(toProgrammeProduct),
       next: result.next || undefined,
     };
   });

@@ -1,6 +1,8 @@
 import {
   isObjectId,
   isOperationId,
+  isRecordId,
+  isRequestHash,
   ProductFaceError,
 } from "@/app/_domain/product-face";
 import type { ProductFaceCapability } from "@/app/_lib/external-face-bridge/capabilities/product-types";
@@ -39,9 +41,16 @@ export function registrationCapabilities(): ProductFaceCapability[] {
       async resolve(payload, { session, handlers }) {
         if (
           !isRecord(payload) ||
-          !exactKeys(payload, ["object_id", "operation_id"]) ||
+          !exactKeys(payload, [
+            "object_id",
+            "operation_id",
+            "record_id",
+            "request_hash",
+          ]) ||
           !isObjectId(payload.object_id) ||
-          !isOperationId(payload.operation_id)
+          !isOperationId(payload.operation_id) ||
+          !isRecordId(payload.record_id) ||
+          !isRequestHash(payload.request_hash)
         ) {
           throw faceError("invalid_request");
         }
@@ -49,6 +58,10 @@ export function registrationCapabilities(): ProductFaceCapability[] {
         if (session.pendingConfirmation) throw faceError("action_in_progress");
         const objectId = payload.object_id;
         const operationId = payload.operation_id;
+        const recordId = payload.record_id;
+        // r6: the face's hash over its entire exact runtime request, carried
+        // unchanged into the assertion; the runtime recomputes it.
+        const requestHash = payload.request_hash;
         session.pendingConfirmation = true;
         let begun = false;
         try {
@@ -60,6 +73,7 @@ export function registrationCapabilities(): ProductFaceCapability[] {
           if (unit.readback.ownerIsYou) {
             throw faceError("ownership_moved_state_pending");
           }
+          if (unit.recordId !== recordId) throw faceError("record_mismatch");
           const begin = await call(() =>
             handlers.journal({
               transition: "begin",
@@ -67,6 +81,8 @@ export function registrationCapabilities(): ProductFaceCapability[] {
               operation: "registration.submit",
               operation_id: operationId,
               object_id: objectId,
+              record_id: recordId,
+              request_hash: requestHash,
             }),
           );
           begun = true;
@@ -96,6 +112,7 @@ export function registrationCapabilities(): ProductFaceCapability[] {
               operation: "registration.submit",
               operation_id: operationId,
               target: { object_id: objectId },
+              request_hash: requestHash,
             });
           } catch (error) {
             if (

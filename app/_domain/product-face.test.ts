@@ -107,72 +107,90 @@ describe("canonical JSON", () => {
 
 const settle: SettleRules = {
   action: "update",
-  inputTemplate: {
-    custom: {
-      state: { $oneOf: "targetStates" },
-      lifecycle: { target_state: { $oneOf: "targetStates" } },
-      verified_by: { $literal: "holder" },
-    },
+  leaves: {
+    "data.custom.state": { enum: ["Authenticity verified"] },
+    "data.custom.lifecycle.target_state": { enum: ["Authenticity verified"] },
+    "data.custom.app": { literal: "governed-workflow-studio" },
+    "data.custom.serialNumber": { unchanged: true },
+    "data.custom.action_hash": { runtimeIssued: "sha256_hex" },
+    "data.custom.receipt.at": { runtimeIssued: "iso_time" },
+    "data.custom.proof_event.public_fields": { runtimeIssued: "public_fields" },
+    "data.custom.receipt.id": { runtimeIssued: "^rcpt-[0-9]{4}$" },
   },
   fromStates: ["Transfer pending"],
   targetStates: ["Authenticity verified"],
 };
 
-const goodInput = {
-  custom: {
-    state: "Authenticity verified",
-    lifecycle: { target_state: "Authenticity verified" },
-    verified_by: "holder",
-  },
+const current = {
+  state: "Transfer pending",
+  serialNumber: "MH-ARC-0001",
+  lifecycle: { target_state: "Registered" },
 };
 
-describe("settle input template", () => {
-  it("accepts exactly the template shape", () => {
-    expect(
-      matchSettleTemplate(goodInput, settle.inputTemplate, settle.targetStates),
-    ).toEqual([
-      ["custom.state", "Authenticity verified"],
-      ["custom.lifecycle.target_state", "Authenticity verified"],
-      ["custom.verified_by", "holder"],
-    ]);
-  });
-
-  it("refuses nested extra keys, missing keys and disallowed values", () => {
-    const refuse = (input: unknown) =>
-      expect(
-        matchSettleTemplate(input, settle.inputTemplate, settle.targetStates),
-      ).toBeUndefined();
-    refuse({ custom: { ...goodInput.custom, serialNumber: "X" } });
-    refuse({
+function input(custom: Record<string, unknown> = {}) {
+  return {
+    data: {
       custom: {
-        ...goodInput.custom,
-        lifecycle: { target_state: "Authenticity verified", extra: 1 },
+        state: "Authenticity verified",
+        lifecycle: { target_state: "Authenticity verified" },
+        app: "governed-workflow-studio",
+        serialNumber: "MH-ARC-0001",
+        action_hash: "a".repeat(64),
+        receipt: { at: "2026-10-14T10:00:00.000Z", id: "rcpt-0001" },
+        proof_event: { public_fields: ["state", "serialNumber"] },
+        ...custom,
       },
-    });
-    refuse({ custom: { state: "Authenticity verified" } });
-    refuse({ ...goodInput, owner: "0xattacker" });
-    refuse({ custom: { ...goodInput.custom, state: "Registered" } });
-    refuse({ custom: { ...goodInput.custom, verified_by: "issuer" } });
-    refuse({ custom: { ...goodInput.custom, lifecycle: "flat" } });
+    },
+  };
+}
+
+describe("settle input template (contract r5 leaf rules)", () => {
+  it("accepts exactly the template's leaves", () => {
+    const matched = matchSettleTemplate(input(), settle.leaves, current);
+    expect(matched?.map(([path]) => path).sort()).toEqual(
+      Object.keys(settle.leaves).sort(),
+    );
   });
 
-  it("refuses target-state leaves that disagree with each other", () => {
-    const twoTargets = {
-      ...settle,
-      targetStates: ["Registered", "In service"],
-    };
+  it.each([
+    ["an extra top-level key", { ...input(), owner: "0xattacker" }],
+    ["a nested extra key", input({ extra: { nested: true } })],
+    [
+      "an extra key in a nested object",
+      input({
+        receipt: { at: "2026-10-14T10:00:00.000Z", id: "rcpt-0001", by: "x" },
+      }),
+    ],
+    ["an empty object hiding a key", input({ shadow: {} })],
+    [
+      "a missing leaf",
+      { data: { custom: { state: "Authenticity verified" } } },
+    ],
+    ["a disallowed enum value", input({ state: "Registered" })],
+    ["a changed literal", input({ app: "another-app" })],
+    ["a changed unchanged value", input({ serialNumber: "MH-ARC-9999" })],
+    ["a malformed runtime hash", input({ action_hash: "not-a-hash" })],
+    [
+      "a malformed runtime time",
+      input({ receipt: { at: "yesterday", id: "rcpt-0001" } }),
+    ],
+    [
+      "a value failing an anchored regex",
+      input({ receipt: { at: "2026-10-14T10:00:00.000Z", id: "rcpt-1" } }),
+    ],
+    [
+      "an array where a scalar belongs",
+      input({ state: ["Authenticity verified"] }),
+    ],
+  ])("refuses %s", (_label, value) => {
+    expect(matchSettleTemplate(value, settle.leaves, current)).toBeUndefined();
+  });
+
+  it("requires unchanged leaves to exist on the fresh object", () => {
     expect(
-      matchSettleTemplate(
-        {
-          custom: {
-            state: "Registered",
-            lifecycle: { target_state: "In service" },
-            verified_by: "holder",
-          },
-        },
-        twoTargets.inputTemplate,
-        twoTargets.targetStates,
-      ),
+      matchSettleTemplate(input(), settle.leaves, {
+        state: "Transfer pending",
+      }),
     ).toBeUndefined();
   });
 });
@@ -184,7 +202,7 @@ describe("settle proposal binding", () => {
     operationId: "register-op-0001",
     objectId: "aaaaaaaaaaaaaaaaaaaaaaaa",
     action: "update",
-    input: goodInput,
+    input: input(),
     proposalHash: "sha256:" + "0".repeat(64),
     expiresAt: new Date(now + 60_000),
   };
@@ -194,29 +212,63 @@ describe("settle proposal binding", () => {
     now,
   };
 
-  it("decodes the exact field changes from the proposal and fresh object", () => {
+  it("decodes the changed fields from the proposal and fresh object", () => {
     const result = checkSettleProposal(
       proposal,
       expected,
-      { state: "Transfer pending", lifecycle: {} },
+      current,
       settle,
+      rules,
     );
-    expect(result).toEqual({
-      ok: true,
-      changes: [
-        {
-          field: "custom.state",
-          from: "Transfer pending",
-          to: "Authenticity verified",
-        },
-        {
-          field: "custom.lifecycle.target_state",
-          from: null,
-          to: "Authenticity verified",
-        },
-        { field: "custom.verified_by", from: null, to: "holder" },
-      ],
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.changes).toContainEqual({
+      field: "data.custom.state",
+      kind: "value",
+      from: "Transfer pending",
+      to: "Authenticity verified",
     });
+    expect(result.changes).toContainEqual({
+      field: "data.custom.lifecycle.target_state",
+      kind: "value",
+      from: "Registered",
+      to: "Authenticity verified",
+    });
+    expect(result.changes).toContainEqual({
+      field: "data.custom.action_hash",
+      kind: "technical",
+      from: null,
+      to: "a".repeat(64),
+    });
+    // Verified-unchanged values are not presented as changes.
+    expect(result.changes.map(({ field }) => field)).not.toContain(
+      "data.custom.serialNumber",
+    );
+  });
+
+  it("refuses a state and lifecycle target that disagree", () => {
+    const twoTargets: SettleRules = {
+      ...settle,
+      targetStates: ["Authenticity verified", "In service"],
+      leaves: {
+        ...settle.leaves,
+        "data.custom.lifecycle.target_state": {
+          enum: ["Authenticity verified", "In service"],
+        },
+      },
+    };
+    expect(
+      checkSettleProposal(
+        {
+          ...proposal,
+          input: input({ lifecycle: { target_state: "In service" } }),
+        },
+        expected,
+        current,
+        twoTargets,
+        rules,
+      ),
+    ).toEqual({ ok: false, reason: "proposal_rejected" });
   });
 
   it.each([
@@ -227,7 +279,13 @@ describe("settle proposal binding", () => {
     ["a transfer", { action: "transfer" }],
   ])("refuses %s", (_label, change) => {
     expect(
-      checkSettleProposal({ ...proposal, ...change }, expected, {}, settle),
+      checkSettleProposal(
+        { ...proposal, ...change },
+        expected,
+        current,
+        settle,
+        rules,
+      ),
     ).toEqual({ ok: false, reason: "proposal_rejected" });
   });
 
@@ -236,7 +294,7 @@ describe("settle proposal binding", () => {
       canonicalJson({
         object_id: proposal.objectId,
         action: "update",
-        input: goodInput,
+        input: proposal.input,
       }),
     );
   });

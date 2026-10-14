@@ -43,6 +43,7 @@ function unit(overrides: Partial<ProgrammeUnitFacts> = {}): ProgrammeUnitFacts {
     objectId: UNIT_A,
     templateId: TEMPLATE_A,
     name: "Arc grinder",
+    recordId: "rec-0001",
     fields: { serialNumber: "SN-1", model: "Arc" },
     readback: { ownerIsYou: false, state: "Issued", lifecycleTarget: null },
     registration: "not_owned",
@@ -330,10 +331,45 @@ describe("application-variant capabilities", () => {
 });
 
 describe("registration", () => {
+  // r6: the face's hash over its entire exact runtime registrations body.
+  const REQUEST_HASH = `sha256:${"d".repeat(64)}`;
   const authorize = {
     object_id: UNIT_A,
     operation_id: "register-op-0001",
+    record_id: "rec-0001",
+    request_hash: REQUEST_HASH,
   };
+
+  it.each([
+    ["no record_id", { record_id: undefined }],
+    ["no request_hash", { request_hash: undefined }],
+    ["a malformed request_hash", { request_hash: "sha256:xyz" }],
+    ["a malformed record_id", { record_id: "../x" }],
+  ])("refuses an authorization with %s", async (_label, change) => {
+    const handlerSet = handlers();
+    const { call } = runtimeFor(handlerSet);
+    const payload: Record<string, unknown> = { ...authorize, ...change };
+    for (const key of Object.keys(payload)) {
+      if (payload[key] === undefined) delete payload[key];
+    }
+    await expect(
+      call("programme.registration.authorize", payload),
+    ).rejects.toMatchObject({ code: "invalid_request" });
+    expect(handlerSet.readUnit).not.toHaveBeenCalled();
+  });
+
+  it("refuses a record_id that does not match the public projection", async () => {
+    const handlerSet = handlers();
+    const { call } = runtimeFor(handlerSet);
+    await expect(
+      call("programme.registration.authorize", {
+        ...authorize,
+        record_id: "rec-9999",
+      }),
+    ).rejects.toMatchObject({ code: "record_mismatch" });
+    expect(handlerSet.confirm).not.toHaveBeenCalled();
+    expect(handlerSet.mintAssertion).not.toHaveBeenCalled();
+  });
 
   it("confirms natively, journals before minting, and returns one assertion", async () => {
     const order: string[] = [];
@@ -381,11 +417,20 @@ describe("registration", () => {
       Object.values(handlerSet).map((fn) => (fn as jest.Mock).mock.calls),
     );
     expect(everyCall).not.toMatch(/claim_ownership|claimOwnership/);
+    // The assertion request carries the face's request_hash unchanged.
     expect(handlerSet.mintAssertion).toHaveBeenCalledWith({
       operation: "registration.submit",
       operation_id: "register-op-0001",
       target: { object_id: UNIT_A },
+      request_hash: REQUEST_HASH,
     });
+    expect(handlerSet.journal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transition: "begin",
+        record_id: "rec-0001",
+        request_hash: REQUEST_HASH,
+      }),
+    );
   });
 
   it("cancels before minting as not submitted", async () => {
@@ -634,20 +679,23 @@ describe("holder settle (G6)", () => {
   const pendingProduct = product(UNIT_A, {
     custom: {
       state: "Transfer pending",
+      serialNumber: "MH-ARC-0001",
       lifecycle: { target_state: "Registered" },
     },
   });
+  // The reviewed Dual update body: {data: {custom}}.
+  const settledCustom = {
+    state: "Authenticity verified",
+    lifecycle: { target_state: "Authenticity verified" },
+    serialNumber: "MH-ARC-0001",
+    action_hash: "c".repeat(64),
+  };
   const proposal = {
     proposalId: "proposal-1",
     operationId: "register-op-0001",
     objectId: UNIT_A,
     action: "update",
-    input: {
-      custom: {
-        state: "Authenticity verified",
-        lifecycle: { target_state: "Authenticity verified" },
-      },
-    },
+    input: { data: { custom: settledCustom } },
     proposalHash: `sha256:${"0".repeat(64)}`,
     expiresAt: new Date(Date.now() + 60_000),
   };
@@ -715,14 +763,22 @@ describe("holder settle (G6)", () => {
       action: "update",
       changes: [
         {
-          field: "custom.state",
+          field: "data.custom.state",
+          kind: "value",
           from: "Transfer pending",
           to: "Authenticity verified",
         },
         {
-          field: "custom.lifecycle.target_state",
+          field: "data.custom.lifecycle.target_state",
+          kind: "value",
           from: "Registered",
           to: "Authenticity verified",
+        },
+        {
+          field: "data.custom.action_hash",
+          kind: "technical",
+          from: null,
+          to: "c".repeat(64),
         },
       ],
     });
@@ -760,7 +816,7 @@ describe("holder settle (G6)", () => {
           proposal: {
             ...proposal,
             input: {
-              custom: { ...proposal.input.custom, owner: "0xattacker" },
+              data: { custom: { ...settledCustom, owner: "0xattacker" } },
             },
           },
           changes: [],

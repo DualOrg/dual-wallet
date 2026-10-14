@@ -810,6 +810,12 @@ button {
   text-align: left;
   overflow-wrap: anywhere;
 }
+.product-face-technical summary {
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 600;
+}
 .product-programme-list {
   display: grid;
   gap: 12px;

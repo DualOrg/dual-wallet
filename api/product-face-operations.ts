@@ -4,7 +4,6 @@ import { randomBytes } from "node:crypto";
 import type { NextRequest } from "next/server";
 import {
   mintFaceAssertion,
-  registrationRequestHash,
   sha256Hash,
   walletIssuerOrigin,
   faceAssertionSigner,
@@ -43,6 +42,7 @@ import {
   isObjectId,
   isOperationId,
   isQuoteOperation,
+  isRecordId,
   isRequestHash,
   isRuntimeOperation,
   isRuntimeWriteOperation,
@@ -296,7 +296,7 @@ export async function authorizeAssertion(
   );
 
   if (operation === "registration.submit") {
-    if (body.request_hash !== undefined || body.context_id !== undefined) {
+    if (!isRequestHash(body.request_hash) || body.context_id !== undefined) {
       return fail("invalid_request", 400);
     }
     if (
@@ -306,6 +306,11 @@ export async function authorizeAssertion(
       entry.objectId !== objectId
     ) {
       return fail("unknown_operation", 404);
+    }
+    // r6: the assertion binds the face's entire exact request. The hash the
+    // user confirmed is carried unchanged; any other hash is refused.
+    if (!entry.requestHash || entry.requestHash !== body.request_hash) {
+      return fail("operation_conflict", 409);
     }
     if (authorityLeft(entry.phase)) {
       return fail("operation_already_submitted", 409);
@@ -328,7 +333,7 @@ export async function authorizeAssertion(
       operation,
       operationId,
       target: { object_id: objectId },
-      requestHash: registrationRequestHash(objectId, operationId),
+      requestHash: entry.requestHash,
     });
     if (!minted.ok) return minted;
     return {
@@ -521,6 +526,7 @@ export async function readSettleProposal(
   });
   if (!read.ok) return read;
   const proposal = parseSettleProposal(read.body);
+
   if (!proposal)
     return { ...fail("proposal_rejected", 422), journal: read.journal };
   const check = checkSettleProposal(
@@ -532,6 +538,7 @@ export async function readSettleProposal(
     },
     owned.product.custom,
     settle,
+    context.binding.canonicalRegistration,
   );
   if (
     !check.ok ||
@@ -579,6 +586,8 @@ export async function transitionOperation(
       "context_id",
       "action_id",
       "proposal_id",
+      "record_id",
+      "request_hash",
     ]) ||
     !isOperationId(body.operation_id)
   ) {
@@ -665,7 +674,9 @@ export async function transitionOperation(
     if (
       body.operation !== "registration.submit" ||
       body.case_id !== undefined ||
-      body.context_id !== undefined
+      body.context_id !== undefined ||
+      !isRecordId(body.record_id) ||
+      !isRequestHash(body.request_hash)
     ) {
       return fail("invalid_request", 400);
     }
@@ -674,6 +685,9 @@ export async function transitionOperation(
     const facts = publicUnitFacts(context, unit);
     if (!context.binding.templateIds.includes(facts.templateId)) {
       return fail("not_in_programme", 404);
+    }
+    if (facts.recordId !== body.record_id) {
+      return fail("record_mismatch", 409);
     }
     if (facts.readback.ownerIsYou) {
       return fail(
@@ -690,6 +704,8 @@ export async function transitionOperation(
           ...base,
           kind: "registration",
           operation: "registration.submit",
+          recordId: body.record_id,
+          requestHash: body.request_hash,
         },
       },
       { unit: facts },

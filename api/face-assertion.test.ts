@@ -6,7 +6,6 @@ import { NextRequest } from "next/server";
 import {
   ASSERTION_LIFETIME_SECONDS,
   mintFaceAssertion,
-  registrationRequestHash,
   walletIssuerOrigin,
 } from "@/api/face-assertion";
 import { parseProductFaceApplications } from "@/api/product-face-binding";
@@ -41,10 +40,7 @@ const input = {
   operation: "registration.submit" as const,
   operationId: "register-op-0001",
   target: { object_id: "aaaaaaaaaaaaaaaaaaaaaaaa" },
-  requestHash: registrationRequestHash(
-    "aaaaaaaaaaaaaaaaaaaaaaaa",
-    "register-op-0001",
-  ),
+  requestHash: `sha256:${"e".repeat(64)}`,
   sidHash: "sid-hash",
   now: Date.parse("2026-10-14T10:00:00Z"),
 };
@@ -119,6 +115,7 @@ describe("wallet face assertions", () => {
       op_id: "register-op-0001",
       target: { object_id: "aaaaaaaaaaaaaaaaaaaaaaaa" },
       sid_hash: "sid-hash",
+      request_hash: `sha256:${"e".repeat(64)}`,
     });
     expect(claims.exp - claims.iat).toBeLessThanOrEqual(
       ASSERTION_LIFETIME_SECONDS,

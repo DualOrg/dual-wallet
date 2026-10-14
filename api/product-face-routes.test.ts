@@ -38,6 +38,8 @@ import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
 const UNIT = "aaaaaaaaaaaaaaaaaaaaaaaa";
 const OTHER = "bbbbbbbbbbbbbbbbbbbbbbbb";
 const SLUG = "morrow-home";
+// r6: the face's hash over its entire exact runtime registrations body.
+const REQUEST_HASH = `sha256:${"d".repeat(64)}`;
 const keys = generateKeyPairSync("ed25519");
 
 function jwt(claims: Record<string, unknown>) {
@@ -54,7 +56,7 @@ function smartObject(
     id,
     templateId,
     owner,
-    custom,
+    custom: { recordId: "rec-0001", ...custom },
     metadata: { name: `Arc grinder ${id.slice(0, 4)}` },
     whenModified: new Date("2026-10-01T00:00:00Z"),
   };
@@ -159,6 +161,8 @@ async function confirmRegistration(browser: Browser, operationId: string) {
         operation: "registration.submit",
         operation_id: operationId,
         object_id: UNIT,
+        record_id: "rec-0001",
+        request_hash: REQUEST_HASH,
       })
     ).status,
   ).toBe(200);
@@ -263,6 +267,7 @@ describe("product face BFF", () => {
         operation: "registration.submit",
         operation_id: operationId,
         target: { object_id: UNIT },
+        request_hash: REQUEST_HASH,
       }),
     ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
 
@@ -271,6 +276,7 @@ describe("product face BFF", () => {
       operation: "registration.submit",
       operation_id: operationId,
       target: { object_id: UNIT },
+      request_hash: REQUEST_HASH,
     });
     expect(minted.status).toBe(200);
     const claims = JSON.parse(
@@ -284,6 +290,8 @@ describe("product face BFF", () => {
       target: { object_id: UNIT },
       artifact: `sha256:${ARTIFACT_HEX}`,
       iss: "http://localhost",
+      // Carried unchanged from the face; the runtime recomputes it.
+      request_hash: REQUEST_HASH,
     });
 
     // The journal now records the issued assertion; no second mint.
@@ -292,6 +300,7 @@ describe("product face BFF", () => {
         operation: "registration.submit",
         operation_id: operationId,
         target: { object_id: UNIT },
+        request_hash: REQUEST_HASH,
       }),
     ).toMatchObject({
       status: 409,
@@ -311,6 +320,61 @@ describe("product face BFF", () => {
     expect(JSON.stringify(listed.body)).not.toContain(minted.body.assertion);
   });
 
+  it("binds registration to the projection's record and the face's request hash", async () => {
+    const browser = new Browser();
+    getObjectByIdPublic.mockResolvedValue(smartObject(UNIT, "0xissuer"));
+    const begin = (extra: Record<string, unknown>) =>
+      operations(browser, {
+        transition: "begin",
+        kind: "registration",
+        operation: "registration.submit",
+        operation_id: "register-op-0050",
+        object_id: UNIT,
+        ...extra,
+      });
+    expect(await begin({ request_hash: REQUEST_HASH })).toMatchObject({
+      status: 400,
+      body: { code: "invalid_request" },
+    });
+    expect(await begin({ record_id: "rec-0001" })).toMatchObject({
+      status: 400,
+      body: { code: "invalid_request" },
+    });
+    expect(
+      await begin({ record_id: "rec-9999", request_hash: REQUEST_HASH }),
+    ).toMatchObject({ status: 409, body: { code: "record_mismatch" } });
+
+    await confirmRegistration(browser, "register-op-0051");
+    // A hash other than the confirmed one, or none, mints nothing.
+    for (const requestHash of [`sha256:${"f".repeat(64)}`, undefined]) {
+      expect(
+        (
+          await mint(browser, {
+            operation: "registration.submit",
+            operation_id: "register-op-0051",
+            target: { object_id: UNIT },
+            ...(requestHash ? { request_hash: requestHash } : {}),
+          })
+        ).status,
+      ).toBeGreaterThanOrEqual(400);
+    }
+    const minted = await mint(browser, {
+      operation: "registration.submit",
+      operation_id: "register-op-0051",
+      target: { object_id: UNIT },
+      request_hash: REQUEST_HASH,
+    });
+    expect(minted.status).toBe(200);
+    expect(
+      JSON.parse(
+        Buffer.from(
+          minted.body.assertion.split(".")[1],
+          "base64url",
+        ).toString(),
+      ).request_hash,
+    ).toBe(REQUEST_HASH);
+  });
+
   it("never accepts a holder, wallet or subject from the browser", async () => {
     const browser = new Browser();
     await confirmRegistration(browser, "register-op-0002");
@@ -324,6 +388,7 @@ describe("product face BFF", () => {
           operation: "registration.submit",
           operation_id: "register-op-0002",
           target: { object_id: UNIT },
+          request_hash: REQUEST_HASH,
           ...extra,
         }),
       ).toMatchObject({ status: 400, body: { code: "invalid_request" } });
@@ -339,6 +404,7 @@ describe("product face BFF", () => {
         operation: "registration.submit",
         operation_id: "register-op-0003",
         target: { object_id: UNIT },
+        request_hash: REQUEST_HASH,
       }),
     ).toMatchObject({
       status: 503,
@@ -361,6 +427,8 @@ describe("product face BFF", () => {
         operation: "registration.submit",
         operation_id: operationId,
         object_id: UNIT,
+        record_id: "rec-0001",
+        request_hash: REQUEST_HASH,
       });
     getObjectByIdPublic.mockResolvedValue(
       smartObject(UNIT, "0xissuer", {}, "000000000000000000000000"),
@@ -391,6 +459,7 @@ describe("product face BFF", () => {
       operation: "registration.submit",
       operation_id: operationId,
       target: { object_id: UNIT },
+      request_hash: REQUEST_HASH,
     });
     getObjectByIdPublic.mockResolvedValue(smartObject(UNIT, "0xissuer"));
     expect((await status(browser, operationId)).body).toMatchObject({
@@ -474,7 +543,16 @@ describe("product face BFF", () => {
     const { body } = await select(browser, UNIT);
     const original = global.fetch;
     const runtimeCalls: Array<Record<string, unknown>> = [];
-    global.fetch = jest.fn(async (_url: string, init: RequestInit) => {
+    global.fetch = jest.fn(async (url: string, init: RequestInit) => {
+      // Fixed endpoint, routing header, no browser Origin or cookies.
+      expect(url).toBe("https://faces.example/api/product-face/v1/operations");
+      const headers = new Headers(init.headers);
+      expect(headers.get("x-tig-product-face-application")).toBe(
+        "tig.passport.morrow-home",
+      );
+      expect(headers.get("origin")).toBeNull();
+      expect(headers.get("cookie")).toBeNull();
+      expect(init.credentials).toBe("omit");
       runtimeCalls.push(JSON.parse(String(init.body)));
       return new Response(
         JSON.stringify({

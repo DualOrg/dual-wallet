@@ -278,21 +278,21 @@ server-only JSON array in `PRODUCT_FACE_APPLICATIONS`
 (`api/product-face-binding.ts`, `api/product-face-registry.ts`). Each entry has
 exactly these keys:
 
-| Key                     | Rule                                                                                                     |
-| ----------------------- | -------------------------------------------------------------------------------------------------------- |
-| `slug`                  | `^[a-z0-9][a-z0-9-]{1,62}$`, unique                                                                      |
-| `applicationId`         | `^[a-z0-9][a-z0-9._-]{1,127}$`                                                                           |
-| `version`               | exact semver (no range, no build metadata)                                                               |
-| `publisher`             | `^[a-z0-9][a-z0-9._-]{1,63}$`                                                                            |
-| `programmeId`           | `^[a-z0-9][a-z0-9._-]{1,63}$`                                                                            |
-| `programmeName`         | plain display text, at most 80 characters                                                                |
-| `origin`                | exact `https` origin with a DNS host name; loopback `http` only outside production                       |
-| `path`                  | exactly `/face/<applicationId>/<version>/<64 hex of artifactHash>/`                                      |
-| `artifactHash`          | `sha256:<64 lowercase hex>`                                                                              |
-| `templateIds`           | 1–32 unique lowercase 24-hex Dual template IDs                                                           |
-| `projectionFields`      | subset of `recordId,title,serialNumber,model,manufacturer,state`                                         |
-| `canonicalRegistration` | `{stateField, lifecycleTargetField, settledStates, unconfirmedStates, endedStates}`, disjoint state sets |
-| `settle` (optional)     | `{action, alias?, inputTemplate, fromStates, targetStates}`; see G6 below                                |
+| Key                     | Rule                                                                                                                                          |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `slug`                  | `^[a-z0-9][a-z0-9-]{1,62}$`, unique                                                                                                           |
+| `applicationId`         | `^[a-z0-9][a-z0-9._-]{1,127}$`                                                                                                                |
+| `version`               | exact semver (no range, no build metadata)                                                                                                    |
+| `publisher`             | `^[a-z0-9][a-z0-9._-]{1,63}$`                                                                                                                 |
+| `programmeId`           | `^[a-z0-9][a-z0-9._-]{1,63}$`                                                                                                                 |
+| `programmeName`         | plain display text, at most 80 characters                                                                                                     |
+| `origin`                | exact `https` origin with a DNS host name; loopback `http` only outside production                                                            |
+| `path`                  | exactly `/face/<applicationId>/<version>/<64 hex of artifactHash>/`                                                                           |
+| `artifactHash`          | `sha256:<64 lowercase hex>`                                                                                                                   |
+| `templateIds`           | 1–32 unique lowercase 24-hex Dual template IDs                                                                                                |
+| `projectionFields`      | subset of `recordId,title,serialNumber,model,manufacturer,state`                                                                              |
+| `canonicalRegistration` | `{stateField, lifecycleTargetField, settledStates, unconfirmedStates, endedStates}`, disjoint state sets                                      |
+| `settle` (optional)     | `{action, alias?, inputTemplate, fromStates, targetStates}` or Studio's `{action, inputPath, leaves, fromStates, targetStates}`; see G6 below |
 
 Invalid entries are dropped, a slug configured twice drops every entry using
 it, and malformed JSON is an empty registry. `next.config.ts` derives the CSP
@@ -333,7 +333,8 @@ reviewed, immutable, content-addressed deployment.
 from the bound runtime, not the face: the BFF calls
 `POST <origin>/api/product-face/v1/operations` server to server with a
 host-minted assertion, for `registration.settle.propose` and `case.read`
-only, with a 64 KiB response cap and an 8 s timeout. Only a narrow projection
+only, with a 64 KiB response cap, an 8 s timeout and the routing header
+`x-tig-product-face-application: <applicationId>`. Only a narrow projection
 (proposal or quote) reaches the browser.
 
 ### Wallet assertion (G1 seam)
@@ -354,10 +355,14 @@ and, for product-scoped operations, that the server-side selection still
 names this `context_id` and object. After logout, expiry, an account change or
 a product switch nothing is minted for the old context. `registration.submit`
 needs a `confirmed` journal entry for that operation and unit and moves it to
-`assertion_issued` in the same response; its `request_hash` is
-`sha256(canonical {object_id, operation_id})` because the wallet never sees the
-runtime's evidence handle. A case write needs a `confirmed` entry whose target
-(and, for a quote, the host-read quote) equals the request.
+`assertion_issued` in the same response. Since contract r6 its `request_hash`
+is the face's hash over its entire exact runtime registrations body (assertion
+excluded): the host checks its format, binds it into the journal entry at
+confirmation, and mints it unchanged; any other hash is refused, and the
+runtime recomputes it over the body it receives. A case write needs a
+`confirmed` entry whose target (and, for a quote, the host-read quote) equals
+the request. Every other runtime operation's `request_hash` is likewise the
+face's hash of its full canonical body.
 
 `FACE_ASSERTION_SIGNING_KEY` (PKCS8 PEM, or base64 of it) and
 `FACE_ASSERTION_KEY_ID` are server-only. Absent or invalid, every mint fails
@@ -383,6 +388,7 @@ wallet reads it as empty. It holds only non-secret facts: operation ID, kind
 (`registration`, `runtime`, `settle`), operation or action name, slug,
 programme, object, case, phase (`confirming`, `confirmed`, `assertion_issued`,
 `submitted`, `settled`, `cancelled`), settled status, proposal ID, the
+registration record ID and confirmed request hash, the
 host-read quote version/amount/currency, timestamps, plus the current
 selection per slug and the expiry times of outstanding assertions. It never
 holds an assertion, signature, token or face text. It is written before an
@@ -405,20 +411,20 @@ initialize context is `variant: "application"`, `object_id: null`,
 `{id, name}`, task and capability names; no wallet ID, address, token, cookie,
 assertion or DTO.
 
-| Operation                           | Wallet behavior                                                                                                                                                                                                                                                              |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bridge.ping`                       | `{pong: true}`                                                                                                                                                                                                                                                               |
-| `programme.context.read`            | application, programme, `selected` (`null` or `{context_id, object_id}`), `signed_in`                                                                                                                                                                                        |
-| `programme.products.list`           | `listObjects` for the session wallet per programme template; minimized projection; host-held opaque `next`                                                                                                                                                                   |
-| `programme.product.select`          | server-side selection (above); replaces and invalidates the previous `context_id`; the change event follows the response                                                                                                                                                     |
-| `programme.product.read`            | fresh `getObjectById` for the current context; a product no longer held clears the selection                                                                                                                                                                                 |
-| `programme.product.attributes.read` | the selected product's attributes as `{key, value}`                                                                                                                                                                                                                          |
-| `programme.product.history.read`    | `listActionLogs` for the selected object: `{action_id, action, status, when}`, no params, signatures or fees                                                                                                                                                                 |
-| `navigation.task.update`            | validated task path and optional plain-text title; mirrored to the wallet URL                                                                                                                                                                                                |
-| `programme.registration.authorize`  | public unit facts; refuses `not_in_programme`, `already_registered_to_you`, `ownership_moved_state_pending`; journal `confirming`; native confirmation with canonical facts, programme, publisher and the user's own wallet; journal `confirmed`; mint `registration.submit` |
-| `programme.operation.status`        | read-only status; `outcome_unknown` becomes `pending` only for an operation this live host issued                                                                                                                                                                            |
-| `programme.runtime.authorize`       | reads mint directly for the selected product; case writes need native confirmation and a journal entry; quote decisions bind the host-read quote                                                                                                                             |
-| `programme.product.settle.request`  | G6, below                                                                                                                                                                                                                                                                    |
+| Operation                           | Wallet behavior                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `bridge.ping`                       | `{pong: true}`                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `programme.context.read`            | application, programme, `selected` (`null` or `{context_id, object_id}`), `signed_in`                                                                                                                                                                                                                                                                                                                                                                        |
+| `programme.products.list`           | `listObjects` for the session wallet per programme template; minimized projection; host-held opaque `next`                                                                                                                                                                                                                                                                                                                                                   |
+| `programme.product.select`          | server-side selection (above); replaces and invalidates the previous `context_id`; the change event follows the response                                                                                                                                                                                                                                                                                                                                     |
+| `programme.product.read`            | fresh `getObjectById` for the current context; a product no longer held clears the selection                                                                                                                                                                                                                                                                                                                                                                 |
+| `programme.product.attributes.read` | the selected product's attributes as `{key, value}`                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `programme.product.history.read`    | `listActionLogs` for the selected object: `{action_id, action, status, when}`, no params, signatures or fees                                                                                                                                                                                                                                                                                                                                                 |
+| `navigation.task.update`            | validated task path and optional plain-text title; mirrored to the wallet URL                                                                                                                                                                                                                                                                                                                                                                                |
+| `programme.registration.authorize`  | payload `{object_id, operation_id, record_id, request_hash}`; public unit facts; refuses `not_in_programme`, `record_mismatch` (record_id is not the projection's `custom.recordId`), `already_registered_to_you`, `ownership_moved_state_pending`; journal `confirming`; native confirmation with canonical facts, programme, publisher and the user's own wallet; journal `confirmed`; mint `registration.submit` with the face's `request_hash` unchanged |
+| `programme.operation.status`        | read-only status; `outcome_unknown` becomes `pending` only for an operation this live host issued                                                                                                                                                                                                                                                                                                                                                            |
+| `programme.runtime.authorize`       | reads mint directly for the selected product; case writes need native confirmation and a journal entry; quote decisions bind the host-read quote                                                                                                                                                                                                                                                                                                             |
+| `programme.product.settle.request`  | G6, below                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 Payloads reject unknown keys. Product-scoped results carry `context_id`; a
 private result whose context changed while it was in flight is dropped with
@@ -448,12 +454,24 @@ settle_operation_id}`. The host re-reads the selected product (held by the
 wallet, in the programme, state in `settle.fromStates` and
 `unconfirmedStates`, else `settle_not_required`), obtains the proposal itself
 through the BFF, and requires it bound to this unit and original operation,
-unexpired, the configured action, an input that matches `settle.inputTemplate`
-exactly (same keys at every level; leaves are `{"$literal": …}` or
-`{"$oneOf": "targetStates"}`, and all target-state leaves agree), a proposal
-hash equal to `sha256(canonical {object_id, action, input})`, and the action
-available in a fresh read. The confirmation shows the decoded field changes
-from the proposal and the fresh object. The journal records the settle before
+unexpired, the configured action, an input whose leaves are exactly the
+template's leaves (no key more or less at any level) with every leaf passing
+its rule, the state and lifecycle target it writes agreeing, a proposal hash
+equal to `sha256(canonical {object_id, action, input})`, and the action
+available in a fresh read. The leaf rules (contract r5) are `{literal: v}`,
+`{enum: [...]}` (reviewed target states only), `{unchanged: true}` (equal to
+the fresh host-read object value at that `custom` path) and
+`{runtimeIssued: r}`, where `r` is an anchored regular expression or one of
+the wallet-defined format names Studio emits: `sha256_hex` (64 hex),
+`sha256_prefixed` (`sha256:` + 64 hex), `token`
+(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$`), `iso_time` (ISO 8601 with zone) and
+`public_fields` (at most 32 plain-text strings of at most 200 characters). The
+registry accepts the template nested under `inputTemplate`, or flat as Studio's
+`productFaceSettleInputTemplate()` exports it (`inputPath` plus `leaves`); both
+become one leaf map. The confirmation shows the decoded field changes from the
+proposal and the fresh object; runtime-issued commitments (hashes, ids,
+timestamps) are listed separately under a technical disclosure, and values that
+stay the same are not shown. The journal records the settle before
 execution (`submitted`), then the existing executor runs exactly that proposal
 as the holder (email execute, or passkey/EOA prepare, sign and execute). A
 cancel is `not_submitted`; a lost or failed execution is `outcome_unknown` and
@@ -487,7 +505,23 @@ never written to disk. With `MOCK_PROGRAMME_DUAL_URL` set, the fake api-v3
 forwards programme-template object reads to the Studio local fake Dual
 (integrated mode). Where Playwright's own Chromium build is not installed,
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE` names the browser binary. The fixture is
-byte-exact and excluded from formatting and linting.
+byte-exact and excluded from formatting and linting. The four registration
+specs run only when the pinned face's `manifest.contractRevision` is at least 6
+(the r6 authorize payload); an older pinned face skips them with that reason.
+
+Integrated mode with the real Studio runtime (`scripts/product-face-harness.mjs`
+in the Studio repository) serves the face and runtime at
+`http://localhost:4180` and a fake Dual at `127.0.0.1:4011`, and writes a wallet
+env snippet (`--env-out`; it holds an ephemeral signing key and is never
+committed). Start the fake api-v3 with that snippet and
+`MOCK_PROGRAMME_DUAL_URL=http://127.0.0.1:4011`: it then forwards object,
+listing and action-log reads for the bound templates and the holder's own
+`POST /ebus/execute` (with `x-local-fake-wallet: <holder>`) to the Studio fake
+Dual, and synthesizes only the standard `update` action availability that fake
+lacks. The fake api-v3's session account is
+`0x1234567890abcdef1234567890abcdef12345678`, the harness default holder.
+`FACE_ASSERTION_ISSUER` from the snippet is not read: the wallet derives `iss`
+from the exact tenant host.
 
 ## Change impact guide
 

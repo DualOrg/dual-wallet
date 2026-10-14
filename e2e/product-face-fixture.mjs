@@ -52,6 +52,10 @@ let stats = { assertions: {}, registrations: 0, jti: new Set() };
 const evidence = new Map();
 const held = [];
 
+const withoutAssertion = (body) =>
+  Object.fromEntries(
+    Object.entries(body).filter(([key]) => key !== "assertion"),
+  );
 const sha256 = (value) =>
   `sha256:${createHash("sha256").update(value).digest("hex")}`;
 function canonical(value) {
@@ -228,9 +232,8 @@ async function runtime(request, response, url, manifest) {
       operation: "registration.submit",
       opId: body.operationId,
       target: { object_id: objectId },
-      requestHash: sha256(
-        canonical({ object_id: objectId, operation_id: body.operationId }),
-      ),
+      // r6: the hash over the entire exact request body, assertion excluded.
+      requestHash: sha256(canonical(withoutAssertion(body))),
     });
     if (typeof verified === "string")
       return send(response, 403, { status: "refused", reason: verified });
@@ -331,11 +334,19 @@ async function runtime(request, response, url, manifest) {
           status: "face_trusted_read_server_only",
           ...ZERO,
         });
+      const current = await (
+        await fetch(`${MOCK_API}/__test__/objects/${objectId}`)
+      ).json();
+      // Studio-shaped reviewed proposal: the Dual update body for the unit.
       const input = {
         data: {
           custom: {
             state: "Authenticity verified",
             lifecycle: { target_state: "Authenticity verified" },
+            serialNumber: current.custom?.serialNumber,
+            action_hash: createHash("sha256")
+              .update(`${objectId}:${body.operationId}`)
+              .digest("hex"),
           },
         },
       };

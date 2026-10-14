@@ -31,7 +31,6 @@
     "programme.runtime.authorize",
     "programme.product.settle.request"
   ],
-  "runtimeOrigin": "http://localhost:4101",
   "schema": "tig-product-face-manifest-v1",
   "subresourceIntegrity": {
     "face.css": "sha256-w0J7AainJoH5c/5fBT0A/Zo8zGScDCaYXOPnhRbA+yQ=",

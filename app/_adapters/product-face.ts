@@ -4,6 +4,7 @@ import type { PublicSmartObject } from "@/api/web-sdk/models/PublicSmartObject";
 import type { SmartObject } from "@/api/web-sdk/models/SmartObject";
 import {
   evaluateCanonicalRegistration,
+  isRecordId,
   projectFields,
   registrationReadback,
   type CanonicalRegistrationRules,
@@ -62,6 +63,9 @@ export function toProgrammeUnitFacts(
     templateId: product.templateId,
     name: product.name,
     imageUrl: product.imageUrl,
+    recordId: isRecordId(product.custom.recordId)
+      ? product.custom.recordId
+      : null,
     fields: projectFields(product.custom, projectionFields),
     readback,
     registration: evaluateCanonicalRegistration(readback, rules),

@@ -74,6 +74,8 @@ export async function trustedRuntimeRead(
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
+        // Routes the call when several applications share one runtime origin.
+        "x-tig-product-face-application": binding.applicationId,
       },
       body: JSON.stringify({
         operation: request.operation,

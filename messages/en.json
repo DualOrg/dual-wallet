@@ -493,7 +493,9 @@
         "field": "Field",
         "from": "Now",
         "to": "After",
-        "empty": "Not set"
+        "empty": "Not set",
+        "technical": "Technical record values that also change ({count})",
+        "technicalCaption": "Technical record values issued for this confirmation"
       },
       "fields": {
         "name": "Name",

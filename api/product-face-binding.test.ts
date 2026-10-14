@@ -100,6 +100,75 @@ describe("product application registry", () => {
     expect(parse([bindingInput(override)])).toEqual([]);
   });
 
+  it("accepts Studio's productFaceSettleInputTemplate() export shape", () => {
+    const [binding] = parse([
+      bindingInput({
+        settle: {
+          action: "update",
+          inputPath: "data.custom",
+          leaves: {
+            state: { enum: ["Authenticity verified"] },
+            "lifecycle.target_state": { enum: ["Authenticity verified"] },
+            app: { literal: "governed-workflow-studio" },
+            recordId: { unchanged: true },
+            action_hash: { runtimeIssued: "sha256_hex" },
+            "proof_event.event_hash": { runtimeIssued: "sha256_prefixed" },
+            "receipt.id": { runtimeIssued: "^rcpt-[0-9]+$" },
+          },
+          fromStates: ["Transfer pending"],
+          targetStates: ["Authenticity verified"],
+        },
+      }),
+    ]);
+    expect(binding.settle?.leaves).toMatchObject({
+      "data.custom.state": { enum: ["Authenticity verified"] },
+      "data.custom.recordId": { unchanged: true },
+      "data.custom.action_hash": { runtimeIssued: "sha256_hex" },
+    });
+  });
+
+  it.each([
+    [
+      "an enum value outside the target states",
+      { state: { enum: ["Registered"] } },
+    ],
+    ["an unanchored regex", { "receipt.id": { runtimeIssued: "rcpt-.*" } }],
+    ["an unknown format name", { action_hash: { runtimeIssued: "anything" } }],
+    ["an unknown leaf kind", { state: { oneOf: ["Authenticity verified"] } }],
+    [
+      "a leaf that is also a parent",
+      { receipt: { unchanged: true }, "receipt.id": { unchanged: true } },
+    ],
+  ])("drops a Studio-shaped settle with %s", (_label, leaves) => {
+    expect(
+      parse([
+        bindingInput({
+          settle: {
+            action: "update",
+            inputPath: "data.custom",
+            leaves,
+            fromStates: ["Transfer pending"],
+            targetStates: ["Authenticity verified"],
+          },
+        }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("drops a settle that mixes both template spellings", () => {
+    expect(
+      parse([
+        bindingInput({
+          settle: {
+            ...bindingInput().settle,
+            inputPath: "data.custom",
+            leaves: { state: { enum: ["Authenticity verified"] } },
+          },
+        }),
+      ]),
+    ).toEqual([]);
+  });
+
   it("allows loopback http only outside production", () => {
     const local = bindingInput({ origin: "http://localhost:4101" });
     expect(parse([local], false)).toHaveLength(1);

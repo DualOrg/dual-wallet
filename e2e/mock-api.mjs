@@ -42,7 +42,8 @@ const publicObject = {
 
 export const PROGRAMME = {
   walletId: "wallet-face-e2e",
-  walletAddress: "0x00000000000000000000000000000000000f00d1",
+  // The Studio harness's default --holder-wallet, so integrated mode agrees.
+  walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
   controllerAddress: "0x00000000000000000000000000000000000c0de1",
   issuerAddress: "0x00000000000000000000000000000000000155ae",
   morrowTemplate: "6a0000000000000000000001",
@@ -146,8 +147,24 @@ function seedProgramme() {
 
 let objects = seedProgramme();
 let actionLogs = [];
-const isProgrammeTemplate = (templateId) =>
-  [PROGRAMME.morrowTemplate, PROGRAMME.tidewellTemplate].includes(templateId);
+// Integrated mode: the templates the wallet registry binds live in the Studio
+// fake Dual, so reads of their objects, and the holder's own settle execute,
+// go there instead of this store.
+const integratedTemplates = new Set(
+  (() => {
+    try {
+      return JSON.parse(process.env.PRODUCT_FACE_APPLICATIONS || "[]").flatMap(
+        (binding) => binding.templateIds ?? [],
+      );
+    } catch {
+      return [];
+    }
+  })(),
+);
+const integrated = (objectId, templateId) =>
+  Boolean(programmeDualUrl) &&
+  ((templateId && integratedTemplates.has(templateId)) ||
+    (objectId && !objects.has(objectId)));
 
 function wallet() {
   return {
@@ -291,13 +308,11 @@ function display(variant) {
   };
 }
 
-async function forwardProgramme(request, response, url) {
+async function forwardProgramme(request, response, url, init = {}) {
   try {
     const upstream = await fetch(
       `${programmeDualUrl}${url.pathname}${url.search}`,
-      {
-        headers: { Accept: "application/json" },
-      },
+      { headers: { Accept: "application/json" }, ...init },
     );
     response.writeHead(upstream.status, {
       "Content-Type":
@@ -374,10 +389,17 @@ async function handleProgramme(request, response, url) {
   if (method === "GET" && objectMatch) {
     const [, isPublic, objectId, attributes] = objectMatch;
     const object = objects.get(objectId);
-    if (!object) return undefined;
-    if (programmeDualUrl && isProgrammeTemplate(object.template_id)) {
-      return forwardProgramme(request, response, url);
+    if (integrated(objectId, object?.template_id)) {
+      if (!isPublic && !authorized(request)) return respond(response, 401, {});
+      // The Studio fake Dual has no attribute store (local fake: empty list).
+      if (attributes) return respond(response, 200, { attributes: [] });
+      return forwardProgramme(
+        request,
+        response,
+        new URL(`/objects/${objectId}`, url),
+      );
     }
+    if (!object) return undefined;
     if (!isPublic && !authorized(request)) return respond(response, 401, {});
     if (attributes) {
       return respond(response, 200, {
@@ -405,8 +427,17 @@ async function handleProgramme(request, response, url) {
     const templateId = url.searchParams.get("template_id");
     const owner = url.searchParams.get("owner")?.toLowerCase();
     const id = url.searchParams.get("id");
-    if (programmeDualUrl && templateId && isProgrammeTemplate(templateId)) {
-      return forwardProgramme(request, response, url);
+    if (integrated(id, templateId)) {
+      if (!id) return forwardProgramme(request, response, url);
+      // One object with its template's actions. The Studio fake Dual has no
+      // template action list; this local fake reports the standard update.
+      const upstream = await fetch(`${programmeDualUrl}/objects/${id}`);
+      if (!upstream.ok) return respond(response, 200, { objects: [] });
+      const object = await upstream.json();
+      return respond(response, 200, {
+        objects: [object],
+        actions: [{ template_id: object.template_id, actions: ["update"] }],
+      });
     }
     const list = [...objects.values()].filter(
       (object) =>
@@ -428,6 +459,7 @@ async function handleProgramme(request, response, url) {
 
   if (method === "GET" && path === "/ebus/action-logs" && authorized(request)) {
     const objectId = url.searchParams.get("object_id");
+    if (integrated(objectId)) return forwardProgramme(request, response, url);
     return respond(response, 200, {
       action_logs: actionLogs.filter(
         (log) =>
@@ -439,6 +471,18 @@ async function handleProgramme(request, response, url) {
   if (method === "POST" && path === "/ebus/execute" && authorized(request)) {
     const body = await readBody(request);
     const update = body?.action?.update;
+    if (update && integrated(update.id)) {
+      // The holder's own settle executes on the Studio fake Dual as the
+      // session holder; it never carries issuer authority.
+      return forwardProgramme(request, response, url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-local-fake-wallet": PROGRAMME.walletAddress,
+        },
+        body: JSON.stringify({ action: body.action }),
+      });
+    }
     const object = update && objects.get(update.id);
     if (!object || object.owner !== PROGRAMME.walletAddress) {
       return respond(response, 403, { message: "Not the holder" });

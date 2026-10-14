@@ -32,6 +32,8 @@ export interface JournalTransitionRequest {
   context_id?: string;
   action_id?: string;
   proposal_id?: string;
+  record_id?: string;
+  request_hash?: string;
 }
 
 export interface JournalTransitionResponse {
@@ -153,6 +155,7 @@ const faceErrorMessages: Record<string, string> = {
   quote_changed: "The quote has changed.",
   unknown_operation: "The wallet has no record of this operation.",
   invalid_request: "The request is invalid.",
+  record_mismatch: "The record does not match this product.",
   session_ended: "The wallet session for this face has ended.",
   artifact_mismatch: "The application could not be verified.",
 };

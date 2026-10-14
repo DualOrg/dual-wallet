@@ -30,8 +30,8 @@ export function bindingInput(overrides: Record<string, unknown> = {}) {
       action: "update",
       inputTemplate: {
         custom: {
-          state: { $oneOf: "targetStates" },
-          lifecycle: { target_state: { $oneOf: "targetStates" } },
+          state: { enum: ["Authenticity verified"] },
+          lifecycle: { target_state: { enum: ["Authenticity verified"] } },
         },
       },
       fromStates: ["Transfer pending"],
@@ -62,11 +62,11 @@ export const application: ProductFaceApplication = {
   },
   settle: {
     action: "update",
-    inputTemplate: {
-      custom: {
-        state: { $oneOf: "targetStates" },
-        lifecycle: { target_state: { $oneOf: "targetStates" } },
-      },
+    leaves: {
+      "data.custom.state": { enum: ["Authenticity verified"] },
+      "data.custom.lifecycle.target_state": { enum: ["Authenticity verified"] },
+      "data.custom.serialNumber": { unchanged: true },
+      "data.custom.action_hash": { runtimeIssued: "sha256_hex" },
     },
     fromStates: ["Transfer pending"],
     targetStates: ["Authenticity verified"],

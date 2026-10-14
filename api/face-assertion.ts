@@ -9,10 +9,7 @@ import {
 } from "node:crypto";
 import type { NextRequest } from "next/server";
 import type { ProductFaceBinding } from "@/api/product-face-binding";
-import {
-  canonicalJson,
-  type RuntimeOperation,
-} from "@/app/_domain/product-face";
+import type { RuntimeOperation } from "@/app/_domain/product-face";
 
 export const ASSERTION_TYPE = "dual-face-assertion+jwt";
 export const ASSERTION_LIFETIME_SECONDS = 60;
@@ -133,17 +130,6 @@ export function mintFaceAssertion(input: FaceAssertionInput) {
     assertion: `${signingInput}.${base64url(signature)}`,
     expiresAt: claims.exp * 1000,
   };
-}
-
-/**
- * Hash binding a registration.submit assertion. The wallet never sees the
- * runtime's evidence handle or record ID, so it binds what it confirmed: the
- * exact unit and the original operation.
- */
-export function registrationRequestHash(objectId: string, operationId: string) {
-  return sha256Hash(
-    canonicalJson({ object_id: objectId, operation_id: operationId }),
-  );
 }
 
 /**

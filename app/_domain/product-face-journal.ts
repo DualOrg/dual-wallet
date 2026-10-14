@@ -4,6 +4,8 @@ import {
   isDecimalAmount,
   isQuoteVersion,
   isObjectId,
+  isRecordId,
+  isRequestHash,
   isOperationId,
   isRegistrationStatus,
   isRuntimeOperation,
@@ -39,6 +41,9 @@ export interface FaceJournalEntry {
   phase: JournalPhase;
   status?: RegistrationStatus;
   actionId?: string;
+  /** The face's exact runtime registration request, bound at confirmation. */
+  recordId?: string;
+  requestHash?: string;
   /** The runtime proposal a settle executes; never its input. */
   proposalId?: string;
   /** The host-read quote a quote approval or decline is bound to. */
@@ -106,6 +111,8 @@ export function parseJournalEntry(
       (typeof entry.proposalId !== "string" ||
         !ACTION_ID.test(entry.proposalId))) ||
     (entry.quote !== undefined && !parseQuote(entry.quote)) ||
+    (entry.recordId !== undefined && !isRecordId(entry.recordId)) ||
+    (entry.requestHash !== undefined && !isRequestHash(entry.requestHash)) ||
     !timestamp(entry.createdAt) ||
     !timestamp(entry.updatedAt) ||
     (entry.issuedAt !== undefined && !timestamp(entry.issuedAt))
@@ -131,6 +138,8 @@ export function parseJournalEntry(
     ...(entry.actionId ? { actionId: entry.actionId as string } : {}),
     ...(entry.proposalId ? { proposalId: entry.proposalId as string } : {}),
     ...(entry.quote ? { quote: parseQuote(entry.quote)! } : {}),
+    ...(entry.recordId ? { recordId: entry.recordId as string } : {}),
+    ...(entry.requestHash ? { requestHash: entry.requestHash as string } : {}),
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
     ...(entry.issuedAt ? { issuedAt: entry.issuedAt as number } : {}),

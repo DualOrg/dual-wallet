@@ -46,6 +46,7 @@ export function isProjectionField(value: unknown): value is ProjectionField {
 
 const OBJECT_ID = /^[0-9a-f]{24}$/;
 const OPERATION_ID = /^[a-z0-9-]{8,64}$/;
+const RECORD_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{2,79}$/;
 const CASE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const REQUEST_HASH = /^sha256:[0-9a-f]{64}$/;
 const TASK_PATH =
@@ -58,6 +59,10 @@ export function isObjectId(value: unknown): value is string {
 
 export function isOperationId(value: unknown): value is string {
   return typeof value === "string" && OPERATION_ID.test(value);
+}
+
+export function isRecordId(value: unknown): value is string {
+  return typeof value === "string" && RECORD_ID.test(value);
 }
 
 export function isCaseId(value: unknown): value is string {
@@ -98,27 +103,82 @@ export interface CanonicalRegistrationRules {
 }
 
 /**
- * Exact shape of the input a holder settle may carry. Every key at every
- * level is listed; a leaf is either a literal or one of the reviewed target
- * states. Anything else — a missing or extra key, another value — is refused.
+ * One leaf of the reviewed settle input (contract r5):
+ * - `literal`: exactly this value;
+ * - `enum`: one of these values, all reviewed target states;
+ * - `unchanged`: equal to the fresh host-read object value at that path;
+ * - `runtimeIssued`: a per-event value issued by the runtime (commitment id,
+ *   hash, timestamp), format-checked here and hash-bound through the
+ *   server-read proposal. Either a wallet-known format name or an anchored
+ *   regular expression.
  */
 export type SettleTemplateLeaf =
-  { $literal: string | number | boolean | null } | { $oneOf: "targetStates" };
-export interface SettleInputTemplate {
-  [key: string]: SettleTemplateLeaf | SettleInputTemplate;
-}
+  | { literal: string | number | boolean | null }
+  | { enum: string[] }
+  | { unchanged: true }
+  | { runtimeIssued: string };
 
 /**
  * The holder-signed action that settles `ownership_moved_state_pending` (G6).
- * Deployment data, not code: the exact reviewed mapping comes from the
- * publisher's reviewed pack.
+ * Deployment data, not code. `leaves` maps every dotted leaf path of the
+ * proposal input (from its root, e.g. `data.custom.state`) to its rule; the
+ * input must have exactly these leaves.
  */
 export interface SettleRules {
   action: SettleActionName;
   alias?: string;
-  inputTemplate: SettleInputTemplate;
+  leaves: Record<string, SettleTemplateLeaf>;
   fromStates: string[];
   targetStates: string[];
+}
+
+const ISO_TIME =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/** Wallet-owned meaning of the runtime-issued format names Studio emits. */
+const runtimeIssuedFormats: Record<string, (value: unknown) => boolean> = {
+  sha256_hex: (value) =>
+    typeof value === "string" && /^[0-9a-f]{64}$/.test(value),
+  sha256_prefixed: (value) =>
+    typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value),
+  token: (value) =>
+    typeof value === "string" &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(value),
+  iso_time: (value) =>
+    typeof value === "string" &&
+    ISO_TIME.test(value) &&
+    !Number.isNaN(Date.parse(value)),
+  // Studio's proof_event.public_fields: short labelled facts such as
+  // "state:Authenticity verified"; plain text only, bounded.
+  public_fields: (value) =>
+    Array.isArray(value) &&
+    value.length <= 32 &&
+    value.every(
+      (item) =>
+        typeof item === "string" &&
+        item.length > 0 &&
+        item.length <= 200 &&
+        !/[\u0000-\u001f\u007f<>]/.test(item),
+    ),
+};
+
+export function runtimeIssuedCheck(
+  rule: unknown,
+): ((value: unknown) => boolean) | undefined {
+  if (typeof rule !== "string") return undefined;
+  if (Object.prototype.hasOwnProperty.call(runtimeIssuedFormats, rule)) {
+    return runtimeIssuedFormats[rule];
+  }
+  if (!rule.startsWith("^") || !rule.endsWith("$") || rule.length > 200) {
+    return undefined;
+  }
+  try {
+    const pattern = new RegExp(rule);
+    return (value) =>
+      typeof value === "string" && value.length <= 512 && pattern.test(value);
+  } catch {
+    return undefined;
+  }
 }
 
 // Standard actions a holder settle may use. Ownership-moving or destructive
@@ -138,41 +198,108 @@ export function isSettleActionName(value: unknown): value is SettleActionName {
   );
 }
 
-const TEMPLATE_KEY = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+const LEAF_PATH =
+  /^[A-Za-z_][A-Za-z0-9_]{0,63}(?:\.[A-Za-z_][A-Za-z0-9_]{0,63}){0,7}$/;
 
 function plainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-export function isTemplateLeaf(value: unknown): value is SettleTemplateLeaf {
-  if (!plainRecord(value)) return false;
-  const keys = Object.keys(value);
-  if (keys.length !== 1) return false;
-  if (keys[0] === "$literal") {
-    const literal = value.$literal;
-    return (
-      literal === null ||
-      typeof literal === "boolean" ||
-      (typeof literal === "string" && literal.length <= 200) ||
-      (typeof literal === "number" && Number.isFinite(literal))
-    );
-  }
-  return keys[0] === "$oneOf" && value.$oneOf === "targetStates";
+function scalar(value: unknown) {
+  return (
+    value === null ||
+    typeof value === "boolean" ||
+    (typeof value === "string" && value.length <= 500) ||
+    (typeof value === "number" && Number.isFinite(value))
+  );
 }
 
-/** Validates a deployment-supplied template: nested keys, known leaves only. */
-export function isSettleInputTemplate(
+/** Validates one deployment-supplied leaf rule against the target states. */
+export function parseTemplateLeaf(
   value: unknown,
+  targetStates: readonly string[],
+): SettleTemplateLeaf | undefined {
+  if (!plainRecord(value)) return undefined;
+  const keys = Object.keys(value);
+  if (keys.length !== 1) return undefined;
+  switch (keys[0]) {
+    case "literal":
+      return scalar(value.literal)
+        ? { literal: value.literal as string | number | boolean | null }
+        : undefined;
+    case "enum":
+      return Array.isArray(value.enum) &&
+        value.enum.length > 0 &&
+        value.enum.every(
+          (item) => typeof item === "string" && targetStates.includes(item),
+        )
+        ? { enum: [...(value.enum as string[])] }
+        : undefined;
+    case "unchanged":
+      return value.unchanged === true ? { unchanged: true } : undefined;
+    case "runtimeIssued":
+      return runtimeIssuedCheck(value.runtimeIssued)
+        ? { runtimeIssued: value.runtimeIssued as string }
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Flattens a nested template (`{data: {custom: {state: {enum: [...]}}}}`)
+ * into leaf paths. A node is a leaf when it is a valid leaf rule.
+ */
+export function flattenSettleTemplate(
+  template: unknown,
+  targetStates: readonly string[],
+  prefix = "",
   depth = 0,
-): value is SettleInputTemplate {
-  if (!plainRecord(value) || depth > 5) return false;
-  const entries = Object.entries(value);
-  if (!entries.length || entries.length > 16) return false;
-  return entries.every(
-    ([key, child]) =>
-      TEMPLATE_KEY.test(key) &&
-      (isTemplateLeaf(child) || isSettleInputTemplate(child, depth + 1)),
-  );
+): Record<string, SettleTemplateLeaf> | undefined {
+  if (!plainRecord(template) || depth > 7) return undefined;
+  const entries = Object.entries(template);
+  if (!entries.length) return undefined;
+  const leaves: Record<string, SettleTemplateLeaf> = {};
+  for (const [key, child] of entries) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (!LEAF_PATH.test(path)) return undefined;
+    const leaf = parseTemplateLeaf(child, targetStates);
+    if (leaf) {
+      leaves[path] = leaf;
+      continue;
+    }
+    const nested = flattenSettleTemplate(child, targetStates, path, depth + 1);
+    if (!nested) return undefined;
+    Object.assign(leaves, nested);
+  }
+  return leaves;
+}
+
+/** Validates a flat leaf map, optionally rooted at an input path. */
+export function parseSettleLeaves(
+  leaves: unknown,
+  targetStates: readonly string[],
+  inputPath = "",
+): Record<string, SettleTemplateLeaf> | undefined {
+  if (!plainRecord(leaves)) return undefined;
+  const entries = Object.entries(leaves);
+  if (!entries.length || entries.length > 128) return undefined;
+  if (inputPath && !LEAF_PATH.test(inputPath)) return undefined;
+  const result: Record<string, SettleTemplateLeaf> = {};
+  for (const [key, rule] of entries) {
+    const path = inputPath ? `${inputPath}.${key}` : key;
+    const leaf = parseTemplateLeaf(rule, targetStates);
+    if (!LEAF_PATH.test(path) || !leaf) return undefined;
+    result[path] = leaf;
+  }
+  const paths = Object.keys(result);
+  // No leaf may also be the parent of another leaf.
+  if (
+    paths.some((path) => paths.some((other) => other.startsWith(`${path}.`)))
+  ) {
+    return undefined;
+  }
+  return result;
 }
 
 /** Server-resolved programme binding as the wallet browser code receives it. */
@@ -240,6 +367,8 @@ export interface ProgrammeUnitFacts {
   templateId: string;
   name: string;
   imageUrl?: string;
+  /** The public projection's `custom.recordId`, or null when absent. */
+  recordId: string | null;
   fields: Partial<Record<ProjectionField, string>>;
   readback: RegistrationReadback;
   registration: CanonicalRegistration;
@@ -422,8 +551,11 @@ export function canonicalJson(value: unknown): string {
 
 export interface SettleFieldChange {
   field: string;
+  /** `technical`: a runtime-issued commitment (hash, id, timestamp). */
+  kind: "value" | "technical";
+  /** Display text; null when the field is absent or null. */
   from: string | null;
-  to: string;
+  to: string | null;
 }
 
 function displayValue(value: unknown): string | null {
@@ -436,54 +568,71 @@ function displayValue(value: unknown): string | null {
   }
 }
 
+/** Every leaf path of a JSON value. Plain objects recurse; anything else, an
+ * empty object included, is a leaf. */
+export function inputLeaves(
+  value: unknown,
+  prefix = "",
+  depth = 0,
+): Array<[string, unknown]> {
+  if (!plainRecord(value) || depth > 8 || !Object.keys(value).length) {
+    return [[prefix, value]];
+  }
+  return Object.entries(value).flatMap(([key, child]) =>
+    inputLeaves(child, prefix ? `${prefix}.${key}` : key, depth + 1),
+  );
+}
+
+/** The object `custom` path a proposal leaf writes, if it writes custom data. */
+export function customPathOf(field: string) {
+  if (field.startsWith("data.custom."))
+    return field.slice("data.custom.".length);
+  if (field.startsWith("custom.")) return field.slice("custom.".length);
+  return undefined;
+}
+
 /**
- * Deep-checks proposal input against the reviewed template: exactly the
- * template's keys at every level, each literal leaf equal to its literal and
- * each target-state leaf one reviewed target state, all target-state leaves
- * agreeing. Returns the decoded leaf values, or undefined to refuse.
+ * Deep-checks proposal input against the reviewed leaf rules: exactly the
+ * template's leaves, nothing more or less, each passing its rule. Returns the
+ * leaf values, or undefined to refuse.
  */
 export function matchSettleTemplate(
   input: unknown,
-  template: SettleInputTemplate,
-  targetStates: readonly string[],
+  leaves: Record<string, SettleTemplateLeaf>,
+  currentCustom: unknown,
 ): Array<[string, unknown]> | undefined {
-  const leaves: Array<[string, unknown]> = [];
-  const targets = new Set<string>();
-  const walk = (
-    value: unknown,
-    shape: SettleInputTemplate,
-    prefix: string,
-  ): boolean => {
-    if (!plainRecord(value)) return false;
-    const expected = Object.keys(shape);
-    const actual = Object.keys(value);
-    if (
-      actual.length !== expected.length ||
-      !actual.every((key) => expected.includes(key))
-    ) {
-      return false;
-    }
-    return expected.every((key) => {
-      const rule = shape[key];
-      const child = value[key];
-      const path = prefix ? `${prefix}.${key}` : key;
-      if (isTemplateLeaf(rule)) {
-        if ("$literal" in rule) {
-          if (child !== rule.$literal) return false;
-        } else {
-          if (typeof child !== "string" || !targetStates.includes(child)) {
-            return false;
-          }
-          targets.add(child);
-        }
-        leaves.push([path, child]);
-        return true;
+  if (!plainRecord(input)) return undefined;
+  const found = inputLeaves(input);
+  const expected = Object.keys(leaves);
+  if (
+    found.length !== expected.length ||
+    !found.every(([path]) => Object.prototype.hasOwnProperty.call(leaves, path))
+  ) {
+    return undefined;
+  }
+  for (const [path, value] of found) {
+    const rule = leaves[path];
+    if ("literal" in rule) {
+      if (value !== rule.literal) return undefined;
+    } else if ("enum" in rule) {
+      if (typeof value !== "string" || !rule.enum.includes(value)) return;
+    } else if ("unchanged" in rule) {
+      const customPath = customPathOf(path);
+      const current = customPath
+        ? readPath(currentCustom, customPath)
+        : undefined;
+      if (current === undefined) return undefined;
+      try {
+        if (canonicalJson(current) !== canonicalJson(value)) return undefined;
+      } catch {
+        return undefined;
       }
-      return walk(child, rule, path);
-    });
-  };
-  if (!walk(input, template, "") || targets.size > 1) return undefined;
-  return leaves;
+    } else {
+      const check = runtimeIssuedCheck(rule.runtimeIssued);
+      if (!check || !check(value)) return undefined;
+    }
+  }
+  return found;
 }
 
 /** A proposal the wallet obtained itself from the bound runtime. */
@@ -503,15 +652,17 @@ export type SettleProposalCheck =
 
 /**
  * The proposal is untrusted until it is bound to this unit and original
- * operation, unexpired, the reviewed action, and template-exact. The host
- * derives the changes it shows from the proposal and the fresh object, never
- * from face-supplied text. The hash is checked separately by the caller.
+ * operation, unexpired, the reviewed action, and template-exact, with the
+ * canonical state and lifecycle target it writes agreeing. The host derives
+ * the changes it shows from the proposal and the fresh object, never from
+ * face-supplied text. The hash is checked separately by the caller.
  */
 export function checkSettleProposal(
   proposal: SettleProposal,
   expected: { operationId: string; objectId: string; now: number },
   currentCustom: unknown,
   settle: SettleRules,
+  canonical: CanonicalRegistrationRules,
 ): SettleProposalCheck {
   if (
     proposal.operationId !== expected.operationId ||
@@ -524,27 +675,50 @@ export function checkSettleProposal(
   }
   const leaves = matchSettleTemplate(
     proposal.input,
-    settle.inputTemplate,
-    settle.targetStates,
+    settle.leaves,
+    currentCustom,
   );
   if (!leaves) return { ok: false, reason: "proposal_rejected" };
+  const written = new Map(
+    leaves.flatMap(([field, value]) => {
+      const customPath = customPathOf(field);
+      return customPath ? [[customPath, value] as const] : [];
+    }),
+  );
+  const state = written.get(canonical.stateField);
+  const target = written.get(canonical.lifecycleTargetField);
+  if (
+    (state !== undefined &&
+      (typeof state !== "string" || !settle.targetStates.includes(state))) ||
+    (state !== undefined && target !== undefined && state !== target)
+  ) {
+    return { ok: false, reason: "proposal_rejected" };
+  }
   const changes: SettleFieldChange[] = [];
   for (const [field, value] of leaves) {
-    const to = displayValue(value);
-    if (to === null) return { ok: false, reason: "proposal_rejected" };
-    // `custom.x` (form input) and `data.custom.x` (the Dual update body) both
-    // name the unit's own custom field x.
-    const customPath = field.startsWith("custom.")
-      ? field.slice("custom.".length)
-      : field.startsWith("data.custom.")
-        ? field.slice("data.custom.".length)
-        : undefined;
+    const customPath = customPathOf(field);
     const current = customPath
       ? readPath(currentCustom, customPath)
       : undefined;
-    changes.push({ field, from: displayValue(current), to });
+    // Values that stay the same (verified-unchanged ones included) are not
+    // a change to show.
+    if (sameValue(current ?? null, value)) continue;
+    changes.push({
+      field,
+      kind: "runtimeIssued" in settle.leaves[field] ? "technical" : "value",
+      from: displayValue(current),
+      to: displayValue(value),
+    });
   }
   return { ok: true, changes };
+}
+
+function sameValue(left: unknown, right: unknown) {
+  try {
+    return canonicalJson(left) === canonicalJson(right);
+  } catch {
+    return false;
+  }
 }
 
 /** Canonical JSON the runtime hashes for a proposal. */

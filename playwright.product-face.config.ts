@@ -76,15 +76,15 @@ const registry = artifact
           unconfirmedStates: ["Transfer pending"],
           endedStates: ["Recalled", "Stolen", "Retired"],
         },
+        // The shape Studio's productFaceSettleInputTemplate() exports.
         settle: {
           action: "update",
-          inputTemplate: {
-            data: {
-              custom: {
-                state: { $oneOf: "targetStates" },
-                lifecycle: { target_state: { $oneOf: "targetStates" } },
-              },
-            },
+          inputPath: "data.custom",
+          leaves: {
+            state: { enum: ["Authenticity verified"] },
+            "lifecycle.target_state": { enum: ["Authenticity verified"] },
+            serialNumber: { unchanged: true },
+            action_hash: { runtimeIssued: "sha256_hex" },
           },
           fromStates: ["Transfer pending"],
           targetStates: ["Authenticity verified"],
@@ -118,6 +118,7 @@ export default defineConfig({
         ...process.env,
         DEFAULT_ORGANIZATION_ID: "000000000000000000000001",
         MOCK_PROGRAMME_DUAL_URL: process.env.MOCK_PROGRAMME_DUAL_URL ?? "",
+        PRODUCT_FACE_APPLICATIONS: JSON.stringify(registry),
       },
     },
     {

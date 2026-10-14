@@ -88,6 +88,7 @@ export function settleCapabilities(): ProductFaceCapability[] {
             { operationId, objectId: selection.objectId, now: Date.now() },
             fresh.custom,
             settle,
+            session.application.canonicalRegistration,
           );
           if (
             !check.ok ||

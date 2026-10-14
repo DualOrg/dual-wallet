@@ -2,9 +2,10 @@
 // Kept free of `server-only` and path aliases so next.config.ts can derive the
 // exact CSP frame-src origins from the same validation the server uses.
 import {
+  flattenSettleTemplate,
   isProjectionField,
   isSettleActionName,
-  isSettleInputTemplate,
+  parseSettleLeaves,
   type CanonicalRegistrationRules,
   type ProjectionField,
   type SettleRules,
@@ -66,10 +67,15 @@ const CANONICAL_KEYS = [
   "unconfirmedStates",
   "endedStates",
 ] as const;
+// Two accepted spellings of one rule set: the contract's nested
+// `inputTemplate`, or Studio's productFaceSettleInputTemplate() export
+// `{inputPath, leaves}` with leaves relative to that path.
 const SETTLE_KEYS = [
   "action",
   "alias",
   "inputTemplate",
+  "inputPath",
+  "leaves",
   "fromStates",
   "targetStates",
 ] as const;
@@ -184,16 +190,24 @@ function settleRules(
     !isSettleActionName(value.action) ||
     (value.alias !== undefined &&
       (typeof value.alias !== "string" || !ALIAS.test(value.alias))) ||
-    !isSettleInputTemplate(value.inputTemplate) ||
     !fromStates ||
     !targetStates
   ) {
     return undefined;
   }
+  const nested = value.inputTemplate !== undefined;
+  const flat = value.leaves !== undefined || value.inputPath !== undefined;
+  if (nested === flat) return undefined;
+  const leaves = nested
+    ? flattenSettleTemplate(value.inputTemplate, targetStates)
+    : typeof value.inputPath === "string"
+      ? parseSettleLeaves(value.leaves, targetStates, value.inputPath)
+      : undefined;
+  if (!leaves) return undefined;
   return {
     action: value.action,
     ...(typeof value.alias === "string" ? { alias: value.alias } : {}),
-    inputTemplate: value.inputTemplate,
+    leaves,
     fromStates,
     targetStates,
   };
