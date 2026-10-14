@@ -1,6 +1,6 @@
 {
   "contract": "dual-product-face-v1",
-  "revision": 13,
+  "revision": 14,
   "status": "first_source_delivery",
   "summary": "Full-size, first-party reviewed product face inside the authenticated Dual wallet. Uses the existing dual.face.bridge v1 envelope, handshake and limits; adds a programme ('application') context variant and named capability modules. No second postMessage protocol, no generic fetch/proxy/token operation.",
   "protocol": {
@@ -63,7 +63,8 @@
       "capabilities",
       "application",
       "programme",
-      "task"
+      "task",
+      "handover"
     ],
     "application": {
       "id": "",
@@ -540,5 +541,16 @@
     "semantics": "it is the brand's own explicit statement that a unit handed over from its own stock through this channel may be attested authentic at first registration; customer ownership, a completed transfer or a serial number is NEVER evidence of authenticity",
     "legacy": "old grants (and releases) without it: auto-proposal unavailable (settle_proposal_unavailable reason issuer_settle_policy_absent) => brand-operator proposal path",
     "tests": "old transfer-only grant refuses auto-proposal; explicitly authorised new grant succeeds for exactly its unit/target/revision; mismatched unit, target, revision, release or expired authorisation refuses; no brand_operator role is granted or recorded beyond the proposer authority reference"
+  },
+  "faceEnabledHandover": {
+    "goal": "a NEW face-enabled handover/registration link opens the wallet programme face directly (login return included) with no manual grant paste and no legacy portal; legacy published links keep working unchanged",
+    "optIn": "Studio issue_owner_link issues the face-enabled form ONLY when explicitly requested AND the programme has an approved published face AND a configured wallet host entry {walletOrigin (exact https), slug}; otherwise it refuses the face-enabled form (fail closed) and the legacy link stays available",
+    "step1_link": "https://<face runtime origin>/face/handover/<applicationId>#access=<grant>[&settle=<authorisation>] — secrets ONLY in the URL fragment (never query); the link names no wallet URL (the wallet entry comes from the runtime's own published configuration, never from the link)",
+    "step2_runtimePage": "the runtime serves a minimal handover page (strict CSP, Referrer-Policy no-referrer, no third-party resources, not framable); its script reads the fragment, immediately history.replaceState()s it away, and POSTs {grant, settle?} same-origin to /api/product-face/v1/handover. The server runs the EXISTING evidence exchange (r9 opaque sealed evidence, r11 exact owner set, r12 settle authorisation) and mints a handover ticket: 32 random bytes, <= 10 min, ONE-TIME redeem, bound to applicationId/version/artifactHash/face origin/wallet entry and to the evidence (by hash). It answers only {walletEntryUrl, ticket}; the page then does a top-level navigation to https://<walletOrigin>/products/<slug>/handover#ticket=<ticket> (fragment only).",
+    "step3_walletEntry": "the wallet route /products/<slug>/handover works signed-out: its client reads the fragment, strips it immediately, and POSTs the ticket to the wallet BFF /api/faces/<slug>/handover, which (only for a registry slug whose binding allows handover) stores it in a short-lived (<= 10 min) sealed, HttpOnly, Secure, host-only, SameSite=Strict pre-auth cookie bound to the slug, then navigates to /products/<slug>/register (through login with the validated next= when signed out). Unknown slug or no registry => error page, nothing stored.",
+    "step4_handToFace": "on the register task, the BFF context read consumes and clears that cookie (one-time) and the host passes initialize context handover:{ticket} to the face (application variant, register task only; never logged, never put in the URL). Logout or account change clears it.",
+    "step5_redeem": "the face POSTs the ticket to /api/product-face/v1/handover/redeem (same-origin); the runtime atomically consumes it once and answers exactly what /evidence answers (opaque evidence handle + units). Registration then continues unchanged (host confirmation, assertion, readback, G6 settle).",
+    "security": "no grant, evidence handle, role session or CSRF ever reaches the wallet; the ticket is a one-time face-runtime capability with no authority until an assertion-verified registration binds the evidence to a holder; replay, expiry, wrong slug/application/origin all refuse with zero writes; legacy #access links on the legacy portal path are unaffected",
+    "ownership": "Studio worker: runtime handover page + /handover + /handover/redeem + ticket store, face client consumption of context.handover, issue_owner_link face-enabled form. Brand/host lane: wallet /products/<slug>/handover route, BFF handover cookie + context field + login return, registry binding field handover:{enabled}, Studio publication of the wallet host entry (walletOrigin+slug) as the runtime configuration and in the binding proposal."
   }
 }
