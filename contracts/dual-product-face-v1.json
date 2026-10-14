@@ -1,6 +1,6 @@
 {
   "contract": "dual-product-face-v1",
-  "revision": 2,
+  "revision": 3,
   "status": "first_source_delivery",
   "summary": "Full-size, first-party reviewed product face inside the authenticated Dual wallet. Uses the existing dual.face.bridge v1 envelope, handshake and limits; adds a programme ('application') context variant and named capability modules. No second postMessage protocol, no generic fetch/proxy/token operation.",
   "protocol": {
@@ -41,7 +41,8 @@
       "artifactHash": "sha256:<64 hex> of the emitted artifact manifest",
       "templateIds": "Dual template ids (24 hex) that belong to the programme",
       "projectionFields": "public custom fields the host may project to the face, subset of [recordId,title,serialNumber,model,manufacturer,state]",
-      "canonicalRegistration": "{stateField:\"state\", lifecycleTargetField:\"lifecycle.target_state\", settledStates:[\"Registered\",\"Authenticity verified\",\"In service\",\"Transferred\"], unconfirmedStates:[\"Transfer pending\"], endedStates:[\"Recalled\",\"Stolen\",\"Retired\"]}"
+      "canonicalRegistration": "{stateField:\"state\", lifecycleTargetField:\"lifecycle.target_state\", settledStates:[\"Registered\",\"Authenticity verified\",\"In service\",\"Transferred\"], unconfirmedStates:[\"Transfer pending\"], endedStates:[\"Recalled\",\"Stolen\",\"Retired\"]}",
+      "settle": "{action: standard Dual action name the brand proposal uses (Studio reports the exact reviewed mapping), allowedInputFields:[...], fromStates:[\"Transfer pending\"], targetStates:[...settled]} — host allowlist; anything else is refused"
     },
     "readyIdentity": "dual.face.ready.application must be {id, version, publisher, programme, artifact, contract:'dual-product-face-v1'} and EVERY value must equal the binding exactly (version exact, not just major); mismatch closes the channel"
   },
@@ -208,6 +209,34 @@
         "assertion": "one-time wallet assertion bound to exactly this operation/target/request"
       },
       "authority": "host requires the selected product context for product targets; read operations need no dialog; WRITE operations (case.open, case.evidence.submit, case.information.provide, case.quote.approve, case.quote.decline) require NATIVE host confirmation naming the application, programme, operation kind from host vocabulary and the canonical product; publisher-provided summaries are labelled as such; quote approval states no payment is taken"
+    },
+    "programme.product.settle.request": {
+      "payload": {
+        "context_id": "",
+        "operation_id": "original registration operation id",
+        "settle_operation_id": "^[a-z0-9-]{8,64}$",
+        "proposal": {
+          "action": "standard action name",
+          "input": "object"
+        },
+        "proposal_hash": "sha256:<hex> of canonical JSON {object_id, action, input} as issued by the runtime"
+      },
+      "result": {
+        "status": "submitted",
+        "settle_operation_id": "",
+        "action_id": ""
+      },
+      "authority": "G6 holder settle. Host requires: selected product owned by the session wallet; Dual state in canonicalRegistration.unconfirmedStates; proposal.action and every input field inside binding.settle allowlist; recomputes proposal_hash; refetches fresh object/actions; shows NATIVE confirmation of the exact fields being changed (decoded by the host, not face text); persists the settle operation outside the iframe BEFORE execution; executes through the EXISTING wallet executor (email executeAction, passkey/EOA prepare+sign+execute) as the HOLDER. Never issuer authority, never claim_ownership. Cancel before execute = not_submitted; lost after submit = outcome_unknown reconciled read-only (no re-execute).",
+      "errors": [
+        "user_cancelled",
+        "not_owned",
+        "not_in_programme",
+        "settle_not_required",
+        "proposal_rejected",
+        "stale_context",
+        "action_in_progress",
+        "outcome_unknown"
+      ]
     }
   },
   "events": {
@@ -264,7 +293,8 @@
     "owner == wallet but custom.state == Transfer pending (passport canonical status ownership_moved_dual_state_pending) => ownership_moved_state_pending: shown as NOT yet registered/unconfirmed until properly settled. Negative regression required in both repos.",
     "owner == wallet but state in endedStates or disagreeing lifecycle target => recovery_required, never registered.",
     "Cancellation before the assertion is issued = not_submitted. After issue, a lost frame/confirmation/reload is outcome_unknown until read-only reconciliation; the original operation is retained; no blind retry, remint or replacement.",
-    "Unknown counters are null, never inferred zero."
+    "Unknown counters are null, never inferred zero.",
+    "G6 IN SCOPE: registration is not complete while ownership_moved_dual_state_pending remains. The holder settles it inside the face through programme.product.settle.request (holder-signed via the existing native executor) then runtime registration.settle.verify; only then can status be registered."
   ],
   "walletAssertion": {
     "format": "compact JWS, alg EdDSA (Ed25519), typ dual-face-assertion+jwt",
@@ -375,7 +405,7 @@
     "G3": "Claims pack lacks information-request and quote approve/decline. IN SCOPE: second Studio increment adds them additively (new pack revision, new transitions/roles/canonical mappings; old grants keep their exact permittedActionIds and gain nothing; closed != repaired; quote approval captures no payment; documented migration).",
     "G4": "Passport model content has no setup/troubleshooting/manual fields; supplied as versioned face content",
     "G5": "no backend face-application registry; wallet uses a deployment-configured server-only registry",
-    "G6": "Settling ownership_moved_dual_state_pending needs the holder to sign the brand-proposed verify_authenticity; the wallet executor has no reviewed path for that purpose action yet, so the face shows it as unconfirmed with the next step."
+    "G6": "RESOLVED IN SCOPE (implementation in progress): holder settle via programme.product.settle.request + registration.settle.propose/verify; requires the exact reviewed Dual action mapping of the brand-proposed verify_authenticity."
   },
   "runtimeOperations": {
     "registration.submit": "write; issued only via programme.registration.authorize",
@@ -387,6 +417,8 @@
     "case.evidence.submit": "write; existing submit_evidence (references)",
     "case.information.provide": "write; NEW customer response to a reviewer information request (G3 increment)",
     "case.quote.approve": "write; NEW customer approval of a service quote, no payment capture (G3 increment)",
-    "case.quote.decline": "write; NEW (G3 increment)"
+    "case.quote.decline": "write; NEW (G3 increment)",
+    "registration.settle.propose": "read; returns the reviewed brand-proposed holder action {object_id, action, input} + proposal_hash for the holder own unit in ownership_moved_dual_state_pending (assertion holder == verified record owner)",
+    "registration.settle.verify": "validate+commit; given the holder-executed action_id and proposal_hash: action log signer == assertion holder, object == unit, executed payload == proposal, Dual readback settled, passportCanonicalState agrees => registered; zero Dual writes by the runtime; no issuer signature"
   }
 }
