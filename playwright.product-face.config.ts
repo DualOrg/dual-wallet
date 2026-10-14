@@ -154,9 +154,12 @@ export default defineConfig({
         PRODUCT_FACE_ASSERTION_PUBLIC_KEY: publicKey,
         PRODUCT_FACE_ASSERTION_KEY_ID: keyId,
         PRODUCT_FACE_WALLET_ORIGIN: "http://demo.localhost:3000",
-        // contract r14: the wallet host entry the runtime publishes.
-        PRODUCT_FACE_WALLET_ENTRY:
-          "http://demo.localhost:3000/products/morrow-home/handover",
+        // contract r15 walletEntryConfig: the runtime's wallet host entry as
+        // the canonical JSON {"slug","walletOrigin"}; the URL is derived.
+        PRODUCT_FACE_WALLET_ENTRY: JSON.stringify({
+          slug: "morrow-home",
+          walletOrigin: "http://demo.localhost:3000",
+        }),
       },
     },
     {

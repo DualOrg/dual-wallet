@@ -23,11 +23,33 @@ const PUBLIC_KEY = process.env.PRODUCT_FACE_ASSERTION_PUBLIC_KEY
     )
   : undefined;
 const KEY_ID = process.env.PRODUCT_FACE_ASSERTION_KEY_ID || "";
-// contract r14: the wallet host entry comes from the runtime's own published
-// configuration (Studio's TIG_PRODUCT_FACE_WALLET_ENTRY), never from the link.
-const WALLET_ENTRY_URL =
-  process.env.PRODUCT_FACE_WALLET_ENTRY ||
-  `${WALLET_ORIGIN}/products/morrow-home/handover`;
+// contract r15 faceEnabledHandover.walletEntryConfig: the wallet host entry
+// comes from the runtime's own configuration (Studio's
+// TIG_PRODUCT_FACE_WALLET_ENTRY), never from the link. It is the canonical
+// JSON {"slug","walletOrigin"}; walletOrigin must be one of the face's wallet
+// origins, and the entry URL is derived here. Anything else (missing,
+// malformed, extra keys, another origin) leaves handover unprovisioned.
+function walletEntryUrl(raw) {
+  let value;
+  try {
+    value = JSON.parse(String(raw || ""));
+  } catch {
+    return null;
+  }
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    JSON.stringify({ slug: value.slug, walletOrigin: value.walletOrigin }) !==
+      raw ||
+    !/^[a-z0-9][a-z0-9-]{1,62}$/.test(String(value.slug)) ||
+    value.walletOrigin !== WALLET_ORIGIN
+  ) {
+    return null;
+  }
+  return `${value.walletOrigin}/products/${value.slug}/handover`;
+}
+const WALLET_ENTRY_URL = walletEntryUrl(process.env.PRODUCT_FACE_WALLET_ENTRY);
 const HANDOVER_TICKET_TTL_MS = 10 * 60 * 1000;
 const SETTLED = [
   "Registered",
@@ -356,6 +378,14 @@ async function runtime(request, response, url, manifest) {
   const route = url.pathname.slice("/api/product-face/v1".length);
 
   if (route === "/handover") {
+    // r15: without a valid wallet host entry, refuse before the grant is used.
+    if (!WALLET_ENTRY_URL) {
+      stats.handover.refused += 1;
+      return send(response, 503, {
+        status: "face_wallet_entry_unprovisioned",
+        ...ZERO,
+      });
+    }
     // r14 step 2: the EXISTING evidence exchange, then a one-time ticket
     // bound to this application, version and artifact. Only {walletEntryUrl,
     // ticket} is answered; the grant never leaves the runtime.
