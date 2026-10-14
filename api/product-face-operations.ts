@@ -462,11 +462,20 @@ async function trustedRead(
     minted.assertion,
   );
   if (!result.ok) {
+    // Only a few runtime refusals become a contract code for the face; the
+    // rest stay a generic refusal.
+    const code =
+      read.operation === "case.read"
+        ? result.status === 409
+          ? "quote_changed"
+          : result.code
+        : result.reason === "settle_not_required"
+          ? "settle_not_required"
+          : result.code === "runtime_refused"
+            ? "proposal_rejected"
+            : result.code;
     return {
-      ...fail(
-        result.status === 409 ? "quote_changed" : result.code,
-        result.code === "runtime_unavailable" ? 503 : 502,
-      ),
+      ...fail(code, result.code === "runtime_unavailable" ? 503 : 409),
       journal: minted.journal,
     };
   }

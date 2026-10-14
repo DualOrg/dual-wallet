@@ -698,6 +698,32 @@ describe("product face BFF", () => {
           body: { code: "proposal_rejected" },
         });
       }
+      // A runtime refusal is never reported as a quote change.
+      global.fetch = jest.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ok: false,
+              status: "settle_proposal_unavailable",
+            }),
+            { status: 409 },
+          ),
+      ) as unknown as typeof fetch;
+      expect(await request()).toMatchObject({
+        status: 409,
+        body: { code: "proposal_rejected" },
+      });
+      global.fetch = jest.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ ok: false, status: "settle_not_required" }),
+            { status: 409 },
+          ),
+      ) as unknown as typeof fetch;
+      expect(await request()).toMatchObject({
+        status: 409,
+        body: { code: "settle_not_required" },
+      });
       getObjectById.mockResolvedValue(
         smartObject(UNIT, HOLDER, { state: "Registered" }),
       );

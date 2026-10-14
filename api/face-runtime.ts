@@ -47,6 +47,8 @@ export type TrustedReadResult =
       ok: false;
       code: "runtime_unavailable" | "runtime_refused";
       status?: number;
+      /** The runtime's refusal status when it is a plain code. */
+      reason?: string;
     };
 
 /**
@@ -89,10 +91,25 @@ export async function trustedRuntimeRead(
   );
   if (!response) return { ok: false, code: "runtime_unavailable" };
   if (response.status !== 200) {
+    let reason: string | undefined;
+    try {
+      const refused = JSON.parse(response.body.toString("utf8")) as {
+        status?: unknown;
+      };
+      if (
+        typeof refused.status === "string" &&
+        /^[a-z][a-z0-9_]{0,63}$/.test(refused.status)
+      ) {
+        reason = refused.status;
+      }
+    } catch {
+      // No readable refusal code.
+    }
     return {
       ok: false,
       code: response.status >= 500 ? "runtime_unavailable" : "runtime_refused",
       status: response.status,
+      ...(reason ? { reason } : {}),
     };
   }
   try {
