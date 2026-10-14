@@ -251,12 +251,13 @@ describe("product face contract consistency", () => {
   };
 
   it("implements exactly the contract operations and no extra authority", () => {
-    // contract r16: protectedTransfer.hostOperation names the one additive
-    // host operation (programme.product.transfer.sign {context_id, ...}).
+    // contract r16 protectedTransfer.hostOperation names the G8 host
+    // operation; r17 lists it in contract.operations as well.
     const transferSign = contract.protectedTransfer.hostOperation.split(" ")[0];
     expect(transferSign).toBe("programme.product.transfer.sign");
+    expect(Object.keys(contract.operations)).toContain(transferSign);
     expect([...productFaceOperationNames()].sort()).toEqual(
-      [...Object.keys(contract.operations), transferSign].sort(),
+      [...new Set([...Object.keys(contract.operations), transferSign])].sort(),
     );
     const names = productFaceOperationNames();
     expect(names).not.toContain("object.action.request");
