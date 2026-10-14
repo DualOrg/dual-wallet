@@ -55,6 +55,43 @@ describe("ProductFaceConfirmationDialog", () => {
     expect(onAnswer).toHaveBeenLastCalledWith(true);
   });
 
+  it("names the offered product the wallet read itself when accepting a transfer: its name and projection fields only (G8, proposed r19)", () => {
+    const onAnswer = renderDialog({
+      kind: "transfer_accept",
+      unit: {
+        objectId: "aaaaaaaaaaaaaaaaaaaaaaaa",
+        templateId: application.templateIds[0],
+        name: "Arc grinder",
+        recordId: "rec-0001",
+        fields: { serialNumber: "MH-ARC-0102", model: "Arc 2" },
+        readback: {
+          ownerIsYou: false,
+          state: "Transfer pending",
+          lifecycleTarget: null,
+        },
+        registration: "not_owned",
+      },
+    });
+    const dialog = screen.getByRole("dialog", {
+      name: "Accept this product into your wallet?",
+    });
+    expect(within(dialog).getByText("Arc grinder")).toBeTruthy();
+    expect(within(dialog).getByText("MH-ARC-0102")).toBeTruthy();
+    expect(within(dialog).getByText("Arc 2")).toBeTruthy();
+    // Only the user's own wallet; nothing else about the unit (its record,
+    // object or readback) and no other address.
+    expect(within(dialog).getByText("0x12....678")).toBeTruthy();
+    const text = dialog.textContent ?? "";
+    expect(text).not.toMatch(/rec-0001|aaaaaaaaaaaa|Transfer pending/);
+    expect(
+      within(dialog)
+        .getAllByText(/0x/i)
+        .map((node) => node.textContent),
+    ).toEqual(["0x12....678"]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Accept" }));
+    expect(onAnswer).toHaveBeenLastCalledWith(true);
+  });
+
   it("closes as a cancellation on Escape", () => {
     const onAnswer = renderDialog({
       kind: "runtime",

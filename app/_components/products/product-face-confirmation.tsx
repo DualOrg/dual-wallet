@@ -9,6 +9,7 @@ import {
   projectionFieldNames,
   type ProductFaceApplication,
   type ProductFaceConfirmation,
+  type ProgrammeUnitFacts,
   type SettleFieldChange,
 } from "@/app/_domain/product-face";
 import { shortAccountAddress } from "@/app/_domain/wallet";
@@ -88,26 +89,26 @@ export function ProductFaceConfirmationDialog({
   let description: string;
   let confirmLabel: string;
   let body: React.ReactNode;
+  // A unit's canonical facts from Dual's public projection (host-read): its
+  // name and the binding's projection fields only.
+  const unitFacts = (unit: ProgrammeUnitFacts) => (
+    <Facts
+      rows={[
+        [t("fields.name"), unit.name],
+        ...projectionFieldNames
+          .filter((field) => unit.fields[field])
+          .map(
+            (field) =>
+              [t(`fields.${field}`), unit.fields[field]!] as [string, string],
+          ),
+      ]}
+    />
+  );
   if (request.kind === "registration") {
     title = t("registration.title");
     description = t("registration.description");
     confirmLabel = t("registration.confirm");
-    body = (
-      <Facts
-        rows={[
-          [t("fields.name"), request.unit.name],
-          ...projectionFieldNames
-            .filter((field) => request.unit.fields[field])
-            .map(
-              (field) =>
-                [t(`fields.${field}`), request.unit.fields[field]!] as [
-                  string,
-                  string,
-                ],
-            ),
-        ]}
-      />
-    );
+    body = unitFacts(request.unit);
   } else if (request.kind === "runtime") {
     title = t("runtime.title");
     description = t("runtime.description");
@@ -165,10 +166,12 @@ export function ProductFaceConfirmationDialog({
       </>
     );
   } else if (request.kind === "transfer_accept") {
+    // The offered unit the wallet read itself (proposed r19); nothing about
+    // its current owner.
     title = t("transferAccept.title");
     description = t("transferAccept.description");
     confirmLabel = t("transferAccept.confirm");
-    body = null;
+    body = unitFacts(request.unit);
   } else {
     title = t("settle.title");
     description = t("settle.description");

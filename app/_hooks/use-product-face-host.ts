@@ -40,6 +40,7 @@ import {
   readSettleProposal,
   readTransferProgress,
   readTransferProposal,
+  readAcceptOffer,
   selectProgrammeProduct,
   sha256Hash,
   takeFaceHandoverTicket,
@@ -254,6 +255,7 @@ export function useProductFaceHost({
           ),
         readTransferProposal: (input) =>
           guard(() => readTransferProposal(face, input)),
+        readAcceptOffer: () => guard(() => readAcceptOffer(face)),
         executeTransfer: ({ operationId, ...input }, as) =>
           executeAs(
             as,

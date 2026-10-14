@@ -93,6 +93,10 @@ const DEFAULT_MODE = {
   // other tab's request reaches the reserve; a request that never arrives is
   // released by the deadline and shows as released: "deadline". 0 is off.
   reserveBarrier: 0,
+  // G8 negative (proposed r19): transfer.offer.read previews this unit
+  // instead of the offered one, as a tampered or stale preview would. The
+  // face then names another unit for its acceptance; "" is off.
+  offerReadUnit: "",
 };
 // Below the wallet BFF's 8 s runtime timeout (api/face-runtime.ts), so a held
 // answer is never turned into a lost one.
@@ -116,6 +120,10 @@ const freshStats = () => ({
     committed: 0,
     acceptIssued: 0,
     acceptRedeemed: 0,
+    // Proposed r19: the recipient host's acceptance reads, and acceptances
+    // refused for naming no unit or another unit than the offer's.
+    acceptanceRead: 0,
+    acceptUnitRefused: 0,
   },
 });
 let stats = freshStats();
@@ -577,8 +585,12 @@ async function runtime(request, response, url, manifest) {
       });
     }
     const ticket = randomBytes(32).toString("base64url");
+    // Proposed r19: the acceptance names the offer's unit, for the
+    // recipient host's transfer.acceptance.read.
     acceptTickets.set(ticket, {
       offer: body.offer,
+      objectId: offer.objectId,
+      offerId: offer.offerId,
       exp: Date.now() + HANDOVER_TICKET_TTL_MS,
       used: false,
     });
@@ -1115,9 +1127,11 @@ async function transferOperation(request, response, body, holder, manifest) {
   const operation = body.operation;
   const input = body.input ?? {};
   const target = body.target ?? {};
-  const serverOnly = ["transfer.propose", "transfer.reserve"].includes(
-    operation,
-  );
+  const serverOnly = [
+    "transfer.propose",
+    "transfer.reserve",
+    "transfer.acceptance.read",
+  ].includes(operation);
   if (serverOnly && request.headers.origin) {
     return refusal(response, 403, "face_trusted_read_server_only");
   }
@@ -1165,6 +1179,51 @@ async function transferOperation(request, response, body, holder, manifest) {
       secretReturned: true,
     });
   }
+  if (operation === "transfer.acceptance.read") {
+    // Proposed r19: the recipient's HOST (server to server) reads which unit
+    // the acceptance ticket it handed its face is for. Exactly
+    // {acceptance_ticket}, target {}; issued or redeemed, unexpired; the offer
+    // open (or accepted by this same recipient). ONLY {object_id} answers.
+    if (
+      Object.keys(input).join(",") !== "acceptance_ticket" ||
+      Object.keys(target).length !== 0
+    ) {
+      return refusal(response, 400, "face_request_invalid");
+    }
+    const entry = acceptTickets.get(String(input.acceptance_ticket || ""));
+    if (!entry) return refusal(response, 404, "face_accept_ticket_unknown");
+    if (entry.exp <= Date.now()) {
+      return refusal(response, 410, "face_accept_ticket_expired");
+    }
+    if (!entry.objectId || !entry.offerId) {
+      return refusal(response, 409, "face_accept_ticket_unbound");
+    }
+    const offer = offers.get(entry.offerId);
+    if (!offer || offer.objectId !== entry.objectId) {
+      return refusal(response, 404, "transfer_offer_not_found");
+    }
+    if (sameWallet(offer.holder, holder)) {
+      return refusal(response, 409, "transfer_recipient_is_holder");
+    }
+    const mine = offer.recipient && sameWallet(offer.recipient, holder);
+    if (!mine && offer.state !== "offered") {
+      return refusal(
+        response,
+        409,
+        offer.state === "cancelled"
+          ? "transfer_offer_cancelled"
+          : "transfer_offer_used",
+      );
+    }
+    stats.transfer.acceptanceRead += 1;
+    return send(response, 200, {
+      ok: true,
+      status: "transfer_acceptance",
+      object_id: offer.objectId,
+      ...ZERO,
+      secretReturned: false,
+    });
+  }
   if (operation === "transfer.offer.read" || operation === "transfer.accept") {
     const offer = offerByTicket(input.ticket);
     if (!offer) return refusal(response, 404, "transfer_offer_not_found");
@@ -1182,7 +1241,7 @@ async function transferOperation(request, response, body, holder, manifest) {
         status: "transfer_offer",
         offer: offerView(offer, mine ? "recipient" : "invitee"),
         product: {
-          object_id: offer.objectId,
+          object_id: mode.offerReadUnit || offer.objectId,
           title: object?.metadata?.name ?? "",
           serialNumber: object?.custom?.serialNumber ?? "",
           model: object?.custom?.model ?? "",
@@ -1190,6 +1249,18 @@ async function transferOperation(request, response, body, holder, manifest) {
         },
         ...ZERO,
       });
+    }
+    // Proposed r19: the acceptance names exactly the offered unit.
+    if (
+      Object.keys(target).join(",") !== "object_id" ||
+      !/^[a-f0-9]{24}$/.test(String(target.object_id))
+    ) {
+      stats.transfer.acceptUnitRefused += 1;
+      return refusal(response, 400, "transfer_accept_target_required");
+    }
+    if (target.object_id !== offer.objectId) {
+      stats.transfer.acceptUnitRefused += 1;
+      return refusal(response, 409, "transfer_accept_unit_mismatch");
     }
     if (offer.state !== "offered") {
       if (mine && offer.acceptOperationId === body.operationId) {

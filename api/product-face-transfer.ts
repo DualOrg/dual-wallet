@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { NextRequest } from "next/server";
+import { readFaceAcceptance, type FaceAcceptance } from "@/api/face-acceptance";
 import { sha256Hash } from "@/api/face-assertion";
 import type { FaceJournal } from "@/api/face-journal";
 import {
@@ -17,14 +18,20 @@ import {
 } from "@/api/product-face-operations";
 import {
   productRegistration,
+  publicUnitFacts,
   readOwnedProduct,
+  readPublicUnit,
   type FaceRequestContext,
 } from "@/api/product-face-server";
 import {
   applyJournalTransition,
   authorityLeft,
 } from "@/app/_domain/product-face-journal";
-import { isObjectId, isOperationId } from "@/app/_domain/product-face";
+import {
+  isObjectId,
+  isOperationId,
+  type ProgrammeUnitFacts,
+} from "@/app/_domain/product-face";
 import {
   checkTransferProposal,
   isOfferId,
@@ -164,6 +171,97 @@ export async function readTransferProposal(
     return { ...fail("proposal_rejected", 422), journal };
   }
   return { ok: true, proposal, journal };
+}
+
+const ACCEPTANCE_CLOSED = new Set([
+  "transfer_offer_cancelled",
+  "transfer_offer_expired",
+  "transfer_offer_used",
+  "transfer_offer_not_found",
+]);
+
+/**
+ * Proposed r19, the recipient's host: the unit this launch's acceptance is
+ * for, for the wallet's own transfer.accept confirmation. The BFF reads it
+ * itself with the acceptance ticket it kept for this launch and session
+ * (transfer.acceptance.read, server to server, the session's own assertion),
+ * then names the unit from Dual's PUBLIC projection, in this programme only.
+ * No ticket for this launch (any task but accept, a pasted link, another
+ * session) names nothing. The answer carries the unit's own facts only: never
+ * an owner address, a case or a document.
+ */
+export async function readAcceptOffer(
+  context: FaceRequestContext,
+  request: NextRequest,
+  body: Record<string, unknown>,
+): Promise<
+  FaceOperationResult<{ unit: ProgrammeUnitFacts; acceptance: FaceAcceptance }>
+> {
+  if (Object.keys(body).length !== 0) return fail("invalid_request", 400);
+  const kept = readFaceAcceptance(request, {
+    slug: context.binding.slug,
+    launchId: context.scope.launchId,
+    owner: context.owner,
+  });
+  if (!kept) return fail("invalid_request", 400);
+  const read = {
+    operation: "transfer.acceptance.read" as const,
+    operationId: hostOperationId("acc-read"),
+    target: {},
+    input: { acceptance_ticket: kept.ticket },
+  };
+  const minted = mint(context, request, context.journal, {
+    operation: read.operation,
+    operationId: read.operationId,
+    target: read.target,
+    requestHash: runtimeRequestHash(read),
+  });
+  if (!minted.ok) return minted;
+  const { journal } = minted;
+  const result = await transferRuntimeCall(
+    context.binding,
+    read,
+    minted.assertion,
+  );
+  if (!result.ok || result.status !== 200) {
+    if (!result.ok && result.code === "runtime_unavailable") {
+      return { ...fail("runtime_unavailable", 503), journal };
+    }
+    const reason = result.ok ? undefined : result.reason;
+    if (reason === "transfer_recipient_is_holder") {
+      return { ...fail("already_registered_to_you", 409), journal };
+    }
+    if (reason && ACCEPTANCE_CLOSED.has(reason)) {
+      return { ...fail("transfer_cancelled", 409), journal };
+    }
+    // The acceptance itself cannot be used (unknown, used, expired, unbound,
+    // another binding): open the transfer link again.
+    return { ...fail("invalid_request", 409), journal };
+  }
+  if (
+    result.body.status !== "transfer_acceptance" ||
+    !isObjectId(result.body.object_id)
+  ) {
+    return { ...fail("invalid_request", 409), journal };
+  }
+  const unit = await readPublicUnit(result.body.object_id);
+  if (!unit) return { ...fail("not_found", 404), journal };
+  const facts = publicUnitFacts(context, unit);
+  if (
+    facts.objectId !== result.body.object_id ||
+    !context.binding.templateIds.includes(facts.templateId)
+  ) {
+    return { ...fail("not_in_programme", 404), journal };
+  }
+  if (facts.readback.ownerIsYou) {
+    return { ...fail("already_registered_to_you", 409), journal };
+  }
+  return {
+    ok: true,
+    unit: facts,
+    acceptance: { ...kept, objectId: facts.objectId },
+    journal,
+  };
 }
 
 export type TransferProgress =

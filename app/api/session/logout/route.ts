@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { clearFaceAcceptance } from "@/api/face-acceptance";
 import { clearFaceHandover } from "@/api/face-handover";
 import { clearFaceJournal } from "@/api/face-journal";
 import { clearSessionCookie, revokeSession } from "@/api/server-session";
@@ -18,5 +19,7 @@ export async function POST(request: NextRequest) {
   clearFaceJournal(response, request);
   // A pending face handover (contract r14) never outlives a sign-out.
   clearFaceHandover(response);
+  // Nor does a kept transfer acceptance (proposed r19).
+  clearFaceAcceptance(response);
   return response;
 }

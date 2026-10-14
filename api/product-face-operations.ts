@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 import type { NextRequest } from "next/server";
+import { readFaceAcceptance } from "@/api/face-acceptance";
 import {
   mintFaceAssertion,
   sha256Hash,
@@ -341,6 +342,19 @@ export async function authorizeAssertion(
         : undefined
       : parseTarget(body.target, operation);
     if (!unscopedTarget) return fail("invalid_request", 400);
+    // Proposed r19: an acceptance is minted only for exactly the unit this
+    // launch's kept acceptance was read for (accept-offer), never another.
+    if (operation === "transfer.accept") {
+      const kept = readFaceAcceptance(request, {
+        slug: context.binding.slug,
+        launchId: context.scope.launchId,
+        owner: context.owner,
+      });
+      if (!kept?.objectId) return fail("invalid_request", 400);
+      if (unscopedTarget.object_id !== kept.objectId) {
+        return fail("stale_context", 409);
+      }
+    }
     const minted = mint(context, request, context.journal, {
       operation,
       operationId,

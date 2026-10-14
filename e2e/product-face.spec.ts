@@ -1023,6 +1023,19 @@ test("G8: A transfers to B through a one-time link; B accepts through sign-in; A
   const acceptDialog = pageB.getByRole("dialog", {
     name: "Accept this product into your wallet?",
   });
+  // Proposed r19: B's own confirmation names the product B's wallet read
+  // itself (the runtime's transfer.acceptance.read, then Dual's public
+  // projection): its name, serial and model, and B's own wallet. Nothing
+  // about the previous owner (A): not A's address, in full or shortened.
+  // The name, and the programme's title field with the same text.
+  await expect(acceptDialog.getByText("Morrow Arc grinder")).toHaveCount(2);
+  await expect(acceptDialog.getByText("MH-ARC-0102")).toBeVisible();
+  await expect(acceptDialog.getByText("ARC-G1")).toBeVisible();
+  await expect(acceptDialog.getByText("0x00....0b2")).toBeVisible();
+  const acceptText = ((await acceptDialog.textContent()) ?? "").toLowerCase();
+  expect(acceptText).not.toContain(WALLET.toLowerCase());
+  expect(acceptText).not.toContain("0x12....678");
+  expect(acceptText).not.toContain("warranty for");
   await acceptDialog.getByRole("button", { name: "Accept" }).click();
   await expect(
     face(pageB).getByText(
@@ -1032,6 +1045,8 @@ test("G8: A transfers to B through a one-time link; B accepts through sign-in; A
   expect((await stats()).transfer).toMatchObject({
     acceptIssued: 1,
     acceptRedeemed: 1,
+    acceptanceRead: 1,
+    acceptUnitRefused: 0,
     accepted: 1,
   });
 
@@ -1079,6 +1094,55 @@ test("G8: A transfers to B through a one-time link; B accepts through sign-in; A
   await expect(
     face(pageB).getByRole("button", { name: "Open the product" }),
   ).toBeVisible();
+  await recipient.close();
+});
+
+test("G8 (proposed r19): a face naming another unit than the acceptance's is refused by B's wallet; nothing is confirmed, minted or accepted", async ({
+  page,
+  browser,
+}) => {
+  const link = await offerFromA(page);
+  // The face's preview names another unit (a tampered or stale preview), so
+  // the face asks B's wallet to accept that unit.
+  await post(`${FIXTURE}/__test__/mode`, { offerReadUnit: OWNED_A });
+
+  const recipient = await browser.newContext();
+  const pageB = await recipient.newPage();
+  await pageB.goto(link);
+  await expect(pageB).toHaveURL(
+    `/login?next=${encodeURIComponent("/products/morrow-home/accept")}`,
+  );
+  await pageB.waitForLoadState("networkidle");
+  await pageB.getByLabel("Email address").fill(SECOND_EMAIL);
+  await pageB.getByLabel("Password", { exact: true }).fill(SECOND_PASSWORD);
+  await pageB.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(pageB).toHaveURL("/products/morrow-home/accept");
+  await face(pageB)
+    .getByRole("button", { name: "Accept into this wallet" })
+    .click();
+  // B's wallet read the acceptance's own unit (OWNED_B) and refuses the face's
+  // other unit before any confirmation or assertion.
+  await expect(
+    face(pageB).getByText(
+      "Your wallet accepts only the transfer it opened from the sender's link. Open that link again. Nothing was changed.",
+    ),
+  ).toBeVisible();
+  await expect(
+    pageB.getByRole("dialog", {
+      name: "Accept this product into your wallet?",
+    }),
+  ).toHaveCount(0);
+  const stat = await stats();
+  expect(stat.transfer).toMatchObject({
+    acceptIssued: 1,
+    acceptRedeemed: 1,
+    acceptanceRead: 1,
+    accepted: 0,
+    acceptUnitRefused: 0,
+  });
+  expect(stat.assertions["transfer.accept"]).toBeUndefined();
+  expect(stat.offers.at(-1)).toMatchObject({ state: "offered" });
+  expect((await object(OWNED_B)).owner).toBe(WALLET);
   await recipient.close();
 });
 

@@ -121,6 +121,13 @@ export interface ProductFaceHandlers {
     offerId: string;
     objectId: string;
   }): Promise<TransferProposal>;
+  /**
+   * Proposed r19: the unit this launch's acceptance is for, read by the wallet
+   * itself (the runtime's transfer.acceptance.read server to server with the
+   * acceptance ticket the BFF kept, then Dual's public projection in this
+   * programme). The face supplies nothing for it.
+   */
+  readAcceptOffer(): Promise<ProgrammeUnitFacts>;
   /** G8: executes exactly a validated transfer step as the holder (`as`: see executeSettle). */
   executeTransfer(
     input: {

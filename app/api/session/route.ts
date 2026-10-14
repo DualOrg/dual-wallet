@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { clearFaceAcceptance } from "@/api/face-acceptance";
 import { clearFaceHandover } from "@/api/face-handover";
 import {
   clearSessionCookie,
@@ -22,6 +23,7 @@ export async function GET(request: NextRequest) {
     // ticket for the sign-in it is on its way to.
     if (request.cookies.get(SESSION_COOKIE_NAME)?.value) {
       clearFaceHandover(response);
+      clearFaceAcceptance(response);
     }
     return response;
   }

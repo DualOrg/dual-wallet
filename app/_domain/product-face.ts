@@ -499,6 +499,8 @@ export const runtimeOperationNames = [
   "transfer.reserve",
   "transfer.verify",
   "transfer.status",
+  // Proposed r19: the recipient's host reads which unit its acceptance is for.
+  "transfer.acceptance.read",
 ] as const;
 export type RuntimeOperation = (typeof runtimeOperationNames)[number];
 
@@ -572,13 +574,15 @@ export const hostOnlyRuntimeOperations = [
   "transfer.reserve",
   "transfer.verify",
   "transfer.status",
+  "transfer.acceptance.read",
 ] as const satisfies readonly RuntimeOperation[];
 
 /**
  * G8 operations a face may run without a selected owned product: the
- * recipient previews and accepts an offer (target {}), and either party reads
- * an offer's progress by its unit (target {object_id}). The runtime authorises
- * each by the assertion holder alone (the offer's holder or bound recipient).
+ * recipient previews an offer (target {}) and accepts it for the offered unit
+ * (target {object_id}, proposed r19), and either party reads an offer's
+ * progress by its unit (target {object_id}). The runtime authorises each by
+ * the assertion holder alone (the offer's holder or bound recipient).
  */
 export const unscopedTransferOperations = [
   "transfer.offer.read",
@@ -590,9 +594,13 @@ export function isUnscopedTransferOperation(value: RuntimeOperation) {
   return (unscopedTransferOperations as readonly string[]).includes(value);
 }
 
-/** Unscoped transfer operations whose target is empty (no unit named). */
+/**
+ * Unscoped transfer operations whose target is empty (no unit named). Since
+ * the proposed r19, transfer.accept names the offered unit ({object_id}): the
+ * unit the host read itself for its acceptance and named in its confirmation.
+ */
 export function transferOperationTargetsNothing(value: RuntimeOperation) {
-  return value === "transfer.offer.read" || value === "transfer.accept";
+  return value === "transfer.offer.read";
 }
 
 export function isHostOnlyRuntimeOperation(value: RuntimeOperation) {
@@ -1064,8 +1072,14 @@ export type ProductFaceConfirmation =
       recipient: string;
     }
   | {
-      /** G8: accept an offered product into this wallet. */
+      /**
+       * G8: accept an offered product into this wallet. The unit is the one
+       * the wallet itself read for the acceptance it opened (proposed r19),
+       * from Dual's public projection: never face text, an owner address, a
+       * case or a document.
+       */
       kind: "transfer_accept";
+      unit: ProgrammeUnitFacts;
     };
 
 /**

@@ -206,6 +206,7 @@ function handlers(overrides: Partial<ProductFaceHandlers> = {}) {
     readSettleProposal: jest.fn(),
     executeSettle: jest.fn(async () => ({ actionId: "action-settle-1" })),
     readTransferProposal: jest.fn(),
+    readAcceptOffer: jest.fn(async () => unit()),
     executeTransfer: jest.fn(async () => ({ actionId: "action-transfer-1" })),
     transferProgress: jest.fn(async () => ({
       status: "transfer_request_committed" as const,
@@ -1715,23 +1716,28 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
     expect(run.handlers.confirm).toHaveBeenCalledTimes(1);
   });
 
-  it("the recipient's acceptance is confirmed natively and minted with an empty target; progress reads need no selection", async () => {
+  it("the recipient's acceptance names the unit the wallet read itself, is confirmed natively and is minted only for that unit (proposed r19); progress reads need no selection", async () => {
     const run = runtimeFor(handlers());
     await expect(
       run.call("programme.runtime.authorize", {
         operation: "transfer.accept",
         operation_id: "accept-op-0001",
-        target: {},
+        target: { object_id: UNIT_A },
         request_hash: `sha256:${"1".repeat(64)}`,
       }),
     ).resolves.toEqual({ assertion: "header.claims.signature" });
+    expect(run.handlers.readAcceptOffer).toHaveBeenCalledTimes(1);
+    expect(run.handlers.readAcceptOffer).toHaveBeenCalledWith();
+    // The confirmation names the unit from the wallet's own read: its name and
+    // projection fields, never face text or an owner address.
     expect(run.handlers.confirm).toHaveBeenCalledWith({
       kind: "transfer_accept",
+      unit: unit(),
     });
     expect(run.handlers.mintAssertion).toHaveBeenCalledWith({
       operation: "transfer.accept",
       operation_id: "accept-op-0001",
-      target: {},
+      target: { object_id: UNIT_A },
       request_hash: `sha256:${"1".repeat(64)}`,
     });
     await expect(
@@ -1750,7 +1756,7 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
       declined.call("programme.runtime.authorize", {
         operation: "transfer.accept",
         operation_id: "accept-op-0002",
-        target: {},
+        target: { object_id: UNIT_A },
         request_hash: `sha256:${"1".repeat(64)}`,
       }),
     ).rejects.toMatchObject({ code: "user_cancelled" });
@@ -1760,16 +1766,102 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
       "transfer.reserve",
       "transfer.verify",
       "transfer.status",
+      "transfer.acceptance.read",
     ]) {
       await expect(
         run.call("programme.runtime.authorize", {
           operation,
           operation_id: "host-op-00001",
-          target: { object_id: UNIT_A },
+          target:
+            operation === "transfer.acceptance.read"
+              ? {}
+              : { object_id: UNIT_A },
           request_hash: `sha256:${"3".repeat(64)}`,
         }),
       ).rejects.toMatchObject({ code: "invalid_request" });
     }
+  });
+
+  it("an acceptance the face names for another unit, or for no unit, is refused: nothing confirmed, nothing minted (proposed r19)", async () => {
+    // The face names another unit than the one the wallet read for its acceptance.
+    const other = runtimeFor(handlers());
+    await expect(
+      other.call("programme.runtime.authorize", {
+        operation: "transfer.accept",
+        operation_id: "accept-op-0003",
+        target: { object_id: UNIT_B },
+        request_hash: `sha256:${"1".repeat(64)}`,
+      }),
+    ).rejects.toMatchObject({ code: "stale_context" });
+    expect(other.handlers.readAcceptOffer).toHaveBeenCalledTimes(1);
+    expect(other.handlers.confirm).not.toHaveBeenCalled();
+    expect(other.handlers.mintAssertion).not.toHaveBeenCalled();
+    // No unit named (the r16 empty target), or more than the unit: refused
+    // before anything is read.
+    for (const target of [
+      {},
+      { object_id: UNIT_A, owner: "0xabc" },
+      { object_id: "not-a-unit" },
+    ]) {
+      const refused = runtimeFor(handlers());
+      await expect(
+        refused.call("programme.runtime.authorize", {
+          operation: "transfer.accept",
+          operation_id: "accept-op-0004",
+          target,
+          request_hash: `sha256:${"1".repeat(64)}`,
+        }),
+      ).rejects.toMatchObject({ code: "invalid_request" });
+      expect(refused.handlers.readAcceptOffer).not.toHaveBeenCalled();
+      expect(refused.handlers.confirm).not.toHaveBeenCalled();
+      expect(refused.handlers.mintAssertion).not.toHaveBeenCalled();
+    }
+    // The wallet holds no acceptance for this launch (a pasted link, another
+    // task): the read fails closed and nothing is confirmed or minted.
+    const none = runtimeFor(
+      handlers({
+        readAcceptOffer: jest.fn(async () => {
+          throw new ProductFaceError("invalid_request", 400);
+        }),
+      }),
+    );
+    await expect(
+      none.call("programme.runtime.authorize", {
+        operation: "transfer.accept",
+        operation_id: "accept-op-0005",
+        target: { object_id: UNIT_A },
+        request_hash: `sha256:${"1".repeat(64)}`,
+      }),
+    ).rejects.toMatchObject({ code: "invalid_request" });
+    expect(none.handlers.confirm).not.toHaveBeenCalled();
+    expect(none.handlers.mintAssertion).not.toHaveBeenCalled();
+    // A second acceptance while one is being confirmed is refused.
+    let release!: (value: boolean) => void;
+    const pending = runtimeFor(
+      handlers({
+        confirm: jest.fn(
+          () => new Promise<boolean>((resolve) => (release = resolve)),
+        ),
+      }),
+    );
+    const first = pending.call("programme.runtime.authorize", {
+      operation: "transfer.accept",
+      operation_id: "accept-op-0006",
+      target: { object_id: UNIT_A },
+      request_hash: `sha256:${"1".repeat(64)}`,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expect(
+      pending.call("programme.runtime.authorize", {
+        operation: "transfer.accept",
+        operation_id: "accept-op-0007",
+        target: { object_id: UNIT_A },
+        request_hash: `sha256:${"1".repeat(64)}`,
+      }),
+    ).rejects.toMatchObject({ code: "action_in_progress" });
+    release(false);
+    await expect(first).rejects.toMatchObject({ code: "user_cancelled" });
+    expect(pending.handlers.mintAssertion).not.toHaveBeenCalled();
   });
 });
 

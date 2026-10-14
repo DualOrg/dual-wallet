@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { clearFaceAcceptance } from "@/api/face-acceptance";
 import { clearFaceHandover } from "@/api/face-handover";
 import { mutationGuard } from "@/api/request";
 
@@ -14,5 +15,8 @@ export async function DELETE(request: NextRequest) {
     { headers: { "Cache-Control": "no-store" } },
   );
   clearFaceHandover(response);
+  // A kept transfer acceptance (proposed r19) is bound to the session anyway;
+  // it is dropped with the handover.
+  clearFaceAcceptance(response);
   return response;
 }

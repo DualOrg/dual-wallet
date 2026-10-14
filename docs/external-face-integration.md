@@ -685,13 +685,44 @@ Afterwards `POST /api/faces/[slug]/transfer-progress` verifies the step with
 the recorded action, or reads `transfer.status`; asking again with the same
 step operation id only reads. `transfer.offer` and `transfer.cancel` are
 host-confirmed runtime writes for the selected product; the recipient's
-`transfer.offer.read` and `transfer.accept` (target `{}`) and either party's
-`transfer.read` need no selection, and `transfer.accept` is confirmed
-natively first. The acceptance link opens the runtime's accept page, which
-continues to `/products/<slug>/handover#accept=<ticket>`; the entry stores it
-as kind `accept` in the same sealed, account-bound cookie and continues to
+`transfer.offer.read` (target `{}`) and `transfer.accept` (target
+`{object_id}`, proposed r19) and either party's `transfer.read` need no
+selection, and `transfer.accept` is confirmed natively first. The acceptance
+link opens the runtime's accept page, which continues to
+`/products/<slug>/handover#accept=<ticket>`; the entry stores it as kind
+`accept` in the same sealed, account-bound cookie and continues to
 `/products/<slug>/accept`, where the context read (`?task=/accept`) hands it
 to the face once as `acceptance: {ticket}`.
+
+**Accept names the product (proposed r19).** The same context read also keeps
+that acceptance ticket for the BFF only: a sealed (AES-256-GCM,
+purpose-bound), HttpOnly, SameSite=Strict, host-only cookie
+(`__Host-dual_face_acceptance` in production) bound to the slug, the launch
+and the session (`walletId`, `sidHash`), for at most the ticket's ten
+minutes; logout, session expiry and an account change clear it. The ticket
+is never put in another response, a URL or the face again. Before its
+`transfer.accept` confirmation the wallet calls
+`POST /api/faces/[slug]/accept-offer` (empty body): the BFF reads which unit
+the acceptance is for itself, server to server with the session's own
+assertion (`transfer.acceptance.read`, input `{acceptance_ticket}`, target
+`{}`; the runtime answers only `{object_id}`), then reads that unit from
+Dual's public projection, requires its template in `binding.templateIds` and
+that this wallet does not hold it already, answers `{unit}` (the unit's
+canonical facts: name, projection fields, readback; never an owner address,
+a case or a document) and binds the unit to the kept acceptance. The
+wallet's confirmation names that unit (its name and the programme's
+projection fields, and the user's own wallet), and an assertion for
+`transfer.accept` is minted only for target `{object_id}` equal to it: a
+face naming another unit is `stale_context`, and no kept or read acceptance
+for this launch (a pasted link, another tab or session, an expired ticket)
+is `invalid_request`; nothing is confirmed or minted. Runtime refusals map
+to `already_registered_to_you` (the offer's own holder, or a unit this
+wallet holds), `transfer_cancelled` (cancelled, expired, used or unknown
+offer), `invalid_request` (the acceptance ticket unknown, used, expired,
+unbound or for another binding), `not_in_programme` and
+`runtime_unavailable`. A transfer link pasted into the face can still be
+previewed, but it can be accepted only by opening it, so the wallet holds
+its acceptance.
 
 An unknown slug, a binding without
 handover or a malformed ticket shows an error and stores nothing. The ticket

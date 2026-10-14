@@ -236,7 +236,9 @@ export interface TransferRuntimeRequest {
     | "transfer.propose"
     | "transfer.reserve"
     | "transfer.verify"
-    | "transfer.status";
+    | "transfer.status"
+    // Proposed r19: the recipient's host reads which unit its acceptance is for.
+    | "transfer.acceptance.read";
   operationId: string;
   target: AssertionTarget;
   input: Record<string, unknown>;
@@ -257,9 +259,11 @@ export type TransferRuntimeResult =
 
 /**
  * G8 (contract r16 transfer.sign): one of the holder's host's own
- * server-to-server transfer calls to the bound runtime. Fixed endpoint, four
- * allowlisted operations, bounded response, timeout, no cookies and no
- * redirects. A 202 (an outcome not yet known) is an answer, not a failure.
+ * server-to-server transfer calls to the bound runtime, or the recipient's
+ * host reading which unit its acceptance is for (transfer.acceptance.read,
+ * proposed r19). Fixed endpoint, five allowlisted operations, bounded
+ * response, timeout, no cookies and no redirects. A 202 (an outcome not yet
+ * known) is an answer, not a failure.
  */
 export async function transferRuntimeCall(
   binding: Pick<ProductFaceBinding, "origin" | "applicationId">,
@@ -272,6 +276,7 @@ export async function transferRuntimeCall(
       "transfer.reserve",
       "transfer.verify",
       "transfer.status",
+      "transfer.acceptance.read",
     ].includes(request.operation)
   ) {
     return { ok: false, code: "runtime_refused" };

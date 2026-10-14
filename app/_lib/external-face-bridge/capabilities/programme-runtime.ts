@@ -105,9 +105,10 @@ export function runtimeCapabilities(): ProductFaceCapability[] {
         const operation = payload.operation;
         const operationId = payload.operation_id;
         const requestHash = payload.request_hash;
-        // G8: the recipient's preview and acceptance name no unit (target {}),
-        // and either party reads an offer's progress by its unit without a
-        // selected owned product; the runtime authorises each by the holder.
+        // G8: the recipient's preview names no unit (target {}); its
+        // acceptance names the offered unit (proposed r19); either party reads
+        // an offer's progress by its unit; none needs a selected owned product
+        // and the runtime authorises each by the holder.
         if (isUnscopedTransferOperation(operation)) {
           const unscoped = transferOperationTargetsNothing(operation)
             ? isRecord(payload.target) &&
@@ -119,15 +120,25 @@ export function runtimeCapabilities(): ProductFaceCapability[] {
           session.assertLive();
           if (operation === "transfer.accept") {
             // Accepting binds THIS wallet as the recipient: the wallet's own
-            // confirmation first. No product or recipient text is shown from
-            // the face; ownership moves only when the holder signs.
+            // confirmation first, naming the unit the wallet read itself for
+            // the acceptance it opened (proposed r19: the runtime's
+            // transfer.acceptance.read, then Dual's public projection). The
+            // face may accept only exactly that unit; no product, owner or
+            // recipient text is taken from the face. Ownership moves only
+            // when the holder signs.
             if (session.pendingConfirmation) {
               throw faceError("action_in_progress");
             }
             session.pendingConfirmation = true;
             try {
+              const unit = await call(() => handlers.readAcceptOffer());
+              session.assertLive();
+              if (unit.objectId !== unscoped.object_id) {
+                throw faceError("stale_context");
+              }
               const confirmed = await handlers.confirm({
                 kind: "transfer_accept",
+                unit,
               });
               session.assertLive();
               if (!confirmed) throw faceError("user_cancelled");

@@ -12,6 +12,7 @@ import {
   type FaceJournalOwner,
   type FaceJournalScope,
 } from "@/api/face-journal";
+import { clearFaceAcceptance } from "@/api/face-acceptance";
 import { clearFaceHandover } from "@/api/face-handover";
 import type { ProductFaceBinding } from "@/api/product-face-binding";
 import { productFaceBinding } from "@/api/product-face-registry";
@@ -84,6 +85,7 @@ export async function resolveFaceRequest(
     clearFaceJournal(response, request);
     // A pending face handover never outlives the session (contract r14).
     clearFaceHandover(response);
+    clearFaceAcceptance(response);
     return response;
   }
   if (result.status === "unavailable") {
