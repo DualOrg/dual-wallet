@@ -4,10 +4,13 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import {
   clearFaceJournal,
+  FACE_LAUNCH_HEADER,
+  FACE_LAUNCH_ID,
   readFaceJournal,
   writeFaceJournal,
   type FaceJournal,
   type FaceJournalOwner,
+  type FaceJournalScope,
 } from "@/api/face-journal";
 import type { ProductFaceBinding } from "@/api/product-face-binding";
 import { productFaceBinding } from "@/api/product-face-registry";
@@ -39,7 +42,10 @@ export interface FaceRequestContext {
   holder: string;
   state: SessionState;
   owner: FaceJournalOwner;
+  /** This launch's journal scope (host-generated launch id, per frame). */
+  scope: FaceJournalScope;
   journal: FaceJournal;
+  request: NextRequest;
 }
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
@@ -63,6 +69,9 @@ export async function resolveFaceRequest(
 ): Promise<FaceRequestContext | NextResponse> {
   const binding = productFaceBinding(slug);
   if (!binding) return faceError("unknown_application", 404);
+  // Every journal and selection belongs to one launch (frame) of the face.
+  const launchId = request.headers.get(FACE_LAUNCH_HEADER) ?? "";
+  if (!FACE_LAUNCH_ID.test(launchId)) return faceError("launch_required", 400);
   if (mutation) {
     const invalidOrigin = mutationGuard(request);
     if (invalidOrigin) return invalidOrigin;
@@ -71,7 +80,7 @@ export async function resolveFaceRequest(
   if (result.status === "expired") {
     const response = faceError("session_expired", 401);
     clearSessionCookie(response);
-    clearFaceJournal(response);
+    clearFaceJournal(response, request);
     return response;
   }
   if (result.status === "unavailable") {
@@ -79,13 +88,21 @@ export async function resolveFaceRequest(
   }
   const state = withSessionId(result.state);
   const owner = { sidHash: sessionIdHash(state)!, walletId: result.wallet.id };
+  const scope: FaceJournalScope = {
+    owner,
+    launchId,
+    slug: binding.slug,
+    programmeId: binding.programmeId,
+  };
   return {
     binding,
     wallet: result.wallet,
     holder: result.wallet.account.address,
     state,
     owner,
-    journal: readFaceJournal(request, owner),
+    scope,
+    journal: readFaceJournal(request, scope),
+    request,
   };
 }
 
@@ -97,7 +114,9 @@ export function faceResponse(
 ) {
   const response = NextResponse.json(body, { status, headers: NO_STORE });
   writeSession(response, context.state);
-  if (journal) writeFaceJournal(response, context.owner, journal);
+  if (journal) {
+    writeFaceJournal(response, context.request, context.scope, journal);
+  }
   return response;
 }
 

@@ -37,19 +37,31 @@ function serialized<T>(work: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/**
+ * One launch (frame) of a product face. The host generates the launch id;
+ * the BFF keeps that launch's own journal and selection, so two tabs never
+ * overwrite each other.
+ */
+export interface FaceLaunch {
+  slug: string;
+  launchId: string;
+}
+
 async function faceRequest<T>(
-  url: string,
+  face: FaceLaunch,
+  path: string,
   init: RequestInit & { json?: unknown } = {},
 ): Promise<T> {
   const { json, ...rest } = init;
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetch(`${base(face.slug)}${path}`, {
       ...rest,
       cache: "no-store",
       credentials: "same-origin",
       headers: {
         Accept: "application/json",
+        "x-dual-face-launch": face.launchId,
         ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
       },
       body: json !== undefined ? JSON.stringify(json) : undefined,
@@ -59,6 +71,7 @@ async function faceRequest<T>(
   }
   const body = (await response.json().catch(() => ({}))) as {
     code?: unknown;
+    reason?: unknown;
   } & T;
   if (!response.ok) {
     throw new ProductFaceError(
@@ -68,22 +81,27 @@ async function faceRequest<T>(
           ? "session_expired"
           : "temporarily_unavailable",
       response.status,
+      typeof body.reason === "string" ? body.reason : undefined,
     );
   }
   return body;
 }
 
-const base = (slug: string) => `/api/faces/${encodeURIComponent(slug)}`;
+function base(slug: string) {
+  return `/api/faces/${encodeURIComponent(slug)}`;
+}
 
-export async function loadProductFaceContext(slug: string) {
+export async function loadProductFaceContext(face: FaceLaunch) {
   return faceRequest<{ application: ProductFaceApplication; frameUrl: string }>(
-    `${base(slug)}/context`,
+    face,
+    "/context",
   );
 }
 
-export async function readProgrammeUnit(slug: string, objectId: string) {
+export async function readProgrammeUnit(face: FaceLaunch, objectId: string) {
   const { unit } = await faceRequest<{ unit: ProgrammeUnitFacts }>(
-    `${base(slug)}/units/${encodeURIComponent(objectId)}`,
+    face,
+    `/units/${encodeURIComponent(objectId)}`,
   );
   return unit;
 }
@@ -98,12 +116,12 @@ interface WireProduct {
   when_modified: string;
 }
 
-export function selectProgrammeProduct(slug: string, objectId: string) {
+export function selectProgrammeProduct(face: FaceLaunch, objectId: string) {
   return serialized(async () => {
     const result = await faceRequest<{
       context_id: string;
       product: WireProduct;
-    }>(`${base(slug)}/selection`, {
+    }>(face, "/selection", {
       method: "POST",
       json: { object_id: objectId },
     });
@@ -133,7 +151,10 @@ interface WireOperation {
   action_id: string | null;
 }
 
-export function writeFaceJournal(slug: string, body: Record<string, unknown>) {
+export function writeFaceJournal(
+  face: FaceLaunch,
+  body: Record<string, unknown>,
+) {
   return serialized(async () => {
     const result = await faceRequest<{
       operation: WireOperation;
@@ -145,9 +166,13 @@ export function writeFaceJournal(slug: string, body: Record<string, unknown>) {
         amount: string;
         currency: string;
       } | null;
-    }>(`${base(slug)}/operations`, { method: "POST", json: body });
+      reservation?: string | null;
+    }>(face, "/operations", { method: "POST", json: body });
     return {
       unit: result.unit ?? undefined,
+      // "won" only when the BFF itself won the runtime's settle dispatch
+      // claim for this request; the holder executes a settle on nothing else.
+      reservation: result.reservation === "won" ? ("won" as const) : undefined,
       quote: result.quote
         ? ({
             caseId: result.quote.case_id,
@@ -161,22 +186,23 @@ export function writeFaceJournal(slug: string, body: Record<string, unknown>) {
   });
 }
 
-export async function listFaceOperations(slug: string) {
+export async function listFaceOperations(face: FaceLaunch) {
   const { operations } = await faceRequest<{ operations: WireOperation[] }>(
-    `${base(slug)}/operations`,
+    face,
+    "/operations",
   );
   return operations;
 }
 
 export async function readFaceOperationStatus(
-  slug: string,
+  face: FaceLaunch,
   operationId: string,
 ) {
   const result = await faceRequest<{
     status: string;
     object_id: string;
     readback: { owner_is_you: boolean; state: string | null } | null;
-  }>(`${base(slug)}/operations/${encodeURIComponent(operationId)}`);
+  }>(face, `/operations/${encodeURIComponent(operationId)}`);
   if (!isRegistrationStatus(result.status)) {
     throw new ProductFaceError("temporarily_unavailable");
   }
@@ -192,10 +218,11 @@ export async function readFaceOperationStatus(
   };
 }
 
-export function mintFaceAssertion(slug: string, body: object) {
+export function mintFaceAssertion(face: FaceLaunch, body: object) {
   return serialized(async () => {
     const { assertion } = await faceRequest<{ assertion: string }>(
-      `${base(slug)}/assertions`,
+      face,
+      "/assertions",
       { method: "POST", json: body },
     );
     return assertion;
@@ -203,7 +230,7 @@ export function mintFaceAssertion(slug: string, body: object) {
 }
 
 export function readSettleProposal(
-  slug: string,
+  face: FaceLaunch,
   input: { contextId: string; operationId: string; objectId: string },
 ) {
   return serialized(async () => {
@@ -218,7 +245,7 @@ export function readSettleProposal(
         expires_at: string;
       };
       changes: SettleFieldChange[];
-    }>(`${base(slug)}/settle-proposal`, {
+    }>(face, "/settle-proposal", {
       method: "POST",
       json: {
         context_id: input.contextId,

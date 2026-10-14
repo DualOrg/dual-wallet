@@ -18,6 +18,7 @@ import {
 import {
   parseCaseQuote,
   parseSettleProposal,
+  reserveSettle,
   runtimeRequestHash,
   trustedRuntimeRead,
   type TrustedReadRequest,
@@ -44,9 +45,13 @@ import {
   isQuoteOperation,
   isRecordId,
   isRequestHash,
+  isHostOnlyRuntimeOperation,
   isRuntimeOperation,
   isRuntimeWriteOperation,
+  isSettleProposalUnavailableReason,
   proposalHashInput,
+  quoteHashInput,
+  settleReserveHashInput,
   runtimeOperationNeedsCase,
   type CaseQuote,
   type ProgrammeProduct,
@@ -59,6 +64,8 @@ export type FaceOperationFailure = {
   ok: false;
   code: string;
   status: number;
+  /** A runtime-stated reason the host shows as it is (G6b proposals). */
+  reason?: string;
   /** A failure after a mint still records the mint against the cap. */
   journal?: FaceJournal;
 };
@@ -89,9 +96,10 @@ function onlyKeys(value: Record<string, unknown>, keys: readonly string[]) {
 const CONTEXT_ID = /^[A-Za-z0-9_-]{16,64}$/;
 const ACTION_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 
-// In-process guard against two concurrent mints from the same journal state.
-// ponytail: it holds within one instance; across instances the runtime's
-// durable operationId idempotency and one-time jti are the backstop.
+// A same-instance double-submit damper for one launch's operation. It is NOT
+// idempotency and decides nothing across tabs or instances: the runtime's
+// one-time jti, its settle dispatch claim, its unit-level registration single
+// flight and its per-version quote decisions do.
 const issuing = new Map<string, number>();
 function claimIssue(key: string, now: number) {
   for (const [candidate, until] of issuing) {
@@ -252,9 +260,6 @@ function parseTarget(
   };
 }
 
-const sameTarget = (left: AssertionTarget, right: AssertionTarget) =>
-  JSON.stringify(left) === JSON.stringify(right);
-
 /**
  * POST /api/faces/[slug]/assertions. Every path re-checks, server-side, the
  * session, the wallet, the journal and the current selection before minting;
@@ -286,6 +291,11 @@ export async function authorizeAssertion(
     return fail("invalid_request", 400);
   }
   const operation = body.operation;
+  // The settle proposal and reservation are the host's own server-to-server
+  // calls; they are never authorized for the face.
+  if (isHostOnlyRuntimeOperation(operation)) {
+    return fail("invalid_request", 400);
+  }
   const operationId = body.operation_id;
   const target = parseTarget(body.target, operation);
   if (!target?.object_id) return fail("invalid_request", 400);
@@ -325,7 +335,12 @@ export async function authorizeAssertion(
     if (!transition.ok) {
       return fail(transition.error, journalStatus[transition.error]);
     }
-    if (!claimIssue(`${context.owner.sidHash}:${operationId}`, Date.now())) {
+    if (
+      !claimIssue(
+        `${context.owner.sidHash}:${context.scope.launchId}:${operationId}`,
+        Date.now(),
+      )
+    ) {
       return fail("operation_already_submitted", 409);
     }
     journal = { ...journal, entries: transition.entries };
@@ -390,18 +405,23 @@ export async function authorizeAssertion(
       if (authorityLeft(entry.phase)) {
         return fail("operation_already_submitted", 409);
       }
-      const confirmedTarget: AssertionTarget = {
-        object_id: entry.objectId,
-        ...(entry.caseId ? { case_id: entry.caseId } : {}),
-        ...(entry.quote
-          ? {
-              quote_version: entry.quote.quoteVersion,
-              amount: entry.quote.amount,
-              currency: entry.quote.currency,
-            }
-          : {}),
-      };
-      if (!sameTarget(confirmedTarget, target)) {
+      // The journal keeps only the confirmed quote's hash; the requested
+      // target must hash to exactly it.
+      const requestedQuoteHash =
+        target.quote_version !== undefined
+          ? sha256Hash(
+              quoteHashInput({
+                quote_version: target.quote_version,
+                amount: target.amount ?? "",
+                currency: target.currency ?? "",
+              }),
+            )
+          : undefined;
+      if (
+        target.object_id !== entry.objectId ||
+        (target.case_id ?? undefined) !== (entry.caseId ?? undefined) ||
+        requestedQuoteHash !== entry.quoteHash
+      ) {
         return fail(
           isQuoteOperation(operation) ? "quote_changed" : "operation_conflict",
           409,
@@ -418,7 +438,12 @@ export async function authorizeAssertion(
       if (!transition.ok) {
         return fail(transition.error, journalStatus[transition.error]);
       }
-      if (!claimIssue(`${context.owner.sidHash}:${operationId}`, Date.now())) {
+      if (
+        !claimIssue(
+          `${context.owner.sidHash}:${context.scope.launchId}:${operationId}`,
+          Date.now(),
+        )
+      ) {
         return fail("operation_already_submitted", 409);
       }
       journal = { ...journal, entries: transition.entries };
@@ -464,18 +489,28 @@ async function trustedRead(
   if (!result.ok) {
     // Only a few runtime refusals become a contract code for the face; the
     // rest stay a generic refusal.
+    // G6b: no proposal exists right now, and the runtime says why; the host
+    // shows that reason as it is and never invents a proposal.
+    const unavailable =
+      read.operation === "registration.settle.propose" &&
+      result.reason === "settle_proposal_unavailable";
     const code =
       read.operation === "case.read"
         ? result.status === 409
           ? "quote_changed"
           : result.code
-        : result.reason === "settle_not_required"
-          ? "settle_not_required"
-          : result.code === "runtime_refused"
-            ? "proposal_rejected"
-            : result.code;
+        : unavailable
+          ? "settle_proposal_unavailable"
+          : result.reason === "settle_not_required"
+            ? "settle_not_required"
+            : result.code === "runtime_refused"
+              ? "proposal_rejected"
+              : result.code;
     return {
       ...fail(code, result.code === "runtime_unavailable" ? 503 : 409),
+      ...(unavailable && isSettleProposalUnavailableReason(result.detail)
+        ? { reason: result.detail }
+        : {}),
       journal: minted.journal,
     };
   }
@@ -555,11 +590,27 @@ export async function readSettleProposal(
   ) {
     return { ...fail("proposal_rejected", 422), journal: read.journal };
   }
+  // The runtime vouched that this registration operation is this unit's: a
+  // launch that resumed it (another tab, a reload) can then reconcile its
+  // status read-only. Nothing is minted or submitted for it from here.
+  const observed = applyJournalTransition(
+    read.journal.entries,
+    {
+      kind: "observe",
+      operationId: proposal.operationId,
+      objectId: proposal.objectId,
+      slug: context.binding.slug,
+      programmeId: context.binding.programmeId,
+    },
+    Date.now(),
+  );
   return {
     ok: true,
     proposal,
     changes: check.changes,
-    journal: read.journal,
+    journal: observed.ok
+      ? { ...read.journal, entries: observed.entries }
+      : read.journal,
   };
 }
 
@@ -647,6 +698,9 @@ export async function transitionOperation(
       if (!existing) return fail("unknown_operation", 404);
       const recheck = await recheckOperation(context, existing, body);
       if (recheck) return recheck;
+      if (existing.kind === "settle") {
+        return submitSettle(context, request, existing, now);
+      }
       return apply({
         kind: "submit",
         operationId,
@@ -764,11 +818,13 @@ export async function transitionOperation(
           ...(caseId ? { caseId } : {}),
           ...(quote
             ? {
-                quote: {
-                  quoteVersion: quote.quoteVersion,
-                  amount: quote.amount,
-                  currency: quote.currency,
-                },
+                quoteHash: sha256Hash(
+                  quoteHashInput({
+                    quote_version: quote.quoteVersion,
+                    amount: quote.amount,
+                    currency: quote.currency,
+                  }),
+                ),
               }
             : {}),
         },
@@ -804,6 +860,74 @@ export async function transitionOperation(
   }
 
   return fail("invalid_request", 400);
+}
+
+/**
+ * contract r8/r11: a confirmed settle is reserved at the runtime, server to
+ * server, before ANY holder execution. The entry is persisted as submitted
+ * whatever the answer (from here only read-only reconciliation follows), and
+ * the host executes the holder action only when this request itself received
+ * dispatch:"won". An idempotent replay, already_claimed, already_reserved,
+ * any refusal or error, a timeout or a lost response is outcome_unknown for
+ * the face: never executed, never re-reserved, read-only
+ * registration.settle.status only.
+ */
+async function submitSettle(
+  context: FaceRequestContext,
+  request: NextRequest,
+  entry: FaceJournalEntry,
+  now: number,
+): Promise<
+  FaceOperationResult<{ entry: FaceJournalEntry; reservation?: "won" }>
+> {
+  if (!entry.proposalId) return fail("operation_conflict", 409);
+  const submitted = applyJournalTransition(
+    context.journal.entries,
+    {
+      kind: "submit",
+      operationId: entry.operationId,
+      objectId: entry.objectId,
+    },
+    now,
+  );
+  if (!submitted.ok) {
+    return fail(submitted.error, journalStatus[submitted.error]);
+  }
+  const reservationRequest = {
+    settleOperationId: entry.operationId,
+    objectId: entry.objectId,
+    proposalId: entry.proposalId,
+  };
+  const minted = mint(
+    context,
+    request,
+    { ...context.journal, entries: submitted.entries },
+    {
+      operation: "registration.settle.reserve",
+      operationId: entry.operationId,
+      target: { object_id: entry.objectId },
+      requestHash: sha256Hash(settleReserveHashInput(reservationRequest)),
+    },
+  );
+  // Nothing was sent: the entry stays confirmed and may still be cancelled.
+  if (!minted.ok) return minted;
+  const reserved = await reserveSettle(
+    context.binding,
+    reservationRequest,
+    minted.assertion,
+  );
+  if (reserved.outcome !== "won") {
+    return {
+      ...fail("outcome_unknown", 409),
+      journal: minted.journal,
+    };
+  }
+  return {
+    ok: true,
+    entry: submitted.entry,
+    reservation: "won",
+    journal: minted.journal,
+  };
 }
 
 /** Confirmation and submission re-check the facts that justified them. */

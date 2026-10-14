@@ -10,21 +10,40 @@ import {
 import { isObjectId } from "@/app/_domain/product-face";
 
 const isProduction = process.env.NODE_ENV === "production";
-const PURPOSE = "dual-face-journal-v1";
+const PURPOSE = "dual-face-journal-v2";
 const CONTEXT_ID = /^[A-Za-z0-9_-]{16,64}$/;
 const SLUG = /^[a-z0-9][a-z0-9-]{1,62}$/;
-const MAX_SELECTIONS = 8;
 
 /**
- * Outstanding (unexpired) assertions this browser session may hold. A client
- * side bound only: the runtime's one-time `jti` consumption is the guarantee,
- * and an already-minted assertion cannot be revoked at the runtime.
+ * A host-generated id for one face launch (one frame). Every launch keeps its
+ * own journal cookie, so two tabs (or two frames) never overwrite each other.
+ */
+export const FACE_LAUNCH_ID = /^[A-Za-z0-9_-]{22,43}$/;
+export const FACE_LAUNCH_HEADER = "x-dual-face-launch";
+
+/** Live launch cookies kept per browser; the oldest beyond this are dropped. */
+export const MAX_FACE_LAUNCHES = 4;
+const LAUNCH_TTL_SECONDS = 24 * 60 * 60;
+
+/**
+ * Outstanding (unexpired) assertions one launch may hold. A client-side
+ * bound only; it is not idempotency. The runtime's one-time `jti`
+ * consumption, its durable reservations and its unit-level single flight
+ * decide what runs.
  */
 export const MAX_OUTSTANDING_ASSERTIONS = 10;
 
-export const FACE_JOURNAL_COOKIE = isProduction
+/** Journal cookies are per launch: `<prefix><launch id>`. */
+export const FACE_JOURNAL_COOKIE_PREFIX = isProduction
+  ? "__Host-dual_face_launch_"
+  : "dual_face_launch_";
+/** The earlier session-wide journal cookie; cleared whenever it is seen. */
+const LEGACY_JOURNAL_COOKIE = isProduction
   ? "__Host-dual_face_journal"
   : "dual_face_journal";
+
+export const faceJournalCookieName = (launchId: string) =>
+  `${FACE_JOURNAL_COOKIE_PREFIX}${launchId}`;
 
 export interface FaceSelection {
   slug: string;
@@ -33,10 +52,16 @@ export interface FaceSelection {
   at: number;
 }
 
+/**
+ * One launch's journal: operation ids, hashes and phases, its current
+ * selection and its outstanding mint expiries. No proposal, quote or other
+ * content; no assertion, token or face-supplied text.
+ */
 export interface FaceJournal {
   entries: FaceJournalEntry[];
+  /** At most one: the launch's current selection. */
   selections: FaceSelection[];
-  /** Expiry times (ms) of assertions minted for this session. */
+  /** Expiry times (ms) of assertions minted for this launch. */
   mints: number[];
 }
 
@@ -45,10 +70,26 @@ export interface FaceJournalOwner {
   walletId: string;
 }
 
-interface SealedJournal extends FaceJournal {
-  v: 1;
+export interface FaceJournalScope {
+  owner: FaceJournalOwner;
+  launchId: string;
+  slug: string;
+  programmeId: string;
+}
+
+type SealedEntry = Omit<FaceJournalEntry, "slug" | "programmeId">;
+
+interface SealedJournal {
+  v: 2;
   sid: string;
   wallet: string;
+  launch: string;
+  slug: string;
+  programme: string;
+  entries: SealedEntry[];
+  selection: Omit<FaceSelection, "slug"> | null;
+  mints: number[];
+  at: number;
 }
 
 export const emptyFaceJournal = (): FaceJournal => ({
@@ -57,12 +98,13 @@ export const emptyFaceJournal = (): FaceJournal => ({
   mints: [],
 });
 
-function parseSelection(value: unknown): FaceSelection | undefined {
+function parseSelection(
+  value: unknown,
+  slug: string,
+): FaceSelection | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return;
   const item = value as Record<string, unknown>;
   if (
-    typeof item.slug !== "string" ||
-    !SLUG.test(item.slug) ||
     !isObjectId(item.objectId) ||
     typeof item.contextId !== "string" ||
     !CONTEXT_ID.test(item.contextId) ||
@@ -72,51 +114,68 @@ function parseSelection(value: unknown): FaceSelection | undefined {
     return undefined;
   }
   return {
-    slug: item.slug,
+    slug,
     objectId: item.objectId,
     contextId: item.contextId,
     at: item.at,
   };
 }
 
+const sealPurpose = (launchId: string) => `${PURPOSE}:${launchId}`;
+
+function unsealLaunch(
+  launchId: string,
+  value: string,
+): Partial<SealedJournal> | undefined {
+  if (!value || value.length > 4096) return undefined;
+  const opened = unsealForPurpose(sealPurpose(launchId), value);
+  return opened && typeof opened === "object" && !Array.isArray(opened)
+    ? (opened as Partial<SealedJournal>)
+    : undefined;
+}
+
 /**
- * Reads the journal bound to this session and wallet. A journal sealed for a
- * different session or wallet — after logout, expiry or an account change —
- * reads as empty and is replaced on the next write.
+ * Reads the journal of this launch, bound to this session, wallet and face.
+ * A journal sealed for another session, wallet, face or launch — after
+ * logout, expiry or an account change — reads as empty and is replaced on the
+ * next write.
  */
 export function readFaceJournal(
   request: NextRequest,
-  owner: FaceJournalOwner,
+  scope: FaceJournalScope,
   now = Date.now(),
 ): FaceJournal {
-  const cookie = request.cookies.get(FACE_JOURNAL_COOKIE)?.value;
-  if (!cookie || cookie.length > 8192) return emptyFaceJournal();
-  const value = unsealForPurpose(PURPOSE, cookie);
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return emptyFaceJournal();
-  }
-  const sealed = value as Partial<SealedJournal>;
+  const cookie = request.cookies.get(
+    faceJournalCookieName(scope.launchId),
+  )?.value;
+  const sealed = cookie ? unsealLaunch(scope.launchId, cookie) : undefined;
   if (
-    sealed.v !== 1 ||
-    sealed.sid !== owner.sidHash ||
-    sealed.wallet !== owner.walletId ||
+    !sealed ||
+    sealed.v !== 2 ||
+    sealed.sid !== scope.owner.sidHash ||
+    sealed.wallet !== scope.owner.walletId ||
+    sealed.launch !== scope.launchId ||
+    sealed.slug !== scope.slug ||
+    sealed.programme !== scope.programmeId ||
     !Array.isArray(sealed.entries)
   ) {
     return emptyFaceJournal();
   }
+  const selection = parseSelection(sealed.selection, scope.slug);
   return {
     entries: pruneJournal(
       sealed.entries
-        .map(parseJournalEntry)
+        .map((entry) =>
+          parseJournalEntry({
+            ...(entry as object),
+            slug: scope.slug,
+            programmeId: scope.programmeId,
+          }),
+        )
         .filter((entry): entry is FaceJournalEntry => entry !== undefined),
       now,
     ),
-    selections: Array.isArray(sealed.selections)
-      ? sealed.selections
-          .map(parseSelection)
-          .filter((item): item is FaceSelection => item !== undefined)
-          .slice(-MAX_SELECTIONS)
-      : [],
+    selections: selection ? [selection] : [],
     mints: Array.isArray(sealed.mints)
       ? sealed.mints.filter(
           (expiry): expiry is number =>
@@ -126,35 +185,110 @@ export function readFaceJournal(
   };
 }
 
-export function writeFaceJournal(
-  response: NextResponse,
-  owner: FaceJournalOwner,
-  journal: FaceJournal,
-) {
-  const sealed: SealedJournal = {
-    v: 1,
-    sid: owner.sidHash,
-    wallet: owner.walletId,
-    entries: journal.entries,
-    selections: journal.selections.slice(-MAX_SELECTIONS),
-    mints: journal.mints,
-  };
-  response.cookies.set(FACE_JOURNAL_COOKIE, sealForPurpose(PURPOSE, sealed), {
+function cookieOptions(maxAge?: number) {
+  return {
     httpOnly: true,
     secure: isProduction,
-    sameSite: "strict",
+    sameSite: "strict" as const,
     path: "/",
-  });
+    ...(maxAge === undefined ? { expires: new Date(0) } : { maxAge }),
+  };
 }
 
-export function clearFaceJournal(response: NextResponse) {
-  response.cookies.set(FACE_JOURNAL_COOKIE, "", {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: "strict",
-    path: "/",
-    expires: new Date(0),
+/** Launch journal cookies in the request: [launch id, sealed value]. */
+function launchCookies(request: NextRequest) {
+  return request.cookies
+    .getAll()
+    .filter((cookie) => cookie.name.startsWith(FACE_JOURNAL_COOKIE_PREFIX))
+    .map(
+      (cookie) =>
+        [
+          cookie.name.slice(FACE_JOURNAL_COOKIE_PREFIX.length),
+          cookie.value,
+        ] as const,
+    );
+}
+
+export function writeFaceJournal(
+  response: NextResponse,
+  request: NextRequest,
+  scope: FaceJournalScope,
+  journal: FaceJournal,
+  now = Date.now(),
+) {
+  const selection = journal.selections.find((item) => item.slug === scope.slug);
+  const sealed: SealedJournal = {
+    v: 2,
+    sid: scope.owner.sidHash,
+    wallet: scope.owner.walletId,
+    launch: scope.launchId,
+    slug: scope.slug,
+    programme: scope.programmeId,
+    // The face and programme are the launch's own; entries do not repeat them.
+    entries: journal.entries.map((entry) => {
+      const rest: Partial<FaceJournalEntry> = { ...entry };
+      delete rest.slug;
+      delete rest.programmeId;
+      return rest as SealedEntry;
+    }),
+    selection: selection
+      ? {
+          objectId: selection.objectId,
+          contextId: selection.contextId,
+          at: selection.at,
+        }
+      : null,
+    mints: journal.mints,
+    at: now,
+  };
+  response.cookies.set(
+    faceJournalCookieName(scope.launchId),
+    sealForPurpose(sealPurpose(scope.launchId), sealed),
+    cookieOptions(LAUNCH_TTL_SECONDS),
+  );
+  // Keep at most MAX_FACE_LAUNCHES launches of this session; anything else
+  // (unreadable, another session's, or the oldest) is dropped.
+  const others = launchCookies(request)
+    .filter(([launchId]) => launchId !== scope.launchId)
+    .map(([launchId, value]) => {
+      const opened = FACE_LAUNCH_ID.test(launchId)
+        ? unsealLaunch(launchId, value)
+        : undefined;
+      const mine =
+        opened?.v === 2 &&
+        opened.sid === scope.owner.sidHash &&
+        opened.wallet === scope.owner.walletId &&
+        opened.launch === launchId;
+      return {
+        launchId,
+        at: mine && typeof opened.at === "number" ? opened.at : -1,
+      };
+    })
+    .sort((left, right) => right.at - left.at);
+  others.forEach((other, index) => {
+    if (other.at < 0 || index >= MAX_FACE_LAUNCHES - 1) {
+      response.cookies.set(
+        `${FACE_JOURNAL_COOKIE_PREFIX}${other.launchId}`,
+        "",
+        cookieOptions(),
+      );
+    }
   });
+  if (request.cookies.get(LEGACY_JOURNAL_COOKIE)) {
+    response.cookies.set(LEGACY_JOURNAL_COOKIE, "", cookieOptions());
+  }
+}
+
+/** Clears every launch journal (and the earlier session-wide one). */
+export function clearFaceJournal(response: NextResponse, request: NextRequest) {
+  for (const [launchId] of launchCookies(request)) {
+    response.cookies.set(
+      `${FACE_JOURNAL_COOKIE_PREFIX}${launchId}`,
+      "",
+      cookieOptions(),
+    );
+  }
+  response.cookies.set(LEGACY_JOURNAL_COOKIE, "", cookieOptions());
 }
 
 export function currentSelection(journal: FaceJournal, slug: string) {
@@ -165,11 +299,12 @@ export function withSelection(
   journal: FaceJournal,
   selection: FaceSelection | { slug: string; cleared: true },
 ): FaceJournal {
-  const others = journal.selections.filter(
-    (item) => item.slug !== selection.slug,
-  );
   return {
     ...journal,
-    selections: "cleared" in selection ? others : [...others, selection],
+    selections: "cleared" in selection ? [] : [selection],
   };
+}
+
+export function isFaceSlug(value: unknown): value is string {
+  return typeof value === "string" && SLUG.test(value);
 }

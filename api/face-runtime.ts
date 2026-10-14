@@ -49,6 +49,8 @@ export type TrustedReadResult =
       status?: number;
       /** The runtime's refusal status when it is a plain code. */
       reason?: string;
+      /** The runtime's stated reason for that refusal, when a plain code. */
+      detail?: string;
     };
 
 /**
@@ -92,16 +94,18 @@ export async function trustedRuntimeRead(
   if (!response) return { ok: false, code: "runtime_unavailable" };
   if (response.status !== 200) {
     let reason: string | undefined;
+    let detail: string | undefined;
+    const plainCode = (value: unknown) =>
+      typeof value === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(value)
+        ? value
+        : undefined;
     try {
       const refused = JSON.parse(response.body.toString("utf8")) as {
         status?: unknown;
+        reason?: unknown;
       };
-      if (
-        typeof refused.status === "string" &&
-        /^[a-z][a-z0-9_]{0,63}$/.test(refused.status)
-      ) {
-        reason = refused.status;
-      }
+      reason = plainCode(refused.status);
+      detail = plainCode(refused.reason);
     } catch {
       // No readable refusal code.
     }
@@ -110,6 +114,7 @@ export async function trustedRuntimeRead(
       code: response.status >= 500 ? "runtime_unavailable" : "runtime_refused",
       status: response.status,
       ...(reason ? { reason } : {}),
+      ...(detail ? { detail } : {}),
     };
   }
   try {
@@ -125,6 +130,99 @@ export async function trustedRuntimeRead(
 
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+export type SettleReserveResult =
+  /** This request alone created the runtime's durable dispatch claim. */
+  | { outcome: "won" }
+  /**
+   * Anything else: an idempotent replay or already_claimed, already_reserved,
+   * a refusal, an error, a timeout or a lost response. Never execute; only
+   * the read-only registration.settle.status may follow.
+   */
+  | {
+      outcome: "not_won";
+      status: string | null;
+      reason: string | null;
+      reached: boolean;
+    };
+
+/**
+ * contract r8/r11: before ANY holder execution, the wallet BFF reserves the
+ * settle at the bound runtime, server to server. The holder action may run
+ * only on a response this request received itself that answers
+ * dispatch:"won" for exactly this proposal, operation and unit — the single
+ * call that atomically created the reservation. The wallet's cookie and
+ * process state are not part of that decision.
+ */
+export async function reserveSettle(
+  binding: ProductFaceBinding,
+  request: { settleOperationId: string; objectId: string; proposalId: string },
+  assertion: string,
+): Promise<SettleReserveResult> {
+  const lost = {
+    outcome: "not_won" as const,
+    status: null,
+    reason: null,
+    reached: false,
+  };
+  let response: Awaited<ReturnType<typeof fetchBounded>>;
+  try {
+    response = await fetchBounded(
+      `${binding.origin}${RUNTIME_ENDPOINT}`,
+      MAX_RESPONSE_BYTES,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "x-tig-product-face-application": binding.applicationId,
+        },
+        body: JSON.stringify({
+          operation: "registration.settle.reserve",
+          operationId: request.settleOperationId,
+          target: { object_id: request.objectId },
+          input: { proposal_id: request.proposalId },
+          assertion,
+        }),
+      },
+      TIMEOUT_MS,
+    );
+  } catch {
+    return lost;
+  }
+  if (!response) return lost;
+  let body: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(response.body.toString("utf8"));
+    if (record(parsed)) body = parsed;
+  } catch {
+    // An unreadable answer is not a win.
+  }
+  const code = (value: unknown) =>
+    typeof value === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(value)
+      ? value
+      : null;
+  const reservation = record(body.reservation) ? body.reservation : {};
+  const won =
+    response.status === 200 &&
+    body.ok === true &&
+    body.status === "granted" &&
+    body.dispatch === "won" &&
+    body.idempotent !== true &&
+    reservation.settle_operation_id === request.settleOperationId &&
+    reservation.object_id === request.objectId &&
+    reservation.proposal_id === request.proposalId;
+  if (won) return { outcome: "won" };
+  return {
+    outcome: "not_won",
+    status:
+      code(body.dispatch) === "already_claimed"
+        ? "already_claimed"
+        : code(body.status),
+    reason: code(body.reason),
+    reached: true,
+  };
 }
 
 /** Narrow projection of a registration.settle.propose result. */

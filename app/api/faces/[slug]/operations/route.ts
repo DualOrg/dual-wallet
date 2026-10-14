@@ -45,7 +45,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!result.ok) {
       return faceResponse(
         context,
-        { code: result.code },
+        {
+          code: result.code,
+          ...(result.reason ? { reason: result.reason } : {}),
+        },
         { status: result.status, journal: result.journal },
       );
     }
@@ -54,6 +57,12 @@ export async function POST(request: NextRequest, { params }: Params) {
       {
         operation: wireEntry(result.entry),
         unit: result.unit ?? null,
+        // "won" only when this request itself won the runtime's settle
+        // dispatch claim; the host executes on nothing else.
+        reservation:
+          "reservation" in result && result.reservation === "won"
+            ? "won"
+            : null,
         quote: result.quote
           ? {
               case_id: result.quote.caseId,

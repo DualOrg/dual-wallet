@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -17,6 +17,7 @@ import {
   type ProductFaceBridgeHost,
   type ProductFaceHandlers,
 } from "@/app/_lib/external-face-bridge";
+import type { ProductFaceHostNotice } from "@/app/_lib/external-face-bridge/core/product-session";
 import { useSession } from "@/app/_providers/session-provider";
 import {
   executeSettleAction,
@@ -80,11 +81,14 @@ function hostReducer(
  */
 export function useProductFaceHost({
   slug,
+  launchId,
   application,
   frameUrl,
   onEnded,
 }: {
   slug: string;
+  /** This frame's launch id: its own journal and selection on the server. */
+  launchId: string;
   application: ProductFaceApplication;
   frameUrl: string;
   onEnded: (reason: SessionEndReason) => void;
@@ -97,6 +101,7 @@ export function useProductFaceHost({
   const [confirmation, dispatchConfirmation] = useReducer(confirmationReducer, {
     status: "idle",
   });
+  const [notice, setNotice] = useState<ProductFaceHostNotice | null>(null);
   const host = useRef<ProductFaceBridgeHost | undefined>(undefined);
   const pendingConfirmation = useRef<
     { id: number; resolve: (confirmed: boolean) => void } | undefined
@@ -162,6 +167,7 @@ export function useProductFaceHost({
       const holder = current.wallet?.account.address;
       if (!holder || state.status === "ended") return;
       host.current?.close();
+      const face = { slug, launchId };
       const guard = async <T>(work: () => Promise<T>) => {
         try {
           return await work();
@@ -178,7 +184,7 @@ export function useProductFaceHost({
             listProgrammeProducts({ owner: holder, templateId, next }),
           ),
         selectProduct: (objectId) =>
-          guard(() => selectProgrammeProduct(slug, objectId)),
+          guard(() => selectProgrammeProduct(face, objectId)),
         readProduct: (objectId) => guard(() => readProgrammeProduct(objectId)),
         readActions: (objectId) =>
           guard(() => readProgrammeProductActions(objectId)),
@@ -186,20 +192,20 @@ export function useProductFaceHost({
           guard(() => readProgrammeProductAttributes(objectId)),
         readHistory: (objectId) =>
           guard(() => readProgrammeProductHistory(objectId)),
-        readUnit: (objectId) => guard(() => readProgrammeUnit(slug, objectId)),
+        readUnit: (objectId) => guard(() => readProgrammeUnit(face, objectId)),
         journal: (request) =>
           guard(() =>
             writeFaceJournal(
-              slug,
+              face,
               request as unknown as Record<string, unknown>,
             ),
           ),
         operationStatus: (operationId) =>
-          guard(() => readFaceOperationStatus(slug, operationId)),
+          guard(() => readFaceOperationStatus(face, operationId)),
         mintAssertion: (request) =>
-          guard(() => mintFaceAssertion(slug, request)),
+          guard(() => mintFaceAssertion(face, request)),
         readSettleProposal: (input) =>
-          guard(() => readSettleProposal(slug, input)),
+          guard(() => readSettleProposal(face, input)),
         executeSettle: (input) => {
           const { authenticationMethod, wallet } = sessionRef.current;
           if (!authenticationMethod) {
@@ -220,6 +226,7 @@ export function useProductFaceHost({
             pendingConfirmation.current = { id, resolve };
             dispatchConfirmation({ type: "open", id, request });
           }),
+        notice: (next) => setNotice(next),
         navigate: (path, mode) => {
           lastTask.current = path;
           const href = productTaskHref(slug, path);
@@ -239,7 +246,7 @@ export function useProductFaceHost({
           dispatch({ type: "live" });
           // After a reload, journalled operations whose authority already left
           // the wallet are reconciled read-only and reported; never re-minted.
-          void listFaceOperations(slug)
+          void listFaceOperations(face)
             .then(async (operations) => {
               for (const operation of operations) {
                 if (
@@ -249,7 +256,7 @@ export function useProductFaceHost({
                   continue;
                 }
                 const status = await readFaceOperationStatus(
-                  slug,
+                  face,
                   operation.operation_id,
                 ).catch(() => undefined);
                 if (status) {
@@ -264,7 +271,7 @@ export function useProductFaceHost({
         },
       });
     },
-    [application, frameUrl, router, slug, state.status, task],
+    [application, frameUrl, launchId, router, slug, state.status, task],
   );
 
   return {
@@ -272,5 +279,7 @@ export function useProductFaceHost({
     confirmation: confirmation.status === "open" ? confirmation.request : null,
     answerConfirmation,
     onFrameLoad,
+    notice,
+    dismissNotice: () => setNotice(null),
   };
 }

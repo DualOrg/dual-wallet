@@ -16,7 +16,8 @@ export const queryKeys = {
     // The binding does not depend on the wallet. Keeping the wallet out of the
     // key means an account change cannot silently swap the frame; the host
     // ends the old channel first and the user reopens it.
-    context: (slug: string) => ["product-faces", "context", { slug }] as const,
+    context: (slug: string, launchId: string) =>
+      ["product-faces", "context", { slug, launchId }] as const,
   },
   activity: {
     all: ["activity"] as const,

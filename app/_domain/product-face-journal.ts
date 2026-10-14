@@ -1,8 +1,5 @@
 import {
   isCaseId,
-  isCurrencyCode,
-  isDecimalAmount,
-  isQuoteVersion,
   isObjectId,
   isRecordId,
   isRequestHash,
@@ -26,6 +23,10 @@ export const journalPhases = [
   "submitted",
   "settled",
   "cancelled",
+  // A registration this launch did not submit, whose binding to its unit the
+  // runtime itself vouched for (a trusted settle proposal read): reconciled
+  // read-only, never minted, submitted or cancelled from here.
+  "observed",
 ] as const;
 export type JournalPhase = (typeof journalPhases)[number];
 
@@ -44,36 +45,23 @@ export interface FaceJournalEntry {
   /** The face's exact runtime registration request, bound at confirmation. */
   recordId?: string;
   requestHash?: string;
-  /** The runtime proposal a settle executes; never its input. */
+  /** The runtime proposal a settle executes; its id only, never its input. */
   proposalId?: string;
-  /** The host-read quote a quote approval or decline is bound to. */
-  quote?: JournalQuote;
+  /**
+   * The host-read quote a quote approval or decline is bound to, as a hash of
+   * its {quote_version, amount, currency}; never the quote itself.
+   */
+  quoteHash?: string;
   createdAt: number;
   updatedAt: number;
   issuedAt?: number;
 }
 
-export interface JournalQuote {
-  quoteVersion: string;
-  amount: string;
-  currency: string;
-}
-
-function parseQuote(value: unknown): JournalQuote | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return;
-  const quote = value as Record<string, unknown>;
-  return isQuoteVersion(quote.quoteVersion) &&
-    isDecimalAmount(quote.amount) &&
-    isCurrencyCode(quote.currency)
-    ? {
-        quoteVersion: quote.quoteVersion,
-        amount: quote.amount,
-        currency: quote.currency,
-      }
-    : undefined;
-}
-
-export const JOURNAL_MAX_ENTRIES = 24;
+/**
+ * Entries one launch journal holds. The journal is per launch (one frame), so
+ * it stays a small cookie; finished entries make room for new ones.
+ */
+export const JOURNAL_MAX_ENTRIES = 6;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const SLUG = /^[a-z0-9][a-z0-9-]{1,62}$/;
@@ -110,7 +98,7 @@ export function parseJournalEntry(
     (entry.proposalId !== undefined &&
       (typeof entry.proposalId !== "string" ||
         !ACTION_ID.test(entry.proposalId))) ||
-    (entry.quote !== undefined && !parseQuote(entry.quote)) ||
+    (entry.quoteHash !== undefined && !isRequestHash(entry.quoteHash)) ||
     (entry.recordId !== undefined && !isRecordId(entry.recordId)) ||
     (entry.requestHash !== undefined && !isRequestHash(entry.requestHash)) ||
     !timestamp(entry.createdAt) ||
@@ -137,7 +125,7 @@ export function parseJournalEntry(
     ...(entry.status ? { status: entry.status as RegistrationStatus } : {}),
     ...(entry.actionId ? { actionId: entry.actionId as string } : {}),
     ...(entry.proposalId ? { proposalId: entry.proposalId as string } : {}),
-    ...(entry.quote ? { quote: parseQuote(entry.quote)! } : {}),
+    ...(entry.quoteHash ? { quoteHash: entry.quoteHash as string } : {}),
     ...(entry.recordId ? { recordId: entry.recordId as string } : {}),
     ...(entry.requestHash ? { requestHash: entry.requestHash as string } : {}),
     createdAt: entry.createdAt,
@@ -151,7 +139,10 @@ const terminal = (phase: JournalPhase) =>
 
 /** Issued or submitted: authority left the wallet, so the entry is retained. */
 export const authorityLeft = (phase: JournalPhase) =>
-  phase === "assertion_issued" || phase === "submitted" || phase === "settled";
+  phase === "assertion_issued" ||
+  phase === "submitted" ||
+  phase === "settled" ||
+  phase === "observed";
 
 export function pruneJournal(entries: FaceJournalEntry[], now: number) {
   return entries.filter((entry) =>
@@ -174,6 +165,13 @@ export type JournalTransition =
   | { kind: "issue"; operationId: string; objectId: string; caseId?: string }
   | { kind: "submit"; operationId: string; objectId: string }
   | { kind: "record_action"; operationId: string; actionId: string }
+  | {
+      kind: "observe";
+      operationId: string;
+      objectId: string;
+      slug: string;
+      programmeId: string;
+    }
   | { kind: "settle"; operationId: string; status: RegistrationStatus };
 
 export type JournalTransitionError =
@@ -224,15 +222,54 @@ export function applyJournalTransition(
       }
       return { ok: true, entries, entry: existing };
     }
-    if (entries.length >= JOURNAL_MAX_ENTRIES) {
-      return { ok: false, error: "journal_full" };
+    let room = entries;
+    if (room.length >= JOURNAL_MAX_ENTRIES) {
+      // A finished (cancelled or settled) entry makes room; anything whose
+      // authority may still be outstanding is kept.
+      const finished = room
+        .filter((entry) => terminal(entry.phase))
+        .sort((left, right) => left.updatedAt - right.updatedAt)[0];
+      if (!finished) return { ok: false, error: "journal_full" };
+      room = room.filter((entry) => entry !== finished);
     }
-    return replace({
+    const entry: FaceJournalEntry = {
       ...transition.entry,
       phase: "confirming",
       createdAt: now,
       updatedAt: now,
-    });
+    };
+    return { ok: true, entries: [...room, entry], entry };
+  }
+
+  if (transition.kind === "observe") {
+    if (existing) {
+      return existing.objectId === transition.objectId
+        ? { ok: true, entries, entry: existing }
+        : { ok: false, error: "operation_conflict" };
+    }
+    const finished = entries
+      .filter((entry) => terminal(entry.phase))
+      .sort((left, right) => left.updatedAt - right.updatedAt)[0];
+    const room =
+      entries.length < JOURNAL_MAX_ENTRIES
+        ? entries
+        : finished
+          ? entries.filter((entry) => entry !== finished)
+          : undefined;
+    // Observing is optional: without room the status is simply not known here.
+    if (!room) return { ok: false, error: "journal_full" };
+    const entry: FaceJournalEntry = {
+      operationId: transition.operationId,
+      kind: "registration",
+      operation: "registration.submit",
+      slug: transition.slug,
+      programmeId: transition.programmeId,
+      objectId: transition.objectId,
+      phase: "observed",
+      createdAt: now,
+      updatedAt: now,
+    };
+    return { ok: true, entries: [...room, entry], entry };
   }
 
   if (!existing) return { ok: false, error: "unknown_operation" };

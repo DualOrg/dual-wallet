@@ -302,16 +302,17 @@ origin needs a rebuild, and an origin the build did not see is blocked.
 
 ### Server BFF
 
-Every route resolves the binding from the slug, requires the active session
-(terminal 401 clears the session and journal cookies), answers
-`private, no-store`, and checks the mutation origin on POST.
+Every route resolves the binding from the slug, requires the launch ID header
+and the active session (terminal 401 clears the session and every launch
+journal cookie), answers `private, no-store`, and checks the mutation origin on
+POST.
 
 | Route                                            | Purpose                                                                                                                                                             |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/faces/[slug]/context`                  | verifies the pinned artifact, resets the server-side selection, returns the browser-safe binding and frame URL                                                      |
 | `GET /api/faces/[slug]/units/[objectId]`         | canonical facts of an unowned unit from the public projection; template must be in the programme                                                                    |
 | `POST /api/faces/[slug]/selection`               | re-reads the object with the session credential; owned by the session wallet and in the programme, else `not_owned`/`not_in_programme`; issues a fresh `context_id` |
-| `GET/POST /api/faces/[slug]/operations`          | lists or moves operation journal entries (`begin`, `confirm`, `cancel`, `submit`, `record_action`)                                                                  |
+| `GET/POST /api/faces/[slug]/operations`          | lists or moves the launch's journal entries (`begin`, `confirm`, `cancel`, `submit`, `record_action`); a settle `submit` reserves at the runtime first (r8/r11)     |
 | `GET /api/faces/[slug]/operations/[operationId]` | read-only status from the journal and the wallet's canonical readback; never retries, mints or executes                                                             |
 | `POST /api/faces/[slug]/assertions`              | mints one assertion for one exact runtime request                                                                                                                   |
 | `POST /api/faces/[slug]/settle-proposal`         | trusted runtime read of the settle proposal (G6)                                                                                                                    |
@@ -376,29 +377,44 @@ operation needs its own assertion. Each minted but unconsumed assertion stays
 usable for its one exact request (operation, target and `request_hash`) until
 first use or expiry, at most 60 seconds; the wallet cannot revoke it at the
 runtime without a revocation or introspection contract. The journal caps
-outstanding unexpired assertions per session at 10, a client-side bound that
+outstanding unexpired assertions per launch at 10, a client-side bound that
 is not a runtime guarantee.
 
-### Operation journal
+### Operation journal (per launch)
 
-A sealed (AES-256-GCM with purpose-bound additional data), host-only,
-`HttpOnly`, `SameSite=Strict` cookie (`__Host-dual_face_journal` in
-production) bound to the session ID hash and wallet ID; any other session or
-wallet reads it as empty. It holds only non-secret facts: operation ID, kind
-(`registration`, `runtime`, `settle`), operation or action name, slug,
-programme, object, case, phase (`confirming`, `confirmed`, `assertion_issued`,
-`submitted`, `settled`, `cancelled`), settled status, proposal ID, the
-registration record ID and confirmed request hash, the
-host-read quote version/amount/currency, timestamps, plus the current
-selection per slug and the expiry times of outstanding assertions. It never
-holds an assertion, signature, token or face text. It is written before an
-assertion is minted or a settle is executed, cleared on logout, and replaced
-after an account change. A cookie rather than Web Storage keeps it outside
-the iframe's and page scripts' reach and inside the existing session boundary.
-Residual: two overlapping writes in different tabs race on the cookie; one tab
-serializes its own writes, the server refuses a second mint per operation
-within an instance, and the runtime's operation-ID idempotency and one-time
-`jti` are the backstop.
+Each launch (one frame) of a face has its own journal. The host generates a
+random launch ID when it opens the frame and sends it on every BFF call
+(`x-dual-face-launch`); a call without one is refused with `launch_required`.
+The journal is a sealed (AES-256-GCM, additional data naming the purpose and
+the launch ID), host-only, `HttpOnly`, `SameSite=Strict` cookie per launch
+(`__Host-dual_face_launch_<launchId>` in production, a 24-hour lifetime),
+bound to the session ID hash, the wallet ID, the face and the launch; any
+other session, wallet, face or launch reads it as empty, and two tabs never
+overwrite each other. At most four launch cookies are kept per browser; the
+oldest, and any unreadable one, are dropped on the next write.
+
+It holds IDs, hashes and phases only: operation ID, kind (`registration`,
+`runtime`, `settle`), operation or action name, object, case, phase
+(`confirming`, `confirmed`, `assertion_issued`, `submitted`, `settled`,
+`cancelled`), settled status, the settle's proposal ID and executed action ID,
+the registration record ID and confirmed request hash, a hash of the host-read
+quote `{quote_version, amount, currency}`, timestamps, the launch's current
+selection and the expiry times of its outstanding assertions (at most six
+entries; finished ones make room). It never holds proposal or quote content,
+an assertion, signature, token or face text. It is cleared on logout and
+replaced after an account change. A cookie rather than Web Storage keeps it
+outside the iframe's and page scripts' reach and inside the existing session
+boundary.
+
+**What decides, and what does not.** The journal and the BFF's in-process
+double-submit damper are not idempotency and decide nothing across tabs,
+instances or servers. The runtime does (contract r8/r11): its one-time `jti`,
+the settle dispatch claim (below), its unit-level registration single flight
+(a second `registration.submit` for a unit with a pending or unknown operation
+is refused with `operation_conflict` and names the existing operation) and its
+per-version quote decisions. Recovery after a reload or a fresh sign-in, with
+no journal, is read-only: `registration.pending.read` resumes the original
+registration and `registration.settle.status` reconciles a settle.
 
 ### Application-variant bridge
 
@@ -471,15 +487,36 @@ registry accepts the template nested under `inputTemplate`, or flat as Studio's
 become one leaf map. The confirmation shows the decoded field changes from the
 proposal and the fresh object; runtime-issued commitments (hashes, ids,
 timestamps) are listed separately under a technical disclosure, and values that
-stay the same are not shown. The journal records the settle before
-execution (`submitted`), then the existing executor runs exactly that proposal
-as the holder (email execute, or passkey/EOA prepare, sign and execute). A
-cancel is `not_submitted`; a lost or failed execution is `outcome_unknown` and
-is never re-executed. Status stays `ownership_moved_state_pending` until the
+stay the same are not shown.
+
+**Settle reservation (contract r8/r11).** After the confirmation the BFF
+records the settle as `submitted` and, before ANY holder execution, calls the
+runtime's `registration.settle.reserve` server to server (assertion operation
+`registration.settle.reserve`, `op_id` the settle operation ID, target
+`{object_id}`, `request_hash` over exactly `{proposal_id, settle_operation_id,
+object_id}`). The existing executor then runs exactly that proposal as the
+holder (email execute, or passkey/EOA prepare, sign and execute) ONLY when
+this request itself received `dispatch: "won"` for exactly this proposal,
+operation and unit — the single call that created the runtime's durable
+reservation. An idempotent replay or `already_claimed`, `already_reserved`,
+any refusal or error, a timeout or a lost reserve response executes nothing,
+is never re-reserved, and is `outcome_unknown` for the face, which reconciles
+read-only through `registration.settle.status` (the runtime finds the holder
+action in Dual's action logs, or the outcome stays unknown). A cancel before
+the reservation is `not_submitted`; a lost or failed execution is
+`outcome_unknown` and is never re-executed.
+
+**No proposal (G6b).** The runtime originates the brand's proposal; when it
+has none it answers `settle_proposal_unavailable` with a reason
+(`issuer_preauthorisation_absent`, `issuer_preauthorisation_expired`,
+`issuer_auto_proposal_used`). The host shows that reason in its own notice
+and invents nothing; the face receives `settle_proposal_unavailable`.
+
+Status stays `ownership_moved_state_pending` until the
 readback shows a settled state with an agreeing lifecycle target.
 
 **Quotes.** Before `case.quote.approve` or `case.quote.decline` the BFF reads
-`case.read` itself, records the quote in the journal and the confirmation
+`case.read` itself, records a hash of the quote in the journal and the confirmation
 shows quote version, provider (labelled as from the publisher), the exact
 decimal amount formatted in the active locale without a float, and that no
 payment is taken. The write assertion's target binds
@@ -505,9 +542,29 @@ never written to disk. With `MOCK_PROGRAMME_DUAL_URL` set, the fake api-v3
 forwards programme-template object reads to the Studio local fake Dual
 (integrated mode). Where Playwright's own Chromium build is not installed,
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE` names the browser binary. The fixture is
-byte-exact and excluded from formatting and linting. The four registration
-specs run only when the pinned face's `manifest.contractRevision` is at least 6
-(the r6 authorize payload); an older pinned face skips them with that reason.
+byte-exact and excluded from formatting and linting; it is the Morrow Home face
+emitted by Studio `b4ded3d`. The registration specs run only when the pinned
+face's `manifest.contractRevision` is at least 6 (the r6 authorize payload); an
+older pinned face skips them with that reason.
+
+The fake runtime follows contracts r8 to r11: opaque evidence handles, a
+unit-level registration single flight (`operation_conflict` naming the existing
+operation), registration answers with `nextStep` and `settleProposal`,
+runtime-originated proposals carrying the unit's complete custom map (35 leaves
+for the seeded Morrow units) or `settle_proposal_unavailable` with its reason,
+`registration.settle.reserve` with one atomic dispatch claim (`won` once,
+`already_claimed` for every later call, the same settle operation included),
+`registration.settle.verify` requiring that reservation, the read-only
+`registration.settle.status` (from the fake api-v3 action logs) and
+`registration.pending.read`. Test modes lose reserve answers
+(`/__test__/mode {loseReserveResponses}`) or execute answers (fake api-v3
+`/__test__/mode {loseExecuteResponses}`). The suite checks, in Chromium, that
+every cookie stays within 4096 bytes and is stored with two concurrent launches
+and a 35-leaf proposal (each launch cookie measured at about 0.5 to 1.5 KB),
+that two tabs settling the same original operation with the same settle
+operation execute exactly one holder action, that a lost reserve answer
+executes nothing, that a lost execute answer reconciles read-only, and that a
+fresh sign-in recovers the original operation's status read-only.
 
 Integrated mode with the real Studio runtime (`scripts/product-face-harness.mjs`
 in the Studio repository) serves the face and runtime at

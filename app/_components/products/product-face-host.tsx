@@ -9,6 +9,7 @@ import { Alert } from "@/app/_components/design-system/alert";
 import { Button } from "@/app/_components/design-system/button";
 import { ProductFaceConfirmationDialog } from "@/app/_components/products/product-face-confirmation";
 import {
+  newFaceLaunchId,
   ProductFaceError,
   type ProductFaceApplication,
   type SessionEndReason,
@@ -55,24 +56,44 @@ function IdentityBar({
 
 function ProductFaceFrame({
   slug,
+  launchId,
   application,
   frameUrl,
   onEnded,
 }: {
   slug: string;
+  launchId: string;
   application: ProductFaceApplication;
   frameUrl: string;
   onEnded: (reason: SessionEndReason) => void;
 }) {
   const t = useTranslations("products");
   const { wallet } = useSession();
-  const { state, confirmation, answerConfirmation, onFrameLoad } =
-    useProductFaceHost({ slug, application, frameUrl, onEnded });
+  const {
+    state,
+    confirmation,
+    answerConfirmation,
+    onFrameLoad,
+    notice,
+    dismissNotice,
+  } = useProductFaceHost({ slug, launchId, application, frameUrl, onEnded });
 
   if (state.status === "ended") return null;
 
   return (
     <>
+      {notice ? (
+        <div className="product-face-notice" role="status">
+          <Alert tone="info">
+            {t(`notices.${notice.kind}.${notice.reason}`, {
+              publisher: application.publisher,
+            })}
+          </Alert>
+          <Button variant="secondary" onClick={dismissNotice}>
+            {t("notices.dismiss")}
+          </Button>
+        </div>
+      ) : null}
       {state.status === "loading" ? (
         <p className="product-face-status" role="status">
           <LoaderCircle size={18} className="animate-spin" aria-hidden />
@@ -100,21 +121,30 @@ function ProductFaceFrame({
   );
 }
 
+// Every frame is its own launch: a fresh launch id keys its own journal and
+// selection on the server, so two tabs never overwrite each other.
 type HostPhase =
-  | { status: "open"; instance: number }
-  | { status: "ended"; instance: number; reason: SessionEndReason };
+  | { status: "open"; instance: number; launchId: string }
+  | {
+      status: "ended";
+      instance: number;
+      launchId: string;
+      reason: SessionEndReason;
+    };
 
 /** Full-size host for one programme's reviewed product application. */
 export function ProductFaceHost({ slug }: { slug: string }) {
   const t = useTranslations("products");
   const { wallet, isAuthenticated } = useSession();
-  const [phase, setPhase] = useState<HostPhase>({
+  const [phase, setPhase] = useState<HostPhase>(() => ({
     status: "open",
     instance: 0,
-  });
+    launchId: newFaceLaunchId(),
+  }));
   const context = useQuery(
     productFaceContextQueryOptions(
       slug,
+      phase.launchId,
       Boolean(wallet) && phase.status === "open",
     ),
   );
@@ -132,7 +162,11 @@ export function ProductFaceHost({ slug }: { slug: string }) {
               <Button
                 variant="secondary"
                 onClick={() =>
-                  setPhase({ status: "open", instance: phase.instance + 1 })
+                  setPhase({
+                    status: "open",
+                    instance: phase.instance + 1,
+                    launchId: newFaceLaunchId(),
+                  })
                 }
               >
                 {t("ended.reopen")}
@@ -143,12 +177,14 @@ export function ProductFaceHost({ slug }: { slug: string }) {
           <ProductFaceFrame
             key={phase.instance}
             slug={slug}
+            launchId={phase.launchId}
             application={context.data.application}
             frameUrl={context.data.frameUrl}
             onEnded={(reason) =>
               setPhase((current) => ({
                 status: "ended",
                 instance: current.instance,
+                launchId: current.launchId,
                 reason,
               }))
             }

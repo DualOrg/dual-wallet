@@ -506,6 +506,15 @@
         "manufacturer": "Manufacturer",
         "state": "Status"
       }
+    },
+    "notices": {
+      "dismiss": "Dismiss",
+      "settle_proposal_unavailable": {
+        "issuer_preauthorisation_absent": "{publisher} has not authorised a confirmation for this product yet, so there is nothing to confirm on your wallet. Their team needs to send it; nothing was changed.",
+        "issuer_preauthorisation_expired": "{publisher}'s authorisation for this confirmation has expired. Their team needs to send a new one; nothing was changed.",
+        "issuer_auto_proposal_used": "{publisher}'s one automatic confirmation for this product has already been used. Their team needs to send a new one; nothing was changed.",
+        "issuer_settle_policy_absent": "{publisher} has not published an authorisation to confirm this product automatically, so there is nothing to confirm on your wallet. Their team needs to send the confirmation; nothing was changed."
+      }
     }
   }
 }

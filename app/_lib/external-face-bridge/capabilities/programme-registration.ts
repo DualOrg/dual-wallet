@@ -154,7 +154,27 @@ export function registrationCapabilities(): ProductFaceCapability[] {
         }
         session.assertLive();
         const operationId = payload.operation_id;
-        const result = await call(() => handlers.operationStatus(operationId));
+        let result;
+        try {
+          result = await handlers.operationStatus(operationId);
+        } catch (error) {
+          // Not in this launch's journal (another tab, a reload or a fresh
+          // sign-in): the host cannot tell, so it says so; the face then
+          // reconciles read-only with the runtime. Never a failure or success.
+          if (
+            error instanceof ProductFaceError &&
+            error.code === "unknown_operation"
+          ) {
+            session.assertLive();
+            return {
+              operation_id: operationId,
+              status: "outcome_unknown",
+              object_id: null,
+              readback: null,
+            };
+          }
+          throw toBridgeError(error);
+        }
         session.assertLive();
         // Read-only: never retried, re-minted or re-executed. An issued
         // operation not yet reflected in readback is pending only while this

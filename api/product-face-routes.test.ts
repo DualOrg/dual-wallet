@@ -64,6 +64,8 @@ function smartObject(
 
 class Browser {
   cookies = new Map<string, string>();
+  /** The host's launch id for the face frame this browser has open. */
+  launchId = `launch-${"x".repeat(28)}`;
 
   constructor() {
     const response = NextResponse.json({});
@@ -102,6 +104,7 @@ class Browser {
         host: "localhost",
         origin: "http://localhost",
         cookie: Array.from(this.cookies, ([k, v]) => `${k}=${v}`).join("; "),
+        "x-dual-face-launch": this.launchId,
         ...(body === undefined ? {} : { "content-type": "application/json" }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -698,13 +701,54 @@ describe("product face BFF", () => {
           body: { code: "proposal_rejected" },
         });
       }
-      // A runtime refusal is never reported as a quote change.
+      // G6b: no proposal right now, and why; the reason reaches the host as
+      // the runtime stated it (a refusal is never reported as a quote change).
+      for (const reason of [
+        "issuer_preauthorisation_absent",
+        "issuer_preauthorisation_expired",
+        "issuer_auto_proposal_used",
+      ]) {
+        global.fetch = jest.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                ok: false,
+                status: "settle_proposal_unavailable",
+                reason,
+                nextStep: "brand_operator_proposal",
+              }),
+              { status: 409 },
+            ),
+        ) as unknown as typeof fetch;
+        expect(await request()).toMatchObject({
+          status: 409,
+          body: { code: "settle_proposal_unavailable", reason },
+        });
+      }
+      // An unknown reason is not passed on.
       global.fetch = jest.fn(
         async () =>
           new Response(
             JSON.stringify({
               ok: false,
               status: "settle_proposal_unavailable",
+              reason: "something_else",
+            }),
+            { status: 409 },
+          ),
+      ) as unknown as typeof fetch;
+      const unknownReason = await request();
+      expect(unknownReason).toMatchObject({
+        status: 409,
+        body: { code: "settle_proposal_unavailable" },
+      });
+      expect(unknownReason.body).not.toHaveProperty("reason");
+      global.fetch = jest.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ok: false,
+              status: "face_settle_proposal_required",
             }),
             { status: 409 },
           ),
@@ -740,7 +784,8 @@ describe("product face BFF", () => {
   it("clears the session and journal on a terminal 401 and on logout", async () => {
     const browser = new Browser();
     await confirmRegistration(browser, "register-op-0040");
-    expect(browser.cookies.has("dual_face_journal")).toBe(true);
+    const journalCookie = `dual_face_launch_${browser.launchId}`;
+    expect(browser.cookies.has(journalCookie)).toBe(true);
     const logout = await browser.call(
       (request: NextRequest) => logoutPOST(request),
       "/api/session/logout",
@@ -748,7 +793,7 @@ describe("product face BFF", () => {
       {},
     );
     expect(logout.status).toBe(200);
-    expect(browser.cookies.has("dual_face_journal")).toBe(false);
+    expect(browser.cookies.has(journalCookie)).toBe(false);
     expect(browser.cookies.has("smarttoken_viewer")).toBe(false);
 
     const expired = new Browser();

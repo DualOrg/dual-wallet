@@ -22,7 +22,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!result.ok) {
       return faceResponse(
         context,
-        { code: result.code },
+        {
+          code: result.code,
+          ...(result.reason ? { reason: result.reason } : {}),
+        },
         { status: result.status, journal: result.journal },
       );
     }

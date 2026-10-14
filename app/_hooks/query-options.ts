@@ -67,12 +67,18 @@ export function activityQueryOptions(
   });
 }
 
-export function productFaceContextQueryOptions(slug: string, enabled: boolean) {
+export function productFaceContextQueryOptions(
+  slug: string,
+  launchId: string,
+  enabled: boolean,
+) {
   return queryOptions({
-    queryKey: queryKeys.productFaces.context(slug),
-    queryFn: enabled ? () => loadProductFaceContext(slug) : skipToken,
-    // A context load resets the server-side selection, so it is read once per
-    // host mount and never refetched underneath a live face.
+    queryKey: queryKeys.productFaces.context(slug, launchId),
+    queryFn: enabled
+      ? () => loadProductFaceContext({ slug, launchId })
+      : skipToken,
+    // A context load resets the launch's server-side selection, so it is
+    // read once per launch (frame) and never refetched underneath a live face.
     staleTime: Number.POSITIVE_INFINITY,
     gcTime: 0,
     retry: false,

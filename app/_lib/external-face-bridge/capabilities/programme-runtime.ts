@@ -2,6 +2,7 @@ import {
   isCaseId,
   isCurrencyCode,
   isDecimalAmount,
+  isHostOnlyRuntimeOperation,
   isObjectId,
   isOperationId,
   isQuoteOperation,
@@ -92,6 +93,8 @@ export function runtimeCapabilities(): ProductFaceCapability[] {
           ]) ||
           !isRuntimeOperation(payload.operation) ||
           payload.operation === "registration.submit" ||
+          // The settle proposal and reservation are the host's own calls.
+          isHostOnlyRuntimeOperation(payload.operation) ||
           !isOperationId(payload.operation_id) ||
           !isRequestHash(payload.request_hash)
         ) {

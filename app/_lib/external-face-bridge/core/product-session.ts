@@ -11,6 +11,7 @@ import type {
   SessionEndReason,
   SettleFieldChange,
   SettleProposal,
+  SettleProposalUnavailableReason,
 } from "@/app/_domain/product-face";
 import { ProductFaceError } from "@/app/_domain/product-face";
 import type { RuntimeAssertionTarget } from "@/app/_lib/external-face-bridge/core/product-context";
@@ -39,7 +40,15 @@ export interface JournalTransitionRequest {
 export interface JournalTransitionResponse {
   unit?: ProgrammeUnitFacts;
   quote?: CaseQuote;
+  /** "won" only when the BFF itself won the runtime settle dispatch claim. */
+  reservation?: "won";
 }
+
+/** Notices the host shows in its own UI, never face-supplied text. */
+export type ProductFaceHostNotice = {
+  kind: "settle_proposal_unavailable";
+  reason: SettleProposalUnavailableReason;
+};
 
 export interface OperationStatusResponse {
   status: RegistrationStatus;
@@ -89,6 +98,8 @@ export interface ProductFaceHandlers {
     input: Record<string, unknown>;
   }): Promise<{ actionId: string }>;
   confirm(request: ProductFaceConfirmation): Promise<boolean>;
+  /** Shows a host notice (for example why no settle proposal exists). */
+  notice?(notice: ProductFaceHostNotice): void;
   navigate(path: string, mode: "push" | "replace"): void;
   sha256(value: string): Promise<string>;
 }
@@ -151,6 +162,8 @@ const faceErrorMessages: Record<string, string> = {
     "Too many authorisations are outstanding. Try again shortly.",
   settle_not_required: "This product does not need to be settled.",
   proposal_rejected: "The proposed change was refused by the wallet.",
+  settle_proposal_unavailable:
+    "The brand has no confirmation for this product right now.",
   outcome_unknown: "The outcome is not yet known.",
   quote_changed: "The quote has changed.",
   unknown_operation: "The wallet has no record of this operation.",

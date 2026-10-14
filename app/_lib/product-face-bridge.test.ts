@@ -548,6 +548,25 @@ describe("registration", () => {
     expect(reloaded.handlers.mintAssertion).not.toHaveBeenCalled();
   });
 
+  it("answers outcome_unknown, never a failure, for an operation this launch has no record of", async () => {
+    const { call, handlers: handlerSet } = runtimeFor(
+      handlers({
+        operationStatus: jest.fn(async () => {
+          throw new ProductFaceError("unknown_operation", 404);
+        }),
+      }),
+    );
+    await expect(
+      call("programme.operation.status", { operation_id: "register-op-0009" }),
+    ).resolves.toEqual({
+      operation_id: "register-op-0009",
+      status: "outcome_unknown",
+      object_id: null,
+      readback: null,
+    });
+    expect(handlerSet.mintAssertion).not.toHaveBeenCalled();
+  });
+
   it("passes a canonical not-registered status through unchanged", async () => {
     const { call } = runtimeFor(
       handlers({
@@ -711,7 +730,10 @@ describe("holder settle (G6)", () => {
       readSettleProposal: jest.fn(async () => ({ proposal, changes: [] })),
       journal: jest.fn(async (request) => {
         order.push(`journal:${request.transition}`);
-        return {};
+        // The BFF answers "won" only when it won the runtime dispatch claim.
+        return request.transition === "submit"
+          ? { reservation: "won" as const }
+          : {};
       }),
       executeSettle: jest.fn(async () => {
         order.push("execute");
@@ -782,6 +804,66 @@ describe("holder settle (G6)", () => {
         },
       ],
     });
+  });
+
+  it.each([
+    [
+      "no won reservation (replay, already claimed or reserved)",
+      async () => ({}),
+    ],
+    [
+      "a lost or refused reserve answer",
+      async () => {
+        throw new ProductFaceError("outcome_unknown", 409);
+      },
+    ],
+    [
+      "a lost BFF response",
+      async () => {
+        throw new ProductFaceError("temporarily_unavailable");
+      },
+    ],
+  ])("never executes without a won reservation: %s", async (_label, submit) => {
+    const order: string[] = [];
+    const run = await settleRuntime({
+      journal: jest.fn(async (request) => {
+        order.push(`journal:${request.transition}`);
+        return request.transition === "submit" ? submit() : {};
+      }),
+    });
+    await expect(
+      run.call("programme.product.settle.request", run.request),
+    ).rejects.toMatchObject({ code: "outcome_unknown" });
+    expect(run.handlers.executeSettle).not.toHaveBeenCalled();
+    // Once submitted for reservation it is never cancelled or re-submitted.
+    expect(order).toEqual([
+      "journal:begin",
+      "journal:confirm",
+      "journal:submit",
+    ]);
+  });
+
+  it("shows the runtime's reason when no settle proposal exists, and invents none", async () => {
+    const notice = jest.fn();
+    const run = await settleRuntime({
+      notice,
+      readSettleProposal: jest.fn(async () => {
+        throw new ProductFaceError(
+          "settle_proposal_unavailable",
+          409,
+          "issuer_auto_proposal_used",
+        );
+      }),
+    });
+    await expect(
+      run.call("programme.product.settle.request", run.request),
+    ).rejects.toMatchObject({ code: "settle_proposal_unavailable" });
+    expect(notice).toHaveBeenCalledWith({
+      kind: "settle_proposal_unavailable",
+      reason: "issuer_auto_proposal_used",
+    });
+    expect(run.handlers.executeSettle).not.toHaveBeenCalled();
+    expect(run.handlers.confirm).not.toHaveBeenCalled();
   });
 
   it("ignores a face-supplied proposal", async () => {

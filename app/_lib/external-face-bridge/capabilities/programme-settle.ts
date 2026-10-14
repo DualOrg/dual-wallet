@@ -1,6 +1,7 @@
 import {
   checkSettleProposal,
   isOperationId,
+  isSettleProposalUnavailableReason,
   ProductFaceError,
   proposalHashInput,
   registrationReadback,
@@ -22,9 +23,13 @@ export const settleOperation = "programme.product.settle.request";
  * G6 holder settle of `ownership_moved_state_pending`. The face names only
  * the context and operations; the wallet obtains the proposal itself from the
  * bound runtime, validates it against the reviewed template, shows the exact
- * decoded changes natively, journals the settle before execution and executes
- * it once through the existing executor as the holder. Never claim_ownership,
- * never issuer authority, never re-executed.
+ * decoded changes natively and journals the settle. Before any execution the
+ * BFF reserves it at the runtime (contract r8/r11); the holder action runs
+ * through the existing executor only when that reservation answered
+ * dispatch:"won" to this request. Anything else (a replay, already claimed or
+ * reserved, any error, a timeout or a lost answer) is outcome_unknown and is
+ * reconciled read-only through registration.settle.status. Never
+ * claim_ownership, never issuer authority, never re-executed or re-reserved.
  */
 export function settleCapabilities(): ProductFaceCapability[] {
   return [
@@ -75,13 +80,28 @@ export function settleCapabilities(): ProductFaceCapability[] {
             throw faceError("settle_not_required");
           }
 
-          const { proposal } = await call(() =>
-            handlers.readSettleProposal({
+          let proposal;
+          try {
+            ({ proposal } = await handlers.readSettleProposal({
               contextId: selection.contextId,
               operationId,
               objectId: selection.objectId,
-            }),
-          );
+            }));
+          } catch (error) {
+            // G6b: the runtime states why there is no proposal; the host shows
+            // that reason itself and invents nothing.
+            if (
+              error instanceof ProductFaceError &&
+              error.code === "settle_proposal_unavailable" &&
+              isSettleProposalUnavailableReason(error.reason)
+            ) {
+              handlers.notice?.({
+                kind: "settle_proposal_unavailable",
+                reason: error.reason,
+              });
+            }
+            throw error;
+          }
           assertStillCurrent(session, selection);
           const check = checkSettleProposal(
             proposal,
@@ -150,16 +170,38 @@ export function settleCapabilities(): ProductFaceCapability[] {
               context_id: selection.contextId,
             }),
           );
-          // Persisted as submitted BEFORE execution: from here a lost result
-          // is outcome_unknown and is reconciled read-only, never re-executed.
-          await call(() =>
-            handlers.journal({
+          // The BFF persists the settle as submitted and reserves it at the
+          // runtime before any execution. Only a dispatch:"won" answer to this
+          // request lets the holder execute; everything else (including a
+          // lost answer to this call) is outcome_unknown, read-only from here.
+          let submitted;
+          try {
+            submitted = await handlers.journal({
               transition: "submit",
               operation_id: settleId,
               context_id: selection.contextId,
-            }),
-          );
+            });
+          } catch (error) {
+            if (
+              error instanceof ProductFaceError &&
+              // Refused before anything was sent to the runtime.
+              [
+                "stale_context",
+                "not_owned",
+                "settle_not_required",
+                "assertion_limit",
+                "face_assertion_unprovisioned",
+              ].includes(error.code)
+            ) {
+              throw error;
+            }
+            begun = false;
+            throw faceError("outcome_unknown");
+          }
           begun = false;
+          if (submitted.reservation !== "won") {
+            throw faceError("outcome_unknown");
+          }
           let actionId: string;
           try {
             ({ actionId } = await handlers.executeSettle({

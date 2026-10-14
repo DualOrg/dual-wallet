@@ -451,6 +451,13 @@ export const runtimeOperationNames = [
   "registration.status",
   "registration.settle.propose",
   "registration.settle.verify",
+  // r8/r9: read-only reconcile of a settle reservation, and the original
+  // pending registration of the selected unit. Reads; never an intent.
+  "registration.settle.status",
+  "registration.pending.read",
+  // r8: the wallet BFF's own server-to-server reservation before any holder
+  // execution; never authorized for the face.
+  "registration.settle.reserve",
   "products.private.read",
   "cases.list",
   "case.read",
@@ -494,6 +501,8 @@ export const productScopedRuntimeOperations = [
   "case.read",
   "registration.settle.propose",
   "registration.settle.verify",
+  "registration.settle.status",
+  "registration.pending.read",
   ...runtimeWriteOperations,
 ] as const satisfies readonly RuntimeOperation[];
 
@@ -507,6 +516,42 @@ export const trustedRuntimeReadOperations = [
   "case.read",
 ] as const satisfies readonly RuntimeOperation[];
 export type TrustedRuntimeRead = (typeof trustedRuntimeReadOperations)[number];
+
+/** Runtime operations only the wallet BFF itself calls; never face-authorized. */
+export const hostOnlyRuntimeOperations = [
+  "registration.settle.propose",
+  "registration.settle.reserve",
+] as const satisfies readonly RuntimeOperation[];
+
+export function isHostOnlyRuntimeOperation(value: RuntimeOperation) {
+  return (hostOnlyRuntimeOperations as readonly string[]).includes(value);
+}
+
+/** sha256 of the canonical {quote_version, amount, currency} a decision binds. */
+export function quoteHashInput(quote: {
+  quote_version: string;
+  amount: string;
+  currency: string;
+}) {
+  return canonicalJson({
+    quote_version: quote.quote_version,
+    amount: quote.amount,
+    currency: quote.currency,
+  });
+}
+
+/** r8: the reserve request_hash input, exactly {proposal_id, settle_operation_id, object_id}. */
+export function settleReserveHashInput(input: {
+  proposalId: string;
+  settleOperationId: string;
+  objectId: string;
+}) {
+  return canonicalJson({
+    proposal_id: input.proposalId,
+    settle_operation_id: input.settleOperationId,
+    object_id: input.objectId,
+  });
+}
 
 export function isQuoteOperation(operation: RuntimeOperation) {
   return (
@@ -765,10 +810,35 @@ export class ProductFaceError extends Error {
   constructor(
     public readonly code: string,
     public readonly status = 0,
+    /** A runtime-stated reason (for example why no settle proposal exists). */
+    public readonly reason?: string,
   ) {
     super(code);
     this.name = "ProductFaceError";
   }
+}
+
+/**
+ * G6b: why the brand has no settle proposal for the holder right now. The
+ * host shows this honestly; it never invents a proposal.
+ */
+export const settleProposalUnavailableReasons = [
+  "issuer_preauthorisation_absent",
+  "issuer_preauthorisation_expired",
+  "issuer_auto_proposal_used",
+  // contract r12: no explicit, signed settle policy for this unit.
+  "issuer_settle_policy_absent",
+] as const;
+export type SettleProposalUnavailableReason =
+  (typeof settleProposalUnavailableReasons)[number];
+
+export function isSettleProposalUnavailableReason(
+  value: unknown,
+): value is SettleProposalUnavailableReason {
+  return (
+    typeof value === "string" &&
+    (settleProposalUnavailableReasons as readonly string[]).includes(value)
+  );
 }
 
 export type SessionEndReason = "logout" | "expired" | "account_changed";
@@ -789,3 +859,17 @@ export type ProductFaceConfirmation =
       action: SettleActionName;
       changes: SettleFieldChange[];
     };
+
+/**
+ * A fresh, random launch id (24 bytes, base64url) for one frame of a product
+ * face. The BFF keeps each launch's own journal and selection.
+ */
+export function newFaceLaunchId() {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "");
+}
