@@ -1,18 +1,18 @@
 {
   "applicationId": "studio.morrow-home",
-  "artifactHash": "sha256:e40627548be420c2f87087a6130ba3be1d36ed10180eb8bc2f0eb164eec86966",
+  "artifactHash": "sha256:57ed4fea321b169f0687121454f38f1310f129992333bbed428e94d426c97852",
   "brandId": "morrow-home",
   "contentVersion": "2026.10.1",
   "contract": "dual-product-face-v1",
-  "contractRevision": 4,
+  "contractRevision": 6,
   "files": {
     "assets/arc-grinder.svg": "sha256:f7f25c8f6695b5f247643080e0f4f9ffc1e73ddf8d5720bafc31b3ccffd33faf",
     "assets/hero.svg": "sha256:78e8e2ff943804a491da878bb55d5922b8f4a9c64970b2b763f72d46d49a398c",
     "assets/mark.svg": "sha256:c8cdd0f520d0a67cd34150c927da8cbb63b33c05a55ddf81829814897949c958",
     "content.json": "sha256:777247fb1a65fdedabe6d6d5ec851751081d84f6d0900d5e832ebe7c347c0284",
     "face.css": "sha256:c3427b01a8a72681f973fe5f053d00fd9a3ccc649c0c26985ce3e78516c0fb24",
-    "face.js": "sha256:5ae2da11307a33b576718ede99f793f5eb797887ef9c2512733c6f500a630e02",
-    "index.html": "sha256:29c84f93413a434e10e2ba816db76bdaa61ac0c9f9eec743983f74d8cab0a7a3"
+    "face.js": "sha256:5195669d9aaab33f10dd308f7db4ec6fd948d19f3e4ed5f47038804ac8f1c86c",
+    "index.html": "sha256:1eee85268f6ce50dcab3966bae2eda770b49dd9f14bc1e03e80c81a1e530c307"
   },
   "programmeId": "morrow-home-arc-care",
   "programmeName": "Morrow Home Arc Care",
@@ -34,7 +34,7 @@
   "schema": "tig-product-face-manifest-v1",
   "subresourceIntegrity": {
     "face.css": "sha256-w0J7AainJoH5c/5fBT0A/Zo8zGScDCaYXOPnhRbA+yQ=",
-    "face.js": "sha256-WuLaETB6M7V2cY7emfeT9et5eIfvnCUSczxvUApjDgI="
+    "face.js": "sha256-UZVmnZqqsz8Q3TCPfbTsb9lI0Z8+TtX0cDiASsjxyGw="
   },
   "version": "1.0.0",
   "walletOrigins": [

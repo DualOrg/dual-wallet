@@ -300,7 +300,13 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
     var operationId = newOperationId("reg");
     state.registration = { operationId: operationId, objectId: unit.objectId, recordId: unit.recordId, title: str(unit.title, 160), status: "not_submitted", hostStatus: "", reason: "", submitted: false };
     state.busy = "authorize"; render();
-    request("programme.registration.authorize", { object_id: unit.objectId, operation_id: operationId }, LONG_MS).then(function (authorized) {
+    // The assertion binds the ENTIRE exact runtime request (assertion excluded):
+    // the host carries this request_hash unchanged; the runtime recomputes it
+    // over the body it receives and refuses any difference.
+    var body = { evidence: state.evidence.handle, recordId: unit.recordId, operationId: operationId, objectId: unit.objectId };
+    sha256(canonicalJson(body)).then(function (requestHash) {
+      return request("programme.registration.authorize", { object_id: unit.objectId, operation_id: operationId, record_id: unit.recordId, request_hash: requestHash }, LONG_MS);
+    }).then(function (authorized) {
       if (!authorized || authorized.status !== "authorized" || typeof authorized.assertion !== "string" || authorized.operation_id !== operationId) {
         throw { code: "authorize_invalid", message: "", retryable: false };
       }
@@ -308,7 +314,7 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
       state.registration.submitted = true;
       navigate("/register/result/" + operationId);
       state.busy = "register"; render();
-      return runtimeFetch("/registrations", { evidence: state.evidence.handle, recordId: unit.recordId, operationId: operationId, assertion: authorized.assertion });
+      return runtimeFetch("/registrations", { evidence: body.evidence, recordId: body.recordId, operationId: body.operationId, objectId: body.objectId, assertion: authorized.assertion });
     }).then(function (result) {
       if (!result) return;
       state.busy = "";

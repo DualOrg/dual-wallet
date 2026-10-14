@@ -75,6 +75,9 @@ function programmeObject(id, { owner, template, name, serial, state }) {
     integrity_hash: `0x${id}`,
     prev_integrity_hash: `0x${id}`,
     custom: {
+      // Matches the fixture runtime's evidence units (rec-<last four>), so the
+      // host's r6 record_id check sees the same Passport record.
+      recordId: `rec-${id.slice(-4)}`,
       title: name,
       serialNumber: serial,
       model: "ARC-G1",
