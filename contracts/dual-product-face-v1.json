@@ -1,6 +1,6 @@
 {
   "contract": "dual-product-face-v1",
-  "revision": 3,
+  "revision": 4,
   "status": "first_source_delivery",
   "summary": "Full-size, first-party reviewed product face inside the authenticated Dual wallet. Uses the existing dual.face.bridge v1 envelope, handshake and limits; adds a programme ('application') context variant and named capability modules. No second postMessage protocol, no generic fetch/proxy/token operation.",
   "protocol": {
@@ -37,12 +37,12 @@
       "programmeId": "^[a-z0-9][a-z0-9._-]{1,63}$",
       "programmeName": "display name",
       "origin": "exact https origin (http only for loopback outside production)",
-      "path": "/face/<applicationId>/<version>/ (exact versioned prefix, trailing slash)",
+      "path": "/face/<applicationId>/<version>/<artifactHashHex>/ — content-addressed (64 hex of artifactHash) and exact; trailing slash",
       "artifactHash": "sha256:<64 hex> of the emitted artifact manifest",
       "templateIds": "Dual template ids (24 hex) that belong to the programme",
       "projectionFields": "public custom fields the host may project to the face, subset of [recordId,title,serialNumber,model,manufacturer,state]",
       "canonicalRegistration": "{stateField:\"state\", lifecycleTargetField:\"lifecycle.target_state\", settledStates:[\"Registered\",\"Authenticity verified\",\"In service\",\"Transferred\"], unconfirmedStates:[\"Transfer pending\"], endedStates:[\"Recalled\",\"Stolen\",\"Retired\"]}",
-      "settle": "{action: standard Dual action name the brand proposal uses (Studio reports the exact reviewed mapping), allowedInputFields:[...], fromStates:[\"Transfer pending\"], targetStates:[...settled]} — host allowlist; anything else is refused"
+      "settle": "{action, inputTemplate (EXACT nested shape: every key and nested key listed; leaf values are literal or enum from targetStates; no other keys; no arbitrary custom updates), fromStates:[\"Transfer pending\"], targetStates:[...]} — host allowlist data"
     },
     "readyIdentity": "dual.face.ready.application must be {id, version, publisher, programme, artifact, contract:'dual-product-face-v1'} and EVERY value must equal the binding exactly (version exact, not just major); mismatch closes the channel"
   },
@@ -208,25 +208,20 @@
       "result": {
         "assertion": "one-time wallet assertion bound to exactly this operation/target/request"
       },
-      "authority": "host requires the selected product context for product targets; read operations need no dialog; WRITE operations (case.open, case.evidence.submit, case.information.provide, case.quote.approve, case.quote.decline) require NATIVE host confirmation naming the application, programme, operation kind from host vocabulary and the canonical product; publisher-provided summaries are labelled as such; quote approval states no payment is taken"
+      "authority": "host requires the selected product context for product targets; read operations need no dialog; WRITE operations (case.open, case.evidence.submit, case.information.provide, case.quote.approve, case.quote.decline) require NATIVE host confirmation naming the application, programme, operation kind from host vocabulary and the canonical product; publisher-provided summaries are labelled as such; quote approval states no payment is taken; for case.quote.approve/decline the host performs trustedRuntimeReads.quote and the target MUST include {case_id, quote_version, amount, currency} equal to the host-read quote"
     },
     "programme.product.settle.request": {
       "payload": {
         "context_id": "",
         "operation_id": "original registration operation id",
-        "settle_operation_id": "^[a-z0-9-]{8,64}$",
-        "proposal": {
-          "action": "standard action name",
-          "input": "object"
-        },
-        "proposal_hash": "sha256:<hex> of canonical JSON {object_id, action, input} as issued by the runtime"
+        "settle_operation_id": "^[a-z0-9-]{8,64}$"
       },
       "result": {
         "status": "submitted",
         "settle_operation_id": "",
         "action_id": ""
       },
-      "authority": "G6 holder settle. Host requires: selected product owned by the session wallet; Dual state in canonicalRegistration.unconfirmedStates; proposal.action and every input field inside binding.settle allowlist; recomputes proposal_hash; refetches fresh object/actions; shows NATIVE confirmation of the exact fields being changed (decoded by the host, not face text); persists the settle operation outside the iframe BEFORE execution; executes through the EXISTING wallet executor (email executeAction, passkey/EOA prepare+sign+execute) as the HOLDER. Never issuer authority, never claim_ownership. Cancel before execute = not_submitted; lost after submit = outcome_unknown reconciled read-only (no re-execute).",
+      "authority": "G6 holder settle. Host obtains the proposal ITSELF via trustedRuntimeReads.settle (face-supplied proposals are not accepted); requires selected product owned by session wallet, state in unconfirmedStates, proposal bound to this unit+original operation and not expired, input deep-equal to binding.settle.inputTemplate constraints; native confirmation of exact decoded changes; journal persisted BEFORE execution; executes via the EXISTING executor as the HOLDER; never issuer authority, never claim_ownership; cancel=not_submitted; lost after submit=outcome_unknown, read-only reconcile, never re-executed.",
       "errors": [
         "user_cancelled",
         "not_owned",
@@ -300,26 +295,27 @@
     "format": "compact JWS, alg EdDSA (Ed25519), typ dual-face-assertion+jwt",
     "issuer": "wallet BFF only (server-only FACE_ASSERTION_SIGNING_KEY + FACE_ASSERTION_KEY_ID); absent/invalid key => 503 face_assertion_unprovisioned (fail closed); minted only while the wallet session is active and only for a server-resolved binding",
     "claims": [
-      "iss (exact wallet tenant origin)",
+      "iss",
       "aud (<applicationId>@<exact face origin>)",
       "app_id",
       "app_version (exact)",
+      "artifact (exact artifactHash)",
       "publisher",
       "programme",
-      "origin (face origin)",
+      "origin",
       "sub (wallet id)",
-      "holder (session wallet account address, read server-side; never from the face)",
-      "operation (runtime operation name)",
-      "op_id (original operation id)",
-      "target {object_id?, case_id?}",
+      "holder (server-read session wallet account address)",
+      "operation",
+      "op_id",
+      "target",
       "request_hash",
-      "sid_hash (hash of wallet session credential)",
+      "sid_hash",
       "iat",
       "exp (<= iat+60)",
       "jti"
     ],
     "verifier": "Studio runtime only; keys TIG_PRODUCT_FACE_WALLET_ASSERTION_KEYS (JSON {kid: spki PEM}), issuers TIG_PRODUCT_FACE_WALLET_ISSUERS (exact origins); checks alg/typ/kid/signature, iss, aud == own applicationId@origin, app_version/publisher/programme == served artifact, operation == endpoint, target == request target, request_hash == hash(body), exp/iat skew <= 60s, then consumes jti atomically ONCE (durable store) before any read or write; any failure refuses with zero writes",
-    "noFaceSession": "There is NO runtime face session, cookie or bearer. Every runtime operation (read or write) needs its own fresh one-time assertion, so after host logout/expiry/account change no new authority can be minted. Residual: at most one unconsumed assertion, single exact op/target/request, <= 60s. Zero-residual revocation needs a wallet-side introspection/revocation contract (named requirement).",
+    "noFaceSession": "There is NO runtime face session, cookie or bearer. Every runtime operation needs its own fresh one-time assertion; after host logout/expiry/account or product change the host mints nothing for the old context and the face/host drop stale private responses. Approved in-flight operations may complete. HONEST RESIDUAL: each minted-but-unconsumed assertion stays usable for its ONE exact request (operation+target+request_hash) until first use or exp (<= 60s); the wallet cannot revoke an already-minted assertion at the runtime without a revocation/introspection contract (named requirement). The wallet additionally caps outstanding unexpired assertions per session (journal-tracked) as a client-side bound, which is not a runtime guarantee.",
     "gap": "G1: no canonical Dual/api-v3 launch or identity contract exists for a wallet person to reach a Studio runtime. This assertion is the secure seam. Provisioning (keys, issuers, audiences) is separate and stays fail-closed."
   },
   "runtime": {
@@ -420,5 +416,20 @@
     "case.quote.decline": "write; NEW (G3 increment)",
     "registration.settle.propose": "read; returns the reviewed brand-proposed holder action {object_id, action, input} + proposal_hash for the holder own unit in ownership_moved_dual_state_pending (assertion holder == verified record owner)",
     "registration.settle.verify": "validate+commit; given the holder-executed action_id and proposal_hash: action log signer == assertion holder, object == unit, executed payload == proposal, Dual readback settled, passportCanonicalState agrees => registered; zero Dual writes by the runtime; no issuer signature"
+  },
+  "artifactVerification": {
+    "mechanism": "pinned immutable, content-addressed artifact",
+    "runtime": "serves an artifact ONLY under /face/<applicationId>/<version>/<its own artifactHashHex>/; any other hash/version => 404; a version is never re-emitted with different bytes (runtime refuses to serve when stored files do not hash to the pinned manifest)",
+    "subresources": "index.html loads face.js and face.css with Subresource Integrity (sha256) matching manifest.files; browser enforces",
+    "host": "wallet BFF independently verifies at context resolution, server-side, no credentials, size cap + timeout: GET <origin><path>manifest.json and index.html; recompute artifactHash from manifest.files; require == binding.artifactHash, index.html sha256 == manifest.files[index.html], SRI values == manifest; mismatch => artifact_mismatch and NO frame is rendered",
+    "assertion": "every assertion carries claim artifact == binding.artifactHash; runtime refuses unless == the hash of the artifact it actually serves",
+    "readyEcho": "the ready message artifact field is checked too but is NOT relied on as verification",
+    "residual": "the iframe navigation document is fetched by the browser independently of the BFF check (no SRI for documents); trust rests on the first-party reviewed immutable deployment at the content-addressed path"
+  },
+  "trustedRuntimeReads": {
+    "purpose": "facts shown in HOST confirmations must come from the bound runtime, not the face",
+    "path": "wallet BFF -> POST <binding.origin>/api/product-face/v1/operations server-to-server with a host-minted assertion; fixed endpoint; operations allowlist ONLY [registration.settle.propose, case.read]; response size cap 64 KiB; timeout; never a generic proxy; results feed host UI only",
+    "settle": "programme.product.settle.request payload from the face is ONLY {context_id, operation_id, settle_operation_id}; the host obtains the proposal itself via registration.settle.propose (proposal_id, original operation_id, object_id, action, input, proposal_hash, expires_at), verifies object/op binding, deep-validates input against binding.settle.inputTemplate, shows the exact decoded changes, executes exactly that proposal as the holder; runtime settle.verify requires the persisted approved proposal_id for that unit+operation and the executed payload == proposal",
+    "quote": "before case.quote.approve/decline the host reads case.read itself and shows the authoritative quote_version, provider, amount (decimal string) and currency; the write assertion target binds {case_id, quote_version, amount, currency}; runtime refuses with quote_changed if any differ (host must re-read and re-confirm); NO payment is captured or executed"
   }
 }
