@@ -89,7 +89,7 @@ function launch() {
     () =>
       useProductFaceHost({
         slug: "morrow-home",
-        launchId: `launch-${"h".repeat(28)}`,
+        launchId: LAUNCH,
         application,
         frameUrl: `${application.origin}${application.path}`,
         onEnded: jest.fn(),
@@ -102,15 +102,26 @@ function launch() {
 }
 
 const transferStep = {
+  operationId: "xfer-0123456789abcdef",
   objectId: "aaaaaaaaaaaaaaaaaaaaaaaa",
   action: "transfer" as const,
   input: { to: "0x00000000000000000000000000000000000000b2" },
 };
 const settleStep = {
+  operationId: "settle-0123456789abcdef",
   objectId: "aaaaaaaaaaaaaaaaaaaaaaaa",
   action: "update",
   input: { data: { custom: { state: "Authenticity verified" } } },
 };
+const LAUNCH = `launch-${"h".repeat(28)}`;
+
+/** The face binding the host handed to the executor on its last call. */
+function boundFace(mock: jest.Mock) {
+  const call = mock.mock.calls.at(-1) as unknown as [
+    { face: { assertLive(): void } & Record<string, unknown> },
+  ];
+  return call[0].face;
+}
 
 describe("the host executors sign only as the identity that began the operation", () => {
   beforeEach(() => {
@@ -144,11 +155,92 @@ describe("the host executors sign only as the identity that began the operation"
     await expect(handlers.executeSettle(settleStep, began)).resolves.toEqual({
       actionId: "action-settle",
     });
+    const { operationId: stepId, ...transferInput } = transferStep;
     expect(executeTransferAction).toHaveBeenCalledWith({
-      ...transferStep,
+      ...transferInput,
       authenticationMethod: "email",
       controllerAddress: "0x00000000000000000000000000000000000000c1",
+      face: expect.objectContaining({
+        launchId: LAUNCH,
+        slug: "morrow-home",
+        operationId: stepId,
+        walletId: "wallet-a",
+      }),
     });
+    const { operationId: settleId, ...settleInput } = settleStep;
+    expect(executeSettleAction).toHaveBeenCalledWith({
+      ...settleInput,
+      authenticationMethod: "email",
+      controllerAddress: "0x00000000000000000000000000000000000000c1",
+      face: expect.objectContaining({
+        launchId: LAUNCH,
+        slug: "morrow-home",
+        operationId: settleId,
+        walletId: "wallet-a",
+      }),
+    });
+    // Still the same live identity: the executor's own checks pass.
+    expect(() => boundFace(executeTransferAction).assertLive()).not.toThrow();
+    expect(() => boundFace(executeSettleAction).assertLive()).not.toThrow();
+  });
+
+  // contract r18: the identity is re-checked INSIDE the executor at each
+  // async boundary (after prepare, while signing, before execute). The bound
+  // face's live check therefore refuses as soon as anything changed after
+  // the executor began, not only before it was called.
+  it.each([
+    [
+      "an account change A to B",
+      () => {
+        session = { ...session, wallet: accountB };
+      },
+    ],
+    [
+      "a logout",
+      () => {
+        session = {
+          ...session,
+          wallet: null,
+          authenticationMethod: null,
+          isAuthenticated: false,
+        };
+      },
+    ],
+    [
+      "an ended launch",
+      () => {
+        fakeHost.session.ended = "account_changed";
+      },
+    ],
+  ])(
+    "the bound live check refuses after %s once the executor began",
+    async (_label, change) => {
+      const { hook, handlers } = launch();
+      const began = handlers.executorIdentity()!;
+      await handlers.executeTransfer(transferStep, began);
+      await handlers.executeSettle(settleStep, began);
+      const transferFace = boundFace(executeTransferAction);
+      const settleFace = boundFace(executeSettleAction);
+      act(() => change());
+      hook.rerender();
+      expect(() => transferFace.assertLive()).toThrow(
+        expect.objectContaining({ code: "session_ended" }),
+      );
+      expect(() => settleFace.assertLive()).toThrow(
+        expect.objectContaining({ code: "session_ended" }),
+      );
+    },
+  );
+
+  it("the bound live check refuses once the launch is torn down", async () => {
+    const { hook, handlers } = launch();
+    const began = handlers.executorIdentity()!;
+    await handlers.executeTransfer(transferStep, began);
+    const transferFace = boundFace(executeTransferAction);
+    hook.unmount();
+    expect(() => transferFace.assertLive()).toThrow(
+      expect.objectContaining({ code: "session_ended" }),
+    );
   });
 
   it.each([

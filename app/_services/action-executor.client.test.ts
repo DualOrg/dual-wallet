@@ -123,4 +123,153 @@ describe("executeInventoryAction", () => {
       },
     });
   });
+
+  // contract r18: a face's holder-signed step. The executor re-checks the
+  // live identity at every async boundary and binds every request to the
+  // launch, operation and captured wallet (enforced again by the proxy).
+  describe("a face step", () => {
+    const binding = {
+      launchId: "launch-aaaaaaaaaaaaaaaaaaaaaa",
+      slug: "morrow-home",
+      operationId: "xfer-0123456789abcdef",
+      walletId: "wallet-a",
+    };
+    class SessionEnded extends Error {
+      code = "session_ended";
+    }
+
+    /** A face whose identity stops being live once `end()` is called. */
+    function face() {
+      let ended = false;
+      return {
+        ...binding,
+        assertLive: jest.fn(() => {
+          if (ended) throw new SessionEnded("session ended");
+        }),
+        end: () => {
+          ended = true;
+        },
+      };
+    }
+
+    function ebus() {
+      const executeAction = jest
+        .fn()
+        .mockResolvedValue({ actionId: "action-1", steps: [] });
+      const prepareAction = jest
+        .fn()
+        .mockResolvedValue({ nonce: 7, challenge: "AQIDBA" });
+      mockedApi.mockReturnValue({
+        executeAction,
+        prepareAction,
+      } as unknown as ReturnType<typeof getEbusApi>);
+      return { executeAction, prepareAction };
+    }
+
+    it("binds prepare and execute to the launch, operation and captured wallet", async () => {
+      const { executeAction, prepareAction } = ebus();
+      mockedPasskey.mockResolvedValue({
+        credentialId: "credential-1",
+        authenticatorData: "auth-data",
+        clientDataJson: "client-data",
+        signatureR: "0x01",
+        signatureS: "0x02",
+      });
+      const step = face();
+      await executeInventoryAction(action, "passkey", undefined, step);
+      for (const call of [
+        prepareAction.mock.calls[0],
+        executeAction.mock.calls[0],
+      ]) {
+        const override = call[1] as (context: {
+          init: { headers: Record<string, string> };
+        }) => Promise<{ headers: Record<string, string> }>;
+        await expect(
+          override({
+            init: { headers: { "Content-Type": "application/json" } },
+          }),
+        ).resolves.toEqual({
+          headers: {
+            "Content-Type": "application/json",
+            "x-dual-face-launch": binding.launchId,
+            "x-dual-face-slug": binding.slug,
+            "x-dual-face-operation": binding.operationId,
+            "x-dual-face-wallet": binding.walletId,
+          },
+        });
+      }
+      // Before preparing, after preparing, after signing.
+      expect(step.assertLive).toHaveBeenCalledTimes(3);
+    });
+
+    it("an account switch while awaiting the passkey signature: 0 execute", async () => {
+      const { executeAction, prepareAction } = ebus();
+      const step = face();
+      mockedPasskey.mockImplementation(async () => {
+        step.end();
+        return {
+          credentialId: "credential-1",
+          authenticatorData: "auth-data",
+          clientDataJson: "client-data",
+          signatureR: "0x01",
+          signatureS: "0x02",
+        };
+      });
+      await expect(
+        executeInventoryAction(action, "passkey", undefined, step),
+      ).rejects.toBeInstanceOf(SessionEnded);
+      expect(prepareAction).toHaveBeenCalledTimes(1);
+      expect(executeAction).not.toHaveBeenCalled();
+    });
+
+    it("an account switch while awaiting the EOA signature: 0 execute", async () => {
+      const { executeAction } = ebus();
+      const step = face();
+      mockedBase64urlToBytes.mockReturnValue(Uint8Array.from([1, 2, 3, 4]));
+      Object.defineProperty(window, "ethereum", {
+        configurable: true,
+        value: {
+          request: jest.fn(async () => {
+            step.end();
+            return "0xsignature";
+          }),
+        },
+      });
+      await expect(
+        executeInventoryAction(action, "eoa", "0xcontroller", step),
+      ).rejects.toBeInstanceOf(SessionEnded);
+      expect(executeAction).not.toHaveBeenCalled();
+    });
+
+    it("an account switch while preparing: nothing is signed or executed", async () => {
+      const { executeAction, prepareAction } = ebus();
+      const step = face();
+      prepareAction.mockImplementation(async () => {
+        step.end();
+        return { nonce: 7, challenge: "AQIDBA" };
+      });
+      await expect(
+        executeInventoryAction(action, "passkey", undefined, step),
+      ).rejects.toBeInstanceOf(SessionEnded);
+      expect(mockedPasskey).not.toHaveBeenCalled();
+      expect(executeAction).not.toHaveBeenCalled();
+    });
+
+    it("an email step whose identity is no longer live is never executed", async () => {
+      const { executeAction, prepareAction } = ebus();
+      const step = face();
+      step.end();
+      await expect(
+        executeInventoryAction(action, "email", undefined, step),
+      ).rejects.toBeInstanceOf(SessionEnded);
+      expect(prepareAction).not.toHaveBeenCalled();
+      expect(executeAction).not.toHaveBeenCalled();
+    });
+
+    it("the generic executor sends no face binding", async () => {
+      const { executeAction } = ebus();
+      await executeInventoryAction(action, "email");
+      expect(executeAction.mock.calls[0]).toHaveLength(1);
+    });
+  });
 });

@@ -37,6 +37,7 @@ import {
   journalOperationStatus,
   type FaceJournalEntry,
   type JournalTransitionError,
+  withDispatchWon,
 } from "@/app/_domain/product-face-journal";
 import {
   canonicalJson,
@@ -1073,11 +1074,16 @@ async function submitTransfer(
     reservation.step_operation_id === entry.operationId &&
     reservation.proposal_id === entry.proposalId;
   if (won) {
+    // Only this launch's own "won" makes the step executable, and only
+    // through the session that holds this journal (face-execution-binding).
     return {
       ok: true,
-      entry: submitted.entry,
+      entry: { ...submitted.entry, dispatch: "won" },
       reservation: "won",
-      journal: minted.journal,
+      journal: {
+        ...minted.journal,
+        entries: withDispatchWon(minted.journal.entries, entry.operationId),
+      },
     };
   }
   const refused =
@@ -1154,9 +1160,12 @@ async function submitSettle(
   }
   return {
     ok: true,
-    entry: submitted.entry,
+    entry: { ...submitted.entry, dispatch: "won" },
     reservation: "won",
-    journal: minted.journal,
+    journal: {
+      ...minted.journal,
+      entries: withDispatchWon(minted.journal.entries, entry.operationId),
+    },
   };
 }
 

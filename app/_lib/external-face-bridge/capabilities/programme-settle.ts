@@ -237,6 +237,7 @@ export function settleCapabilities(): ProductFaceCapability[] {
           try {
             ({ actionId } = await handlers.executeSettle(
               {
+                operationId: settleId,
                 objectId: selection.objectId,
                 action: proposal.action,
                 ...(settle.alias ? { alias: settle.alias } : {}),

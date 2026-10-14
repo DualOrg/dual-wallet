@@ -67,6 +67,13 @@ export interface FaceJournalEntry {
    * since (a complete-map update would otherwise drop the new key).
    */
   freshHash?: string;
+  /**
+   * A settle or transfer step whose runtime reservation THIS launch's own
+   * submit received dispatch:"won" for. Only such a step may be prepared and
+   * executed through the wallet proxy, and only by the session that holds
+   * this journal (api/face-execution-binding).
+   */
+  dispatch?: "won";
   createdAt: number;
   updatedAt: number;
   issuedAt?: number;
@@ -119,6 +126,9 @@ export function parseJournalEntry(
       (typeof entry.offerId !== "string" || !OFFER_ID.test(entry.offerId))) ||
     (entry.quoteHash !== undefined && !isRequestHash(entry.quoteHash)) ||
     (entry.freshHash !== undefined && !isRequestHash(entry.freshHash)) ||
+    (entry.dispatch !== undefined &&
+      (entry.dispatch !== "won" ||
+        (entry.kind !== "settle" && entry.kind !== "transfer"))) ||
     (entry.recordId !== undefined && !isRecordId(entry.recordId)) ||
     (entry.requestHash !== undefined && !isRequestHash(entry.requestHash)) ||
     !timestamp(entry.createdAt) ||
@@ -156,6 +166,7 @@ export function parseJournalEntry(
     ...(entry.offerId ? { offerId: entry.offerId as string } : {}),
     ...(entry.quoteHash ? { quoteHash: entry.quoteHash as string } : {}),
     ...(entry.freshHash ? { freshHash: entry.freshHash as string } : {}),
+    ...(entry.dispatch === "won" ? { dispatch: "won" as const } : {}),
     ...(entry.recordId ? { recordId: entry.recordId as string } : {}),
     ...(entry.requestHash ? { requestHash: entry.requestHash as string } : {}),
     createdAt: entry.createdAt,
@@ -174,6 +185,23 @@ export const authorityLeft = (phase: JournalPhase) =>
   phase === "settled" ||
   phase === "observed";
 
+/**
+ * Marks the submitted settle or transfer step whose reservation this launch's
+ * own submit just won (dispatch:"won"). Nothing else changes.
+ */
+export function withDispatchWon(
+  entries: FaceJournalEntry[],
+  operationId: string,
+): FaceJournalEntry[] {
+  return entries.map((entry) =>
+    entry.operationId === operationId &&
+    entry.phase === "submitted" &&
+    (entry.kind === "settle" || entry.kind === "transfer")
+      ? { ...entry, dispatch: "won" as const }
+      : entry,
+  );
+}
+
 export function pruneJournal(entries: FaceJournalEntry[], now: number) {
   return entries.filter((entry) =>
     terminal(entry.phase)
@@ -187,7 +215,13 @@ export type JournalTransition =
       kind: "begin";
       entry: Omit<
         FaceJournalEntry,
-        "phase" | "createdAt" | "updatedAt" | "status" | "actionId" | "issuedAt"
+        | "phase"
+        | "createdAt"
+        | "updatedAt"
+        | "status"
+        | "actionId"
+        | "issuedAt"
+        | "dispatch"
       >;
     }
   | { kind: "confirm"; operationId: string; objectId: string }

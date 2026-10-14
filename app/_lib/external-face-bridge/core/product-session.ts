@@ -106,6 +106,8 @@ export interface ProductFaceHandlers {
    */
   executeSettle(
     input: {
+      /** The settle's journal operation (settle_operation_id). */
+      operationId: string;
       objectId: string;
       action: string;
       alias?: string;
@@ -122,6 +124,8 @@ export interface ProductFaceHandlers {
   /** G8: executes exactly a validated transfer step as the holder (`as`: see executeSettle). */
   executeTransfer(
     input: {
+      /** The step's journal operation (step_operation_id). */
+      operationId: string;
       objectId: string;
       action: "update" | "transfer";
       input: Record<string, unknown>;

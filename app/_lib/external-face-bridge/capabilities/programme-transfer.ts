@@ -264,6 +264,7 @@ export function transferCapabilities(): ProductFaceCapability[] {
           try {
             ({ actionId } = await handlers.executeTransfer(
               {
+                operationId: stepId,
                 objectId: selection.objectId,
                 action: proposal.action,
                 input: proposal.input,

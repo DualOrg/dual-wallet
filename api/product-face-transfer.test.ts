@@ -42,6 +42,11 @@ type Handler = (
   context: { params: Promise<{ slug: string }> },
 ) => Promise<Response>;
 
+type BackendHandler = (
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) => Promise<Response>;
+
 type StatusHandler = (
   request: NextRequest,
   context: { params: Promise<{ slug: string; operationId: string }> },
@@ -53,6 +58,7 @@ interface Instance {
   proposal: Handler;
   progress: Handler;
   status: StatusHandler;
+  backend: BackendHandler;
   establishSession: typeof import("@/api/server-session").establishSession;
   unsealForPurpose: typeof import("@/api/server-session").unsealForPurpose;
 }
@@ -70,6 +76,7 @@ function loadInstance(): Instance {
       progress: require("@/app/api/faces/[slug]/transfer-progress/route").POST,
       status: require("@/app/api/faces/[slug]/operations/[operationId]/route")
         .GET,
+      backend: require("@/app/api/backend/[...path]/route").POST,
       establishSession: session.establishSession,
       unsealForPurpose: session.unsealForPurpose,
     };
@@ -158,6 +165,39 @@ class Browser {
     );
     if (keep) this.take(response);
     return { status: response.status, body: await response.json() };
+  }
+
+  /** The wallet's own /api/backend proxy, as its executor calls it. */
+  async backend(
+    instance: Instance,
+    path: string[],
+    body: unknown,
+    {
+      face,
+      cookies = this.cookies,
+    }: { face?: Record<string, string>; cookies?: Map<string, string> } = {},
+  ) {
+    const response = await instance.backend(
+      new NextRequest(`http://localhost/api/backend/${path.join("/")}`, {
+        method: "POST",
+        headers: {
+          host: "localhost",
+          origin: "http://localhost",
+          "content-type": "application/json",
+          ...face,
+          cookie: Array.from(cookies, ([k, v]) => `${k}=${v}`).join("; "),
+        },
+        body: JSON.stringify(body),
+      }),
+      { params: Promise.resolve({ path }) },
+    );
+    return {
+      status: response.status,
+      body: (await response.json().catch(() => null)) as Record<
+        string,
+        unknown
+      > | null,
+    };
   }
 
   /** The read-only status route for one operation. */
@@ -792,5 +832,439 @@ describe("G8 transfer step, the holder's host (contract r16 transfer.sign)", () 
       expect(begin.status).toBeGreaterThanOrEqual(400);
     }
     expect(runtime.calls).toHaveLength(0);
+  });
+});
+
+// contract r18: the wallet's /api/backend proxy forwards each request under
+// the session cookie current at THAT request. A face's holder-signed step is
+// therefore bound server-side: prepare and execute carry the launch,
+// operation and captured wallet, and are forwarded only while the CURRENT
+// session still holds this launch's journal entry, submitted, with its own
+// reservation won and no action yet. The upstream Dual API below is a LOCAL
+// FAKE that only records what reaches it.
+describe("contract r18: a face step is prepared and executed only by the session that won it", () => {
+  const SECOND_WALLET = {
+    id: "wallet-2",
+    account: {
+      address: "0x00000000000000000000000000000000000000d4",
+      type: "SMART_WALLET",
+      controller: { address: "0xcontroller2" },
+      smartAccount: {},
+    },
+    whenCreated: new Date(),
+    whenModified: new Date(),
+    emailVerified: true,
+  };
+  const requestAction = {
+    update: {
+      id: UNIT,
+      data: {
+        custom: {
+          ...OWNED_CUSTOM,
+          state: "Transfer pending",
+          lifecycle: { target_state: "Transfer pending" },
+        },
+      },
+    },
+  };
+  const signed = {
+    action: requestAction,
+    nonce: 3,
+    auth: { type: "webauthn", challenge: "AQID", credentialId: "c" },
+  };
+
+  /** The fake runtime for the face routes plus a recorder for upstream ebus. */
+  function upstream(options: Parameters<typeof fakeTransferRuntime>[0] = {}) {
+    const runtime = fakeTransferRuntime(options);
+    const ebus: Array<{ path: string; body: Record<string, unknown> }> = [];
+    const fetchImpl = jest.fn(async (url: string | URL, init: RequestInit) => {
+      const href = String(url);
+      if (!href.includes("/ebus/")) return runtime.fetchImpl(href, init);
+      const path = new URL(href).pathname;
+      const headers = new Headers(init.headers);
+      ebus.push({
+        path,
+        body: JSON.parse(
+          Buffer.from(init.body as ArrayBuffer).toString("utf8"),
+        ) as Record<string, unknown>,
+      });
+      // Nothing of the face binding is forwarded upstream.
+      expect(
+        [...headers.keys()].filter((name) => name.startsWith("x-dual-face")),
+      ).toEqual([]);
+      return new Response(
+        JSON.stringify(
+          path.endsWith("/prepare")
+            ? { nonce: 3, challenge: "AQID" }
+            : { actionId: "action-transfer-1", steps: [] },
+        ),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    global.fetch = fetchImpl as unknown as typeof fetch;
+    const count = (name: "prepare" | "execute") =>
+      ebus.filter((call) => call.path.endsWith(`/ebus/${name}`)).length;
+    return { runtime, ebus, count };
+  }
+
+  const faceHeaders = (
+    browser: Browser,
+    overrides: Record<string, string> = {},
+  ) => ({
+    "x-dual-face-launch": browser.launchId,
+    "x-dual-face-slug": SLUG,
+    "x-dual-face-operation": STEP_OP,
+    "x-dual-face-wallet": "wallet-1",
+    ...overrides,
+  });
+
+  /** A won request step, ready for the holder's prepare and execute. */
+  async function wonStep(instance: Instance, browser: Browser) {
+    const contextId = await selected(instance, browser);
+    const submit = await confirmedStep(instance, browser, contextId);
+    expect(await submit()).toMatchObject({
+      status: 200,
+      body: { reservation: "won" },
+    });
+    return contextId;
+  }
+
+  /** The same browser after another sign-in: a new session cookie, the old launch journal. */
+  function switched(instance: Instance, browser: Browser) {
+    const other = new Browser(instance, browser.launchId);
+    const journal = [...browser.cookies].filter(([name]) =>
+      name.startsWith("dual_face_launch_"),
+    );
+    expect(journal).toHaveLength(1);
+    return new Map([...other.cookies, ...journal]);
+  }
+
+  it("forwards the won step's prepare and execute for the session that won it", async () => {
+    const { count, ebus } = upstream();
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    await wonStep(instance, browser);
+    const face = faceHeaders(browser);
+    expect(
+      await browser.backend(
+        instance,
+        ["ebus", "prepare"],
+        { action: requestAction },
+        { face },
+      ),
+    ).toMatchObject({ status: 200, body: { nonce: 3, challenge: "AQID" } });
+    expect(
+      await browser.backend(instance, ["ebus", "execute"], signed, { face }),
+    ).toMatchObject({ status: 200, body: { actionId: "action-transfer-1" } });
+    expect([count("prepare"), count("execute")]).toEqual([1, 1]);
+    expect(ebus[1].body).toEqual(signed);
+  });
+
+  it.each([
+    [
+      "an account change to another wallet",
+      () => getWallet.mockResolvedValue(SECOND_WALLET),
+      "face_execution_unbound",
+      409,
+    ],
+    [
+      "a new sign-in to the same wallet (another session)",
+      () => undefined,
+      "face_execution_unbound",
+      409,
+    ],
+  ])(
+    "after %s between prepare and execute (or while signing): 0 upstream execute, the step stays submitted and unknown, never retried",
+    async (_label, change, code, status) => {
+      const { count, runtime } = upstream();
+      const instance = loadInstance();
+      const browser = new Browser(instance);
+      const contextId = await wonStep(instance, browser);
+      const face = faceHeaders(browser);
+      expect(
+        (
+          await browser.backend(
+            instance,
+            ["ebus", "prepare"],
+            { action: requestAction },
+            { face },
+          )
+        ).status,
+      ).toBe(200);
+      // The account changes while the holder signs; the signed action then
+      // arrives under the NEW session cookie.
+      change();
+      const cookies = switched(instance, browser);
+      expect(
+        await browser.backend(instance, ["ebus", "execute"], signed, {
+          face,
+          cookies,
+        }),
+      ).toMatchObject({ status, body: { code } });
+      // A prepare under the new session is refused the same way.
+      expect(
+        (
+          await browser.backend(
+            instance,
+            ["ebus", "prepare"],
+            { action: requestAction },
+            { face, cookies },
+          )
+        ).status,
+      ).toBe(status);
+      // Even naming the new wallet does not help: the journal is not its own.
+      expect(
+        (
+          await browser.backend(instance, ["ebus", "execute"], signed, {
+            face: faceHeaders(browser, {
+              "x-dual-face-wallet": "wallet-2",
+            }),
+            cookies,
+          })
+        ).status,
+      ).toBe(409);
+      expect([count("prepare"), count("execute")]).toEqual([1, 0]);
+      // The original correlation is untouched: back under the session that
+      // won it, the step is still submitted with no action and reads
+      // outcome_unknown; nothing was cancelled, reserved again or retried.
+      getWallet.mockResolvedValue({
+        ...SECOND_WALLET,
+        id: "wallet-1",
+        account: { ...SECOND_WALLET.account, address: HOLDER },
+      });
+      const status_ = await browser.status(instance, STEP_OP);
+      expect(status_).toMatchObject({
+        status: 200,
+        body: { operation_id: STEP_OP, kind: "transfer", phase: "submitted" },
+      });
+      expect(
+        await browser.call(
+          instance.progress,
+          `/api/faces/${SLUG}/transfer-progress`,
+          { operation_id: STEP_OP },
+        ),
+      ).toMatchObject({
+        status: 200,
+        body: { status: "outcome_unknown", step: "request" },
+      });
+      expect(
+        runtime.calls.filter((call) => call.operation === "transfer.reserve"),
+      ).toHaveLength(1);
+      expect(
+        await browser.call(
+          instance.operations,
+          `/api/faces/${SLUG}/operations`,
+          {
+            transition: "submit",
+            operation_id: STEP_OP,
+            context_id: contextId,
+          },
+        ),
+      ).toMatchObject({
+        status: 409,
+        body: { code: "operation_already_submitted" },
+      });
+      expect(count("execute")).toBe(0);
+    },
+  );
+
+  it("after a logout (no session): refused with 401 before any upstream request", async () => {
+    const { count } = upstream();
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    await wonStep(instance, browser);
+    const journalOnly = new Map(
+      [...browser.cookies].filter(([name]) =>
+        name.startsWith("dual_face_launch_"),
+      ),
+    );
+    expect(
+      await browser.backend(instance, ["ebus", "execute"], signed, {
+        face: faceHeaders(browser),
+        cookies: journalOnly,
+      }),
+    ).toMatchObject({ status: 401, body: { code: "session_expired" } });
+    expect([count("prepare"), count("execute")]).toEqual([0, 0]);
+  });
+
+  it("refuses a step whose reservation this launch did not win, or that already has its action", async () => {
+    // A lost reserve answer: submitted, but never "won" here.
+    const lost = upstream({ loseReserve: true });
+    let instance = loadInstance();
+    let browser = new Browser(instance);
+    const contextId = await selected(instance, browser);
+    const submit = await confirmedStep(instance, browser, contextId);
+    expect(await submit()).toMatchObject({
+      status: 409,
+      body: { code: "outcome_unknown" },
+    });
+    expect(
+      await browser.backend(instance, ["ebus", "execute"], signed, {
+        face: faceHeaders(browser),
+      }),
+    ).toMatchObject({
+      status: 409,
+      body: { code: "face_execution_not_pending" },
+    });
+    expect(lost.count("execute")).toBe(0);
+
+    // Confirmed but not yet submitted (nothing reserved).
+    const early = upstream();
+    instance = loadInstance();
+    browser = new Browser(instance);
+    await confirmedStep(instance, browser, await selected(instance, browser));
+    expect(
+      await browser.backend(
+        instance,
+        ["ebus", "prepare"],
+        { action: requestAction },
+        { face: faceHeaders(browser) },
+      ),
+    ).toMatchObject({
+      status: 409,
+      body: { code: "face_execution_not_pending" },
+    });
+    expect(early.count("prepare")).toBe(0);
+
+    // Won, executed once and recorded: never executed again.
+    const done = upstream();
+    instance = loadInstance();
+    browser = new Browser(instance);
+    await wonStep(instance, browser);
+    const face = faceHeaders(browser);
+    expect(
+      (await browser.backend(instance, ["ebus", "execute"], signed, { face }))
+        .status,
+    ).toBe(200);
+    expect(
+      (
+        await browser.call(
+          instance.operations,
+          `/api/faces/${SLUG}/operations`,
+          {
+            transition: "record_action",
+            operation_id: STEP_OP,
+            action_id: "action-transfer-1",
+          },
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      await browser.backend(instance, ["ebus", "execute"], signed, { face }),
+    ).toMatchObject({
+      status: 409,
+      body: { code: "face_execution_not_pending" },
+    });
+    expect(done.count("execute")).toBe(1);
+  });
+
+  it("refuses another unit, another action, another operation or launch, a malformed binding and any other path", async () => {
+    const { count } = upstream();
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    await wonStep(instance, browser);
+    const face = faceHeaders(browser);
+    const cases: Array<
+      [unknown, Record<string, string>, string[], number, string]
+    > = [
+      [
+        { action: { update: { ...requestAction.update, id: "b".repeat(24) } } },
+        face,
+        ["ebus", "execute"],
+        400,
+        "face_execution_mismatch",
+      ],
+      [
+        { action: { transfer: { id: UNIT, to: RECIPIENT } } },
+        face,
+        ["ebus", "execute"],
+        400,
+        "face_execution_mismatch",
+      ],
+      [
+        { action: { ...requestAction, alias: "verify_authenticity" } },
+        face,
+        ["ebus", "execute"],
+        400,
+        "face_execution_mismatch",
+      ],
+      [
+        {
+          action: { ...requestAction, burn: { id: UNIT } },
+        },
+        face,
+        ["ebus", "execute"],
+        400,
+        "face_execution_mismatch",
+      ],
+      [
+        signed,
+        faceHeaders(browser, {
+          "x-dual-face-operation": "xfer-ffffffffffffffff",
+        }),
+        ["ebus", "execute"],
+        409,
+        "face_execution_unbound",
+      ],
+      [
+        signed,
+        faceHeaders(browser, {
+          "x-dual-face-launch": `launch-${"z".repeat(28)}`,
+        }),
+        ["ebus", "execute"],
+        409,
+        "face_execution_unbound",
+      ],
+      [
+        signed,
+        faceHeaders(browser, { "x-dual-face-wallet": "wallet-2" }),
+        ["ebus", "execute"],
+        409,
+        "face_execution_unbound",
+      ],
+      [
+        signed,
+        faceHeaders(browser, { "x-dual-face-launch": "short" }),
+        ["ebus", "execute"],
+        400,
+        "launch_required",
+      ],
+      [
+        signed,
+        faceHeaders(browser, { "x-dual-face-operation": "../x" }),
+        ["ebus", "execute"],
+        400,
+        "face_execution_invalid",
+      ],
+      [
+        signed,
+        { "x-dual-face-operation": STEP_OP },
+        ["ebus", "execute"],
+        400,
+        "face_execution_invalid",
+      ],
+      [signed, face, ["wallets", "me"], 405, ""],
+    ];
+    for (const [body, headers, path, status, code] of cases) {
+      const result = await browser.backend(instance, path, body, {
+        face: headers,
+      });
+      expect(result.status).toBe(status);
+      if (code) expect(result.body).toMatchObject({ code });
+    }
+    expect(count("prepare") + count("execute")).toBe(0);
+  });
+
+  it("the generic executor (no face binding) is forwarded unchanged", async () => {
+    const { count } = upstream();
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    expect(
+      await browser.backend(instance, ["ebus", "execute"], {
+        action: { pickup: { id: UNIT } },
+        nonce: 0,
+      }),
+    ).toMatchObject({ status: 200, body: { actionId: "action-transfer-1" } });
+    expect(count("execute")).toBe(1);
   });
 });

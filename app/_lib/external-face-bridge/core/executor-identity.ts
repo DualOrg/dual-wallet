@@ -1,3 +1,4 @@
+import type { FaceExecution } from "@/app/_domain/face-execution";
 import type { AuthenticationMethod } from "@/app/_domain/session";
 import type { ViewerWallet } from "@/app/_domain/wallet";
 import { ProductFaceError } from "@/app/_domain/product-face";
@@ -64,4 +65,37 @@ export async function executeAs<T>(
     throw new ProductFaceError("session_ended");
   }
   return run(current);
+}
+
+/**
+ * The binding a face's holder-signed step carries into the wallet executor
+ * (contract r18): its launch, operation and the captured wallet, which the
+ * proxy enforces server-side on every prepare and execute; and the live
+ * check the executor repeats at each async boundary (before and after
+ * preparing, after signing, right before executing).
+ */
+export function faceExecutionOf({
+  face,
+  operationId,
+  expected,
+  current,
+  live,
+}: {
+  face: { slug: string; launchId: string };
+  operationId: string;
+  expected: ExecutorIdentity;
+  current: () => ExecutorIdentity | null;
+  live: () => boolean;
+}): FaceExecution {
+  return {
+    launchId: face.launchId,
+    slug: face.slug,
+    operationId,
+    walletId: expected.walletId,
+    assertLive: () => {
+      if (!live() || !sameExecutor(expected, current())) {
+        throw new ProductFaceError("session_ended");
+      }
+    },
+  };
 }

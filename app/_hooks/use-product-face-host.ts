@@ -21,6 +21,8 @@ import type { ProductFaceHostNotice } from "@/app/_lib/external-face-bridge/core
 import {
   executeAs,
   executorIdentityOf,
+  faceExecutionOf,
+  type ExecutorIdentity,
 } from "@/app/_lib/external-face-bridge/core/executor-identity";
 import { useSession } from "@/app/_providers/session-provider";
 import {
@@ -182,6 +184,17 @@ export function useProductFaceHost({
         Boolean(launched.host) &&
         host.current === launched.host &&
         launched.host?.session.ended === null;
+      // contract r18: the step's launch binding, enforced server-side on
+      // prepare and execute, and the identity re-checked at every async
+      // boundary inside the executor (prepare, signing, execute).
+      const execution = (operationId: string, as: ExecutorIdentity) =>
+        faceExecutionOf({
+          face,
+          operationId,
+          expected: as,
+          current: () => executorIdentityOf(sessionRef.current),
+          live: liveHost,
+        });
       const guard = async <T>(work: () => Promise<T>) => {
         try {
           return await work();
@@ -226,7 +239,7 @@ export function useProductFaceHost({
         // that began the operation; otherwise they refuse before anything is
         // prepared or signed (an account change never signs with the new
         // account's credentials).
-        executeSettle: (input, as) =>
+        executeSettle: ({ operationId, ...input }, as) =>
           executeAs(
             as,
             executorIdentityOf(sessionRef.current),
@@ -236,11 +249,12 @@ export function useProductFaceHost({
                 ...input,
                 authenticationMethod: identity.authenticationMethod,
                 controllerAddress: identity.controller ?? undefined,
+                face: execution(operationId, as),
               }),
           ),
         readTransferProposal: (input) =>
           guard(() => readTransferProposal(face, input)),
-        executeTransfer: (input, as) =>
+        executeTransfer: ({ operationId, ...input }, as) =>
           executeAs(
             as,
             executorIdentityOf(sessionRef.current),
@@ -250,6 +264,7 @@ export function useProductFaceHost({
                 ...input,
                 authenticationMethod: identity.authenticationMethod,
                 controllerAddress: identity.controller ?? undefined,
+                face: execution(operationId, as),
               }),
           ),
         transferProgress: (operationId) =>

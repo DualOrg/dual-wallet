@@ -544,6 +544,40 @@ not executed, cancelled, retried or reserved again: its journal entry stays
 submitted under its original correlation, its status reads `outcome_unknown`,
 and only the runtime's reviewed recovery can release it.
 
+**Binding prepare and execute to the session that won (contract r18).** The
+existing executor prepares, signs and executes through the wallet's own
+`/api/backend` proxy, which forwards each request under the session cookie
+current at that request. For a face step every prepare and execute therefore
+carries `x-dual-face-launch`, `x-dual-face-slug`, `x-dual-face-operation` (the
+settle or step operation ID) and `x-dual-face-wallet` (the wallet ID captured
+at begin); none is a credential and none is forwarded upstream
+(`app/_domain/face-execution.ts`). Before any upstream request the proxy
+(`api/face-execution-binding.ts`) requires, for the CURRENT session:
+
+- `POST ebus/prepare` or `ebus/execute` only;
+- the current wallet is the captured wallet;
+- this launch's journal, sealed to the session and wallet that wrote it and
+  read as empty under any other, holds the operation as a settle or transfer
+  step that is `submitted`, whose own reservation this launch won (the journal
+  marker `dispatch: "won"`, written only by the submit that received it), and
+  that has no recorded action;
+- the body is exactly one action, the step's own (settle: its template action,
+  alias allowed; transfer request: `update`; transfer: `transfer`; never a
+  permit secret), on the step's own unit.
+
+Otherwise it answers `session_expired` (401), `launch_required`,
+`face_execution_invalid`, `face_execution_path_invalid` or
+`face_execution_mismatch` (400), or `face_execution_unbound` or
+`face_execution_not_pending` (409), and nothing reaches Dual. Inside the
+executor the identity is re-checked before preparing, after preparing, after
+signing (passkey or EOA) and immediately before executing, so a change at any
+of those awaits stops the step before anything else is sent. A refused or
+stopped step is handled as above: no cancel, retry or second reservation.
+Requests without these headers are the wallet's generic executor and are
+unchanged. The journal is a cookie, so the proxy cannot make a second execute
+by the same session atomic; exactly-once dispatch stays the runtime
+reservation, and the host executes only after its own `won` and never retries.
+
 **Settle reservation (contract r8/r11).** After the confirmation the BFF
 records the settle as `submitted` and, before ANY holder execution, calls the
 runtime's `registration.settle.reserve` server to server (assertion operation

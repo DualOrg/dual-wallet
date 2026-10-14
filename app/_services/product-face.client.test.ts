@@ -25,6 +25,15 @@ const input = {
     lifecycle: { target_state: "Authenticity verified" },
   },
 };
+// The launch binding a face step carries (contract r18); always live here.
+const face = {
+  launchId: "launch-aaaaaaaaaaaaaaaaaaaa",
+  slug: "morrow-home",
+  operationId: "settle-0123456789abcdef",
+  walletId: "wallet-1",
+  assertLive: jest.fn(),
+};
+const bound = expect.any(Function);
 const expectedAction = {
   update: { id: OBJECT, data: { custom: input.custom }, secret: undefined },
 };
@@ -54,12 +63,14 @@ describe("holder settle execution", () => {
         action: "update",
         input,
         authenticationMethod: "email",
+        face,
       }),
     ).resolves.toEqual({ actionId: "action-settle-1" });
     expect(prepareAction).not.toHaveBeenCalled();
-    expect(executeAction).toHaveBeenCalledWith({
-      executeRequest: { action: expectedAction, nonce: 0 },
-    });
+    expect(executeAction).toHaveBeenCalledWith(
+      { executeRequest: { action: expectedAction, nonce: 0 } },
+      bound,
+    );
   });
 
   it("prepares and signs as the holder for passkey sessions", async () => {
@@ -76,16 +87,21 @@ describe("holder settle execution", () => {
       alias: "verify_authenticity",
       input,
       authenticationMethod: "passkey",
+      face,
     });
-    expect(prepareAction).toHaveBeenCalledWith({
-      prepareExecuteRequest: {
-        action: { ...expectedAction, alias: "verify_authenticity" },
+    expect(prepareAction).toHaveBeenCalledWith(
+      {
+        prepareExecuteRequest: {
+          action: { ...expectedAction, alias: "verify_authenticity" },
+        },
       },
-    });
+      bound,
+    );
     expect(signActionWithPasskey).toHaveBeenCalledWith("AQID");
-    expect(executeAction).toHaveBeenCalledWith({
-      executeRequest: expect.objectContaining({ nonce: 4 }),
-    });
+    expect(executeAction).toHaveBeenCalledWith(
+      { executeRequest: expect.objectContaining({ nonce: 4 }) },
+      bound,
+    );
   });
 
   it("signs with the connected EOA for EOA sessions", async () => {
@@ -101,6 +117,7 @@ describe("holder settle execution", () => {
       input,
       authenticationMethod: "eoa",
       controllerAddress: "0xcontroller",
+      face,
     });
     expect(request).toHaveBeenCalledWith({
       method: "personal_sign",
@@ -116,16 +133,19 @@ describe("holder settle execution", () => {
       action: "update",
       input: { data: { custom: input.custom } },
       authenticationMethod: "email",
+      face,
     });
-    expect(executeAction).toHaveBeenCalledWith({
-      executeRequest: { action: expectedAction, nonce: 0 },
-    });
+    expect(executeAction).toHaveBeenCalledWith(
+      { executeRequest: { action: expectedAction, nonce: 0 } },
+      bound,
+    );
     await expect(
       executeSettleAction({
         objectId: OBJECT,
         action: "update",
         input: { data: { custom: input.custom, secret: "x" } },
         authenticationMethod: "email",
+        face,
       }),
     ).rejects.toMatchObject({ code: "proposal_rejected" });
   });
@@ -140,6 +160,7 @@ describe("holder settle execution", () => {
           action,
           input: {},
           authenticationMethod: "email",
+          face,
         }),
       ).rejects.toMatchObject({ code: "proposal_rejected" });
       expect(executeAction).not.toHaveBeenCalled();

@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { bindFaceExecution } from "@/api/face-execution-binding";
 import { validateProxyPath } from "@/api/proxy-policy";
 import { validRequestOrigin } from "@/api/request";
 import {
@@ -55,6 +56,12 @@ async function proxy(
   }
 
   try {
+    // A face's holder-signed step is forwarded only while the CURRENT session
+    // still owns the launch, operation and reservation that began it;
+    // otherwise it is refused here, before any upstream request. Requests
+    // without face execution headers (the generic executor) are unaffected.
+    const face = await bindFaceExecution(request, path, body);
+    if (face.bound && "refused" in face) return face.refused;
     const {
       response: upstream,
       state,
@@ -69,6 +76,7 @@ async function proxy(
         cache: "no-store",
         redirect: "manual",
       },
+      face.bound ? face.context.state : undefined,
     );
     const response = new NextResponse(upstream.body, {
       status: upstream.status,

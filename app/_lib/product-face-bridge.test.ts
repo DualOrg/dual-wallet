@@ -908,7 +908,12 @@ describe("holder settle (G6)", () => {
     ]);
     // As the identity that began it, which the executor re-checks itself.
     expect(handlerSet.executeSettle).toHaveBeenCalledWith(
-      { objectId: UNIT_A, action: "update", input: proposal.input },
+      {
+        operationId: "settle-op-0001",
+        objectId: UNIT_A,
+        action: "update",
+        input: proposal.input,
+      },
       IDENTITY_A,
     );
     expect(handlerSet.confirm).toHaveBeenCalledWith({
@@ -1329,7 +1334,12 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
       recipient: RECIPIENT,
     });
     expect(run.handlers.executeTransfer).toHaveBeenCalledWith(
-      { objectId: UNIT_A, action: "update", input: requestStep.input },
+      {
+        operationId: run.request.step_operation_id,
+        objectId: UNIT_A,
+        action: "update",
+        input: requestStep.input,
+      },
       IDENTITY_A,
     );
   });
@@ -1360,7 +1370,12 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
       expect.objectContaining({ step: "transfer", recipient: RECIPIENT }),
     );
     expect(run.handlers.executeTransfer).toHaveBeenCalledWith(
-      { objectId: UNIT_A, action: "transfer", input: { to: RECIPIENT } },
+      {
+        operationId: run.request.step_operation_id,
+        objectId: UNIT_A,
+        action: "transfer",
+        input: { to: RECIPIENT },
+      },
       IDENTITY_A,
     );
   });

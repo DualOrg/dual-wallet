@@ -1,6 +1,6 @@
 {
   "contract": "dual-product-face-v1",
-  "revision": 17,
+  "revision": 18,
   "status": "first_source_delivery",
   "summary": "Full-size, first-party reviewed product face inside the authenticated Dual wallet. Uses the existing dual.face.bridge v1 envelope, handshake and limits; adds a programme ('application') context variant and named capability modules. No second postMessage protocol, no generic fetch/proxy/token operation.",
   "protocol": {
@@ -238,7 +238,7 @@
         "settle_operation_id": "",
         "action_id": ""
       },
-      "authority": "G6 holder settle. Host obtains the proposal ITSELF via trustedRuntimeReads.settle (face-supplied proposals are not accepted); requires selected product owned by session wallet, state in unconfirmedStates, proposal bound to this unit+original operation and not expired, input deep-equal to binding.settle.inputTemplate constraints; native confirmation of exact decoded changes; journal persisted BEFORE execution; executes via the EXISTING executor as the HOLDER; never issuer authority, never claim_ownership; cancel=not_submitted; lost after submit=outcome_unknown, read-only reconcile, never re-executed.",
+      "authority": "G6 holder settle. Host obtains the proposal ITSELF via trustedRuntimeReads.settle (face-supplied proposals are not accepted); requires selected product owned by session wallet, state in unconfirmedStates, proposal bound to this unit+original operation and not expired, input deep-equal to binding.settle.inputTemplate constraints; native confirmation of exact decoded changes; journal persisted BEFORE execution; executes via the EXISTING executor as the HOLDER; never issuer authority, never claim_ownership; cancel=not_submitted; lost after submit=outcome_unknown, read-only reconcile, never re-executed. r18: prepare and execute are bound server-side to the launch, operation and wallet that began the settle (executionBinding).",
       "errors": [
         "user_cancelled",
         "not_owned",
@@ -257,11 +257,10 @@
         "step_operation_id": "^[a-z0-9-]{8,64}$"
       },
       "result": {
-        "status": "submitted | transferred | transfer_request_committed | outcome_unknown",
-        "step_operation_id": "",
-        "action_id": "string|null"
+        "status": "transfer_request_committed | transferred",
+        "step": "request | transfer"
       },
-      "authority": "G8 holder transfer step. The host reads the step ITSELF through the trusted transfer.propose (a face-supplied proposal or recipient is never accepted) and accepts it only when ALL of the following hold: it is for this offer and the selected owned unit; it is unexpired; it carries the step's own action; the recipient is the runtime-bound recipient (never the holder); the request step matches binding.transferRequest exactly (bindingTemplates) with recipientReferenceHash:<sha256 of the recipient> in its proof public fields; the transfer step is exactly {to: recipient}. The host shows a NATIVE confirmation naming the unit, saying that ownership moves, and showing the shortened recipient wallet. It journals before anything leaves, binding a hash of the fresh custom map, and reserves server to server; it executes only on its own dispatch:won, as the holder, through the existing executor, and only while the session and the selection captured at begin are still current, re-asserted after every await before execution (a stale session or selection: no execution; the submitted entry and its correlation stay, outcome unknown, reviewed recovery). It never uses issuer authority. Without binding.transferRequest the answer is capability_not_granted."
+      "authority": "G8 holder transfer step. The host reads the step ITSELF through the trusted transfer.propose (a face-supplied proposal or recipient is never accepted) and accepts it only when ALL of the following hold: it is for this offer and the selected owned unit; it is unexpired; it carries the step's own action; the recipient is the runtime-bound recipient (never the holder); the request step matches binding.transferRequest exactly (bindingTemplates) with recipientReferenceHash:<sha256 of the recipient> in its proof public fields; the transfer step is exactly {to: recipient}. The host shows a NATIVE confirmation naming the unit, saying that ownership moves, and showing the shortened recipient wallet. It journals before anything leaves, binding a hash of the fresh custom map, and reserves server to server; it executes only on its own dispatch:won, as the holder, through the existing executor, and only while the session and the selection captured at begin are still current, re-asserted after every await before execution (a stale session or selection: no execution; the submitted entry and its correlation stay, outcome unknown, reviewed recovery). It never uses issuer authority. Without binding.transferRequest the answer is capability_not_granted. Result (r18, as shipped): the step's own committed status read back after execution, {status, step}; an outcome the host cannot confirm is the error outcome_unknown, never a result. r18: prepare and execute are bound server-side to the launch, operation and wallet that began the step (executionBinding)."
     }
   },
   "events": {
@@ -697,5 +696,25 @@
     "body": "{\"action\":\"inspect_face_templates\"} exactly",
     "authority": "server to server only (any Origin: 403 face_template_inspection_server_only); header x-dual-runtime-control-token equal (constant time) to TIG_GENERATED_APP_CANARY_CONTROL_TOKEN (absent or empty: 503 face_template_inspection_unprovisioned; wrong: 401 runtime_control_authorization_required); wrong body: 400 face_request_field_not_accepted",
     "answer": "{ok, status:\"face_templates_inspected\", schemaVersion:\"tig-product-face-template-inspection-v1\", release:{releaseId, applicationId, version, artifactHash}, settle, transferRequest} plus zero counters; built by the release's own reviewed builders over a synthetic unit: no unit data, no KV, no Dual"
+  },
+  "executionBinding": {
+    "revision": 18,
+    "why": "the wallet's existing executor prepares, signs and executes through the wallet's own /api/backend proxy, which forwards each request under the session cookie current at THAT request; an account change, logout or new sign-in between prepare, signing and execute would otherwise send the step under another session. A hoped-for Native ownership refusal is not relied on.",
+    "appliesTo": "every holder-signed face step: programme.product.settle.request and programme.product.transfer.sign (request and transfer steps)",
+    "binding": "each prepare and execute of such a step carries x-dual-face-launch, x-dual-face-slug, x-dual-face-operation (settle_operation_id / step_operation_id) and x-dual-face-wallet (the wallet id captured when the step began); none of them is a credential and none is forwarded upstream",
+    "server": "before ANY upstream request the proxy requires, for the CURRENT session: POST ebus/prepare or ebus/execute only; a valid slug, launch, operation and wallet id; the current wallet equals the captured wallet; this launch's journal (sealed to the session and wallet that wrote it, read as empty under any other) holds that operation as a settle or transfer step that is submitted, whose OWN reservation was won by this launch (journal marker dispatch:\"won\") and that has no recorded action; the body is exactly one action, the step's own (settle: its template action, alias allowed; transfer request: update; transfer: transfer; never a permit secret), on the step's own unit. A request without any face execution header is the generic executor and is unchanged.",
+    "refusals": {
+      "session_expired": "401: no live session (logout, expiry)",
+      "session_unavailable": "503: the session could not be confirmed",
+      "launch_required": "400: missing or malformed launch",
+      "face_execution_invalid": "400: missing or malformed slug, operation or wallet",
+      "face_execution_path_invalid": "400: any other method or path",
+      "face_execution_unbound": "409: another wallet or session than the one that began the step, or no such step in this launch's journal",
+      "face_execution_not_pending": "409: not submitted, its reservation not won by this launch, or its action already recorded",
+      "face_execution_mismatch": "400: another action, unit, alias or a permit secret"
+    },
+    "client": "the executor re-checks the live identity (the launch is live and the current session is exactly the identity captured at begin) before preparing, after preparing, after signing (passkey or EOA) and immediately before executing; any change stops the step before anything else is sent",
+    "outcome": "a refused or stopped step is never cancelled, retried, re-reserved or re-prepared: the submitted journal entry keeps its original correlation and reads outcome_unknown through the read-only status; only the reviewed recovery can release it. These refusals are host-internal; the face sees outcome_unknown.",
+    "limits": "the journal is a sealed cookie, so the proxy cannot make a second execute by the SAME session atomic; exactly-once dispatch remains the runtime reservation (one won per step), and the host executes only after its own won and never retries"
   }
 }

@@ -40,10 +40,16 @@ type StatusHandler = (
   context: { params: Promise<{ slug: string; operationId: string }> },
 ) => Promise<Response>;
 
+type BackendHandler = (
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) => Promise<Response>;
+
 interface Instance {
   selection: Handler;
   operations: Handler;
   status: StatusHandler;
+  backend: BackendHandler;
   establishSession: typeof import("@/api/server-session").establishSession;
   unsealForPurpose: typeof import("@/api/server-session").unsealForPurpose;
 }
@@ -59,6 +65,7 @@ function loadInstance(): Instance {
       operations: require("@/app/api/faces/[slug]/operations/route").POST,
       status: require("@/app/api/faces/[slug]/operations/[operationId]/route")
         .GET,
+      backend: require("@/app/api/backend/[...path]/route").POST,
       establishSession: session.establishSession,
       unsealForPurpose: session.unsealForPurpose,
     };
@@ -140,6 +147,37 @@ class Browser {
     );
     if (keep) this.take(response);
     return { status: response.status, body: await response.json() };
+  }
+
+  /** The wallet's own /api/backend proxy, as its executor calls it. */
+  async backend(
+    instance: Instance,
+    path: string[],
+    body: unknown,
+    face: Record<string, string>,
+    cookies = this.cookies,
+  ) {
+    const response = await instance.backend(
+      new NextRequest(`http://localhost/api/backend/${path.join("/")}`, {
+        method: "POST",
+        headers: {
+          host: "localhost",
+          origin: "http://localhost",
+          "content-type": "application/json",
+          ...face,
+          cookie: Array.from(cookies, ([k, v]) => `${k}=${v}`).join("; "),
+        },
+        body: JSON.stringify(body),
+      }),
+      { params: Promise.resolve({ path }) },
+    );
+    return {
+      status: response.status,
+      body: (await response.json().catch(() => null)) as Record<
+        string,
+        unknown
+      > | null,
+    };
   }
 
   /** The read-only status route for one operation. */
@@ -487,6 +525,8 @@ describe("settle reservation (contract r8/r11)", () => {
     expect(Object.keys(sealed.entries[0]).sort()).toEqual(
       [
         "createdAt",
+        // r18: this launch's own submit won the reservation (a marker only).
+        "dispatch",
         "freshHash",
         "issuedAt",
         "kind",
@@ -502,6 +542,7 @@ describe("settle reservation (contract r8/r11)", () => {
       operationId: SETTLE_OP,
       phase: "submitted",
       proposalId: PROPOSAL,
+      dispatch: "won",
     });
     // r17: the unit's fresh custom map at begin, as a hash only.
     expect(sealed.entries[0].freshHash).toMatch(/^sha256:[0-9a-f]{64}$/);
@@ -690,5 +731,138 @@ describe("settle reservation (contract r8/r11)", () => {
     );
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ code: "launch_required" });
+  });
+});
+
+// contract r18, the settle side of the server-side execution binding: the
+// wallet's /api/backend proxy forwards a settle's prepare and execute only
+// for the session that holds this launch's journal and whose own reserve was
+// won. The upstream Dual API is a LOCAL FAKE that only records requests.
+describe("contract r18: a settle is executed only by the session that won its reservation", () => {
+  const settleAction = {
+    update: {
+      id: UNIT,
+      data: { custom: { state: "Authenticity verified" } },
+    },
+    alias: "verify_authenticity",
+  };
+  const signed = { action: settleAction, nonce: 2 };
+  const face = (browser: Browser, operationId = SETTLE_OP) => ({
+    "x-dual-face-launch": browser.launchId,
+    "x-dual-face-slug": SLUG,
+    "x-dual-face-operation": operationId,
+    "x-dual-face-wallet": "wallet-1",
+  });
+
+  function upstream() {
+    const runtime = fakeRuntime();
+    const ebus: string[] = [];
+    global.fetch = jest.fn(async (url: string | URL, init: RequestInit) => {
+      const href = String(url);
+      if (!href.includes("/ebus/")) return runtime.fetchImpl(href, init);
+      ebus.push(new URL(href).pathname);
+      return new Response(
+        JSON.stringify(
+          href.endsWith("/prepare")
+            ? { nonce: 2, challenge: "AQID" }
+            : { actionId: "action-settle-1", steps: [] },
+        ),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+    return {
+      runtime,
+      executes: () => ebus.filter((path) => path.endsWith("/execute")).length,
+    };
+  }
+
+  it("forwards the won settle; under another session after the reserve: 0 upstream execute", async () => {
+    const { executes } = upstream();
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    const settle = await confirmedSettle(instance, browser);
+    expect(await settle.submit(instance)).toMatchObject({
+      status: 200,
+      body: { reservation: "won" },
+    });
+    // The account changes after the reserve: a new session cookie, the old
+    // launch journal.
+    const other = new Browser(instance, browser.launchId);
+    const journal = [...browser.cookies].filter(([name]) =>
+      name.startsWith("dual_face_launch_"),
+    );
+    const switched = new Map([...other.cookies, ...journal]);
+    expect(
+      await browser.backend(
+        instance,
+        ["ebus", "execute"],
+        signed,
+        face(browser),
+        switched,
+      ),
+    ).toMatchObject({ status: 409, body: { code: "face_execution_unbound" } });
+    expect(executes()).toBe(0);
+    // The session that won it executes exactly the reserved settle once.
+    expect(
+      await browser.backend(
+        instance,
+        ["ebus", "execute"],
+        signed,
+        face(browser),
+      ),
+    ).toMatchObject({ status: 200, body: { actionId: "action-settle-1" } });
+    // Another standard action than the reserved one is refused.
+    expect(
+      await browser.backend(
+        instance,
+        ["ebus", "execute"],
+        { action: { set_attributes: { id: UNIT, attributes: [] } } },
+        face(browser),
+      ),
+    ).toMatchObject({ status: 400, body: { code: "face_execution_mismatch" } });
+    expect(executes()).toBe(1);
+  });
+
+  it("two tabs, one unit: only the tab whose own reserve was won can execute through the proxy", async () => {
+    const { runtime, executes } = upstream();
+    const instance = loadInstance();
+    const tabA = new Browser(instance, `launch-${"a".repeat(28)}`);
+    const tabB = new Browser(instance, `launch-${"b".repeat(28)}`);
+    tabB.cookies = tabA.snapshot();
+    const settleA = await confirmedSettle(
+      instance,
+      tabA,
+      "settle-aaaaaaaaaaaa",
+    );
+    const settleB = await confirmedSettle(
+      instance,
+      tabB,
+      "settle-bbbbbbbbbbbb",
+    );
+    const [a, b] = await Promise.all([
+      settleA.submit(instance),
+      settleB.submit(instance),
+    ]);
+    expect(
+      [a, b].filter((result) => result.body.reservation === "won"),
+    ).toHaveLength(1);
+    expect(runtime.reservations.size).toBe(1);
+    // Even a host that wrongly tried both: the loser is refused server-side.
+    const results = await Promise.all([
+      tabA.backend(
+        instance,
+        ["ebus", "execute"],
+        signed,
+        face(tabA, "settle-aaaaaaaaaaaa"),
+      ),
+      tabB.backend(
+        instance,
+        ["ebus", "execute"],
+        signed,
+        face(tabB, "settle-bbbbbbbbbbbb"),
+      ),
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    expect(executes()).toBe(1);
   });
 });

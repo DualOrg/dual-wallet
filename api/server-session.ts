@@ -452,6 +452,11 @@ export async function authenticatedUpstreamFetch(
   request: NextRequest,
   url: URL,
   init: RequestInit,
+  /**
+   * The active session this request already resolved (and may have renewed);
+   * reading the cookie again would present a refresh token that is spent.
+   */
+  resolved?: SessionState,
 ): Promise<{ response: Response; state?: SessionState; expired: boolean }> {
   const requestWithToken = (token: string) => {
     const headers = new Headers(init.headers);
@@ -459,7 +464,9 @@ export async function authenticatedUpstreamFetch(
     return { ...init, headers };
   };
 
-  const session = await activeSession(request);
+  const session: SessionResult | undefined = resolved
+    ? { status: "active", state: resolved, rotated: false }
+    : await activeSession(request);
   if (!session || session.status === "expired") {
     return { response: new Response(null, { status: 401 }), expired: true };
   }

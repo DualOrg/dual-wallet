@@ -24,6 +24,7 @@ import {
   transferExecutorInput,
   type TransferProposal,
 } from "@/app/_domain/product-face-transfer";
+import type { FaceExecution } from "@/app/_domain/face-execution";
 import type { AuthenticationMethod } from "@/app/_domain/session";
 import { executeInventoryAction } from "@/app/_services/action-executor.client";
 import {
@@ -489,6 +490,7 @@ export async function executeSettleAction({
   input,
   authenticationMethod,
   controllerAddress,
+  face,
 }: {
   objectId: string;
   action: string;
@@ -496,6 +498,8 @@ export async function executeSettleAction({
   input: Record<string, unknown>;
   authenticationMethod: AuthenticationMethod;
   controllerAddress?: string;
+  /** The launch binding and live check (contract r18). */
+  face: FaceExecution;
 }) {
   if (
     !isInventoryActionName(action) ||
@@ -513,6 +517,7 @@ export async function executeSettleAction({
     alias ? { ...request, alias } : request,
     authenticationMethod,
     controllerAddress,
+    face,
   );
   return { actionId: result.actionId };
 }
@@ -579,12 +584,15 @@ export async function executeTransferAction({
   input,
   authenticationMethod,
   controllerAddress,
+  face,
 }: {
   objectId: string;
   action: "update" | "transfer";
   input: Record<string, unknown>;
   authenticationMethod: AuthenticationMethod;
   controllerAddress?: string;
+  /** The launch binding and live check (contract r18). */
+  face: FaceExecution;
 }) {
   const form = transferExecutorInput({ action, input });
   if ((action !== "update" && action !== "transfer") || !form) {
@@ -599,6 +607,7 @@ export async function executeTransferAction({
     request,
     authenticationMethod,
     controllerAddress,
+    face,
   );
   return { actionId: result.actionId };
 }
