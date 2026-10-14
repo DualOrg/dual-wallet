@@ -1,6 +1,6 @@
 {
   "contract": "dual-product-face-v1",
-  "revision": 6,
+  "revision": 7,
   "status": "first_source_delivery",
   "summary": "Full-size, first-party reviewed product face inside the authenticated Dual wallet. Uses the existing dual.face.bridge v1 envelope, handshake and limits; adds a programme ('application') context variant and named capability modules. No second postMessage protocol, no generic fetch/proxy/token operation.",
   "protocol": {
@@ -42,7 +42,7 @@
       "templateIds": "Dual template ids (24 hex) that belong to the programme",
       "projectionFields": "public custom fields the host may project to the face, subset of [recordId,title,serialNumber,model,manufacturer,state]",
       "canonicalRegistration": "{stateField:\"state\", lifecycleTargetField:\"lifecycle.target_state\", settledStates:[\"Registered\",\"Authenticity verified\",\"In service\",\"Transferred\"], unconfirmedStates:[\"Transfer pending\"], endedStates:[\"Recalled\",\"Stolen\",\"Retired\"]}",
-      "settle": "{action, inputTemplate, fromStates, targetStates}; inputTemplate mirrors the EXACT nested input shape; each leaf is one of {literal:<value>} | {enum:[...]} (values from targetStates) | {unchanged:true} (must equal the fresh host-read object value) | {runtimeIssued:<anchored regex>} (per-event commitment ids/hashes/timestamps; format-checked and hash-bound through the server-read proposal). Any key not in the template, or a leaf failing its rule, is refused. Studio exports productFaceSettleInputTemplate(); the harness writes it into PRODUCT_FACE_APPLICATIONS."
+      "settle": "CANONICAL SHAPE {action:\"update\", inputPath:\"data.custom\", leaves:{\"<dotted path under inputPath>\": leafRule}, fromStates, targetStates}. leafRule = {literal:v} | {enum:[...]} | {unchanged:true} | {runtimeIssued:<formatName>}. Every key of the proposal input under inputPath must be a listed leaf and every listed leaf must be present; because api-v3 Update documents only top-level merge (\"Anything you leave out stays as it is\") and does not state whether data.custom merges or replaces, the proposal carries the COMPLETE custom map and the host refuses unless every key of the fresh object custom is a listed leaf (no key can be dropped under replace semantics). Open canonical question for api-v3 owners: merge vs replace of nested data.custom."
     },
     "readyIdentity": "dual.face.ready.application must be {id, version, publisher, programme, artifact, contract:'dual-product-face-v1'} and EVERY value must equal the binding exactly (version exact, not just major); mismatch closes the channel"
   },
@@ -429,12 +429,68 @@
     "host": "wallet BFF independently verifies at context resolution, server-side, no credentials, size cap + timeout: GET <origin><path>manifest.json and index.html; recompute artifactHash from manifest.files; require == binding.artifactHash, index.html sha256 == manifest.files[index.html], SRI values == manifest; mismatch => artifact_mismatch and NO frame is rendered",
     "assertion": "every assertion carries claim artifact == binding.artifactHash; runtime refuses unless == the hash of the artifact it actually serves",
     "readyEcho": "the ready message artifact field is checked too but is NOT relied on as verification",
-    "residual": "the iframe navigation document is fetched by the browser independently of the BFF check (no SRI for documents); trust rests on the first-party reviewed immutable deployment at the content-addressed path"
+    "residual": "the iframe navigation document is fetched by the browser independently of the BFF check (no SRI for documents); trust rests on the first-party reviewed immutable deployment at the content-addressed path",
+    "hashAlgorithm": "artifactHash = \"sha256:\" + hex(sha256( concat over manifest.files names sorted by UTF-16 code unit order of `${name}\\t${files[name]}\\n` )) where files[name] = \"sha256:<hex of file bytes>\"; manifest.json itself is not in files"
   },
   "trustedRuntimeReads": {
     "purpose": "facts shown in HOST confirmations must come from the bound runtime, not the face",
     "path": "wallet BFF -> POST <binding.origin>/api/product-face/v1/operations server-to-server with a host-minted assertion; fixed endpoint; operations allowlist ONLY [registration.settle.propose, case.read]; response size cap 64 KiB; timeout; never a generic proxy; results feed host UI only",
     "settle": "programme.product.settle.request payload from the face is ONLY {context_id, operation_id, settle_operation_id}; the host obtains the proposal itself via registration.settle.propose (proposal_id, original operation_id, object_id, action, input, proposal_hash, expires_at), verifies object/op binding, deep-validates input against binding.settle.inputTemplate, shows the exact decoded changes, executes exactly that proposal as the holder; runtime settle.verify requires the persisted approved proposal_id for that unit+operation and the executed payload == proposal",
     "quote": "before case.quote.approve/decline the host reads case.read itself and shows the authoritative quote_version, provider, amount (decimal string) and currency; the write assertion target binds {case_id, quote_version, amount, currency}; runtime refuses with quote_changed if any differ (host must re-read and re-confirm); NO payment is captured or executed"
-  }
+  },
+  "runtimeIssuedFormats": {
+    "sha256_hex": "^[0-9a-f]{64}$",
+    "sha256_prefixed": "^sha256:[0-9a-f]{64}$",
+    "token": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+    "iso_time": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$ and Date.parse is finite",
+    "public_fields": "array of <= 32 strings, each 1..200 chars, no control characters, no < or >",
+    "rule": "unknown format name => refuse"
+  },
+  "errorCodes": {
+    "bridge": [
+      "invalid_request",
+      "capability_denied",
+      "rate_limited",
+      "temporarily_unavailable",
+      "response_too_large",
+      "bridge_closed",
+      "action_in_progress",
+      "user_cancelled"
+    ],
+    "programme": [
+      "no_selection",
+      "stale_context",
+      "not_owned",
+      "not_in_programme",
+      "record_mismatch",
+      "session_ended",
+      "unknown_operation",
+      "operation_conflict",
+      "operation_already_submitted",
+      "already_registered_to_you",
+      "ownership_moved_state_pending",
+      "settle_not_required",
+      "settle_not_submitted",
+      "proposal_rejected",
+      "settle_proposal_unavailable",
+      "quote_unavailable",
+      "quote_changed",
+      "outcome_unknown"
+    ],
+    "host": [
+      "artifact_mismatch",
+      "artifact_unavailable",
+      "assertion_limit",
+      "face_assertion_unprovisioned"
+    ],
+    "runtime": [
+      "face_wallet_assertion_unprovisioned",
+      "face_artifact_integrity_failed",
+      "zendesk_unprovisioned",
+      "zendesk_ticket_from_mapping_only"
+    ],
+    "rule": "error.message is display text only; decisions use code"
+  },
+  "bridgePing": "card/detail keep v1 result {protocol, version}; application variant returns {pong:true}",
+  "cspDecision": "wallet frame-src keeps the pre-existing \"self https:\" for v1 URL faces and appends exact registry origins (loopback http only outside production); narrowing https: is a separate v1 decision"
 }
