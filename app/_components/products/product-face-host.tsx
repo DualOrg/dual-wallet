@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, LoaderCircle, ShieldCheck } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -29,26 +29,58 @@ const knownErrors = [
   "session_expired",
 ] as const;
 
+/**
+ * One slim row: Back, the programme name and a disclosure for the publisher.
+ * On wide screens the publisher line is always shown and the disclosure
+ * button is hidden (CSS); on phones it opens below the row, so the frame gets
+ * the remaining height.
+ */
 function IdentityBar({
   application,
 }: {
   application?: ProductFaceApplication;
 }) {
   const t = useTranslations("products");
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const aboutId = useId();
   return (
     <header className="product-face-identity" aria-label={t("identityLabel")}>
       <Link href="/products" className="product-face-back">
         <ArrowLeft size={18} aria-hidden />
-        <span>{t("back")}</span>
+        <span className="product-face-back-label">{t("back")}</span>
+        <span className="product-face-back-short" aria-hidden>
+          {t("backShort")}
+        </span>
       </Link>
       {application ? (
-        <div className="product-face-identity-copy">
-          <h1>{application.programme.name}</h1>
-          <p>
+        <>
+          <h1 className="product-face-title" title={application.programme.name}>
+            {application.programme.name}
+          </h1>
+          <button
+            type="button"
+            className="product-face-about"
+            aria-expanded={aboutOpen}
+            aria-controls={aboutId}
+            onClick={() => setAboutOpen((open) => !open)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setAboutOpen(false);
+            }}
+          >
+            <ShieldCheck size={18} aria-hidden />
+            <span className="sr-only">
+              {t("about", { programme: application.programme.name })}
+            </span>
+          </button>
+          <p
+            id={aboutId}
+            className="product-face-publisher"
+            data-open={aboutOpen ? "true" : "false"}
+          >
             <ShieldCheck size={14} aria-hidden />
             <span>{t("publisher", { publisher: application.publisher })}</span>
           </p>
-        </div>
+        </>
       ) : null}
     </header>
   );

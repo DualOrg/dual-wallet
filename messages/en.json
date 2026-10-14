@@ -438,6 +438,8 @@
     "publisher": "Published by {publisher}",
     "open": "Open {programme}",
     "back": "Back to products",
+    "backShort": "Back",
+    "about": "About {programme}",
     "identityLabel": "Product application",
     "reviewed": "Reviewed application",
     "frameTitle": "{programme} product application",

@@ -710,10 +710,13 @@ button {
   flex-direction: column;
 }
 .product-face-identity {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-areas:
+    "back title"
+    "back publisher";
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px 18px;
+  column-gap: 18px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   padding: 10px clamp(16px, 3vw, 28px);
@@ -722,6 +725,7 @@ button {
   display: inline-flex;
   min-height: 44px;
   align-items: center;
+  grid-area: back;
   gap: 8px;
   border-radius: 12px;
   color: var(--ink);
@@ -735,23 +739,45 @@ button {
   outline: 3px solid var(--brand-strong);
   outline-offset: 1px;
 }
-.product-face-identity-copy {
-  min-width: 0;
+.product-face-back-short {
+  display: none;
 }
-.product-face-identity-copy h1 {
+.product-face-title {
+  min-width: 0;
+  align-self: end;
+  grid-area: title;
   margin: 0;
   color: var(--ink);
   font-size: 1.05rem;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
-.product-face-identity-copy p {
+/* The publisher disclosure is a phone control; wide screens show the line. */
+.product-face-about {
+  display: none;
+}
+.product-face-publisher {
   display: flex;
+  min-width: 0;
   align-items: center;
+  align-self: start;
+  grid-area: publisher;
   gap: 6px;
   margin: 0;
   color: var(--muted);
   font-size: 0.82rem;
+}
+.product-face-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding: 10px clamp(16px, 3vw, 28px);
+}
+.product-face-notice > :first-child {
+  min-width: 0;
+  flex: 1 1 240px;
 }
 .product-face-stage {
   position: relative;
@@ -1849,6 +1875,67 @@ button {
   }
   .content.content-full {
     padding: 0;
+  }
+  /* One slim row (Back, programme, publisher disclosure) so the frame keeps
+     the remaining height below the wallet bar. */
+  .product-face-identity {
+    grid-template-areas:
+      "back title about"
+      "publisher publisher publisher";
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: 4px;
+    padding: 4px 8px;
+  }
+  .product-face-back {
+    gap: 4px;
+    padding: 0 8px;
+  }
+  .product-face-back-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  .product-face-back-short {
+    display: inline;
+  }
+  .product-face-title {
+    overflow: hidden;
+    align-self: center;
+    font-size: 1rem;
+    overflow-wrap: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .product-face-about {
+    display: inline-flex;
+    width: 44px;
+    height: 44px;
+    align-items: center;
+    justify-content: center;
+    grid-area: about;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--brand-strong);
+    cursor: pointer;
+  }
+  .product-face-about:hover,
+  .product-face-about[aria-expanded="true"] {
+    background: var(--brand-soft);
+  }
+  .product-face-about:focus-visible {
+    outline: 3px solid var(--brand-strong);
+    outline-offset: 1px;
+  }
+  .product-face-publisher {
+    display: none;
+    padding: 2px 8px 8px;
+  }
+  .product-face-publisher[data-open="true"] {
+    display: flex;
   }
   .product-face-frame {
     min-height: 420px;

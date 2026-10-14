@@ -256,7 +256,12 @@ fetch, proxy, token or execute operation.
   `ProductFaceHost`; the empty `[[...task]]` page only validates the task path.
   The host lives in the layout so task changes keep the same frame.
 - The identity bar names the programme and publisher from the registry, never
-  from the face, with Back to `/products`.
+  from the face, with Back to `/products`. At phone widths (760 px and below)
+  it is one slim row: Back, the programme name (ellipsized, full name in its
+  title) and a publisher disclosure button (`aria-expanded`, Escape closes);
+  the frame takes the rest of the viewport. At 390×844 the frame starts 53 px
+  below the 68 px wallet bar (114.5 px before) and runs to the bottom edge;
+  there is no horizontal overflow at 320 or 390 px.
 - The frame is `sandbox="allow-scripts allow-same-origin allow-forms"`,
   `allow=""`, `referrerPolicy="no-referrer"`: no popups, downloads, top
   navigation or device permissions.

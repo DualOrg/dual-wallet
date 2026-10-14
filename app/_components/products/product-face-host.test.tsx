@@ -90,6 +90,33 @@ describe("ProductFaceHost", () => {
     ).toBe("/products");
   });
 
+  it("keeps the identity in one row with the publisher behind a disclosure", async () => {
+    loadProductFaceContext.mockResolvedValue({ application, frameUrl });
+    renderHost();
+    await screen.findByTitle("Morrow Home Arc product application");
+    const about = screen.getByRole("button", { name: "About Morrow Home Arc" });
+    const publisher = screen.getByText(
+      "Published by morrow-home",
+    ).parentElement!;
+    expect(about.getAttribute("aria-controls")).toBe(publisher.id);
+    expect(about.getAttribute("aria-expanded")).toBe("false");
+    expect(publisher.getAttribute("data-open")).toBe("false");
+    act(() => about.click());
+    expect(about.getAttribute("aria-expanded")).toBe("true");
+    expect(publisher.getAttribute("data-open")).toBe("true");
+    act(() => {
+      about.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    expect(about.getAttribute("aria-expanded")).toBe("false");
+    // The programme stays the page heading; Back keeps its full name.
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Morrow Home Arc" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Back to products" })).toBeTruthy();
+  });
+
   it("renders no frame when the artifact does not verify", async () => {
     loadProductFaceContext.mockRejectedValue(
       new ProductFaceError("artifact_mismatch", 409),

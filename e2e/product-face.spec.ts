@@ -284,6 +284,96 @@ test("a task link survives sign-in and Back/Forward between two products", async
   );
 });
 
+test("on a phone the host is one slim row and the frame takes the remaining height", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page, "/products/morrow-home/products");
+  await expect(page).toHaveURL("/products/morrow-home/products");
+  const list = face(page).locator(".pf-products");
+  await expect(list.getByText("MH-ARC-0101")).toBeVisible();
+
+  const identity = page.locator(".product-face-identity");
+  const frame = page.locator("iframe.product-face-frame");
+  const measure = async () => {
+    const chrome = (await page.locator(".mobile-topbar").boundingBox())!;
+    const row = (await identity.boundingBox())!;
+    const box = (await frame.boundingBox())!;
+    const viewport = page.viewportSize()!;
+    return {
+      chromeBottom: chrome.y + chrome.height,
+      rowHeight: row.height,
+      frameTop: box.y,
+      belowChrome: box.y - (chrome.y + chrome.height),
+      frameBottomGap: viewport.height - (box.y + box.height),
+      overflowX: await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      ),
+    };
+  };
+
+  const phone = await measure();
+  test.info().annotations.push({
+    type: "measured 390x844",
+    description: JSON.stringify(phone),
+  });
+  // The frame starts within the first ~120px below the wallet bar (one slim
+  // identity row) and runs to the bottom of the viewport.
+  expect(phone.belowChrome).toBeLessThanOrEqual(120);
+  expect(phone.rowHeight).toBeLessThanOrEqual(60);
+  expect(Math.abs(phone.frameBottomGap)).toBeLessThanOrEqual(1);
+  expect(phone.overflowX).toBe(0);
+
+  // The application identity stays visible; the publisher is one tap away.
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Morrow Home Arc Care" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Back to products" }),
+  ).toBeVisible();
+  const publisher = page.getByText("Published by dual-studio");
+  const about = page.getByRole("button", {
+    name: "About Morrow Home Arc Care",
+  });
+  await expect(publisher).toBeHidden();
+  await about.click();
+  await expect(about).toHaveAttribute("aria-expanded", "true");
+  await expect(publisher).toBeVisible();
+  await about.press("Escape");
+  await expect(publisher).toBeHidden();
+
+  await page.setViewportSize({ width: 320, height: 640 });
+  const narrow = await measure();
+  test.info().annotations.push({
+    type: "measured 320x640",
+    description: JSON.stringify(narrow),
+  });
+  expect(narrow.overflowX).toBe(0);
+  expect(narrow.rowHeight).toBeLessThanOrEqual(60);
+  expect(narrow.belowChrome).toBeLessThanOrEqual(120);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Morrow Home Arc Care" }),
+  ).toBeVisible();
+
+  // Deep task URLs and Back/Forward still work in the compact host.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await list
+    .locator("li", { hasText: "MH-ARC-0101" })
+    .getByRole("button", { name: "Open" })
+    .click();
+  await expect(page).toHaveURL(`/products/morrow-home/products/${OWNED_A}`);
+  await page.goBack();
+  await expect(page).toHaveURL("/products/morrow-home/products");
+  await page.goForward();
+  await expect(page).toHaveURL(`/products/morrow-home/products/${OWNED_A}`);
+  await expect(face(page).locator(".pf-facts").first()).toContainText(
+    "MH-ARC-0101",
+  );
+  expect((await measure()).overflowX).toBe(0);
+});
+
 // ---------------------------------------------------------------------------
 // Contract r8/r11 durable reservation and per-launch journals, in a real
 // browser. The fake api-v3 records every holder action; the labelled fake
