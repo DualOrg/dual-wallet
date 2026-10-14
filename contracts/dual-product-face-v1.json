@@ -1,6 +1,6 @@
 {
   "contract": "dual-product-face-v1",
-  "revision": 15,
+  "revision": 16,
   "status": "first_source_delivery",
   "summary": "Full-size, first-party reviewed product face inside the authenticated Dual wallet. Uses the existing dual.face.bridge v1 envelope, handshake and limits; adds a programme ('application') context variant and named capability modules. No second postMessage protocol, no generic fetch/proxy/token operation.",
   "protocol": {
@@ -411,13 +411,14 @@
     "G4": "Passport model content has no setup/troubleshooting/manual fields; supplied as versioned face content",
     "G5": "no backend face-application registry; wallet uses a deployment-configured server-only registry",
     "G6": "RESOLVED IN SCOPE (implementation in progress): holder settle via programme.product.settle.request + registration.settle.propose/verify; requires the exact reviewed Dual action mapping of the brand-proposed verify_authenticity.",
-    "G6b": "Auto-proposal requires contract.settleOriginationAuthority (explicit signed release-bound settle policy); transfer-only grants fall back to the brand-operator proposal."
+    "G6b": "Auto-proposal requires contract.settleOriginationAuthority (explicit signed release-bound settle policy); transfer-only grants fall back to the brand-operator proposal.",
+    "G9": "transition serving (TIG_PRODUCT_FACE_TRANSITION_ARTIFACTS) not implemented: upgrades that need it are refused by publication"
   },
   "runtimeOperations": {
     "registration.submit": "write; issued only via programme.registration.authorize",
     "registration.status": "read-only reconcile",
     "products.private.read": "read; private Passport facts/documents for an owned product",
-    "cases.list": "read; the holder own cases for the selected product",
+    "cases.list": "read (linked Warranty runtime)",
     "case.read": "read",
     "case.open": "write; existing open_claim",
     "case.evidence.submit": "write; existing submit_evidence (references)",
@@ -532,7 +533,10 @@
     "authorisation": "the Warranty runtime verifies the wallet assertion (keys/issuers as G1, aud == itself, linked Passport programme/artifact allowlisted), then resource: the linked Passport facts of the case name the unit, a FRESH Dual read of that unit object owner == assertion holder, and the Passport canonical state agrees; case.open additionally requires the unit be eligible under the existing connected-products eligibility; every operation re-checks; no role session is manufactured — the runtime acts through the existing Claims customer path with the verified holder as the case customer subject reference (hash)",
     "quotes": "approve/decline bind {case_id, quote_version, amount, currency}; quote_changed refuses; no payment",
     "provisioning": "the Warranty runtime needs the same TIG_PRODUCT_FACE_WALLET_ASSERTION_KEYS/ISSUERS plus an allowlist of linked Passport face applications; fail closed until provisioned",
-    "operations": "linked operations are cases.list and every case.* operation (cases live in the Warranty runtime); products.private.read and registration.* stay on the Passport runtime"
+    "operations": "linked operations are cases.list and every case.* operation (cases live in the Warranty runtime); products.private.read and registration.* stay on the Passport runtime",
+    "runtimeConfig": "Passport face runtime env TIG_PRODUCT_FACE_LINKED_WARRANTY / TIG_PRODUCT_FACE_LINKED_CASES name the linked Warranty runtime {applicationId, origin}; the wallet binding keeps linkedRuntimes [{purpose:\"claims-warranty\", applicationId, origin, instanceId}] as the host-side audience source; both must name the same runtime",
+    "relay": "the Passport runtime pre-checks a relayed case.* request without consuming the assertion (consume:false) and relays it unchanged; only the Warranty runtime consumes the jti",
+    "subject": "the case customer subject reference is derived as wallet-holder:<ownerRefHash> of the verified holder; Studio activate_warranty records customerBinding \"wallet_holder\" for cases opened this way"
   },
   "handoverEvidenceTrustBoundary": "The owner-link grant (purchase/handover link) is a legacy BEARER owner credential until it is exchanged: whoever holds the link before exchange can start the first-owner handoff to their own wallet. Mitigations kept: single exchange (one-use, atomic), short grant TTL, record-scoped recordIds, the narrow reviewed owner permittedActionIds (no widening by the face path; grants carrying broader actions are refused), exchange only server-side into opaque evidence (r9), evidence bound to the first verified holder, and registration only to the verified holder wallet. Brands must deliver the link only through the purchase/handover channel; residual risk is link interception before first use.",
   "settleOriginationAuthority": {
@@ -553,20 +557,62 @@
     "step5_redeem": "the face POSTs the ticket to /api/product-face/v1/handover/redeem (same-origin); the runtime atomically consumes it once and answers exactly what /evidence answers (opaque evidence handle + units). Registration then continues unchanged (host confirmation, assertion, readback, G6 settle).",
     "security": "no grant, evidence handle, role session or CSRF ever reaches the wallet; the ticket is a one-time face-runtime capability with no authority until an assertion-verified registration binds the evidence to a holder; replay, expiry, wrong slug/application/origin all refuse with zero writes; legacy #access links on the legacy portal path are unaffected",
     "ownership": "Studio worker: runtime handover page + /handover + /handover/redeem + ticket store, face client consumption of context.handover, issue_owner_link face-enabled form. Brand/host lane: wallet /products/<slug>/handover route, BFF handover cookie + context field + login return, registry binding field handover:{enabled}, Studio publication of the wallet host entry (walletOrigin+slug) as the runtime configuration and in the binding proposal.",
-    "walletEntryConfig": "runtime env TIG_PRODUCT_FACE_WALLET_ENTRY = canonical JSON {\"slug\":\"<wallet slug>\",\"walletOrigin\":\"<exact https origin; loopback http only outside production>\"}; walletOrigin MUST be one of TIG_PRODUCT_FACE_WALLET_ORIGINS; the runtime derives <walletOrigin>/products/<slug>/handover itself; anything else (missing, malformed, extra keys, non-allowlisted origin) fails closed without consuming the grant. Test fixtures that need a full URL derive it the same way."
+    "walletEntryConfig": "runtime env TIG_PRODUCT_FACE_WALLET_ENTRY = canonical JSON {\"slug\":\"<wallet slug>\",\"walletOrigin\":\"<exact https origin; loopback http only outside production>\"}; walletOrigin MUST be one of TIG_PRODUCT_FACE_WALLET_ORIGINS; the runtime derives <walletOrigin>/products/<slug>/handover itself; anything else (missing, malformed, extra keys, non-allowlisted origin) fails closed without consuming the grant. Test fixtures that need a full URL derive it the same way.",
+    "answers": "POST /handover answers exactly {walletEntryUrl, ticket}; POST /handover/redeem takes exactly {ticket}; ticket lifetime = min(10 min, evidence expiry)",
+    "errors": [
+      "403 face_handover_same_origin_required",
+      "400 face_request_field_not_accepted",
+      "503 face_wallet_entry_unprovisioned",
+      "404 face_handover_ticket_unknown",
+      "409 face_handover_ticket_used",
+      "410 face_handover_ticket_expired",
+      "409 face_handover_ticket_binding_mismatch (ticket stays unused)",
+      "409 face_handover_ticket_invalid"
+    ],
+    "studioIssue": "issue_owner_link faceEntry:true issues <faceOrigin>/face/handover/<applicationId>#access=..[&settle=..] only when the productFaceEntry resolver answers {published:true, approved:true, applicationId, faceOrigin == release runtime origin, walletOrigins, walletEntry{slug, walletOrigin}}; else 409 passport_owner_link_face_entry_unavailable with reason (face_publication_unavailable | face_not_published | face_not_approved | face_publication_invalid | face_origin_not_this_runtime | wallet_entry_not_configured | wallet_entry_invalid | wallet_entry_not_a_wallet_origin) or 503 face_publication_unreadable; nothing issued on refusal; link.faceEntry {applicationId, walletOrigin, slug}",
+    "walletBinding": "the wallet binds a stored handover ticket server-side to the authenticated account/session at the first successful session-establishment boundary (every supported auth method) and hands it only to that same account/session; any other account gets nothing and the cookie is cleared (no reliance on client deletion)"
   },
   "revisionRule": "src/product-face-contract.mjs PRODUCT_FACE_CONTRACT_REVISION, every emitted manifest contractRevision and both repo copies of this file must equal this revision; a newer artifact may only be pinned by a host whose contract copy is at least that revision",
   "publication": {
-    "record": "{applicationId, version, artifactHash, contractRevision, brandContentHash, approvedBy (authenticated programme owner id), approvedAt, draftHash}; approval binds the authenticated programme owner AND the exact draft content hash; any edit after approval needs re-approval",
+    "record": "{applicationId, version, artifactHash, contractRevision, brandContentHash, draftHash, approvedBy (Studio actor reference of the AUTHENTICATED workspace owner), authority:\"workspace_owner\", approvedAt}; a caller-supplied approvedBy is refused",
     "authority": "brand edit/preview/review/publish/upgrade/rollback run only through existing authenticated Studio operator paths (workspace owner/role checks as for other Studio catalog operations); no new grants; publication output is a REVIEWED DEPLOYMENT PROPOSAL (exact PRODUCT_FACE_APPLICATIONS entry + runtime env values) applied by existing authorities outside Studio",
     "upgrade": "compatible only when the contract major and revision floor are kept, the capability set is not widened, semantic states are kept and every taskPath route is kept; declared redirects or transition serving count ONLY when the runtime/face actually implement them — until then the upgrade is refused (fail closed) and never advertised as compatible",
     "transition": "TIG_PRODUCT_FACE_TRANSITION_ARTIFACTS lists at most 2 earlier pinned artifacts the runtime keeps serving until their in-flight operations settle; until the runtime implements it, upgrades that need it are refused",
-    "rollback": "re-point to a prior immutable version whose stored bytes still verify (never re-emitted); new binding proposal; audited; in-flight operations keep their original correlation",
-    "binding": "the binding proposal replaces exactly this slug's entry (path + artifactHash switch atomically)"
+    "rollback": "a CUTOVER without transition serving: re-point to a prior immutable version whose stored bytes still verify (never re-emitted); operations started under the replaced version are refused with zero writes and recover read-only; new binding proposal; audited",
+    "binding": "the binding proposal replaces exactly this slug's entry (path + artifactHash switch atomically)",
+    "runtimeSupport": "PRODUCT_FACE_PUBLICATION_RUNTIME_SUPPORT {transitionServing:false, declaredRedirects:false} until implemented: any upgrade that switches the artifact is refused (transition_serving_unsupported) and any relying on redirects is refused (declared_redirects_unsupported); never advertised compatible"
   },
   "portability": {
     "goal": "minimal second host proves the SAME pinned artifact and host capability contract work outside the Dual wallet without copied customer screens",
     "shape": "a small reference host (kit) on a different origin that frames the identical content-addressed artifact, implements the dual.face.bridge v1 host side for the application variant with the same capability names/payloads/errors, the same artifact verification, and delegates authority to its own server-authorised BFF (fake/local for tests); conformance tests run the same face against it",
-    "limits": "no React/customer screens copied; no wallet credentials; capabilities the second host cannot authorise are simply not granted (face handles missing capabilities)"
+    "limits": "no React/customer screens copied; no wallet credentials; capabilities the second host cannot authorise are simply not granted (face handles missing capabilities)",
+    "walletOrigins": "the artifact's walletOrigins must list the second host's exact origin (the face accepts bootstrap only from listed origins); the kit grants only capabilities its own BFF can authorise"
+  },
+  "protectedTransfer": {
+    "revision": 16,
+    "rule": "the current verified holder transfers to a recipient who is NEVER a typed or client-supplied wallet address; the recipient is bound only by their own wallet assertion when they accept a one-time offer; ownership moves only through the reviewed holder-signed Dual transfer executed by the HOLDER's wallet through the host native executor under the r8-r13 reservation/dispatch-claim rules, plus exact readback and canonical agreement; private documents, cases and history of the previous holder are never visible to the new holder, and the previous holder loses private access after readback (runtime authorises by the current verified holder)",
+    "runtimeOperations": {
+      "transfer.offer": "write (runtime store only): the holder creates a one-time offer for an owned, canonical-agreeing unit; answers an opaque offer ticket for an acceptance link",
+      "transfer.offer.read": "read: offer state for its holder",
+      "transfer.cancel": "write (runtime store only): the holder cancels before acceptance or before submission; never after a won dispatch",
+      "transfer.accept": "write (runtime store only): the recipient redeems the offer ticket once; the recipient wallet is bound from the recipient's assertion holder",
+      "transfer.read": "read: the holder or the bound recipient reads the offer/transfer progress",
+      "transfer.propose": "trusted server-to-server read by the HOLDER's host BFF: the exact reviewed holder-signed Dual transfer payload + proposal hash for the bound recipient",
+      "transfer.reserve": "write (runtime store only): one-use dispatch claim (dispatch:won only on the atomic create; replays already_claimed; never reclaimed)",
+      "transfer.verify": "validate + commit: holder-signed action log, executed payload == proposal, Dual owner == bound recipient, canonical agreement; zero runtime Dual writes",
+      "transfer.status": "read-only reconcile; unknown stays unknown"
+    },
+    "acceptanceLink": "https://<face runtime origin>/face/accept/<applicationId>#offer=<offer ticket> (fragment only); the recipient's wallet face consumes it like a handover ticket (r14 pattern) so the recipient never pastes it manually where the host entry is configured",
+    "hostOperation": "programme.product.transfer.sign {context_id, offer_id, step_operation_id}: host obtains the proposal itself via trusted transfer.propose, validates it (exact action/input template, object == selected owned unit, recipient == bound recipient from the runtime, not face-supplied), shows a NATIVE confirmation naming the unit and that ownership will move, persists the operation before execution, reserves (execute only on dispatch:won), executes as the holder through the existing executor, never issuer authority",
+    "errors": [
+      "transfer_offer_used",
+      "transfer_offer_cancelled",
+      "transfer_offer_expired",
+      "transfer_submitted",
+      "transfer_recipient_is_holder",
+      "transfer_not_owned",
+      "transfer_state_pending"
+    ],
+    "status": "runtime implemented (5fc90b9); face UI, wallet host operation, wallet acceptance entry and reviewed transfer-step recovery are in progress"
   }
 }
