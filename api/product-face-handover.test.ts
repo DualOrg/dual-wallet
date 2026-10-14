@@ -13,8 +13,19 @@ import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
 import { bindingInput, HOLDER } from "@/test/product-face-fixtures";
 
 const getWallet = jest.fn();
+// Every session-establishing SDK call answers the next account queued here.
+const sessionAccounts: string[] = [];
+const signedIn = jest.fn(async () => loginOut(sessionAccounts.shift()!));
 jest.mock("@/api/web-sdk-client", () => ({
-  getWalletsApi: () => ({ getWallet, logout: jest.fn() }),
+  getWalletsApi: () => ({
+    getWallet,
+    loginWallet: signedIn,
+    registerWallet: signedIn,
+    passkeyLoginVerify: signedIn,
+    passkeyRegisterVerify: signedIn,
+    connectEoa: signedIn,
+    logout: jest.fn(),
+  }),
   getObjectsApi: () => ({
     getObjectById: jest.fn(),
     getObjectByIdPublic: jest.fn(),
@@ -27,6 +38,13 @@ jest.mock("@/api/face-artifact", () => ({
 
 import { FACE_HANDOVER_COOKIE } from "@/api/face-handover";
 import { establishSession } from "@/api/server-session";
+import { ResponseError } from "@/api/web-sdk/runtime";
+import { POST as eoaPOST } from "@/app/api/session/eoa/connect/route";
+import { POST as loginPOST } from "@/app/api/session/login/route";
+import { POST as passkeyLoginPOST } from "@/app/api/session/passkey/login/verify/route";
+import { POST as passkeyRegisterPOST } from "@/app/api/session/passkey/register/verify/route";
+import { POST as registerPOST } from "@/app/api/session/register/route";
+import { GET as sessionGET } from "@/app/api/session/route";
 import { GET as contextGET } from "@/app/api/faces/[slug]/context/route";
 import { POST as handoverPOST } from "@/app/api/faces/[slug]/handover/route";
 import { DELETE as handoverDELETE } from "@/app/api/session/face-handover/route";
@@ -112,6 +130,37 @@ class Browser {
     };
   }
 
+  /**
+   * Establishes a session for `walletId` through one of the real
+   * session-establishing routes (email sign-in, registration, passkey sign-in,
+   * passkey registration, EOA connection). No context is read.
+   */
+  async login(walletId: string, method: SignInMethod = "email") {
+    sessionAccounts.push(walletId);
+    const { handler, body } = SIGN_IN[method];
+    const response = this.take(
+      await handler(
+        new NextRequest(`http://localhost/api/session/${method}`, {
+          method: "POST",
+          headers: {
+            host: "localhost",
+            origin: "http://localhost",
+            "content-type": "application/json",
+            cookie: Array.from(this.cookies, ([k, v]) => `${k}=${v}`).join(
+              "; ",
+            ),
+          },
+          body: JSON.stringify(body(walletId)),
+        }),
+      ),
+    );
+    getWallet.mockResolvedValue(walletDto(walletId));
+    return {
+      status: response.status,
+      cookie: (response as NextResponse).cookies.get(FACE_HANDOVER_COOKIE),
+    };
+  }
+
   handover(ticket: unknown = TICKET, slug = SLUG) {
     return this.call(handoverPOST, `/api/faces/${slug}/handover`, {
       method: "POST",
@@ -140,10 +189,68 @@ const enabled = () =>
     bindingInput({ slug: "no-handover", programmeName: "Plain" }),
   ]);
 
-beforeEach(() => {
-  process.env.PRODUCT_FACE_APPLICATIONS = enabled();
-  getWallet.mockReset().mockResolvedValue({
-    id: "wallet-1",
+type SignInMethod =
+  "email" | "register" | "passkey" | "passkey-register" | "eoa";
+const SIGN_IN: Record<
+  SignInMethod,
+  {
+    handler: (request: NextRequest) => Promise<Response>;
+    body: (walletId: string) => Record<string, unknown>;
+  }
+> = {
+  email: {
+    handler: loginPOST,
+    body: (id) => ({ email: `${id}@example.test`, password: "fictional" }),
+  },
+  register: {
+    handler: registerPOST,
+    body: (id) => ({ email: `${id}@example.test`, password: "fictional-1" }),
+  },
+  passkey: {
+    handler: passkeyLoginPOST,
+    body: () => ({
+      id: "credential-1",
+      rawId: "credential-1",
+      type: "public-key",
+      response: {
+        clientDataJSON: "client-data",
+        authenticatorData: "authenticator-data",
+        signature: "signature",
+      },
+    }),
+  },
+  "passkey-register": {
+    handler: passkeyRegisterPOST,
+    body: () => ({
+      id: "credential-2",
+      rawId: "credential-2",
+      type: "public-key",
+      response: {
+        clientDataJSON: "client-data",
+        attestationObject: "attestation",
+      },
+    }),
+  },
+  eoa: {
+    handler: eoaPOST,
+    body: () => ({ challenge: "challenge-1", signature: "0xsignature" }),
+  },
+};
+
+function loginOut(walletId: string) {
+  return {
+    wallet: walletDto(walletId),
+    accessToken: jwt({
+      org_id: DEFAULT_ORGANIZATION_ID,
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    }),
+    refreshToken: jwt({ exp: Math.floor(Date.now() / 1000) + 7200 }),
+  };
+}
+
+function walletDto(id: string) {
+  return {
+    id,
     account: {
       address: HOLDER,
       type: "SMART_WALLET",
@@ -153,7 +260,14 @@ beforeEach(() => {
     whenCreated: new Date(),
     whenModified: new Date(),
     emailVerified: true,
-  });
+  };
+}
+
+beforeEach(() => {
+  process.env.PRODUCT_FACE_APPLICATIONS = enabled();
+  sessionAccounts.length = 0;
+  signedIn.mockClear();
+  getWallet.mockReset().mockResolvedValue(walletDto("wallet-1"));
 });
 afterEach(() => {
   delete process.env.PRODUCT_FACE_APPLICATIONS;
@@ -311,4 +425,204 @@ describe("face handover entry (contract r14)", () => {
     ).toBe("");
     expect(other.cookies.has(FACE_HANDOVER_COOKIE)).toBe(false);
   });
+});
+
+// Account isolation is enforced by the server: the ticket is sealed with the
+// session that may take it, never left to the client's best-effort DELETE.
+describe("face handover account isolation (contract r14)", () => {
+  it("signed-in A stores it; B's session in the same browser, with A's client deletion lost, is denied and the cookie cleared", async () => {
+    getWallet.mockResolvedValue(walletDto("wallet-a"));
+    const browser = new Browser().signIn();
+    expect((await browser.handover()).status).toBe(200);
+    // A new session for B replaces A's session cookie (no client DELETE ever arrives).
+    browser.signIn();
+    getWallet.mockResolvedValue(walletDto("wallet-b"));
+    const asB = await browser.context("/register");
+    expect(asB.status).toBe(200);
+    expect(asB.body).not.toHaveProperty("handover");
+    expect(asB.cookie?.value).toBe("");
+    expect(browser.cookies.has(FACE_HANDOVER_COOKIE)).toBe(false);
+  });
+
+  it("the same account in another session (the same wallet, another sign-in) is denied too", async () => {
+    getWallet.mockResolvedValue(walletDto("wallet-a"));
+    const browser = new Browser().signIn();
+    await browser.handover();
+    // Another session id without passing a sign-in route: the binding is exact.
+    browser.signIn();
+    const read = await browser.context("/register");
+    expect(read.body).not.toHaveProperty("handover");
+    expect(read.cookie?.value).toBe("");
+  });
+
+  it("signing in as B through the login route clears A's ticket in that very response", async () => {
+    getWallet.mockResolvedValue(walletDto("wallet-a"));
+    const browser = new Browser().signIn();
+    await browser.handover();
+    const login = await browser.login("wallet-b");
+    expect(login.status).toBe(200);
+    expect(login.cookie?.value).toBe("");
+    expect((await browser.context("/register")).body).not.toHaveProperty(
+      "handover",
+    );
+  });
+
+  it("an anonymous ticket survives the first sign-in as A and is handed over once; a later switch to B rejects", async () => {
+    const browser = new Browser();
+    expect((await browser.handover()).status).toBe(200);
+    // The sign-in binds it to A in the login response.
+    const loggedIn = await browser.login("wallet-a");
+    expect(loggedIn.status).toBe(200);
+    expect(loggedIn.cookie?.value).toBeTruthy();
+    // Another task first: kept for the register task.
+    expect((await browser.context("/products")).body).not.toHaveProperty(
+      "handover",
+    );
+    // Then B signs in: A's (now bound) ticket is cleared.
+    const second = new Browser();
+    await second.handover();
+    await second.login("wallet-a");
+    const switched = await second.login("wallet-b");
+    expect(switched.cookie?.value).toBe("");
+    expect((await second.context("/register")).body).not.toHaveProperty(
+      "handover",
+    );
+    // A, still signed in on the first browser, takes it exactly once.
+    getWallet.mockResolvedValue(walletDto("wallet-a"));
+    const first = await browser.context("/register");
+    expect(first.body.handover).toEqual({ ticket: TICKET });
+    expect(first.cookie?.value).toBe("");
+    expect((await browser.context("/register")).body).not.toHaveProperty(
+      "handover",
+    );
+  });
+
+  it("an anonymous ticket is bound by the first authenticated context read", async () => {
+    const browser = new Browser();
+    await browser.handover();
+    // A session established outside the sign-in routes (no binding yet).
+    getWallet.mockResolvedValue(walletDto("wallet-a"));
+    browser.signIn();
+    const bound = await browser.context("/");
+    expect(bound.body).not.toHaveProperty("handover");
+    expect(bound.cookie?.value).toBeTruthy();
+    // Now it is A's session's: another session cannot take it.
+    browser.signIn();
+    const other = await browser.context("/register");
+    expect(other.body).not.toHaveProperty("handover");
+    expect(other.cookie?.value).toBe("");
+  });
+
+  it("an expired session clears it, and a session that cannot be read stores nothing", async () => {
+    getWallet.mockResolvedValue(walletDto("wallet-a"));
+    const browser = new Browser().signIn();
+    await browser.handover();
+    getWallet.mockRejectedValue(
+      new ResponseError(new Response(null, { status: 401 })),
+    );
+    const expired = await browser.context("/register");
+    expect(expired.status).toBe(401);
+    expect(expired.body).not.toHaveProperty("handover");
+    expect(expired.cookie?.value).toBe("");
+    // Signed in but the wallet cannot be read now: refused, nothing stored.
+    const unavailable = new Browser().signIn();
+    getWallet.mockRejectedValue(new Error("upstream down"));
+    const refused = await unavailable.handover();
+    expect(refused).toMatchObject({
+      status: 503,
+      body: { code: "temporarily_unavailable" },
+    });
+    expect(unavailable.cookies.has(FACE_HANDOVER_COOKIE)).toBe(false);
+  });
+
+  it("a session read that finds the session ended clears it; a visitor who never signed in keeps an anonymous ticket", async () => {
+    const read = async (browser: Browser) => {
+      const response = browser.take(
+        await sessionGET(
+          new NextRequest("http://localhost/api/session", {
+            headers: {
+              host: "localhost",
+              cookie: Array.from(browser.cookies, ([k, v]) => `${k}=${v}`).join(
+                "; ",
+              ),
+            },
+          }),
+        ),
+      );
+      return (response as NextResponse).cookies.get(FACE_HANDOVER_COOKIE);
+    };
+    const visitor = new Browser();
+    await visitor.handover();
+    expect(await read(visitor)).toBeUndefined();
+    expect(visitor.cookies.has(FACE_HANDOVER_COOKIE)).toBe(true);
+    getWallet.mockResolvedValue(walletDto("wallet-a"));
+    const signedIn = new Browser().signIn();
+    await signedIn.handover();
+    getWallet.mockRejectedValue(
+      new ResponseError(new Response(null, { status: 401 })),
+    );
+    expect((await read(signedIn))?.value).toBe("");
+    expect(signedIn.cookies.has(FACE_HANDOVER_COOKIE)).toBe(false);
+  });
+
+  // Binding happens at the session-establishment boundary itself: an
+  // anonymous ticket becomes A's in A's sign-in response, so a later sign-in
+  // as B clears it even though no context was ever read under A, and with no
+  // client DELETE at all.
+  const METHODS: SignInMethod[] = [
+    "email",
+    "register",
+    "passkey",
+    "passkey-register",
+    "eoa",
+  ];
+  it.each(METHODS)(
+    "anonymous, then A signs in by %s (no context read), then B: B is denied and the cookie cleared",
+    async (method) => {
+      const browser = new Browser();
+      expect((await browser.handover()).status).toBe(200);
+      const asA = await browser.login("wallet-a", method);
+      expect(asA.status).toBe(200);
+      // Bound to A in A's own sign-in response (a rewritten, sealed cookie).
+      expect(asA.cookie?.value).toBeTruthy();
+      expect(signedIn).toHaveBeenCalledTimes(1);
+      const asB = await browser.login("wallet-b", method);
+      expect(asB.status).toBe(200);
+      expect(asB.cookie?.value).toBe("");
+      expect(browser.cookies.has(FACE_HANDOVER_COOKIE)).toBe(false);
+      const read = await browser.context("/register");
+      expect(read.status).toBe(200);
+      expect(read.body).not.toHaveProperty("handover");
+    },
+  );
+
+  it.each(METHODS)(
+    "anonymous, then A signs in by %s, then a session for B that skipped every sign-in route: the context read refuses and clears",
+    async (method) => {
+      const browser = new Browser();
+      await browser.handover();
+      await browser.login("wallet-a", method);
+      // B's session cookie arrives without passing a sign-in route.
+      browser.signIn();
+      getWallet.mockResolvedValue(walletDto("wallet-b"));
+      const read = await browser.context("/register");
+      expect(read.body).not.toHaveProperty("handover");
+      expect(read.cookie?.value).toBe("");
+    },
+  );
+
+  it.each(METHODS)(
+    "anonymous, then A signs in by %s, then the register task: handed to A exactly once",
+    async (method) => {
+      const browser = new Browser();
+      await browser.handover();
+      await browser.login("wallet-a", method);
+      const first = await browser.context("/register");
+      expect(first.body.handover).toEqual({ ticket: TICKET });
+      expect(first.cookie?.value).toBe("");
+      expect((await browser.context("/register")).body).not.toHaveProperty(
+        "handover",
+      );
+    },
+  );
 });

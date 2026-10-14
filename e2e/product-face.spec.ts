@@ -34,6 +34,9 @@ const MOCK_API = "http://127.0.0.1:4010";
 const FIXTURE = "http://localhost:4101";
 const EMAIL = "face-e2e@example.com";
 const PASSWORD = "correct horse battery staple";
+// The mock API's second fictional account (e2e/mock-api.mjs SECOND_ACCOUNT).
+const SECOND_EMAIL = "face-e2e-b@example.com";
+const SECOND_PASSWORD = "another correct horse battery";
 const WALLET = "0x1234567890abcdef1234567890abcdef12345678";
 const UNIT_A = "6a00000000000000000000a1";
 const OWNED_A = "6a00000000000000000000c3";
@@ -813,4 +816,137 @@ test("signing out clears a pending handover", async ({ page }) => {
   await page.getByRole("button", { name: "Sign out" }).first().click();
   await expect(page).toHaveURL(/\/login$/);
   expect(await handoverCookie(page)).toBeUndefined();
+});
+
+// contract r14 account isolation, enforced by the server: a pending ticket is
+// sealed with the session that may take it, so the client's best-effort
+// account-change deletion is never what keeps it from another account.
+
+/** Stores a pending handover from the page, as the handover entry does. */
+const storeHandover = (page: Page, ticket: string) =>
+  page.evaluate(async (value) => {
+    const response = await fetch("/api/faces/morrow-home/handover", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ticket: value }),
+    });
+    return response.status;
+  }, ticket);
+
+/** Signs in as the second account through the wallet's own sign-in route. */
+const signInAsSecond = (page: Page) =>
+  page.evaluate(
+    async ([email, password]) => {
+      const response = await fetch("/api/session/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      return response.status;
+    },
+    [SECOND_EMAIL, SECOND_PASSWORD],
+  );
+
+test("an account switch never hands A's pending ticket to B, even when the client's deletion is lost", async ({
+  page,
+  context,
+}) => {
+  await signIn(page, "/inventory");
+  await expect(page).toHaveURL("/inventory");
+  // The client's account-change deletion never reaches the server.
+  await context.route("**/api/session/face-handover", (route) => route.abort());
+  expect(await storeHandover(page, "a".repeat(43))).toBe(200);
+  const boundToA = await handoverCookie(page);
+  expect(boundToA).toBeDefined();
+  // B signs in in the same browser: the sign-in response clears A's ticket.
+  expect(await signInAsSecond(page)).toBe(200);
+  expect(await handoverCookie(page)).toBeUndefined();
+  // Even if A's sealed cookie came back, B's context read refuses and clears it.
+  await context.addCookies([boundToA!]);
+  await recordInitializeContexts(page);
+  await page.goto("/products/morrow-home/register");
+  await expect(
+    face(page).getByRole("button", { name: "Check link" }),
+  ).toBeVisible();
+  expect(await handedOver(page)).toEqual([null]);
+  expect(await handoverCookie(page)).toBeUndefined();
+  expect(
+    (await stats()).handover,
+    "nothing was issued or redeemed",
+  ).toMatchObject({ redeemed: 0 });
+});
+
+test("two tabs: B signing in in one tab leaves A's pending ticket to nobody", async ({
+  page,
+  context,
+}) => {
+  await signIn(page, "/inventory");
+  await expect(page).toHaveURL("/inventory");
+  expect(await storeHandover(page, "b".repeat(43))).toBe(200);
+  // A second tab of the same browser signs in as B.
+  const other = await context.newPage();
+  await other.goto("/inventory");
+  expect(await signInAsSecond(other)).toBe(200);
+  // The first tab now opens the register task: nothing is handed over.
+  await recordInitializeContexts(page);
+  await page.goto("/products/morrow-home/register");
+  await expect(
+    face(page).getByRole("button", { name: "Check link" }),
+  ).toBeVisible();
+  expect(await handedOver(page)).toEqual([null]);
+  expect(await handoverCookie(page)).toBeUndefined();
+  await other.close();
+});
+
+test("anonymous arrival, A signs in, then B signs in before any context read: B is denied and the cookie cleared", async ({
+  page,
+  context,
+}) => {
+  // The client's account-change deletion never reaches the server.
+  await context.route("**/api/session/face-handover", (route) => route.abort());
+  const contextReads: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/faces/morrow-home/context")) {
+      contextReads.push(request.url());
+    }
+  });
+  // Signed out: the handover entry stores an anonymous ticket and sends the
+  // visitor to sign in.
+  await page.goto(HANDOVER_LINK);
+  await expect(page).toHaveURL(
+    `/login?next=${encodeURIComponent("/products/morrow-home/register")}`,
+  );
+  expect(await handoverCookie(page)).toBeDefined();
+  // A signs in, then B signs in, back to back from the page: no navigation and
+  // no context read happens in between.
+  const statuses = await page.evaluate(
+    async (accounts) => {
+      const results: number[] = [];
+      for (const [email, password] of accounts) {
+        const response = await fetch("/api/session/login", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        results.push(response.status);
+      }
+      return results;
+    },
+    [
+      [EMAIL, PASSWORD],
+      [SECOND_EMAIL, SECOND_PASSWORD],
+    ],
+  );
+  expect(statuses).toEqual([200, 200]);
+  expect(contextReads).toEqual([]);
+  // B's sign-in response cleared A's (now bound) ticket.
+  expect(await handoverCookie(page)).toBeUndefined();
+  await recordInitializeContexts(page);
+  await page.goto("/products/morrow-home/register");
+  await expect(
+    face(page).getByRole("button", { name: "Check link" }),
+  ).toBeVisible();
+  expect(await handedOver(page)).toEqual([null]);
+  expect(await handoverCookie(page)).toBeUndefined();
+  expect((await stats()).handover).toMatchObject({ issued: 1, redeemed: 0 });
 });

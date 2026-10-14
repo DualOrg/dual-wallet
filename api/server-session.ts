@@ -253,20 +253,39 @@ export function establishSession(
   authenticationMethod: AuthenticationMethod,
   persistent = false,
 ) {
+  return Boolean(
+    establishSessionState(
+      response,
+      login,
+      tenant,
+      authenticationMethod,
+      persistent,
+    ),
+  );
+}
+
+/** establishSession, answering the sealed state (or undefined when refused). */
+export function establishSessionState(
+  response: NextResponse,
+  login: LoginOut,
+  tenant: TenantContext,
+  authenticationMethod: AuthenticationMethod,
+  persistent = false,
+): SessionState | undefined {
   try {
     const payload = login.accessToken.split(".")[1];
-    if (!payload) return false;
+    if (!payload) return undefined;
     const decoded = JSON.parse(
       Buffer.from(
         payload.replace(/-/g, "+").replace(/_/g, "/"),
         "base64",
       ).toString("utf8"),
     ) as { org_id?: unknown };
-    if (decoded.org_id !== tenant.organizationId) return false;
+    if (decoded.org_id !== tenant.organizationId) return undefined;
   } catch {
-    return false;
+    return undefined;
   }
-  writeSession(response, {
+  const state: SessionState = {
     accessToken: login.accessToken,
     refreshToken: login.refreshToken,
     accessExpiresAt: jwtExpiry(login.accessToken, 4 * 60 * 1000),
@@ -275,8 +294,9 @@ export function establishSession(
     authenticationMethod,
     persistent,
     sessionId: newSessionId(),
-  });
-  return true;
+  };
+  writeSession(response, state);
+  return state;
 }
 
 export function readSession(request: NextRequest): SessionState | undefined {

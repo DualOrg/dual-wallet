@@ -8,9 +8,10 @@ jest.mock("@/api/web-sdk-client", () => ({
   getWalletsApi: () => ({ registerWallet }),
 }));
 
-const establishSession = jest.fn();
-jest.mock("@/api/server-session", () => ({
-  establishSession: (...args: unknown[]) => establishSession(...args),
+const establishWalletSession = jest.fn();
+jest.mock("@/api/session-establish", () => ({
+  establishWalletSession: (...args: unknown[]) =>
+    establishWalletSession(...args),
 }));
 
 jest.mock("@/app/_adapters/wallet", () => ({
@@ -38,7 +39,7 @@ beforeEach(() => {
     refreshToken: "refresh",
     wallet: { id: "wallet-1", emailVerified: false },
   });
-  establishSession.mockReset().mockReturnValue(true);
+  establishWalletSession.mockReset().mockReturnValue(true);
 });
 
 test("registration preserves an exact password and accepts a display name", async () => {
@@ -55,7 +56,10 @@ test("registration preserves an exact password and accepts a display name", asyn
     nickname: "Ada Viewer, Jr.",
     password,
   });
-  expect(establishSession).toHaveBeenCalledWith(
+  // The request goes along: a pending face handover is settled against the
+  // account that just registered (api/session-establish.ts).
+  expect(establishWalletSession).toHaveBeenCalledWith(
+    expect.anything(),
     expect.anything(),
     expect.anything(),
     expect.anything(),

@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { Language } from "@/api/web-sdk/models/Language";
-import { establishSession } from "@/api/server-session";
+import { establishWalletSession } from "@/api/session-establish";
 import { tenantFromRequest } from "@/api/tenant";
 import {
   apiErrorResponse,
@@ -54,7 +54,9 @@ export async function POST(request: NextRequest) {
       wallet: toViewerWallet(login.wallet),
     });
     response.headers.set("Cache-Control", "private, no-store");
-    if (!establishSession(response, login, tenant, "email", true)) {
+    if (
+      !establishWalletSession(request, response, login, tenant, "email", true)
+    ) {
       return NextResponse.json(
         { message: "The account was created outside this organization." },
         { status: 403 },

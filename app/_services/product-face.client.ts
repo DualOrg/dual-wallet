@@ -103,6 +103,15 @@ export function takeFaceHandoverTicket(launchId: string) {
   return ticket;
 }
 
+/**
+ * Forgets every launch's handover ticket still held in memory. Called when
+ * the session ends or changes account (logout, expiry, account change): a
+ * ticket handed over for one session is never kept for another.
+ */
+export function forgetFaceHandoverTickets() {
+  handoverTickets.clear();
+}
+
 export async function loadProductFaceContext(
   face: FaceLaunch,
   task: string = "/",

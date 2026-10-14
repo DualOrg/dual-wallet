@@ -3,6 +3,14 @@ import { NextResponse } from "next/server";
 import { isFaceHandoverTicket, writeFaceHandover } from "@/api/face-handover";
 import { productFaceBinding } from "@/api/product-face-registry";
 import { readJsonRecord, validRequestOrigin } from "@/api/request";
+import {
+  clearSessionCookie,
+  currentWallet,
+  readSession,
+  sessionIdHash,
+  withSessionId,
+  writeSession,
+} from "@/api/server-session";
 
 type Params = { params: Promise<{ slug: string }> };
 
@@ -24,6 +32,11 @@ const refuse = (code: string, status: number) =>
  * goes into the sealed pre-auth cookie and the answer names only where to go
  * next (the register task; the request proxy sends a signed-out visitor
  * through sign-in with the validated return path).
+ *
+ * Signed in, the ticket is sealed with this session's {walletId, sidHash}, so
+ * no other account or session can ever take it. Signed out, it is anonymous
+ * until a sign-in binds it. A session that cannot be read now refuses rather
+ * than store an unbound ticket next to it.
  */
 export async function POST(request: NextRequest, { params }: Params) {
   const { slug } = await params;
@@ -42,6 +55,26 @@ export async function POST(request: NextRequest, { params }: Params) {
     { next: `/products/${binding.slug}/register` },
     { headers: NO_STORE },
   );
-  writeFaceHandover(response, binding.slug, body.ticket);
+  if (!readSession(request)) {
+    writeFaceHandover(response, binding.slug, body.ticket, null);
+    return response;
+  }
+  const session = await currentWallet(request);
+  if (session.status === "unavailable") {
+    return refuse("temporarily_unavailable", 503);
+  }
+  if (session.status === "expired") {
+    // The session is over: this is a signed-out arrival.
+    clearSessionCookie(response);
+    writeFaceHandover(response, binding.slug, body.ticket, null);
+    return response;
+  }
+  // Keep a renewed session (and a session id given to an older cookie).
+  const state = withSessionId(session.state);
+  writeSession(response, state);
+  writeFaceHandover(response, binding.slug, body.ticket, {
+    walletId: session.wallet.id,
+    sidHash: sessionIdHash(state)!,
+  });
   return response;
 }

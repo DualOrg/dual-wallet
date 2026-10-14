@@ -7,7 +7,7 @@ import {
   readJsonRecord,
   tenantRequired,
 } from "@/api/request";
-import { establishSession } from "@/api/server-session";
+import { establishWalletSession } from "@/api/session-establish";
 import { tenantFromRequest } from "@/api/tenant";
 import { Language } from "@/api/web-sdk/models/Language";
 import { getWalletsApi } from "@/api/web-sdk-client";
@@ -37,7 +37,9 @@ export async function POST(request: NextRequest) {
       wallet: toViewerWallet(login.wallet),
     });
     response.headers.set("Cache-Control", "private, no-store");
-    if (!establishSession(response, login, tenant, "passkey", true)) {
+    if (
+      !establishWalletSession(request, response, login, tenant, "passkey", true)
+    ) {
       return NextResponse.json(
         { message: "The passkey was created outside this organization." },
         { status: 403 },

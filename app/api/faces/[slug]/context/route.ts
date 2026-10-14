@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import {
-  clearFaceHandover,
+  applyFaceHandoverRead,
   FACE_HANDOVER_TASK,
   readFaceHandover,
 } from "@/api/face-handover";
@@ -34,14 +34,19 @@ export async function GET(request: NextRequest, { params }: Params) {
   // contract r14: on the register task the context read takes a pending
   // face handover for this programme exactly once (the cookie is cleared in
   // this response); the host hands it to the face in its initialize context.
+  // Only this session's own (or a still anonymous) ticket is ever handed
+  // over; another account's is cleared here and nothing is handed over.
   const task = request.nextUrl.searchParams.get("task");
   const onRegisterTask =
     isTaskPath(task) &&
     task === FACE_HANDOVER_TASK &&
     context.binding.handover.enabled;
-  const handover = onRegisterTask
-    ? readFaceHandover(request, context.binding.slug)
-    : { clear: false };
+  const handover = readFaceHandover(
+    request,
+    context.binding.slug,
+    context.owner,
+    { consume: onRegisterTask },
+  );
   const response = faceResponse(
     context,
     {
@@ -53,6 +58,6 @@ export async function GET(request: NextRequest, { params }: Params) {
       journal: withSelection(context.journal, { slug, cleared: true }),
     },
   );
-  if (handover.clear) clearFaceHandover(response);
+  applyFaceHandoverRead(response, handover);
   return response;
 }

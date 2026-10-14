@@ -50,13 +50,16 @@ function renderSession(
 }
 
 const clearFaceHandover = jest.fn(async () => undefined);
+const forgetFaceHandoverTickets = jest.fn();
 jest.mock("@/app/_services/product-face.client", () => ({
   clearFaceHandover: () => clearFaceHandover(),
+  forgetFaceHandoverTickets: () => forgetFaceHandoverTickets(),
 }));
 
 beforeEach(() => {
   loadSession.mockReset();
   clearFaceHandover.mockClear();
+  forgetFaceHandoverTickets.mockClear();
 });
 
 test("replacing an authenticated wallet removes the previous account's cache", async () => {
@@ -126,6 +129,8 @@ test("an account change tells authenticated faces before its cache goes", async 
     </QueryClientProvider>,
   );
   await waitFor(() => expect(onEnd).toHaveBeenCalledWith("account_changed"));
+  // contract r14: launch-local handover tickets are forgotten too.
+  expect(forgetFaceHandoverTickets).toHaveBeenCalled();
 });
 
 test("logout tells authenticated faces first, then revokes the session", async () => {
@@ -151,6 +156,7 @@ test("logout tells authenticated faces first, then revokes the session", async (
   await waitFor(() => expect(value).toBeDefined());
   await value!.logout();
   expect(order).toEqual(["end:logout", "revoke"]);
+  expect(forgetFaceHandoverTickets).toHaveBeenCalled();
 });
 
 test("an expired session tells authenticated faces it ended", async () => {
@@ -170,5 +176,6 @@ test("an expired session tells authenticated faces it ended", async () => {
   // A terminal 401 makes the session query resolve to null.
   act(() => client.setQueryData(sessionQueryKey, null));
   await waitFor(() => expect(onEnd).toHaveBeenCalledWith("expired"));
+  expect(forgetFaceHandoverTickets).toHaveBeenCalled();
   expect(onEnd).toHaveBeenCalledTimes(1);
 });

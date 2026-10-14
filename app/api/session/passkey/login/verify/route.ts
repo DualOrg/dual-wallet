@@ -8,7 +8,7 @@ import {
   readJsonRecord,
   tenantRequired,
 } from "@/api/request";
-import { establishSession } from "@/api/server-session";
+import { establishWalletSession } from "@/api/session-establish";
 import { tenantFromRequest } from "@/api/tenant";
 import { getWalletsApi } from "@/api/web-sdk-client";
 import { toViewerWallet } from "@/app/_adapters/wallet";
@@ -37,7 +37,16 @@ export async function POST(request: NextRequest) {
       wallet: toViewerWallet(login.wallet),
     });
     response.headers.set("Cache-Control", "private, no-store");
-    if (!establishSession(response, login, tenant, "passkey", remember)) {
+    if (
+      !establishWalletSession(
+        request,
+        response,
+        login,
+        tenant,
+        "passkey",
+        remember,
+      )
+    ) {
       return NextResponse.json(
         { message: "This passkey belongs to another organization." },
         { status: 403 },

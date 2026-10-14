@@ -573,8 +573,9 @@ never carries the fragment along). Its client reads the fragment and strips
 it with `history.replaceState` before anything else, then posts the ticket to
 `POST /api/faces/[slug]/handover`. Only a registry slug whose binding has
 `handover: {enabled: true}` stores anything: the ticket goes into one sealed
-(purpose bound to the slug), HttpOnly, host-only, `SameSite=Strict` cookie,
-`Secure` in production, that lives ten minutes. Then the page replaces itself
+(AES-256-GCM, purpose-bound, the slug inside), HttpOnly, host-only,
+`SameSite=Strict` cookie, `Secure` in production, that lives ten minutes.
+Then the page replaces itself
 with `/products/<slug>/register`, which a signed-out visitor reaches through
 sign-in with the validated `next=`. On the register task the context read
 (`?task=/register`) takes the ticket and clears the cookie in the same
@@ -582,8 +583,27 @@ response; the client keeps it in memory for that launch only (not in the
 query cache, a URL or storage) and the host puts `handover: {ticket}` into the
 application-variant initialize context exactly once, on the register task
 only. Another task, another slug, a reload or a replayed read hands nothing
-over. Logout clears the cookie, and an account change clears it through
-`DELETE /api/session/face-handover`. An unknown slug, a binding without
+over.
+
+Account isolation is enforced on the server, never by the client:
+
+- A ticket stored while signed in is sealed with that session's
+  `{walletId, sidHash}`. One stored signed out is anonymous.
+- Establishing a session (sign-in, registration, passkey, EOA;
+  `api/session-establish.ts`) binds an anonymous ticket to the account that
+  signed in, moves one of the same wallet to the new session, and clears one
+  bound to another account in that same response.
+- The context read hands a ticket over only when its binding equals the
+  current session's `walletId` and `sidHash` (or it is still anonymous, then
+  bound by that first authenticated read). Any other account's or session's
+  ticket is cleared and nothing is handed over.
+- A signed-in handover whose session cannot be read now is refused rather
+  than stored unbound.
+- Logout and session expiry clear the cookie. The client also forgets
+  launch-local tickets on every session end, and on an account change asks
+  `DELETE /api/session/face-handover`, but nothing depends on that request.
+
+An unknown slug, a binding without
 handover or a malformed ticket shows an error and stores nothing. The ticket
 itself is a one-time capability at the face runtime (`/handover/redeem`);
 the wallet's cookie clearing is not a server-side single use, so two context

@@ -1,6 +1,11 @@
 import { getEbusApi } from "@/api/web-sdk-client";
 import { signActionWithPasskey } from "@/app/_adapters/webauthn.client";
-import { executeSettleAction } from "@/app/_services/product-face.client";
+import {
+  executeSettleAction,
+  forgetFaceHandoverTickets,
+  loadProductFaceContext,
+  takeFaceHandoverTicket,
+} from "@/app/_services/product-face.client";
 
 jest.mock("@/api/web-sdk-client", () => ({
   getEbusApi: jest.fn(),
@@ -141,4 +146,47 @@ describe("holder settle execution", () => {
       expect(prepareAction).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("launch-local handover tickets (contract r14)", () => {
+  const TICKET = "k".repeat(43);
+  const contextAnswer = () =>
+    ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        application: {},
+        frameUrl: "https://faces.example/face/",
+        handover: { ticket: TICKET },
+      }),
+    }) as unknown as Response;
+
+  const originalFetch = global.fetch;
+  beforeEach(() => {
+    global.fetch = jest.fn(async () => contextAnswer()) as typeof fetch;
+  });
+  afterEach(() => {
+    forgetFaceHandoverTickets();
+    global.fetch = originalFetch;
+  });
+
+  it("are held for their launch only, taken once, and kept out of the context", async () => {
+    const context = await loadProductFaceContext(
+      { slug: "morrow-home", launchId: "launch-a" },
+      "/register",
+    );
+    expect(context).not.toHaveProperty("handover");
+    expect(takeFaceHandoverTicket("launch-b")).toBeUndefined();
+    expect(takeFaceHandoverTicket("launch-a")).toBe(TICKET);
+    expect(takeFaceHandoverTicket("launch-a")).toBeUndefined();
+  });
+
+  it("are forgotten when the session ends or changes account", async () => {
+    await loadProductFaceContext(
+      { slug: "morrow-home", launchId: "launch-c" },
+      "/register",
+    );
+    forgetFaceHandoverTickets();
+    expect(takeFaceHandoverTicket("launch-c")).toBeUndefined();
+  });
 });

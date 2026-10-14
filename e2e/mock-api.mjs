@@ -57,6 +57,16 @@ export const PROGRAMME = {
   password: "correct horse battery staple",
 };
 
+// A second fictional account, used only to prove that a pending face
+// handover never crosses accounts (contract r14). It owns nothing.
+export const SECOND_ACCOUNT = {
+  walletId: "wallet-face-e2e-b",
+  nickname: "Face E2E B",
+  walletAddress: "0x00000000000000000000000000000000000000b2",
+  email: "face-e2e-b@example.com",
+  password: "another correct horse battery",
+};
+
 // Morrow units carry a full specification sheet, so the holder settle
 // proposal (the COMPLETE custom map) has 35 leaves.
 export const SPEC_FIELDS = Array.from(
@@ -186,18 +196,37 @@ const integrated = (objectId, templateId) =>
   ((templateId && integratedTemplates.has(templateId)) ||
     (objectId && !objects.has(objectId)));
 
-function wallet() {
+// The account a bearer token names (`sub`); the programme holder otherwise.
+function bearerAccount(request) {
+  const match = /^Bearer\s+(\S+)/.exec(request.headers.authorization ?? "");
+  try {
+    const claims = JSON.parse(
+      Buffer.from(
+        String(match?.[1] ?? "").split(".")[1] ?? "",
+        "base64url",
+      ).toString("utf8"),
+    );
+    return claims.sub === SECOND_ACCOUNT.walletId
+      ? SECOND_ACCOUNT.walletId
+      : PROGRAMME.walletId;
+  } catch {
+    return PROGRAMME.walletId;
+  }
+}
+
+function wallet(id = PROGRAMME.walletId) {
+  const second = id === SECOND_ACCOUNT.walletId;
   return {
-    id: PROGRAMME.walletId,
-    nickname: "Face E2E",
-    email: PROGRAMME.email,
+    id: second ? SECOND_ACCOUNT.walletId : PROGRAMME.walletId,
+    nickname: second ? SECOND_ACCOUNT.nickname : "Face E2E",
+    email: second ? SECOND_ACCOUNT.email : PROGRAMME.email,
     language: "en",
     fqdn: "demo.localhost",
     activated: true,
     email_verified: true,
     disabled: false,
     account: {
-      address: PROGRAMME.walletAddress,
+      address: second ? SECOND_ACCOUNT.walletAddress : PROGRAMME.walletAddress,
       type: "SMART_WALLET",
       controller: {
         address: PROGRAMME.controllerAddress,
@@ -225,15 +254,20 @@ function token(claims) {
   return `${encode({ alg: "none" })}.${encode(claims)}.fake`;
 }
 
-function login() {
+function login(id = PROGRAMME.walletId) {
   const now = Math.floor(Date.now() / 1000);
   return {
-    access_token: token({ org_id: expectedOrganizationId, exp: now + 3600 }),
+    access_token: token({
+      org_id: expectedOrganizationId,
+      exp: now + 3600,
+      sub: id,
+    }),
     refresh_token: token({
       exp: now + 7200,
+      sub: id,
       nonce: randomBytes(6).toString("hex"),
     }),
-    wallet: wallet(),
+    wallet: wallet(id),
   };
 }
 
@@ -402,6 +436,12 @@ async function handleProgramme(request, response, url) {
       return respond(response, 422, { message: "Unexpected organization" });
     }
     if (
+      body.email === SECOND_ACCOUNT.email &&
+      body.password === SECOND_ACCOUNT.password
+    ) {
+      return respond(response, 200, login(SECOND_ACCOUNT.walletId));
+    }
+    if (
       body.email !== PROGRAMME.email ||
       body.password !== PROGRAMME.password
     ) {
@@ -413,12 +453,12 @@ async function handleProgramme(request, response, url) {
     return respond(response, 200, {});
   }
   if (method === "POST" && path === "/auth/refresh-token") {
-    const { access_token, refresh_token } = login();
+    const { access_token, refresh_token } = login(bearerAccount(request));
     return respond(response, 200, { access_token, refresh_token });
   }
   if (method === "GET" && path === "/wallets/me") {
     if (!authorized(request)) return respond(response, 401, {});
-    return respond(response, 200, wallet());
+    return respond(response, 200, wallet(bearerAccount(request)));
   }
 
   const objectMatch =
