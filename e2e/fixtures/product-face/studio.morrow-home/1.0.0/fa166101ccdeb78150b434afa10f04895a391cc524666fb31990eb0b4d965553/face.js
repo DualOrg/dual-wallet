@@ -22,7 +22,7 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
       evidence: null, unitChoice: "", registration: null, settle: null,
       products: null, productsNext: null, productsError: "",
       selected: null, selectToken: 0, productView: null,
-      notice: "", busy: "",
+      notice: "", busy: "", focusTarget: "",
       pending: {}, counter: 0, readyTimer: 0
     };
   }
@@ -40,6 +40,7 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
       else if (key === "onClick") node.addEventListener("click", value);
       else if (key === "onSubmit") node.addEventListener("submit", value);
       else if (key === "onChange") node.addEventListener("change", value);
+      else if (key === "onToggle") node.addEventListener("toggle", value);
       else node.setAttribute(key, value === true ? "" : String(value));
     });
     (children || []).forEach(function (child) {
@@ -243,11 +244,18 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
     if (!validTask(path)) path = "/";
     state.route = parse(path);
     state.notice = "";
+    // A product task route (setup, care, troubleshooting, manuals, ...) puts
+    // its active panel's heading in view and focus as soon as it is rendered;
+    // every other route focuses its page heading.
+    state.focusTarget = taskSection(state.route) ? "panel" : "";
     if (!options.fromHost && state.phase === "ready") {
       request("navigation.task.update", { path: path, title: titleFor(state.route).slice(0, 80) }).catch(function () { /* host keeps its own URL */ });
     }
-    render(true);
+    render(!state.focusTarget);
     enterRoute();
+  }
+  function taskSection(route) {
+    return route.name === "products" && route.parts[1] && route.parts[2] && route.parts[2] !== "overview" && SECTIONS.indexOf(route.parts[2]) >= 0 ? route.parts[2] : "";
   }
   function titleFor(route) {
     if (route.name === "register") return copy("registerTitle") || "Register";
@@ -346,6 +354,9 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
     else if (result.transportFailed || result.httpStatus === 0 || result.httpStatus >= 500) reg.status = "outcome_unknown";
     else reg.status = "refused";
     reg.reason = str(payload.reason, 80);
+    // G6b: whether the brand's confirmation is open for this wallet to sign, or
+    // the brand still has to propose it from its operator home.
+    reg.nextStep = str(payload.nextStep, 40);
     if (/^[a-f0-9]{24}$/.test(String(payload.objectId || ""))) reg.objectId = payload.objectId;
     render();
   }
@@ -386,6 +397,12 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
       if (host && CONFIG.registrationStatuses.indexOf(host.status) >= 0) reg.hostStatus = host.status;
       if (host && /^[a-f0-9]{24}$/.test(String(host.object_id || ""))) reg.objectId = host.object_id;
       if (!reg.objectId) return null;
+      // A settle whose answer was lost is recovered read-only from the runtime's
+      // reservation and Dual's own logs (registration.settle.status); it never executes.
+      var settle = state.settle;
+      if (settle && settle.operationId && (settle.status === "submitted" || settle.status === "outcome_unknown")) {
+        return runtimeOperation("registration.settle.status", settle.operationId, { object_id: reg.objectId }, {});
+      }
       var body = { operationId: reg.operationId };
       return sha256(canonicalJson(body)).then(function (requestHash) {
         return request("programme.runtime.authorize", { operation: "registration.status", operation_id: reg.operationId, target: { object_id: reg.objectId }, request_hash: requestHash }, LONG_MS);
@@ -395,8 +412,10 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
       });
     }).then(function (result) {
       state.busy = "";
-      if (result && state.registration && state.registration.operationId === reg.operationId) applyRegistrationResult(result);
-      else render();
+      if (result && state.registration && state.registration.operationId === reg.operationId) {
+        if (state.settle && result.payload && result.payload.status === "registered") state.settle.status = "committed";
+        applyRegistrationResult(result);
+      } else render();
     }, function () { state.busy = ""; state.notice = "We could not check right now. Nothing was sent again."; render(); });
   }
 
@@ -423,6 +442,7 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
       if (!state.settle) return;
       if (code === "user_cancelled") { state.settle.status = "not_submitted"; state.notice = "Nothing was changed. Your product is still not registered."; }
       else if (code === "settle_not_required") { state.settle = null; checkStatus(); return; }
+      else if (code === "proposal_rejected") { state.settle = null; reg.nextStep = "brand_operator_proposal"; state.notice = "The brand has not sent this confirmation yet. Nothing was changed."; }
       else if (state.settle.status === "submitted" || code === "outcome_unknown") { state.settle.status = "outcome_unknown"; reg.status = "outcome_unknown"; }
       else state.notice = "Your wallet did not complete the confirmation. Nothing was changed.";
       render();
@@ -460,8 +480,11 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
       state.busy = "";
       if (!selected || typeof selected.context_id !== "string" || !validProjection(selected.product)) throw { code: "not_owned" };
       state.selected = { contextId: selected.context_id, objectId: objectId, product: selected.product };
-      state.productView = { history: null, historyError: "", privateData: null, privateError: "" };
+      state.productView = { history: null, historyError: "", privateData: null, privateError: "", pending: null, moreOpen: false };
       render();
+      // A unit that is not registered yet: find its ORIGINAL registration so the
+      // page can resume it (works after a fresh sign-in; never a new intent).
+      if (["pending", "unknown"].indexOf(stateOfProduct(selected.product)) >= 0) loadPending();
     }).catch(function (error) {
       if (token !== state.selectToken) return;
       state.busy = "";
@@ -482,6 +505,42 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
       state.productView.historyError = "History could not be read right now.";
       render();
     });
+  }
+
+  function loadPending() {
+    var selected = state.selected; if (!selected) return;
+    var contextId = selected.contextId;
+    state.productView.pending = { loading: true };
+    render();
+    runtimeOperation("registration.pending.read", newOperationId("pending"), { object_id: selected.objectId }, {}).then(function (result) {
+      if (!state.selected || state.selected.contextId !== contextId) return; // product switched: dropped
+      var payload = result.payload || {};
+      if (result.httpStatus === 200 && payload.ok === true && /^[a-z0-9-]{8,64}$/.test(String(payload.operationId || "")) && CONFIG.registrationStatuses.indexOf(payload.status) >= 0) {
+        var reservation = payload.settleReservation && /^[a-z0-9-]{8,64}$/.test(String(payload.settleReservation.settle_operation_id || "")) ? { operationId: payload.settleReservation.settle_operation_id } : null;
+        state.productView.pending = { found: true, operationId: payload.operationId, recordId: str(payload.recordId, 80), status: payload.status, reason: str(payload.reason, 80),
+          nextStep: str(payload.nextStep, 40), settleReservation: reservation };
+      } else state.productView.pending = { found: false, missing: result.httpStatus === 404 };
+      render();
+    }, function () {
+      if (!state.selected || state.selected.contextId !== contextId) return;
+      state.productView.pending = { found: false, error: true };
+      render();
+    });
+  }
+
+  // Finish registration: resumes the ORIGINAL operation (its own result page,
+  // its own settle or status check). Never a new registration intent.
+  function resumeRegistration() {
+    var selected = state.selected;
+    var pending = state.productView && state.productView.pending;
+    if (!selected || !pending || !pending.found) return;
+    state.registration = { operationId: pending.operationId, objectId: selected.objectId, recordId: pending.recordId, title: str(selected.product.name, 160), status: pending.status,
+      hostStatus: "", reason: pending.reason, submitted: true, resumed: true,
+      nextStep: pending.nextStep === "settle_on_wallet" || pending.nextStep === "brand_operator_proposal" ? pending.nextStep : "" };
+    state.settle = pending.settleReservation ? { operationId: pending.settleReservation.operationId, status: "outcome_unknown", actionId: "" } : null;
+    navigate("/register/result/" + pending.operationId);
+    if (pending.nextStep === "settle_on_wallet") settleOnWallet();
+    else if (pending.nextStep !== "brand_operator_proposal" && pending.nextStep !== "contact_support") checkStatus();
   }
 
   function loadPrivate() {
@@ -533,6 +592,9 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
   function render(focusHeading) {
     var root = document.getElementById("pf-root");
     if (!root) return;
+    // A re-render (a load finishing) keeps focus on the same element.
+    var active = document.activeElement;
+    var keep = active && active !== document.body && root.contains(active) && active.id ? active.id : "";
     clear(root);
     if (state.phase === "ended") { root.appendChild(endedScreen()); focusMain(); return; }
     if (state.phase !== "ready") { root.appendChild(h("main", { id: "pf-main", className: "pf-main", tabindex: "-1" }, [h("p", { className: "pf-muted", role: "status", text: "Opening " + CONFIG.programme.name + "…" })])); return; }
@@ -542,9 +604,25 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
     root.appendChild(main);
     root.appendChild(h("div", { id: "pf-live", className: "pf-visually-hidden", role: "status", "aria-live": "polite", text: state.notice || busyText() }));
     if (focusHeading) focusMain();
+    else if (state.focusTarget === "panel" && document.getElementById("pf-panel-title")) { state.focusTarget = ""; focusPanel(); }
+    else if (keep && document.getElementById(keep)) document.getElementById(keep).focus({ preventScroll: true });
   }
   function busyText() {
     return { evidence: "Checking your link…", authorize: "Waiting for your wallet…", register: "Registering…", status: "Checking status…", settle: "Waiting for your wallet…", products: "Loading your products…", select: "Opening product…", "private": "Reading private details…" }[state.busy] || "";
+  }
+  function reducedMotion() {
+    try { return Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (error) { return true; }
+  }
+  // The active task panel: focus its heading, and scroll it to the top of the
+  // face viewport unless it already sits in the upper half (no motion when
+  // the customer asked for reduced motion).
+  function focusPanel() {
+    var heading = document.getElementById("pf-panel-title");
+    if (!heading) return;
+    heading.focus({ preventScroll: true });
+    var rect = heading.getBoundingClientRect();
+    var view = window.innerHeight || document.documentElement.clientHeight || 0;
+    if (rect.top < 0 || rect.bottom > view / 2) heading.scrollIntoView({ block: "start", inline: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
   }
   function focusMain() {
     var heading = document.querySelector("#pf-main h1") || document.getElementById("pf-main");
@@ -660,7 +738,8 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
     var shown = shownStatus(reg);
     var text = RESULT_COPY[shown] || RESULT_COPY.outcome_unknown;
     var actions = [];
-    if (shown === "ownership_moved_state_pending" && !(state.settle && state.settle.status === "outcome_unknown")) {
+    var awaitingBrand = shown === "ownership_moved_state_pending" && reg.nextStep === "brand_operator_proposal";
+    if (shown === "ownership_moved_state_pending" && !awaitingBrand && !(state.settle && state.settle.status === "outcome_unknown")) {
       actions.push(h("button", { type: "button", className: "pf-button pf-primary", disabled: state.busy ? true : null, onClick: settleOnWallet, text: "Confirm on your wallet" }));
     }
     if (shown === "registered" || shown === "already_registered") actions.push(h("button", { type: "button", className: "pf-button pf-primary", onClick: function () { navigate("/products/" + reg.objectId); }, text: "Open product" }));
@@ -671,6 +750,7 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
       stateChip(CONFIG.statusSemantics[shown] || "unknown", text[0]),
       reg.title ? h("p", { className: "pf-subject", text: reg.title }) : null,
       h("p", { className: "pf-lead", text: text[1] }),
+      awaitingBrand ? h("p", { className: "pf-muted", "data-awaiting": "brand-proposal", text: CONFIG.brandName + " still needs to send this confirmation. Nothing more is needed from you now; check status later." }) : null,
       refusalDetail(shown, reg.reason),
       notice(),
       h("div", { className: "pf-actions" }, actions)
@@ -706,10 +786,55 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
     }));
     return h("section", { "aria-labelledby": "pf-title" }, [
       h("h1", { id: "pf-title", text: copy("productsTitle") || "My products" }),
-      h("p", { className: "pf-lead", text: copy("productsIntro") }),
+      h("p", { className: "pf-lead", "data-collection-summary": products && products.length ? collectionSummary(products).code : "none", text: products && products.length ? collectionSummary(products).text : copy("productsIntro") }),
       notice(), body,
       state.productsNext ? h("button", { type: "button", className: "pf-button pf-secondary", onClick: function () { loadProducts(state.productsNext); }, text: "Show more" }) : null
     ]);
+  }
+
+  // The collection's copy comes from its items' own states: the brand's intro
+  // (which may say everything is registered) only when every item is.
+  function collectionSummary(products) {
+    var counts = { registered: 0, pending: 0, unknown: 0, ended: 0 };
+    products.forEach(function (product) { counts[stateOfProduct(product)] += 1; });
+    if (counts.registered === products.length) return { code: "all_registered", text: copy("productsIntro") || (products.length === 1 ? "Your product is registered to your wallet." : "All " + products.length + " products are registered to your wallet.") };
+    var parts = [];
+    if (counts.registered) parts.push(counts.registered + " registered to your wallet");
+    if (counts.pending) parts.push(counts.pending + (counts.pending === 1 ? " waits" : " wait") + " for you to finish registration");
+    if (counts.unknown) parts.push(counts.unknown + (counts.unknown === 1 ? " is" : " are") + " still being checked");
+    if (counts.ended) parts.push(counts.ended + " no longer active");
+    var code = counts.pending ? "some_pending" : counts.unknown ? "some_unknown" : "some_ended";
+    return { code: code, text: "Not everything here is registered yet: " + parts.join(", ") + "." };
+  }
+
+  // The friendly, actionable state first (contract r9 faceUx.hierarchy).
+  function friendlyStatus(semantic, pending) {
+    var button = function (text, primary) { return h("button", { type: "button", className: "pf-button " + (primary ? "pf-primary" : "pf-secondary"), disabled: state.busy ? true : null, onClick: resumeRegistration, text: text }); };
+    if (semantic === "registered") return { code: "registered", text: "Registered to you. Its guides, manuals and history are below." };
+    if (semantic === "ended") return { code: "ended", text: "This product is no longer active. Contact " + CONFIG.brandName + " if you have questions." };
+    if (semantic === "unknown" && !(pending && pending.found)) return { code: "unknown", text: "We could not confirm this product's state right now." };
+    if (!pending || pending.loading) return { code: "checking", text: "Not registered yet. Checking how to finish…" };
+    if (pending.found) {
+      if (pending.nextStep === "settle_on_wallet") return { code: "finish_on_wallet", text: "Almost done — confirm on your wallet to finish registration.", action: button("Finish registration", true) };
+      if (pending.nextStep === "brand_operator_proposal") return { code: "awaiting_brand", text: "Almost done — " + CONFIG.brandName + " still needs to send the confirmation. Nothing more is needed from you now.", action: button("Check registration status", false) };
+      if (pending.nextStep === "contact_support") return { code: "needs_attention", text: "This registration needs attention. Contact " + CONFIG.brandName + " support; please do not start it again." };
+      return { code: "checking_registration", text: "We are checking your registration. Please do not start it again.", action: button("Check registration status", true) };
+    }
+    if (pending.error) return { code: "pending_unreadable", text: "Not registered yet. We could not check how to finish right now.", action: h("button", { type: "button", className: "pf-button pf-secondary", onClick: loadPending, text: "Try again" }) };
+    return { code: "not_finished", text: "Not registered yet. To finish, open Register with your handover link from " + CONFIG.brandName + ".",
+      action: h("button", { type: "button", className: "pf-button pf-secondary", onClick: function () { navigate("/register"); }, text: "Register a product" }) };
+  }
+
+  // Raw states, content version and ids: a technical disclosure, never the headline.
+  function technicalDetails(product, pending) {
+    var fields = product.fields || {};
+    var rows = [];
+    function row(label, value) { if (value) { rows.push(h("dt", { text: label })); rows.push(h("dd", { className: "pf-mono", text: value })); } }
+    row("Record state", str(fields.state, 80));
+    row("Content version", str(state.content && state.content.version, 20));
+    row("Object id", str(product.object_id, 24));
+    if (pending && pending.found) row("Registration operation", pending.operationId);
+    return h("details", { className: "pf-technical" }, [h("summary", { text: "Technical details" }), h("dl", { className: "pf-facts" }, rows)]);
   }
 
   var SECTIONS = ["overview", "setup", "care", "troubleshooting", "manuals", "history", "documents"];
@@ -719,6 +844,8 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
     var product = selected.product;
     var model = modelFor(product);
     var section = SECTIONS.indexOf(state.route.parts[2]) >= 0 ? state.route.parts[2] : "overview";
+    var pending = state.productView && state.productView.pending;
+    var friendly = friendlyStatus(stateOfProduct(product), pending);
     var tabs = h("div", { className: "pf-tabs", role: "tablist", "aria-label": "Product sections" }, SECTIONS.map(function (name) {
       return h("button", { type: "button", role: "tab", id: "pf-tab-" + name, "aria-selected": name === section ? "true" : "false", "aria-controls": "pf-panel",
         className: "pf-tab", onClick: function () { navigate("/products/" + selected.objectId + (name === "overview" ? "" : "/" + name)); }, text: sectionLabel(name) });
@@ -730,19 +857,50 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
       }));
       switcher = h("div", { className: "pf-switch" }, [h("label", { "for": "pf-switch", text: "Product" }), select]);
     }
-    return h("section", { "aria-labelledby": "pf-title", className: "pf-product" }, [
+    var task = section !== "overview";
+    return h("section", { "aria-labelledby": "pf-title", className: "pf-product" + (task ? " pf-product-task" : "") }, [
       switcher,
-      h("div", { className: "pf-product-head" }, [
+      task ? compactHead(product, model, friendly, pending) : h("div", { className: "pf-product-head" }, [
         model && model.image ? h("img", { className: "pf-product-image", src: model.image.src, alt: model.image.alt, width: "320", height: "200" }) : null,
         h("div", {}, [
           h("h1", { id: "pf-title", text: str(product.name, 160) }),
           stateChip(stateOfProduct(product)),
-          h("dl", { className: "pf-facts" }, passportFacts(product, model))
+          h("p", { className: "pf-lead", "data-friendly-state": friendly.code, text: friendly.text }),
+          friendly.action ? h("div", { className: "pf-actions" }, [friendly.action]) : null,
+          h("dl", { className: "pf-facts" }, passportFacts(product, model)),
+          technicalDetails(product, pending)
         ])
       ]),
       tabs,
-      h("div", { id: "pf-panel", role: "tabpanel", "aria-labelledby": "pf-tab-" + section, className: "pf-panel" }, [sectionBody(section, model)]),
+      h("div", { id: "pf-panel", role: "tabpanel", "aria-labelledby": "pf-tab-" + section, className: "pf-panel" }, [
+        task ? h("h2", { id: "pf-panel-title", className: "pf-panel-title", tabindex: "-1", text: sectionLabel(section) }) : null,
+        sectionBody(section, model)
+      ]),
       notice()
+    ]);
+  }
+  // On a task route the product summary steps aside for the task: a small
+  // thumbnail, the name and serial on one line, the state chip, and the facts
+  // collapsed. An unfinished registration still shows its friendly next step.
+  function compactHead(product, model, friendly, pending) {
+    var serial = str((product.fields || {}).serialNumber, 80);
+    var view = state.productView;
+    return h("div", { className: "pf-product-head pf-product-compact", "data-summary": "compact" }, [
+      model && model.image ? h("img", { className: "pf-product-thumb", src: model.image.src, alt: "", width: "56", height: "56" }) : null,
+      h("div", { className: "pf-product-id" }, [
+        h("div", { className: "pf-product-line" }, [
+          h("h1", { id: "pf-title", className: "pf-product-name", text: str(product.name, 160) }),
+          serial ? h("span", { className: "pf-serial pf-mono" }, [h("span", { className: "pf-visually-hidden", text: "Serial number " }), serial]) : null
+        ]),
+        stateChip(stateOfProduct(product))
+      ]),
+      friendly.code === "registered" ? null : h("p", { className: "pf-compact-status", "data-friendly-state": friendly.code, text: friendly.text }),
+      friendly.code !== "registered" && friendly.action ? h("div", { className: "pf-actions pf-compact-actions" }, [friendly.action]) : null,
+      h("details", { className: "pf-more", open: view && view.moreOpen ? true : null, onToggle: function (event) { if (state.productView) state.productView.moreOpen = event.target.open; } }, [
+        h("summary", { text: "Product details" }),
+        h("dl", { className: "pf-facts" }, passportFacts(product, model)),
+        technicalDetails(product, pending)
+      ])
     ]);
   }
   function sectionLabel(name) {
@@ -755,7 +913,6 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
     row("Model", str(fields.model, 160) || (model ? model.name + " (" + model.modelNumber + ")" : ""));
     row("Serial number", str(fields.serialNumber, 80), true);
     row("Maker", str(fields.manufacturer, 160) || CONFIG.brandName);
-    row("Record state", str(fields.state, 80));
     return rows;
   }
   function sectionBody(section, model) {
@@ -786,7 +943,7 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
     if (section === "manuals") return list(model.manuals, function (manual) {
       return [h("h3", { text: manual.title + " · version " + manual.version }), h("dl", { className: "pf-manual" }, manual.sections.reduce(function (rows, part) { rows.push(h("dt", { text: part.heading })); rows.push(h("dd", { text: part.body })); return rows; }, []))];
     });
-    return h("div", {}, [h("p", { text: model.name + " · " + model.modelNumber }), h("p", { className: "pf-muted", text: "Content version " + str(state.content.version, 20) })]);
+    return h("div", {}, [h("p", { text: model.name + " · " + model.modelNumber })]);
   }
   function list(items, renderItem) {
     return h("div", { className: "pf-guides" }, (items || []).map(function (item) { return h("article", { className: "pf-guide" }, renderItem(item)); }));
@@ -796,10 +953,10 @@ var productFaceApp = function productFaceApp(window, document, CONFIG) {
     function row(label, value) { if (value) { rows.push(h("dt", { text: label })); rows.push(h("dd", { text: value })); } }
     row("Registered", str(data.registeredAt, 40));
     row("Registration", str(data.registrationKind, 80));
-    row("Record state", str(data.canonicalLabel, 160));
     var documents = Array.isArray(data.documents) ? data.documents : [];
     return h("div", {}, [
       h("dl", { className: "pf-facts" }, rows),
+      data.canonicalLabel ? h("details", { className: "pf-technical" }, [h("summary", { text: "Technical details" }), h("dl", { className: "pf-facts" }, [h("dt", { text: "Record state" }), h("dd", { className: "pf-mono", text: str(data.canonicalLabel, 160) })])]) : null,
       documents.length ? h("ul", { className: "pf-documents" }, documents.slice(0, 20).map(function (doc) {
         return h("li", {}, [h("h3", { text: str(doc.title, 160) }), h("p", { text: str(doc.body, 2000) })]);
       })) : null
