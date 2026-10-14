@@ -157,6 +157,37 @@ function canonical(value) {
   return JSON.stringify(value);
 }
 
+// The Studio runtime's complete custom map (contract r17 completeCustomMap,
+// productFaceCompleteCustom): a structural deep copy of the fresh object's
+// custom map with ONLY the governed leaves overwritten. Every other key (the
+// activation mint's provenance in production) is copied unchanged.
+function completeCustom(fresh, governed) {
+  const complete = structuredClone(fresh ?? {});
+  const write = (node, value) => {
+    for (const [key, child] of Object.entries(value)) {
+      if (
+        child &&
+        typeof child === "object" &&
+        !Array.isArray(child) &&
+        Object.keys(child).length
+      ) {
+        if (
+          !node[key] ||
+          typeof node[key] !== "object" ||
+          Array.isArray(node[key])
+        ) {
+          node[key] = {};
+        }
+        write(node[key], child);
+      } else {
+        node[key] = structuredClone(child);
+      }
+    }
+  };
+  write(complete, governed);
+  return complete;
+}
+
 function send(response, status, body, headers = {}) {
   response.writeHead(status, {
     "Content-Type": "application/json",
@@ -299,18 +330,17 @@ async function originateProposal(operationId, objectId, holder) {
   const current = await (
     await fetch(`${MOCK_API}/__test__/objects/${objectId}`)
   ).json();
-  const custom = { ...(current.custom ?? {}) };
-  delete custom.lifecycle;
+  // The governed leaves (binding.settle) over the unit's own custom map.
   const input = {
     data: {
-      custom: {
-        ...custom,
+      custom: completeCustom(current.custom, {
+        serialNumber: current.custom?.serialNumber,
         state: "Authenticity verified",
         lifecycle: { target_state: "Authenticity verified" },
         action_hash: createHash("sha256")
           .update(`${objectId}:${operationId}`)
           .digest("hex"),
-      },
+      }),
     },
   };
   const proposal = {
@@ -1211,22 +1241,29 @@ async function transferOperation(request, response, body, holder, manifest) {
         nextStep: "check_transfer_status",
       });
     }
+    // The request step: the governed leaves (binding.transferRequest) over
+    // the unit's own fresh custom map, as the Studio runtime builds it.
+    const fresh =
+      step === "transfer" ? undefined : await objectNow(offer.objectId);
+    if (step === "request" && !fresh) {
+      return refusal(response, 503, "face_record_storage_unavailable");
+    }
     const proposalInput =
       step === "transfer"
         ? { to: offer.recipient }
         : {
             data: {
-              custom: {
+              custom: completeCustom(fresh.custom, {
+                serialNumber: fresh.custom?.serialNumber,
                 state: "Transfer pending",
                 lifecycle: { target_state: "Transfer pending" },
-                dual_object_id: offer.objectId,
                 proof_event: {
                   public_fields: [
                     "state:Transfer pending",
                     `recipientReferenceHash:${sha256(offer.recipient)}`,
                   ],
                 },
-              },
+              }),
             },
           };
     const action = step === "transfer" ? "transfer" : "update";

@@ -297,7 +297,8 @@ exactly these keys:
 | `templateIds`           | 1–32 unique lowercase 24-hex Dual template IDs                                                                                                |
 | `projectionFields`      | subset of `recordId,title,serialNumber,model,manufacturer,state`                                                                              |
 | `canonicalRegistration` | `{stateField, lifecycleTargetField, settledStates, unconfirmedStates, endedStates}`, disjoint state sets                                      |
-| `settle` (optional)     | `{action, alias?, inputTemplate, fromStates, targetStates}` or Studio's `{action, inputPath, leaves, fromStates, targetStates}`; see G6 below |
+| `settle` (optional)     | `{action, alias?, inputTemplate, fromStates, targetStates, preserveUnlisted}` or Studio's `{action, inputPath, leaves, fromStates, targetStates, preserveUnlisted}`; see G6 below |
+| `transferRequest` (opt.) | G8 request step, settle shaped: `{action: "update", inputPath, leaves, fromStates, targetStates, preserveUnlisted}` (fromStates settled, targetStates unconfirmed, no alias); absent: `programme.product.transfer.sign` is `capability_not_granted` |
 | `linkedRuntimes` (opt.) | at most one `{purpose: "claims-warranty", applicationId, origin, instanceId}`: the Warranty runtime connected to this programme (r10)         |
 | `handover` (opt.)       | exactly `{enabled: boolean}`; absent is off. Lets face-enabled handover links enter this face (r14)                                           |
 
@@ -510,12 +511,21 @@ the wallet-defined format names Studio emits: `sha256_hex` (64 hex),
 registry accepts the template nested under `inputTemplate`, or flat as Studio's
 `productFaceSettleInputTemplate()` exports it (`inputPath` plus `leaves`); both
 become one leaf map. Because api-v3 does not state whether an Update merges or
-replaces nested `data.custom` (contract r7), the host also refuses
-(`proposal_rejected`) unless every key of the fresh object's custom map, at
-every level, is a listed leaf, so no key can be dropped under replace
-semantics; the BFF re-checks this on the fresh object at confirm and again
-before the reserve, where the refusal is pre-send and the entry is cancelled
-as `not_submitted`. The confirmation shows the decoded field changes from the
+replaces nested `data.custom` (contract r7), the input must carry the
+COMPLETE custom map (contract r17 completeCustomMap): the template lists the
+GOVERNED leaves only and says `preserveUnlisted: true`. Every other key of
+the host's own fresh read must be in the input, deep-equal to that read (a
+Studio-minted unit's activation mint keys, `activation_hash`,
+`dual_asset.*` and the like, are copied unchanged by the runtime), and no
+input key may be absent from the fresh object unless the template lists it.
+A template without the flag is refused (`proposal_rejected`). The journal
+entry binds a hash of the fresh custom map at `begin`; the BFF re-reads the
+unit at confirm and again before the reserve and refuses
+(`proposal_rejected`, pre-send, the entry still cancellable as
+`not_submitted`) if it changed in any way. The templates come from the
+runtime's read-only template inspection; `api/product-face-conformance.test.ts`
+runs this checker on real Studio proposals recorded by Studio's
+`scripts/qa/product-face-conformance-fixtures.mjs`. The confirmation shows the decoded field changes from the
 proposal and the fresh object; runtime-issued commitments (hashes, ids,
 timestamps) are listed separately under a technical disclosure, and values that
 stay the same are not shown.
@@ -609,10 +619,13 @@ The wallet reads the next reviewed step itself from the bound runtime
 (`POST /api/faces/[slug]/transfer-proposal`, a trusted server-to-server
 `transfer.propose` that also names the recipient the runtime bound from the
 recipient's own assertion), accepts it only for the selected owned unit and
-that recipient (request step: the holder's `update` to `Transfer pending`
-whose proof event names `recipientReferenceHash:<sha256 of the recipient>`;
-transfer step: exactly `transfer {to: <recipient>}`; never the holder, the
-proposal hash checked), and shows its own confirmation naming the product,
+that recipient (request step: exactly the deployment's `transferRequest`
+template under the same complete-map checker as a settle, from one of its
+`fromStates`, writing `Transfer pending`, with a proof event naming
+`recipientReferenceHash:<sha256 of the recipient>`; transfer step: exactly
+`transfer {to: <recipient>}`; never the holder, the proposal hash checked;
+without `transferRequest` the operation is `capability_not_granted`), and
+shows its own confirmation naming the product,
 that ownership moves, and the recipient's wallet (shortened). The step is
 journalled (`kind: "transfer"`, offer and proposal ids only) before anything
 leaves the wallet; the confirmed step is reserved at the runtime

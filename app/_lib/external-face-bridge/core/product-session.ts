@@ -187,6 +187,8 @@ const faceErrorMessages: Record<string, string> = {
   transfer_not_accepted: "The recipient has not accepted the transfer yet.",
   transfer_cancelled:
     "The transfer was cancelled or has expired; nothing was signed.",
+  capability_not_granted:
+    "This programme has not enabled this operation in the wallet.",
   quote_changed: "The quote has changed.",
   unknown_operation: "The wallet has no record of this operation.",
   invalid_request: "The request is invalid.",

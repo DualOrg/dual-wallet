@@ -15,7 +15,9 @@ import {
 } from "@/app/_lib/external-face-bridge";
 import {
   application,
+  edit,
   HOLDER,
+  REMOVE,
   TEMPLATE_A,
   TEMPLATE_B,
 } from "@/test/product-face-fixtures";
@@ -102,8 +104,8 @@ function handlers(overrides: Partial<ProductFaceHandlers> = {}) {
   return value;
 }
 
-function runtimeFor(handlerSet = handlers()) {
-  const session = new ProductFaceSession(application, HOLDER, "/");
+function runtimeFor(handlerSet = handlers(), app = application) {
+  const session = new ProductFaceSession(app, HOLDER, "/");
   const events = { contextChanged: jest.fn() };
   let id = 0;
   const call = (operation: string, payload: unknown = {}) =>
@@ -1043,16 +1045,38 @@ describe("holder settle (G6)", () => {
 describe("holder transfer (G8, contract r16 transfer.sign)", () => {
   const OFFER = "pto-0123456789abcdef01234567";
   const RECIPIENT = "0x00000000000000000000000000000000000000b2";
+  // A Studio-minted unit: activation_hash is mint provenance, not governed.
   const ownedProduct = product(UNIT_A, {
-    custom: { state: "Authenticity verified", serialNumber: "MH-ARC-0001" },
+    custom: {
+      state: "Authenticity verified",
+      serialNumber: "MH-ARC-0001",
+      activation_hash: "b".repeat(64),
+    },
   });
+  // As the runtime builds it (contract r17): the fresh custom map with only
+  // the governed leaves written. The test handlers hash everything to zeros.
+  const requestCustom = (
+    change: (custom: Record<string, unknown>) => void = () => {},
+  ) => {
+    const custom: Record<string, unknown> = {
+      state: "Transfer pending",
+      serialNumber: "MH-ARC-0001",
+      activation_hash: "b".repeat(64),
+      lifecycle: { target_state: "Transfer pending" },
+      proof_event: {
+        public_fields: [`recipientReferenceHash:sha256:${"0".repeat(64)}`],
+      },
+    };
+    change(custom);
+    return { data: { custom } };
+  };
   const requestStep = {
     step: "request" as const,
     proposalId: "ptp-0123456789abcdef01234567",
     offerId: OFFER,
     objectId: UNIT_A,
     action: "update" as const,
-    input: { data: { custom: { state: "Transfer pending" } } },
+    input: requestCustom(),
     proposalHash: `sha256:${"0".repeat(64)}`,
     expiresAt: new Date(Date.now() + 60_000),
     recipient: RECIPIENT,
@@ -1204,6 +1228,44 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
       "a request step that is not an update",
       { ...requestStep, action: "transfer" as const },
     ],
+    [
+      "a request step rewriting the serial number",
+      {
+        ...requestStep,
+        input: requestCustom((c) => edit(c, "serialNumber", "MH-ARC-9999")),
+      },
+    ],
+    [
+      "a request step adding a leaf",
+      {
+        ...requestStep,
+        input: requestCustom((c) => edit(c, "extra", "added")),
+      },
+    ],
+    [
+      "a request step changing a mint key",
+      {
+        ...requestStep,
+        input: requestCustom((c) => edit(c, "activation_hash", "c".repeat(64))),
+      },
+    ],
+    [
+      "a request step dropping a mint key",
+      {
+        ...requestStep,
+        input: requestCustom((c) => edit(c, "activation_hash", REMOVE)),
+      },
+    ],
+    [
+      "a request step writing another state",
+      {
+        ...requestStep,
+        input: requestCustom((c) => {
+          edit(c, "state", "In service");
+          edit(c, "lifecycle.target_state", "In service");
+        }),
+      },
+    ],
   ])("refuses %s before anything is journalled", async (_label, proposal) => {
     const run = await transferRuntime({
       readTransferProposal: jest.fn(async () => proposal),
@@ -1213,6 +1275,55 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
     ).rejects.toMatchObject({ code: "proposal_rejected" });
     expect(run.order).toEqual([]);
     expect(run.handlers.executeTransfer).not.toHaveBeenCalled();
+  });
+
+  it("without binding.transferRequest the operation is not granted: nothing is read, journalled or executed", async () => {
+    const handlerSet = handlers({
+      selectProduct: jest.fn(async () => ({
+        contextId: "context-transfer-xxxxxxxxxx",
+        product: ownedProduct,
+      })),
+      readProduct: jest.fn(async () => ownedProduct),
+      readTransferProposal: jest.fn(async () => requestStep),
+    });
+    const ungranted = runtimeFor(handlerSet, {
+      ...application,
+      transferRequest: null,
+    });
+    const { context_id } = (await ungranted.call("programme.product.select", {
+      object_id: UNIT_A,
+    })) as { context_id: string };
+    await expect(
+      ungranted.call("programme.product.transfer.sign", {
+        context_id,
+        offer_id: OFFER,
+        step_operation_id: "xfer-step-0001",
+      }),
+    ).rejects.toMatchObject({ code: "capability_not_granted" });
+    expect(handlerSet.readTransferProposal).not.toHaveBeenCalled();
+    expect(handlerSet.journal).not.toHaveBeenCalled();
+    expect(handlerSet.executeTransfer).not.toHaveBeenCalled();
+  });
+
+  it("refuses a request step when the unit is not in one of the template's from-states", async () => {
+    const pending = product(UNIT_A, {
+      custom: {
+        state: "Transfer pending",
+        serialNumber: "MH-ARC-0001",
+        activation_hash: "b".repeat(64),
+      },
+    });
+    const run = await transferRuntime({
+      selectProduct: jest.fn(async () => ({
+        contextId: "context-transfer-xxxxxxxxxx",
+        product: pending,
+      })),
+      readProduct: jest.fn(async () => pending),
+    });
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).rejects.toMatchObject({ code: "proposal_rejected" });
+    expect(run.order).toEqual([]);
   });
 
   it("refuses a step whose hash is not the runtime's proposal hash", async () => {

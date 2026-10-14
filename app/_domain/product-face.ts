@@ -130,6 +130,27 @@ export interface SettleRules {
   leaves: Record<string, SettleTemplateLeaf>;
   fromStates: string[];
   targetStates: string[];
+  /**
+   * contract r17 completeCustomMap: `leaves` lists the GOVERNED leaves only;
+   * every other key of the host's own fresh read must be in the input,
+   * deep-equal to that read (matchCompleteTemplate). A template without it is
+   * refused (fail closed).
+   */
+  preserveUnlisted: boolean;
+}
+
+/**
+ * G8 (binding.transferRequest): the holder's reviewed request_transfer update,
+ * settle shaped. Deployment data from the runtime's template inspection.
+ */
+export interface TransferRequestRules {
+  action: "update";
+  leaves: Record<string, SettleTemplateLeaf>;
+  /** Settled states a request may start from. */
+  fromStates: string[];
+  /** The pending state it writes ("Transfer pending"). */
+  targetStates: string[];
+  preserveUnlisted: boolean;
 }
 
 const ISO_TIME =
@@ -317,6 +338,8 @@ export interface ProductFaceApplication {
   projectionFields: ProjectionField[];
   canonicalRegistration: CanonicalRegistrationRules;
   settle: SettleRules | null;
+  /** G8: absent means programme.product.transfer.sign is not granted. */
+  transferRequest: TransferRequestRules | null;
 }
 
 export interface ProductFaceEntry {
@@ -729,6 +752,100 @@ export function matchSettleTemplate(
   return found;
 }
 
+function leafPasses(
+  rule: SettleTemplateLeaf,
+  path: string,
+  value: unknown,
+  currentCustom: unknown,
+) {
+  if ("literal" in rule) return value === rule.literal;
+  if ("enum" in rule) {
+    return typeof value === "string" && rule.enum.includes(value);
+  }
+  if ("unchanged" in rule) {
+    const customPath = customPathOf(path);
+    const current = customPath
+      ? readPath(currentCustom, customPath)
+      : undefined;
+    return current !== undefined && sameValue(current, value);
+  }
+  const check = runtimeIssuedCheck(rule.runtimeIssued);
+  return Boolean(check && check(value));
+}
+
+/**
+ * contract r17 completeCustomMap (`preserveUnlisted`): the input carries the
+ * COMPLETE custom map, so nothing the unit holds can be dropped whether Dual
+ * merges or replaces `data.custom`. Refuses (undefined) unless:
+ * - every governed leaf of the template is present and passes its rule;
+ * - every other input leaf is a custom leaf, not inside a governed leaf, and
+ *   deep-equal to the host's own fresh value at that path (an input key the
+ *   fresh object does not have is refused);
+ * - every fresh custom leaf the template does not govern is in the input.
+ * Returns the governed leaf values.
+ */
+export function matchCompleteTemplate(
+  input: unknown,
+  leaves: Record<string, SettleTemplateLeaf>,
+  currentCustom: unknown,
+): Array<[string, unknown]> | undefined {
+  if (!plainRecord(input)) return undefined;
+  if (
+    currentCustom !== undefined &&
+    currentCustom !== null &&
+    !plainRecord(currentCustom)
+  ) {
+    return undefined;
+  }
+  const found = new Map(inputLeaves(input));
+  const governedPaths = Object.keys(leaves);
+  const governedCustom = governedPaths.flatMap((path) => {
+    const customPath = customPathOf(path);
+    return customPath ? [customPath] : [];
+  });
+  const governed: Array<[string, unknown]> = [];
+  for (const path of governedPaths) {
+    if (!found.has(path)) return undefined;
+    const value = found.get(path);
+    if (!leafPasses(leaves[path], path, value, currentCustom)) return undefined;
+    governed.push([path, value]);
+  }
+  for (const [path, value] of found) {
+    if (Object.prototype.hasOwnProperty.call(leaves, path)) continue;
+    const customPath = customPathOf(path);
+    if (
+      !customPath ||
+      governedCustom.some((item) => customPath.startsWith(`${item}.`))
+    ) {
+      return undefined;
+    }
+    const current = readPath(currentCustom, customPath);
+    if (current === undefined || !sameValue(current, value)) return undefined;
+  }
+  if (plainRecord(currentCustom) && Object.keys(currentCustom).length) {
+    const prefix = governedPaths[0]?.startsWith("custom.")
+      ? "custom."
+      : "data.custom.";
+    for (const [path] of inputLeaves(currentCustom)) {
+      if (
+        governedCustom.some(
+          (item) => path === item || path.startsWith(`${item}.`),
+        )
+      ) {
+        continue;
+      }
+      // Present as a leaf, or inside a deeper subtree the input carries
+      // whole (beyond the leaf depth), already compared deep-equal above.
+      const parts = path.split(".");
+      const covered = parts.some((_, index) =>
+        found.has(`${prefix}${parts.slice(0, index + 1).join(".")}`),
+      );
+      if (!covered) return undefined;
+    }
+  }
+  return governed;
+}
+
 /**
  * contract r7 (complete custom map): api-v3 does not state whether an Update
  * merges or replaces nested `data.custom`, so a settle may only run when
@@ -790,15 +907,14 @@ export function checkSettleProposal(
     proposal.objectId !== expected.objectId ||
     proposal.expiresAt.getTime() <= expected.now ||
     proposal.action !== settle.action ||
-    !isSettleActionName(proposal.action)
+    !isSettleActionName(proposal.action) ||
+    // r17: only a complete-map template; an older one is refused.
+    settle.preserveUnlisted !== true
   ) {
     return { ok: false, reason: "proposal_rejected" };
   }
-  // r7: a fresh custom key the template does not list could be dropped.
-  if (unlistedCustomKeys(currentCustom, settle.leaves)?.length !== 0) {
-    return { ok: false, reason: "proposal_rejected" };
-  }
-  const leaves = matchSettleTemplate(
+  // r7 + r17: the complete custom map; no fresh key can be dropped.
+  const leaves = matchCompleteTemplate(
     proposal.input,
     settle.leaves,
     currentCustom,

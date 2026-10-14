@@ -60,6 +60,13 @@ export interface FaceJournalEntry {
    * its {quote_version, amount, currency}; never the quote itself.
    */
   quoteHash?: string;
+  /**
+   * contract r17: a settle or transfer request step is bound at begin to the
+   * host's own fresh read of the unit's custom map, as a hash of its
+   * canonical JSON; confirmation and submission refuse if the unit changed
+   * since (a complete-map update would otherwise drop the new key).
+   */
+  freshHash?: string;
   createdAt: number;
   updatedAt: number;
   issuedAt?: number;
@@ -111,6 +118,7 @@ export function parseJournalEntry(
     (entry.offerId !== undefined &&
       (typeof entry.offerId !== "string" || !OFFER_ID.test(entry.offerId))) ||
     (entry.quoteHash !== undefined && !isRequestHash(entry.quoteHash)) ||
+    (entry.freshHash !== undefined && !isRequestHash(entry.freshHash)) ||
     (entry.recordId !== undefined && !isRecordId(entry.recordId)) ||
     (entry.requestHash !== undefined && !isRequestHash(entry.requestHash)) ||
     !timestamp(entry.createdAt) ||
@@ -147,6 +155,7 @@ export function parseJournalEntry(
     ...(entry.proposalId ? { proposalId: entry.proposalId as string } : {}),
     ...(entry.offerId ? { offerId: entry.offerId as string } : {}),
     ...(entry.quoteHash ? { quoteHash: entry.quoteHash as string } : {}),
+    ...(entry.freshHash ? { freshHash: entry.freshHash as string } : {}),
     ...(entry.recordId ? { recordId: entry.recordId as string } : {}),
     ...(entry.requestHash ? { requestHash: entry.requestHash as string } : {}),
     createdAt: entry.createdAt,

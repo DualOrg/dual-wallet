@@ -8,6 +8,21 @@ import {
 import { toProductFaceApplication } from "@/api/product-face-registry";
 import { ARTIFACT_HEX, bindingInput } from "@/test/product-face-fixtures";
 
+// binding.transferRequest in the inspection's flat export shape.
+const TRANSFER_REQUEST = {
+  action: "update",
+  inputPath: "data.custom",
+  leaves: {
+    state: { enum: ["Transfer pending"] },
+    "lifecycle.target_state": { enum: ["Transfer pending"] },
+    serialNumber: { unchanged: true },
+    "proof_event.public_fields": { runtimeIssued: "public_fields" },
+  } as Record<string, unknown>,
+  fromStates: ["Authenticity verified"],
+  targetStates: ["Transfer pending"],
+  preserveUnlisted: true,
+};
+
 const parse = (entries: unknown[], production = true) =>
   parseProductFaceApplications(JSON.stringify(entries), { production });
 
@@ -97,8 +112,106 @@ describe("product application registry", () => {
       },
     ],
     ["markup in the programme name", { programmeName: "<b>Arc</b>" }],
+    [
+      "a non-boolean settle preserveUnlisted",
+      { settle: { ...bindingInput().settle, preserveUnlisted: "yes" } },
+    ],
+    [
+      "a transfer request that is not an update",
+      { transferRequest: { ...TRANSFER_REQUEST, action: "transfer" } },
+    ],
+    [
+      "a transfer request with an alias",
+      { transferRequest: { ...TRANSFER_REQUEST, alias: "update" } },
+    ],
+    [
+      "a transfer request from a pending state",
+      {
+        transferRequest: {
+          ...TRANSFER_REQUEST,
+          fromStates: ["Transfer pending"],
+        },
+      },
+    ],
+    [
+      "a transfer request to a settled state",
+      {
+        transferRequest: {
+          ...TRANSFER_REQUEST,
+          targetStates: ["Authenticity verified"],
+        },
+      },
+    ],
+    [
+      "a transfer request with an arbitrary leaf",
+      {
+        transferRequest: {
+          ...TRANSFER_REQUEST,
+          leaves: { ...TRANSFER_REQUEST.leaves, title: "anything" },
+        },
+      },
+    ],
+    [
+      "a transfer request enum outside its target states",
+      {
+        transferRequest: {
+          ...TRANSFER_REQUEST,
+          leaves: {
+            ...TRANSFER_REQUEST.leaves,
+            state: { enum: ["Registered"] },
+          },
+        },
+      },
+    ],
+    [
+      "a transfer request with an unknown key",
+      { transferRequest: { ...TRANSFER_REQUEST, extra: true } },
+    ],
   ])("drops a binding with %s", (_label, override) => {
     expect(parse([bindingInput(override)])).toEqual([]);
+  });
+
+  it("parses binding.transferRequest and the complete-map flag (contract r17)", () => {
+    const [binding] = parse([
+      bindingInput({ transferRequest: TRANSFER_REQUEST }),
+    ]);
+    expect(binding.settle?.preserveUnlisted).toBe(true);
+    expect(binding.transferRequest).toEqual({
+      action: "update",
+      leaves: {
+        "data.custom.state": { enum: ["Transfer pending"] },
+        "data.custom.lifecycle.target_state": { enum: ["Transfer pending"] },
+        "data.custom.serialNumber": { unchanged: true },
+        "data.custom.proof_event.public_fields": {
+          runtimeIssued: "public_fields",
+        },
+      },
+      fromStates: ["Authenticity verified"],
+      targetStates: ["Transfer pending"],
+      preserveUnlisted: true,
+    });
+    expect(toProductFaceApplication(binding).transferRequest).toEqual(
+      binding.transferRequest,
+    );
+    // Absent or null: not granted. Without the flag: parsed, and refused by
+    // the checkers (an older entry fails closed for that operation only).
+    expect(parse([bindingInput()])[0].transferRequest).toBeNull();
+    expect(
+      parse([bindingInput({ transferRequest: null })])[0].transferRequest,
+    ).toBeNull();
+    const { preserveUnlisted: _flag, ...unflagged } = TRANSFER_REQUEST;
+    void _flag;
+    expect(
+      parse([bindingInput({ transferRequest: unflagged })])[0].transferRequest
+        ?.preserveUnlisted,
+    ).toBe(false);
+    const { preserveUnlisted: _settleFlag, ...olderSettle } =
+      bindingInput().settle;
+    void _settleFlag;
+    expect(
+      parse([bindingInput({ settle: olderSettle })])[0].settle
+        ?.preserveUnlisted,
+    ).toBe(false);
   });
 
   it("accepts Studio's productFaceSettleInputTemplate() export shape", () => {

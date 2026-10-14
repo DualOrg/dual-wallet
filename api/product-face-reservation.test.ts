@@ -487,6 +487,7 @@ describe("settle reservation (contract r8/r11)", () => {
     expect(Object.keys(sealed.entries[0]).sort()).toEqual(
       [
         "createdAt",
+        "freshHash",
         "issuedAt",
         "kind",
         "objectId",
@@ -502,6 +503,57 @@ describe("settle reservation (contract r8/r11)", () => {
       phase: "submitted",
       proposalId: PROPOSAL,
     });
+    // r17: the unit's fresh custom map at begin, as a hash only.
+    expect(sealed.entries[0].freshHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+  });
+
+  it("refuses a settle under a template without the complete-map flag (r17, fail closed)", async () => {
+    process.env.PRODUCT_FACE_APPLICATIONS = JSON.stringify([
+      bindingInput({
+        settle: { ...bindingInput().settle, preserveUnlisted: undefined },
+      }),
+    ]);
+    const runtime = fakeRuntime();
+    global.fetch = runtime.fetchImpl as unknown as typeof fetch;
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    const selected = await browser.call(
+      instance.selection,
+      `/api/faces/${SLUG}/selection`,
+      { object_id: UNIT },
+    );
+    const begin = await browser.call(
+      instance.operations,
+      `/api/faces/${SLUG}/operations`,
+      {
+        transition: "begin",
+        kind: "settle",
+        operation: "update",
+        operation_id: SETTLE_OP,
+        object_id: UNIT,
+        context_id: selected.body.context_id,
+        proposal_id: PROPOSAL,
+      },
+    );
+    expect(begin).toMatchObject({
+      status: 409,
+      body: { code: "proposal_rejected" },
+    });
+    expect(runtime.calls).toHaveLength(0);
+  });
+
+  it("refuses before the reserve when a value of the unit moved since begin (r17)", async () => {
+    const runtime = fakeRuntime();
+    global.fetch = runtime.fetchImpl as unknown as typeof fetch;
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    const settle = await confirmedSettle(instance, browser);
+    getObjectById.mockResolvedValue(pendingUnit({ recordId: "rec-9999" }));
+    expect(await settle.submit(instance)).toMatchObject({
+      status: 409,
+      body: { code: "proposal_rejected" },
+    });
+    expect(runtime.calls).toHaveLength(0);
   });
 
   it("refuses before the reserve when the fresh custom map has a key the template does not list (r7)", async () => {

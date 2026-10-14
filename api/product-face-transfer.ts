@@ -16,6 +16,7 @@ import {
   type FaceOperationResult,
 } from "@/api/product-face-operations";
 import {
+  productRegistration,
   readOwnedProduct,
   type FaceRequestContext,
 } from "@/api/product-face-server";
@@ -112,6 +113,10 @@ export async function readTransferProposal(
   ) {
     return fail("invalid_request", 400);
   }
+  // The request step's exact template (binding.transferRequest); without it
+  // programme.product.transfer.sign is not granted (fail closed).
+  const rules = context.binding.transferRequest;
+  if (!rules) return fail("capability_not_granted", 403);
   if (
     !selectionMatches(context, context.journal, body.context_id, body.object_id)
   ) {
@@ -138,15 +143,22 @@ export async function readTransferProposal(
   }
   const proposal = parseTransferProposal(result.body);
   if (!proposal) return { ...fail("proposal_rejected", 422), journal };
-  const check = checkTransferProposal(proposal, {
-    offerId: body.offer_id,
-    objectId: body.object_id,
-    holder: context.holder,
-    now: Date.now(),
-    recipientReferenceHash: sha256Hash(proposal.recipient),
-  });
+  const check = checkTransferProposal(
+    proposal,
+    {
+      offerId: body.offer_id,
+      objectId: body.object_id,
+      holder: context.holder,
+      now: Date.now(),
+      recipientReferenceHash: sha256Hash(proposal.recipient),
+    },
+    { currentCustom: owned.product.custom, rules },
+  );
+  const { readback } = productRegistration(context, owned.product);
   if (
     !check.ok ||
+    (proposal.step === "request" &&
+      (!readback.state || !rules.fromStates.includes(readback.state))) ||
     sha256Hash(transferProposalHashInput(proposal)) !== proposal.proposalHash
   ) {
     return { ...fail("proposal_rejected", 422), journal };

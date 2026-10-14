@@ -3,6 +3,7 @@ import {
   checkSettleProposal,
   evaluateCanonicalRegistration,
   isTaskPath,
+  matchCompleteTemplate,
   matchSettleTemplate,
   proposalHashInput,
   registrationReadback,
@@ -12,6 +13,7 @@ import {
   type SettleProposal,
   type SettleRules,
 } from "@/app/_domain/product-face";
+import { edit, REMOVE } from "@/test/product-face-fixtures";
 
 const rules: CanonicalRegistrationRules = {
   stateField: "state",
@@ -120,6 +122,7 @@ const settle: SettleRules = {
   },
   fromStates: ["Transfer pending"],
   targetStates: ["Authenticity verified"],
+  preserveUnlisted: true,
 };
 
 const current = {
@@ -259,6 +262,119 @@ describe("complete custom map (contract r7)", () => {
         expected,
         { ...current, warrantyNote: "keep" },
         settle,
+        rules,
+      ),
+    ).toEqual({ ok: false, reason: "proposal_rejected" });
+  });
+});
+
+describe("complete custom map (contract r17 preserveUnlisted)", () => {
+  const now = Date.parse("2026-10-14T10:00:00Z");
+  // A Studio-minted unit: its mint provenance is not governed by the settle.
+  const fresh = {
+    ...current,
+    activation_hash: "b".repeat(64),
+    dual_asset: { title: "Arc grinder", rights: ["hold"] },
+    lifecycle: { target_state: "Registered", reason: "handover" },
+  };
+  // As the runtime builds it: the fresh map with the governed leaves written.
+  const complete = (
+    change: (custom: Record<string, unknown>) => void = () => {},
+  ) => {
+    const value = input({
+      activation_hash: "b".repeat(64),
+      dual_asset: { title: "Arc grinder", rights: ["hold"] },
+      lifecycle: { target_state: "Authenticity verified", reason: "handover" },
+    });
+    change(value.data.custom as Record<string, unknown>);
+    return value;
+  };
+  const proposal = (value: Record<string, unknown>): SettleProposal => ({
+    proposalId: "proposal-1",
+    operationId: "register-op-0001",
+    objectId: "aaaaaaaaaaaaaaaaaaaaaaaa",
+    action: "update",
+    input: value,
+    proposalHash: "sha256:" + "0".repeat(64),
+    expiresAt: new Date(now + 60_000),
+  });
+  const expected = {
+    operationId: "register-op-0001",
+    objectId: "aaaaaaaaaaaaaaaaaaaaaaaa",
+    now,
+  };
+
+  it("accepts the governed leaves plus every other fresh key copied unchanged", () => {
+    const matched = matchCompleteTemplate(complete(), settle.leaves, fresh);
+    expect(matched?.map(([path]) => path).sort()).toEqual(
+      Object.keys(settle.leaves).sort(),
+    );
+    const result = checkSettleProposal(
+      proposal(complete()),
+      expected,
+      fresh,
+      settle,
+      rules,
+    );
+    expect(result.ok).toBe(true);
+    // A copied value is not a change to show.
+    if (result.ok) {
+      expect(result.changes.map(({ field }) => field)).not.toContain(
+        "data.custom.activation_hash",
+      );
+    }
+  });
+
+  it.each<[string, (custom: Record<string, unknown>) => void]>([
+    ["a mint key changed", (c) => edit(c, "activation_hash", "c".repeat(64))],
+    [
+      "a nested mint key changed",
+      (c) => edit(c, "dual_asset.rights", ["burn"]),
+    ],
+    ["a mint key dropped", (c) => edit(c, "activation_hash", REMOVE)],
+    [
+      "a nested ungoverned key dropped",
+      (c) => edit(c, "lifecycle.reason", REMOVE),
+    ],
+    ["a governed leaf changed", (c) => edit(c, "serialNumber", "MH-ARC-9999")],
+    ["a governed leaf dropped", (c) => edit(c, "receipt.id", REMOVE)],
+    ["an extra key", (c) => edit(c, "extra", "added")],
+    ["an extra nested key", (c) => edit(c, "dual_asset.extra", "added")],
+    [
+      "an object inside a governed leaf",
+      (c) => edit(c, "state", { value: "Authenticity verified" }),
+    ],
+  ])("refuses %s", (_label, change) => {
+    expect(
+      matchCompleteTemplate(complete(change), settle.leaves, fresh),
+    ).toBeUndefined();
+    expect(
+      checkSettleProposal(
+        proposal(complete(change)),
+        expected,
+        fresh,
+        settle,
+        rules,
+      ),
+    ).toEqual({ ok: false, reason: "proposal_rejected" });
+  });
+
+  it("refuses a key outside data.custom and a fresh value that is not a map", () => {
+    expect(
+      matchCompleteTemplate({ ...complete(), extra: 1 }, settle.leaves, fresh),
+    ).toBeUndefined();
+    expect(
+      matchCompleteTemplate(complete(), settle.leaves, ["x"]),
+    ).toBeUndefined();
+  });
+
+  it("refuses a template without the flag (an older registry entry fails closed)", () => {
+    expect(
+      checkSettleProposal(
+        proposal(input()),
+        expected,
+        current,
+        { ...settle, preserveUnlisted: false },
         rules,
       ),
     ).toEqual({ ok: false, reason: "proposal_rejected" });

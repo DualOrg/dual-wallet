@@ -4,7 +4,13 @@
 // server); the wallet accepts it only when it is exactly the reviewed step for
 // the selected owned unit and the runtime-bound recipient, never face-supplied.
 
-import { canonicalJson, isObjectId } from "@/app/_domain/product-face";
+import {
+  canonicalJson,
+  customPathOf,
+  isObjectId,
+  matchCompleteTemplate,
+  type TransferRequestRules,
+} from "@/app/_domain/product-face";
 
 export const transferHostOperation = "programme.product.transfer.sign";
 
@@ -105,9 +111,15 @@ export type TransferProposalCheck =
  * The step is untrusted until it is exactly the reviewed one: this offer and
  * the selected owned unit, unexpired, the step's own action, and the
  * runtime-bound recipient (never the holder):
- * - request: the holder's own request_transfer update, `{data: {custom}}`,
- *   writing the Transfer pending state and naming the recipient by
- *   `recipientReferenceHash:<sha256 of the recipient>`;
+ * - request: the holder's own request_transfer update, exactly the
+ *   deployment's `binding.transferRequest` template (the runtime's template
+ *   inspection): every governed leaf passes its rule (literal, enum,
+ *   unchanged against the host's fresh read, runtimeIssued format), and
+ *   (contract r17 completeCustomMap) every other key of the host's fresh read
+ *   is carried unchanged and nothing else is added. On top of it: the
+ *   Transfer pending state and lifecycle target, and the recipient named by
+ *   `recipientReferenceHash:<sha256 of the recipient>`. Without a complete-map
+ *   template the request step is refused;
  * - transfer: the Dual transfer `{to: <recipient>}` and nothing else.
  * The proposal hash is checked separately by the caller.
  */
@@ -118,11 +130,13 @@ export function checkTransferProposal(
     objectId: string;
     holder: string;
     now: number;
-    /**
-     * sha256:<hex> of THIS proposal's `recipient` (the caller hashes it), so
-     * a request step naming any other wallet in its proof event is refused.
-     */
+    /** sha256:<hex> of the recipient as the runtime hashes it. */
     recipientReferenceHash: string;
+  },
+  template: {
+    /** The host's own fresh read of the unit's custom map. */
+    currentCustom: unknown;
+    rules: TransferRequestRules | null;
   },
 ): TransferProposalCheck {
   const reject = { ok: false as const, reason: "proposal_rejected" as const };
@@ -143,7 +157,15 @@ export function checkTransferProposal(
       ? { ok: true }
       : reject;
   }
-  if (proposal.action !== "update") return reject;
+  const rules = template.rules;
+  if (
+    !rules ||
+    rules.preserveUnlisted !== true ||
+    proposal.action !== "update" ||
+    proposal.action !== rules.action
+  ) {
+    return reject;
+  }
   const data = proposal.input.data;
   if (
     Object.keys(proposal.input).join(",") !== "data" ||
@@ -153,6 +175,18 @@ export function checkTransferProposal(
   ) {
     return reject;
   }
+  const governed = matchCompleteTemplate(
+    proposal.input,
+    rules.leaves,
+    template.currentCustom,
+  );
+  if (!governed) return reject;
+  const written = new Map(
+    governed.flatMap(([path, value]) => {
+      const customPath = customPathOf(path);
+      return customPath ? [[customPath, value] as const] : [];
+    }),
+  );
   const custom = data.custom;
   const lifecycle = record(custom.lifecycle) ? custom.lifecycle : {};
   const proof = record(custom.proof_event) ? custom.proof_event : {};
@@ -160,6 +194,8 @@ export function checkTransferProposal(
   if (
     custom.state !== TRANSFER_PENDING_STATE ||
     lifecycle.target_state !== TRANSFER_PENDING_STATE ||
+    written.get("state") !== custom.state ||
+    !rules.targetStates.includes(TRANSFER_PENDING_STATE) ||
     (custom.dual_object_id !== undefined &&
       custom.dual_object_id !== expected.objectId) ||
     !fields.includes(

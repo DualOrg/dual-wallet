@@ -9,6 +9,7 @@ import {
   type CanonicalRegistrationRules,
   type ProjectionField,
   type SettleRules,
+  type TransferRequestRules,
 } from "../app/_domain/product-face";
 
 /**
@@ -37,6 +38,8 @@ export interface ProductFaceBinding {
   projectionFields: ProjectionField[];
   canonicalRegistration: CanonicalRegistrationRules;
   settle: SettleRules | null;
+  /** G8 request step template; absent: transfer.sign is not granted. */
+  transferRequest: TransferRequestRules | null;
   linkedRuntimes: LinkedRuntime[];
   /**
    * contract r14: whether face-enabled handover links may enter this
@@ -61,7 +64,8 @@ const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const HOSTNAME =
   /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
-const MAX_RAW_BYTES = 64 * 1024;
+/** Bound on the whole PRODUCT_FACE_APPLICATIONS registry. */
+export const MAX_RAW_BYTES = 64 * 1024;
 const MAX_ENTRIES = 32;
 
 const BINDING_KEYS = [
@@ -78,6 +82,7 @@ const BINDING_KEYS = [
   "projectionFields",
   "canonicalRegistration",
   "settle",
+  "transferRequest",
   "linkedRuntimes",
   "handover",
 ] as const;
@@ -107,6 +112,17 @@ const SETTLE_KEYS = [
   "leaves",
   "fromStates",
   "targetStates",
+  "preserveUnlisted",
+] as const;
+// binding.transferRequest: settle shaped, `update` only, no alias.
+const TRANSFER_REQUEST_KEYS = [
+  "action",
+  "inputTemplate",
+  "inputPath",
+  "leaves",
+  "fromStates",
+  "targetStates",
+  "preserveUnlisted",
 ] as const;
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -203,6 +219,69 @@ function canonicalRules(
   };
 }
 
+/** The template's leaves in either accepted spelling, or undefined. */
+function templateLeaves(
+  value: Record<string, unknown>,
+  targetStates: readonly string[],
+) {
+  const nested = value.inputTemplate !== undefined;
+  const flat = value.leaves !== undefined || value.inputPath !== undefined;
+  if (nested === flat) return undefined;
+  return nested
+    ? flattenSettleTemplate(value.inputTemplate, targetStates)
+    : typeof value.inputPath === "string"
+      ? parseSettleLeaves(value.leaves, targetStates, value.inputPath)
+      : undefined;
+}
+
+/**
+ * contract r17 completeCustomMap: optional boolean. Absent is false, which
+ * the checkers refuse (an older template fails closed, it is not dropped).
+ */
+function preserveUnlistedOf(value: Record<string, unknown>) {
+  if (value.preserveUnlisted === undefined) return false;
+  return typeof value.preserveUnlisted === "boolean"
+    ? value.preserveUnlisted
+    : undefined;
+}
+
+/**
+ * G8 binding.transferRequest, under the same strict rules as settle: an
+ * `update` from the canonical settled states to an unconfirmed (pending)
+ * state, every leaf a valid rule. Absent or null: not granted.
+ */
+function transferRequestRules(
+  value: unknown,
+  canonical: CanonicalRegistrationRules,
+): TransferRequestRules | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (!record(value) || !onlyKeys(value, TRANSFER_REQUEST_KEYS)) return;
+  const fromStates = uniqueStrings(value.fromStates, (item) =>
+    canonical.settledStates.includes(item),
+  );
+  const targetStates = uniqueStrings(value.targetStates, (item) =>
+    canonical.unconfirmedStates.includes(item),
+  );
+  const preserveUnlisted = preserveUnlistedOf(value);
+  if (
+    value.action !== "update" ||
+    !fromStates ||
+    !targetStates ||
+    preserveUnlisted === undefined
+  ) {
+    return undefined;
+  }
+  const leaves = templateLeaves(value, targetStates);
+  if (!leaves) return undefined;
+  return {
+    action: "update",
+    leaves,
+    fromStates,
+    targetStates,
+    preserveUnlisted,
+  };
+}
+
 function settleRules(
   value: unknown,
   canonical: CanonicalRegistrationRules,
@@ -215,23 +294,18 @@ function settleRules(
   const targetStates = uniqueStrings(value.targetStates, (item) =>
     canonical.settledStates.includes(item),
   );
+  const preserveUnlisted = preserveUnlistedOf(value);
   if (
     !isSettleActionName(value.action) ||
     (value.alias !== undefined &&
       (typeof value.alias !== "string" || !ALIAS.test(value.alias))) ||
     !fromStates ||
-    !targetStates
+    !targetStates ||
+    preserveUnlisted === undefined
   ) {
     return undefined;
   }
-  const nested = value.inputTemplate !== undefined;
-  const flat = value.leaves !== undefined || value.inputPath !== undefined;
-  if (nested === flat) return undefined;
-  const leaves = nested
-    ? flattenSettleTemplate(value.inputTemplate, targetStates)
-    : typeof value.inputPath === "string"
-      ? parseSettleLeaves(value.leaves, targetStates, value.inputPath)
-      : undefined;
+  const leaves = templateLeaves(value, targetStates);
   if (!leaves) return undefined;
   return {
     action: value.action,
@@ -239,6 +313,7 @@ function settleRules(
     leaves,
     fromStates,
     targetStates,
+    preserveUnlisted,
   };
 }
 
@@ -346,6 +421,11 @@ function binding(
   }
   const settle = settleRules(value.settle, canonicalRegistration);
   if (settle === undefined) return undefined;
+  const transferRequest = transferRequestRules(
+    value.transferRequest,
+    canonicalRegistration,
+  );
+  if (transferRequest === undefined) return undefined;
   const linked = linkedRuntimes(value.linkedRuntimes, production);
   if (!linked) return undefined;
   // A linked runtime is another application than the face itself.
@@ -368,6 +448,7 @@ function binding(
     projectionFields,
     canonicalRegistration,
     settle,
+    transferRequest,
     linkedRuntimes: linked,
     handover,
   };

@@ -61,5 +61,6 @@ export function toProductFaceApplication(
     projectionFields: [...binding.projectionFields],
     canonicalRegistration: binding.canonicalRegistration,
     settle: binding.settle,
+    transferRequest: binding.transferRequest,
   };
 }

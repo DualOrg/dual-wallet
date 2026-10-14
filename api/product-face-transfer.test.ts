@@ -13,7 +13,13 @@ import { createHash, generateKeyPairSync } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { DEFAULT_ORGANIZATION_ID } from "@/api/tenant";
 import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
-import { bindingInput, HOLDER, TEMPLATE_A } from "@/test/product-face-fixtures";
+import {
+  bindingInput,
+  edit,
+  HOLDER,
+  REMOVE,
+  TEMPLATE_A,
+} from "@/test/product-face-fixtures";
 
 const getWallet = jest.fn();
 const getObjectById = jest.fn();
@@ -200,12 +206,15 @@ function fakeTransferRuntime({
   const reservations = new Map<string, string>();
   const executed = new Set<string>();
   const stepAnswer = (objectId: string) => {
+    // As the Studio runtime builds it (contract r17): a deep copy of its own
+    // fresh read of the unit with only the governed leaves written.
     const input =
       step === "transfer"
         ? { to: RECIPIENT }
         : {
             data: {
               custom: {
+                ...JSON.parse(JSON.stringify(OWNED_CUSTOM)),
                 state: "Transfer pending",
                 lifecycle: { target_state: "Transfer pending" },
                 proof_event: {
@@ -323,6 +332,25 @@ function fakeTransferRuntime({
   };
 }
 
+/** A tampered request step, re-hashed so only the template can refuse it. */
+function tamper(change: (custom: Record<string, unknown>) => void) {
+  return (answer: Record<string, unknown>) => {
+    const input = JSON.parse(JSON.stringify(answer.input));
+    change(input.data.custom);
+    return {
+      ...answer,
+      input,
+      proposal_hash: sha256(
+        canonical({
+          object_id: answer.object_id,
+          action: answer.action,
+          input,
+        }),
+      ),
+    };
+  };
+}
+
 async function selected(instance: Instance, browser: Browser) {
   const result = await browser.call(
     instance.selection,
@@ -368,9 +396,41 @@ async function confirmedStep(
     });
 }
 
+// A Studio-minted unit: activation_hash and dual_asset are mint provenance.
+const OWNED_CUSTOM = {
+  recordId: "rec-0001",
+  state: "Authenticity verified",
+  activation_hash: "b".repeat(64),
+  dual_asset: { title: "Arc grinder", rights: ["hold"] },
+};
+// binding.transferRequest as the runtime's template inspection answers it.
+const TRANSFER_REQUEST = {
+  action: "update",
+  inputPath: "data.custom",
+  leaves: {
+    recordId: { unchanged: true },
+    state: { enum: ["Transfer pending"] },
+    "lifecycle.target_state": { enum: ["Transfer pending"] },
+    "proof_event.public_fields": { runtimeIssued: "public_fields" },
+  },
+  fromStates: ["Authenticity verified"],
+  targetStates: ["Transfer pending"],
+  preserveUnlisted: true,
+};
+const ownedUnit = (custom: Record<string, unknown> = OWNED_CUSTOM) => ({
+  id: UNIT,
+  templateId: TEMPLATE_A,
+  owner: HOLDER,
+  custom: JSON.parse(JSON.stringify(custom)),
+  metadata: { name: "Arc grinder" },
+  whenModified: new Date("2026-10-01T00:00:00Z"),
+});
+
 const original = global.fetch;
 beforeEach(() => {
-  process.env.PRODUCT_FACE_APPLICATIONS = JSON.stringify([bindingInput()]);
+  process.env.PRODUCT_FACE_APPLICATIONS = JSON.stringify([
+    bindingInput({ transferRequest: TRANSFER_REQUEST }),
+  ]);
   process.env.FACE_ASSERTION_KEY_ID = "wallet-face-test";
   process.env.FACE_ASSERTION_SIGNING_KEY = keys.privateKey
     .export({ format: "pem", type: "pkcs8" })
@@ -387,14 +447,7 @@ beforeEach(() => {
     whenModified: new Date(),
     emailVerified: true,
   });
-  const owned = {
-    id: UNIT,
-    templateId: TEMPLATE_A,
-    owner: HOLDER,
-    custom: { recordId: "rec-0001", state: "Authenticity verified" },
-    metadata: { name: "Arc grinder" },
-    whenModified: new Date("2026-10-01T00:00:00Z"),
-  };
+  const owned = ownedUnit();
   getObjectById.mockReset().mockResolvedValue(owned);
   getObjectByIdPublic.mockReset().mockResolvedValue(owned);
 });
@@ -477,6 +530,35 @@ describe("G8 transfer step, the holder's host (contract r16 transfer.sign)", () 
         object_id: "bbbbbbbbbbbbbbbbbbbbbbbb",
       }),
     ],
+    // Re-hashed, so only the exact template refuses them (contract r17).
+    [
+      "a request rewriting the record id",
+      tamper((c) => edit(c, "recordId", "rec-9999")),
+    ],
+    ["a request adding a leaf", tamper((c) => edit(c, "extra", "added"))],
+    [
+      "a request adding a nested leaf",
+      tamper((c) => edit(c, "dual_asset.extra", "added")),
+    ],
+    [
+      "a request changing a mint key",
+      tamper((c) => edit(c, "activation_hash", "c".repeat(64))),
+    ],
+    [
+      "a request changing a nested mint key",
+      tamper((c) => edit(c, "dual_asset.rights", ["burn"])),
+    ],
+    [
+      "a request dropping a mint key",
+      tamper((c) => edit(c, "activation_hash", REMOVE)),
+    ],
+    [
+      "a request writing another state",
+      tamper((c) => {
+        edit(c, "state", "In service");
+        edit(c, "lifecycle.target_state", "In service");
+      }),
+    ],
   ])("refuses %s", async (_label, propose) => {
     const runtime = fakeTransferRuntime({ propose });
     global.fetch = runtime.fetchImpl as unknown as typeof fetch;
@@ -492,6 +574,83 @@ describe("G8 transfer step, the holder's host (contract r16 transfer.sign)", () 
       status: 422,
       body: { code: "proposal_rejected" },
     });
+    // Nothing was journalled or reserved: only the read reached the runtime.
+    expect(runtime.calls.map((call) => call.operation)).toEqual([
+      "transfer.propose",
+    ]);
+  });
+
+  it("without binding.transferRequest: capability_not_granted, nothing reaches the runtime or the journal", async () => {
+    process.env.PRODUCT_FACE_APPLICATIONS = JSON.stringify([bindingInput()]);
+    const runtime = fakeTransferRuntime();
+    global.fetch = runtime.fetchImpl as unknown as typeof fetch;
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    const contextId = await selected(instance, browser);
+    expect(
+      await browser.call(
+        instance.proposal,
+        `/api/faces/${SLUG}/transfer-proposal`,
+        { context_id: contextId, offer_id: OFFER, object_id: UNIT },
+      ),
+    ).toMatchObject({ status: 403, body: { code: "capability_not_granted" } });
+    expect(
+      await browser.call(instance.operations, `/api/faces/${SLUG}/operations`, {
+        transition: "begin",
+        kind: "transfer",
+        operation: "transfer.request",
+        operation_id: STEP_OP,
+        object_id: UNIT,
+        context_id: contextId,
+        proposal_id: PROPOSAL,
+        offer_id: OFFER,
+      }),
+    ).toMatchObject({ status: 403, body: { code: "capability_not_granted" } });
+    expect(runtime.calls).toHaveLength(0);
+    // A template without the complete-map flag is refused too (fail closed).
+    process.env.PRODUCT_FACE_APPLICATIONS = JSON.stringify([
+      bindingInput({
+        transferRequest: { ...TRANSFER_REQUEST, preserveUnlisted: undefined },
+      }),
+    ]);
+    const older = loadInstance();
+    const second = new Browser(older);
+    const secondContext = await selected(older, second);
+    expect(
+      await second.call(
+        older.proposal,
+        `/api/faces/${SLUG}/transfer-proposal`,
+        { context_id: secondContext, offer_id: OFFER, object_id: UNIT },
+      ),
+    ).toMatchObject({ status: 422, body: { code: "proposal_rejected" } });
+  });
+
+  it("a unit that changed between begin and submit is refused before the reserve (r7 + r17)", async () => {
+    const runtime = fakeTransferRuntime();
+    global.fetch = runtime.fetchImpl as unknown as typeof fetch;
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    const contextId = await selected(instance, browser);
+    const submit = await confirmedStep(instance, browser, contextId);
+    // The unit gains a key (or a mint value moves) after the proposal was checked.
+    getObjectById.mockResolvedValue(
+      ownedUnit({ ...OWNED_CUSTOM, warrantyNote: "keep" }),
+    );
+    expect(await submit()).toMatchObject({
+      status: 409,
+      body: { code: "proposal_rejected" },
+    });
+    getObjectById.mockResolvedValue(
+      ownedUnit({ ...OWNED_CUSTOM, activation_hash: "c".repeat(64) }),
+    );
+    expect(await submit()).toMatchObject({
+      status: 409,
+      body: { code: "proposal_rejected" },
+    });
+    expect(runtime.calls).toHaveLength(0);
+    // Unchanged again: the same entry submits and reserves once.
+    getObjectById.mockResolvedValue(ownedUnit());
+    expect((await submit()).body.reservation).toBe("won");
   });
 
   it("reserves before any execution: won once; a replay is outcome_unknown and nothing is reserved again", async () => {

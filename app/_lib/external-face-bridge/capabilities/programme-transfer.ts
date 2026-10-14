@@ -1,5 +1,9 @@
-import { ProductFaceError } from "@/app/_domain/product-face";
 import {
+  ProductFaceError,
+  registrationReadback,
+} from "@/app/_domain/product-face";
+import {
+  checkTransferProposal,
   isOfferId,
   transferHostOperation,
   transferJournalOperation,
@@ -26,7 +30,10 @@ export { transferHostOperation };
  * obtains the step itself from the bound runtime (trusted transfer.propose),
  * which also names the recipient the runtime bound from the recipient's own
  * wallet assertion. The wallet checks the exact action and input against the
- * selected unit and that recipient, shows its own native confirmation (the
+ * selected unit and that recipient (the request step against the deployment's
+ * exact binding.transferRequest template, contract r17 complete custom map;
+ * without that template the operation is not granted), shows its own native
+ * confirmation (the
  * product, that ownership moves, and the recipient's wallet), journals the
  * step BEFORE anything leaves the wallet, has the BFF reserve it at the
  * runtime, and executes as the holder through the existing executor ONLY on
@@ -50,6 +57,9 @@ export function transferCapabilities(): ProductFaceCapability[] {
         if (!isOfferId(offerId) || !isOperationId(stepId)) {
           throw faceError("invalid_request");
         }
+        // The request step's exact template; absent: not granted (fail closed).
+        const rules = session.application.transferRequest;
+        if (!rules) throw faceError("capability_not_granted");
         if (session.pendingConfirmation) throw faceError("action_in_progress");
 
         session.pendingConfirmation = true;
@@ -101,18 +111,31 @@ export function transferCapabilities(): ProductFaceCapability[] {
             throw error;
           }
           assertStillCurrent(session, selection);
-          // Re-checked here: the BFF's checks are the authority, and this one
-          // keeps a misbehaving answer from ever reaching the executor.
+          // Re-checked here against this host's own fresh read: the BFF's
+          // checks are the authority, and this one keeps a misbehaving answer
+          // from ever reaching the executor.
+          const readback = registrationReadback(
+            fresh.owner,
+            session.holder,
+            fresh.custom,
+            session.application.canonicalRegistration,
+          );
+          const check = checkTransferProposal(
+            proposal,
+            {
+              offerId,
+              objectId: selection.objectId,
+              holder: session.holder,
+              now: Date.now(),
+              recipientReferenceHash: await handlers.sha256(proposal.recipient),
+            },
+            { currentCustom: fresh.custom, rules },
+          );
           if (
-            proposal.offerId !== offerId ||
-            proposal.objectId !== selection.objectId ||
-            proposal.expiresAt.getTime() <= Date.now() ||
-            proposal.recipient.toLowerCase() === session.holder.toLowerCase() ||
-            (proposal.step === "transfer"
-              ? proposal.action !== "transfer" ||
-                Object.keys(proposal.input).join(",") !== "to" ||
-                String(proposal.input.to).toLowerCase() !== proposal.recipient
-              : proposal.action !== "update") ||
+            !check.ok ||
+            (proposal.step === "request" &&
+              (!readback.state ||
+                !rules.fromStates.includes(readback.state))) ||
             (await handlers.sha256(transferProposalHashInput(proposal))) !==
               proposal.proposalHash
           ) {

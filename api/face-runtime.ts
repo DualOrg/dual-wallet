@@ -17,7 +17,8 @@ import {
   type TrustedRuntimeRead,
 } from "@/app/_domain/product-face";
 
-const MAX_RESPONSE_BYTES = 64 * 1024;
+/** Bound on any runtime answer (a settle or transfer proposal included). */
+export const MAX_RESPONSE_BYTES = 64 * 1024;
 const TIMEOUT_MS = 8_000;
 const RUNTIME_ENDPOINT = "/api/product-face/v1/operations";
 const PROPOSAL_ID = /^[A-Za-z0-9._:-]{1,128}$/;

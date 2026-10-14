@@ -39,6 +39,7 @@ import {
   type JournalTransitionError,
 } from "@/app/_domain/product-face-journal";
 import {
+  canonicalJson,
   checkSettleProposal,
   isCaseId,
   isObjectId,
@@ -53,7 +54,6 @@ import {
   isSettleProposalUnavailableReason,
   isUnscopedTransferOperation,
   transferOperationTargetsNothing,
-  unlistedCustomKeys,
   proposalHashInput,
   quoteHashInput,
   settleReserveHashInput,
@@ -931,6 +931,12 @@ export async function transitionOperation(
     if (outstanding) {
       return fail("operation_conflict", 409);
     }
+    // r17: a complete-map template only; the unit's fresh custom map is
+    // bound now and re-checked before anything is sent.
+    const freshHash = customMapHash(owned.product.custom);
+    if (settle.preserveUnlisted !== true || !freshHash) {
+      return fail("proposal_rejected", 409);
+    }
     return apply({
       kind: "begin",
       entry: {
@@ -938,6 +944,7 @@ export async function transitionOperation(
         kind: "settle",
         operation: settle.action,
         proposalId: body.proposal_id,
+        freshHash,
       },
     });
   }
@@ -966,6 +973,17 @@ export async function transitionOperation(
         item.phase === "submitted",
     );
     if (outstanding) return fail("operation_conflict", 409);
+    // The request step updates the unit's custom map: only under the exact
+    // binding.transferRequest template, bound to this fresh read (r17).
+    let freshHash: string | undefined;
+    if (body.operation === "transfer.request") {
+      const rules = context.binding.transferRequest;
+      if (!rules) return fail("capability_not_granted", 403);
+      freshHash = customMapHash(owned.product.custom);
+      if (rules.preserveUnlisted !== true || !freshHash) {
+        return fail("proposal_rejected", 409);
+      }
+    }
     return apply({
       kind: "begin",
       entry: {
@@ -974,6 +992,7 @@ export async function transitionOperation(
         operation: body.operation,
         proposalId: body.proposal_id,
         offerId: body.offer_id,
+        ...(freshHash ? { freshHash } : {}),
       },
     });
   }
@@ -1178,14 +1197,42 @@ async function recheckOperation(
     ) {
       return fail("settle_not_required", 409);
     }
-    // r7, re-checked on the fresh object at confirm and before the reserve:
-    // a custom key the template does not list could be dropped by the
-    // update. Nothing has been sent yet.
-    if (unlistedCustomKeys(owned.product.custom, settle.leaves)?.length !== 0) {
+    // r7 + r17, re-checked on the fresh object at confirm and before the
+    // reserve: the complete-map proposal was checked against the unit as it
+    // was at begin; a unit that changed since (a key added, a value moved)
+    // could lose data or be signed blind. Nothing has been sent yet.
+    if (
+      settle.preserveUnlisted !== true ||
+      !entry.freshHash ||
+      customMapHash(owned.product.custom) !== entry.freshHash
+    ) {
+      return fail("proposal_rejected", 409);
+    }
+  }
+  if (entry.kind === "transfer" && entry.operation === "transfer.request") {
+    const rules = context.binding.transferRequest;
+    if (!rules) return fail("capability_not_granted", 403);
+    const { readback } = productRegistration(context, owned.product);
+    if (
+      rules.preserveUnlisted !== true ||
+      !readback.state ||
+      !rules.fromStates.includes(readback.state) ||
+      !entry.freshHash ||
+      customMapHash(owned.product.custom) !== entry.freshHash
+    ) {
       return fail("proposal_rejected", 409);
     }
   }
   return undefined;
+}
+
+/** sha256 of the canonical JSON of a unit's custom map, or undefined. */
+function customMapHash(custom: unknown) {
+  try {
+    return sha256Hash(canonicalJson(custom ?? {}));
+  } catch {
+    return undefined;
+  }
 }
 
 // ------------------------------------------------------------------ status
