@@ -699,6 +699,7 @@ describe("product face BFF", () => {
     );
     const proposalInput = {
       custom: {
+        recordId: "rec-0001",
         state: "Authenticity verified",
         lifecycle: { target_state: "Authenticity verified" },
       },
@@ -718,7 +719,7 @@ describe("product face BFF", () => {
       input: proposalInput,
       proposal_hash: `sha256:${createHash("sha256")
         .update(
-          '{"action":"update","input":{"custom":{"lifecycle":{"target_state":"Authenticity verified"},"state":"Authenticity verified"}},"object_id":"' +
+          '{"action":"update","input":{"custom":{"lifecycle":{"target_state":"Authenticity verified"},"recordId":"rec-0001","state":"Authenticity verified"}},"object_id":"' +
             UNIT +
             '"}',
         )

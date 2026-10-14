@@ -843,6 +843,30 @@ describe("holder settle (G6)", () => {
     ]);
   });
 
+  it("passes on a refusal the BFF made on the fresh object before the reserve (r7)", async () => {
+    const order: string[] = [];
+    const run = await settleRuntime({
+      journal: jest.fn(async (request) => {
+        order.push(`journal:${request.transition}`);
+        if (request.transition === "submit") {
+          throw new ProductFaceError("proposal_rejected", 409);
+        }
+        return {};
+      }),
+    });
+    await expect(
+      run.call("programme.product.settle.request", run.request),
+    ).rejects.toMatchObject({ code: "proposal_rejected" });
+    expect(run.handlers.executeSettle).not.toHaveBeenCalled();
+    // Nothing was sent, so the confirmed entry is cancelled, not unknown.
+    expect(order).toEqual([
+      "journal:begin",
+      "journal:confirm",
+      "journal:submit",
+      "journal:cancel",
+    ]);
+  });
+
   it("shows the runtime's reason when no settle proposal exists, and invents none", async () => {
     const notice = jest.fn();
     const run = await settleRuntime({
@@ -917,6 +941,16 @@ describe("holder settle (G6)", () => {
     [
       "an unavailable action",
       { readActions: jest.fn(async () => ["transfer"]) },
+    ],
+    [
+      // r7: a fresh custom key the template does not list could be dropped.
+      "a fresh custom key the template does not list",
+      {
+        readProduct: jest.fn(async () => ({
+          ...pendingProduct,
+          custom: { ...pendingProduct.custom, warrantyNote: "keep" },
+        })),
+      },
     ],
   ])("refuses %s", async (_label, overrides) => {
     const {

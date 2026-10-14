@@ -2,6 +2,7 @@ import {
   applyJournalTransition,
   journalOperationStatus,
   parseJournalEntry,
+  pruneJournal,
   type FaceJournalEntry,
 } from "@/app/_domain/product-face-journal";
 
@@ -141,6 +142,41 @@ describe("face operation journal", () => {
         recorded.entries,
         { kind: "submit", operationId: settle.operationId, objectId: OBJECT },
         3,
+      ),
+    ).toEqual({ ok: false, error: "operation_already_submitted" });
+  });
+
+  it("never treats a submitted settle as nothing executed, however old (r13)", () => {
+    const settle = {
+      ...base,
+      operationId: "settle-op-0002",
+      kind: "settle" as const,
+      operation: "update",
+      proposalId: "proposal-2",
+    };
+    const [submitted] = run([
+      { kind: "begin", entry: settle },
+      { kind: "confirm", operationId: settle.operationId, objectId: OBJECT },
+      { kind: "submit", operationId: settle.operationId, objectId: OBJECT },
+    ]);
+    // Long after any proposal expiry, with the unit still pending (an empty
+    // history) or unreadable, the status stays unknown, never not_submitted.
+    const later = { ...submitted, updatedAt: 1_000 + 6 * 24 * 3_600_000 };
+    for (const evaluation of [
+      "ownership_moved_state_pending",
+      undefined,
+    ] as const) {
+      expect(journalOperationStatus(later, evaluation)).toBe("outcome_unknown");
+    }
+    // It is kept (not pruned like a finished entry) and cannot be cancelled.
+    expect(pruneJournal([submitted], 1_000 + 2 * 24 * 3_600_000)).toEqual([
+      submitted,
+    ]);
+    expect(
+      applyJournalTransition(
+        [submitted],
+        { kind: "cancel", operationId: settle.operationId },
+        5_000,
       ),
     ).toEqual({ ok: false, error: "operation_already_submitted" });
   });

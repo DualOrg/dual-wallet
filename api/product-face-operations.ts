@@ -50,6 +50,7 @@ import {
   isRuntimeOperation,
   isRuntimeWriteOperation,
   isSettleProposalUnavailableReason,
+  unlistedCustomKeys,
   proposalHashInput,
   quoteHashInput,
   settleReserveHashInput,
@@ -878,6 +879,21 @@ export async function transitionOperation(
     if (!readback.state || !settle.fromStates.includes(readback.state)) {
       return fail("settle_not_required", 409);
     }
+    // r11/r13: a settle of this unit that already left the wallet (reserved,
+    // or its reserve answer lost) stays outcome_unknown with its original
+    // correlation; it is never replaced from here, whatever the time or an
+    // empty history says. Only the runtime's reservation is authoritative;
+    // this keeps one launch from even asking.
+    const outstanding = journal.entries.find(
+      (item) =>
+        item.kind === "settle" &&
+        item.objectId === body.object_id &&
+        item.operationId !== operationId &&
+        item.phase === "submitted",
+    );
+    if (outstanding) {
+      return fail("operation_conflict", 409);
+    }
     return apply({
       kind: "begin",
       entry: {
@@ -996,6 +1012,12 @@ async function recheckOperation(
       !settle.fromStates.includes(readback.state)
     ) {
       return fail("settle_not_required", 409);
+    }
+    // r7, re-checked on the fresh object at confirm and before the reserve:
+    // a custom key the template does not list could be dropped by the
+    // update. Nothing has been sent yet.
+    if (unlistedCustomKeys(owned.product.custom, settle.leaves)?.length !== 0) {
+      return fail("proposal_rejected", 409);
     }
   }
   return undefined;

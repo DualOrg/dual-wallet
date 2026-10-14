@@ -507,7 +507,13 @@ the wallet-defined format names Studio emits: `sha256_hex` (64 hex),
 `public_fields` (at most 32 plain-text strings of at most 200 characters). The
 registry accepts the template nested under `inputTemplate`, or flat as Studio's
 `productFaceSettleInputTemplate()` exports it (`inputPath` plus `leaves`); both
-become one leaf map. The confirmation shows the decoded field changes from the
+become one leaf map. Because api-v3 does not state whether an Update merges or
+replaces nested `data.custom` (contract r7), the host also refuses
+(`proposal_rejected`) unless every key of the fresh object's custom map, at
+every level, is a listed leaf, so no key can be dropped under replace
+semantics; the BFF re-checks this on the fresh object at confirm and again
+before the reserve, where the refusal is pre-send and the entry is cancelled
+as `not_submitted`. The confirmation shows the decoded field changes from the
 proposal and the fresh object; runtime-issued commitments (hashes, ids,
 timestamps) are listed separately under a technical disclosure, and values that
 stay the same are not shown.
@@ -528,6 +534,16 @@ read-only through `registration.settle.status` (the runtime finds the holder
 action in Dual's action logs, or the outcome stays unknown). A cancel before
 the reservation is `not_submitted`; a lost or failed execution is
 `outcome_unknown` and is never re-executed.
+
+**No release (contract r13).** A settle that left the wallet (won, or its
+reserve answer lost) is never released or replaced from the host. Proposal
+expiry plus an empty history is not evidence that nothing executed: the host
+status stays `outcome_unknown` (or follows the canonical readback once it
+shows the settled state), the entry cannot be cancelled into
+`not_submitted`, it is kept until the journal's 7-day retention (then the
+status is unknown, never "not submitted"), and the same launch refuses a
+replacement settle of that unit (`operation_conflict`) before asking the
+runtime. Another launch may ask, and the runtime's reservation refuses it.
 
 **No proposal (G6b).** The runtime originates the brand's proposal; when it
 has none it answers `settle_proposal_unavailable` with a reason

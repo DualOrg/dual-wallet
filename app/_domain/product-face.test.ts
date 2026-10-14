@@ -7,6 +7,7 @@ import {
   proposalHashInput,
   registrationReadback,
   taskPathFromPathname,
+  unlistedCustomKeys,
   type CanonicalRegistrationRules,
   type SettleProposal,
   type SettleRules,
@@ -192,6 +193,75 @@ describe("settle input template (contract r5 leaf rules)", () => {
         state: "Transfer pending",
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("complete custom map (contract r7)", () => {
+  it("lists nothing when every fresh custom key is a template leaf", () => {
+    expect(unlistedCustomKeys(current, settle.leaves)).toEqual([]);
+    // Template leaves the object does not have yet (runtime-issued) are fine.
+    expect(
+      unlistedCustomKeys({ state: "Transfer pending" }, settle.leaves),
+    ).toEqual([]);
+    expect(unlistedCustomKeys(undefined, settle.leaves)).toEqual([]);
+    expect(unlistedCustomKeys({}, settle.leaves)).toEqual([]);
+  });
+
+  it("names every fresh key the template does not list, nested ones too", () => {
+    expect(
+      unlistedCustomKeys(
+        {
+          ...current,
+          warrantyNote: "keep",
+          lifecycle: { target_state: "Registered", reason: "handover" },
+          shadow: {},
+        },
+        settle.leaves,
+      )?.sort(),
+    ).toEqual(["lifecycle.reason", "shadow", "warrantyNote"]);
+  });
+
+  it("reads the legacy custom.* template root the same way", () => {
+    const legacy = { "custom.state": { enum: ["Authenticity verified"] } };
+    expect(unlistedCustomKeys({ state: "x" }, legacy)).toEqual([]);
+    expect(unlistedCustomKeys({ state: "x", model: "y" }, legacy)).toEqual([
+      "model",
+    ]);
+  });
+
+  it("refuses a custom value that is not a map", () => {
+    expect(unlistedCustomKeys(["state"], settle.leaves)).toBeUndefined();
+    expect(unlistedCustomKeys("state", settle.leaves)).toBeUndefined();
+  });
+
+  it("refuses an otherwise exact proposal when the fresh object has an unlisted key", () => {
+    const proposal: SettleProposal = {
+      proposalId: "proposal-1",
+      operationId: "register-op-0001",
+      objectId: "aaaaaaaaaaaaaaaaaaaaaaaa",
+      action: "update",
+      input: input(),
+      proposalHash: "sha256:" + "0".repeat(64),
+      expiresAt: new Date(Date.parse("2026-10-14T10:01:00Z")),
+    };
+    const expected = {
+      operationId: "register-op-0001",
+      objectId: "aaaaaaaaaaaaaaaaaaaaaaaa",
+      now: Date.parse("2026-10-14T10:00:00Z"),
+    };
+    expect(
+      checkSettleProposal(proposal, expected, current, settle, rules).ok,
+    ).toBe(true);
+    // Under replace semantics the update would drop warrantyNote.
+    expect(
+      checkSettleProposal(
+        proposal,
+        expected,
+        { ...current, warrantyNote: "keep" },
+        settle,
+        rules,
+      ),
+    ).toEqual({ ok: false, reason: "proposal_rejected" });
   });
 });
 

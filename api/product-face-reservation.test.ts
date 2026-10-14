@@ -18,9 +18,10 @@ import { bindingInput, HOLDER, TEMPLATE_A } from "@/test/product-face-fixtures";
 
 const getWallet = jest.fn();
 const getObjectById = jest.fn();
+const getObjectByIdPublic = jest.fn();
 jest.mock("@/api/web-sdk-client", () => ({
   getWalletsApi: () => ({ getWallet, logout: jest.fn() }),
-  getObjectsApi: () => ({ getObjectById, getObjectByIdPublic: jest.fn() }),
+  getObjectsApi: () => ({ getObjectById, getObjectByIdPublic }),
 }));
 
 const UNIT = "aaaaaaaaaaaaaaaaaaaaaaaa";
@@ -34,9 +35,15 @@ type Handler = (
   context: { params: Promise<{ slug: string }> },
 ) => Promise<Response>;
 
+type StatusHandler = (
+  request: NextRequest,
+  context: { params: Promise<{ slug: string; operationId: string }> },
+) => Promise<Response>;
+
 interface Instance {
   selection: Handler;
   operations: Handler;
+  status: StatusHandler;
   establishSession: typeof import("@/api/server-session").establishSession;
   unsealForPurpose: typeof import("@/api/server-session").unsealForPurpose;
 }
@@ -50,6 +57,8 @@ function loadInstance(): Instance {
     instance = {
       selection: require("@/app/api/faces/[slug]/selection/route").POST,
       operations: require("@/app/api/faces/[slug]/operations/route").POST,
+      status: require("@/app/api/faces/[slug]/operations/[operationId]/route")
+        .GET,
       establishSession: session.establishSession,
       unsealForPurpose: session.unsealForPurpose,
     };
@@ -130,6 +139,27 @@ class Browser {
       { params: Promise.resolve({ slug: SLUG }) },
     );
     if (keep) this.take(response);
+    return { status: response.status, body: await response.json() };
+  }
+
+  /** The read-only status route for one operation. */
+  async status(instance: Instance, operationId: string) {
+    const response = await instance.status(
+      new NextRequest(
+        `http://localhost/api/faces/${SLUG}/operations/${operationId}`,
+        {
+          headers: {
+            host: "localhost",
+            "x-dual-face-launch": this.launchId,
+            cookie: Array.from(this.cookies, ([k, v]) => `${k}=${v}`).join(
+              "; ",
+            ),
+          },
+        },
+      ),
+      { params: Promise.resolve({ slug: SLUG, operationId }) },
+    );
+    this.take(response);
     return { status: response.status, body: await response.json() };
   }
 }
@@ -321,15 +351,21 @@ beforeEach(() => {
     whenModified: new Date(),
     emailVerified: true,
   });
-  getObjectById.mockReset().mockResolvedValue({
+  getObjectById.mockReset().mockResolvedValue(pendingUnit());
+  getObjectByIdPublic.mockReset().mockResolvedValue(pendingUnit());
+});
+
+/** The unit after the first-owner handoff: owned, state still pending. */
+function pendingUnit(custom: Record<string, unknown> = {}) {
+  return {
     id: UNIT,
     templateId: TEMPLATE_A,
     owner: HOLDER,
-    custom: { recordId: "rec-0001", state: "Transfer pending" },
+    custom: { recordId: "rec-0001", state: "Transfer pending", ...custom },
     metadata: { name: "Arc grinder" },
     whenModified: new Date("2026-10-01T00:00:00Z"),
-  });
-});
+  };
+}
 afterEach(() => {
   global.fetch = original;
   delete process.env.PRODUCT_FACE_APPLICATIONS;
@@ -465,6 +501,120 @@ describe("settle reservation (contract r8/r11)", () => {
       operationId: SETTLE_OP,
       phase: "submitted",
       proposalId: PROPOSAL,
+    });
+  });
+
+  it("refuses before the reserve when the fresh custom map has a key the template does not list (r7)", async () => {
+    const runtime = fakeRuntime();
+    global.fetch = runtime.fetchImpl as unknown as typeof fetch;
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    const settle = await confirmedSettle(instance, browser);
+    // Between the confirmation and the submit the unit gains a custom key an
+    // update could drop under replace semantics.
+    getObjectById.mockResolvedValue(pendingUnit({ warrantyNote: "keep" }));
+    const refused = await settle.submit(instance);
+    expect(refused).toMatchObject({
+      status: 409,
+      body: { code: "proposal_rejected" },
+    });
+    expect(runtime.calls).toHaveLength(0);
+    // Nothing left the wallet: the entry is still confirmed and cancellable.
+    const cancelled = await browser.call(
+      instance.operations,
+      `/api/faces/${SLUG}/operations`,
+      { transition: "cancel", operation_id: SETTLE_OP },
+    );
+    expect(cancelled).toMatchObject({
+      status: 200,
+      body: { operation: { phase: "cancelled", status: "not_submitted" } },
+    });
+  });
+
+  it("a won reservation is never released: unknown after proposal expiry with an empty history, never replaced (r13)", async () => {
+    const runtime = fakeRuntime();
+    global.fetch = runtime.fetchImpl as unknown as typeof fetch;
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    const settle = await confirmedSettle(instance, browser);
+    const won = await settle.submit(instance);
+    expect(won.body.reservation).toBe("won");
+    // The host executed, but the execute answer was lost: no action id was
+    // recorded. The unit's state and history show nothing yet.
+    runtime.hostExecutes(won);
+
+    // Well past any proposal expiry (the session itself still valid).
+    const realNow = Date.now;
+    const later = realNow() + 30 * 60_000;
+    jest.spyOn(Date, "now").mockImplementation(() => later);
+    try {
+      const status = await browser.status(instance, SETTLE_OP);
+      expect(status).toMatchObject({
+        status: 200,
+        body: { phase: "submitted", status: "outcome_unknown" },
+      });
+      // Never cancelled into not_submitted.
+      expect(
+        await browser.call(
+          instance.operations,
+          `/api/faces/${SLUG}/operations`,
+          { transition: "cancel", operation_id: SETTLE_OP },
+        ),
+      ).toMatchObject({
+        status: 409,
+        body: { code: "operation_already_submitted" },
+      });
+      // A replacement settle of the same unit in this launch is refused
+      // before anything reaches the runtime.
+      const selected = await browser.call(
+        instance.selection,
+        `/api/faces/${SLUG}/selection`,
+        { object_id: UNIT },
+      );
+      expect(
+        await browser.call(
+          instance.operations,
+          `/api/faces/${SLUG}/operations`,
+          {
+            transition: "begin",
+            kind: "settle",
+            operation: "update",
+            operation_id: "settle-replacement-0001",
+            object_id: UNIT,
+            context_id: selected.body.context_id,
+            proposal_id: "psp-replacement-0000000000001",
+          },
+        ),
+      ).toMatchObject({ status: 409, body: { code: "operation_conflict" } });
+      expect(runtime.calls).toHaveLength(1);
+    } finally {
+      jest.restoreAllMocks();
+    }
+
+    // Another launch (a fresh tab) may ask, but the runtime still holds the
+    // original claim: already_reserved, outcome_unknown, never won.
+    const fresh = new Browser(instance, `launch-${"r".repeat(28)}`);
+    fresh.cookies = new Map(
+      [...browser.cookies].filter(
+        ([name]) => !name.startsWith("dual_face_launch_"),
+      ),
+    );
+    const replacement = await confirmedSettle(
+      instance,
+      fresh,
+      "settle-replacement-0002",
+    );
+    const answer = await replacement.submit(instance);
+    runtime.hostExecutes(answer);
+    expect(answer).toMatchObject({
+      status: 409,
+      body: { code: "outcome_unknown" },
+    });
+    expect(runtime.reservations.get(UNIT)?.settleOperationId).toBe(SETTLE_OP);
+    expect(runtime.executions).toBe(1);
+    // The original stays unknown in its own launch.
+    expect((await browser.status(instance, SETTLE_OP)).body).toMatchObject({
+      status: "outcome_unknown",
     });
   });
 

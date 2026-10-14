@@ -28,8 +28,11 @@ export function bindingInput(overrides: Record<string, unknown> = {}) {
     },
     settle: {
       action: "update",
+      // r7: the template lists every key of the unit's custom map (the test
+      // units carry recordId and state).
       inputTemplate: {
         custom: {
+          recordId: { unchanged: true },
           state: { enum: ["Authenticity verified"] },
           lifecycle: { target_state: { enum: ["Authenticity verified"] } },
         },

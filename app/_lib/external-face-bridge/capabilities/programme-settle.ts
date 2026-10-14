@@ -189,6 +189,9 @@ export function settleCapabilities(): ProductFaceCapability[] {
                 "stale_context",
                 "not_owned",
                 "settle_not_required",
+                // r7: the fresh custom map gained a key the template does
+                // not list; refused on the fresh read, before the reserve.
+                "proposal_rejected",
                 "assertion_limit",
                 "face_assertion_unprovisioned",
               ].includes(error.code)

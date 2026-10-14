@@ -689,6 +689,33 @@ export function matchSettleTemplate(
   return found;
 }
 
+/**
+ * contract r7 (complete custom map): api-v3 does not state whether an Update
+ * merges or replaces nested `data.custom`, so a settle may only run when
+ * every key of the FRESH object's custom map is one of the template's listed
+ * leaves; then no key can be dropped under replace semantics. Returns the
+ * fresh custom leaf paths the template does not list (empty when complete),
+ * or undefined when the fresh custom is not a map at all.
+ */
+export function unlistedCustomKeys(
+  currentCustom: unknown,
+  leaves: Record<string, SettleTemplateLeaf>,
+): string[] | undefined {
+  if (currentCustom === undefined || currentCustom === null) return [];
+  if (!plainRecord(currentCustom)) return undefined;
+  if (!Object.keys(currentCustom).length) return [];
+  const listed = Object.keys(leaves).flatMap((field) => {
+    const customPath = customPathOf(field);
+    return customPath ? [customPath] : [];
+  });
+  return inputLeaves(currentCustom)
+    .map(([path]) => path)
+    .filter(
+      (path) =>
+        !listed.some((leaf) => path === leaf || path.startsWith(`${leaf}.`)),
+    );
+}
+
 /** A proposal the wallet obtained itself from the bound runtime. */
 export interface SettleProposal {
   proposalId: string;
@@ -725,6 +752,10 @@ export function checkSettleProposal(
     proposal.action !== settle.action ||
     !isSettleActionName(proposal.action)
   ) {
+    return { ok: false, reason: "proposal_rejected" };
+  }
+  // r7: a fresh custom key the template does not list could be dropped.
+  if (unlistedCustomKeys(currentCustom, settle.leaves)?.length !== 0) {
     return { ok: false, reason: "proposal_rejected" };
   }
   const leaves = matchSettleTemplate(
