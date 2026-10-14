@@ -397,9 +397,10 @@
     "walletApp": "http://demo.localhost:3000 (actual wallet, next dev)",
     "walletFakeDual": "http://127.0.0.1:4010 (wallet e2e/mock-api.mjs, labelled local fake)",
     "walletE2eFaceFixture": "http://localhost:4101 (pinned emitted Studio artifact + labelled fake runtime, wallet e2e only)",
-    "studioFaceRuntime": "http://localhost:4180 (actual Studio runtime + emitted artifact, scripts/product-face-harness.mjs)",
+    "studioFaceRuntime": "http://localhost:4180 (actual Studio runtime + emitted artifact, node scripts/qa/product-face-harness.mjs)",
     "studioFakeDual": "http://127.0.0.1:4011 (Studio local fake Dual, labelled; serves api-v3 shaped GET /objects/:id, GET /objects?template_id=&owner=, GET /ebus/action-logs?object_id= for programme objects)",
-    "integratedMode": "wallet mock-api forwards programme-template object reads to MOCK_PROGRAMME_DUAL_URL=http://127.0.0.1:4011 so both sides read one fake Dual state"
+    "integratedMode": "wallet mock-api forwards programme-template object reads to MOCK_PROGRAMME_DUAL_URL=http://127.0.0.1:4011 so both sides read one fake Dual state",
+    "emit": "node scripts/qa/product-face-emit.mjs --brand <morrow-home|tidewell> --wallet-origin <origin> --out <dir>"
   },
   "knownGaps": {
     "G1": "wallet->runtime person identity/launch contract (assertion seam above; provisioning required)",
