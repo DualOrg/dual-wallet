@@ -1,6 +1,6 @@
 {
   "contract": "dual-product-face-v1",
-  "revision": 9,
+  "revision": 10,
   "status": "first_source_delivery",
   "summary": "Full-size, first-party reviewed product face inside the authenticated Dual wallet. Uses the existing dual.face.bridge v1 envelope, handshake and limits; adds a programme ('application') context variant and named capability modules. No second postMessage protocol, no generic fetch/proxy/token operation.",
   "protocol": {
@@ -42,7 +42,8 @@
       "templateIds": "Dual template ids (24 hex) that belong to the programme",
       "projectionFields": "public custom fields the host may project to the face, subset of [recordId,title,serialNumber,model,manufacturer,state]",
       "canonicalRegistration": "{stateField:\"state\", lifecycleTargetField:\"lifecycle.target_state\", settledStates:[\"Registered\",\"Authenticity verified\",\"In service\",\"Transferred\"], unconfirmedStates:[\"Transfer pending\"], endedStates:[\"Recalled\",\"Stolen\",\"Retired\"]}",
-      "settle": "CANONICAL SHAPE {action:\"update\", inputPath:\"data.custom\", leaves:{\"<dotted path under inputPath>\": leafRule}, fromStates, targetStates}. leafRule = {literal:v} | {enum:[...]} | {unchanged:true} | {runtimeIssued:<formatName>}. Every key of the proposal input under inputPath must be a listed leaf and every listed leaf must be present; because api-v3 Update documents only top-level merge (\"Anything you leave out stays as it is\") and does not state whether data.custom merges or replaces, the proposal carries the COMPLETE custom map and the host refuses unless every key of the fresh object custom is a listed leaf (no key can be dropped under replace semantics). Open canonical question for api-v3 owners: merge vs replace of nested data.custom."
+      "settle": "CANONICAL SHAPE {action:\"update\", inputPath:\"data.custom\", leaves:{\"<dotted path under inputPath>\": leafRule}, fromStates, targetStates}. leafRule = {literal:v} | {enum:[...]} | {unchanged:true} | {runtimeIssued:<formatName>}. Every key of the proposal input under inputPath must be a listed leaf and every listed leaf must be present; because api-v3 Update documents only top-level merge (\"Anything you leave out stays as it is\") and does not state whether data.custom merges or replaces, the proposal carries the COMPLETE custom map and the host refuses unless every key of the fresh object custom is a listed leaf (no key can be dropped under replace semantics). Open canonical question for api-v3 owners: merge vs replace of nested data.custom.",
+      "linkedRuntimes": "[{purpose:\"claims-warranty\", applicationId, origin (exact), instanceId}] — server-only registry data naming the Warranty runtime explicitly connected to this Passport programme (Phase 2 connect); used ONLY as the assertion audience and target for case.* operations"
     },
     "readyIdentity": "dual.face.ready.application must be {id, version, publisher, programme, artifact, contract:'dual-product-face-v1'} and EVERY value must equal the binding exactly (version exact, not just major); mismatch closes the channel"
   },
@@ -516,5 +517,13 @@
     "resume": "a product page for a unit with a pending/unconfirmed/unknown registration shows a primary Finish registration (or recovery) action that resumes the ORIGINAL operation via registration.pending.read; no new intent",
     "collection": "collection copy is derived from item statuses; never claims everything is registered while any item is pending/unknown",
     "hierarchy": "friendly actionable state first; raw record state, content version and ids go into a technical disclosure"
+  },
+  "linkedCaseAuthority": {
+    "decision": "G7: NO new Studio-issued cross-app credential. Case operations reuse the G1 wallet assertion seam with the LINKED Warranty runtime as audience.",
+    "assertion": "for case.* the host mints aud = <linked applicationId>@<linked origin>, with the same claims (holder from the wallet session, operation, op_id, target {object_id, case_id?}, request_hash, artifact of the FACE artifact, programme) and one-time jti; the host only mints when the selected context is the owned unit",
+    "transport": "the face sends case.* requests to its OWN runtime, which relays them server-to-server to the linked Warranty runtime unchanged (the Passport runtime gains no authority: the assertion audience is the Warranty runtime); the host BFF trustedRuntimeReads case.read goes directly to the linked origin",
+    "authorisation": "the Warranty runtime verifies the wallet assertion (keys/issuers as G1, aud == itself, linked Passport programme/artifact allowlisted), then resource: the linked Passport facts of the case name the unit, a FRESH Dual read of that unit object owner == assertion holder, and the Passport canonical state agrees; case.open additionally requires the unit be eligible under the existing connected-products eligibility; every operation re-checks; no role session is manufactured — the runtime acts through the existing Claims customer path with the verified holder as the case customer subject reference (hash)",
+    "quotes": "approve/decline bind {case_id, quote_version, amount, currency}; quote_changed refuses; no payment",
+    "provisioning": "the Warranty runtime needs the same TIG_PRODUCT_FACE_WALLET_ASSERTION_KEYS/ISSUERS plus an allowlist of linked Passport face applications; fail closed until provisioned"
   }
 }
