@@ -23,6 +23,12 @@ const PUBLIC_KEY = process.env.PRODUCT_FACE_ASSERTION_PUBLIC_KEY
     )
   : undefined;
 const KEY_ID = process.env.PRODUCT_FACE_ASSERTION_KEY_ID || "";
+// contract r14: the wallet host entry comes from the runtime's own published
+// configuration (Studio's TIG_PRODUCT_FACE_WALLET_ENTRY), never from the link.
+const WALLET_ENTRY_URL =
+  process.env.PRODUCT_FACE_WALLET_ENTRY ||
+  `${WALLET_ORIGIN}/products/morrow-home/handover`;
+const HANDOVER_TICKET_TTL_MS = 10 * 60 * 1000;
 const SETTLED = [
   "Registered",
   "Authenticity verified",
@@ -61,6 +67,7 @@ const freshStats = () => ({
   registrations: 0,
   jti: new Set(),
   reserve: { won: 0, already_claimed: 0, already_reserved: 0, lost: 0 },
+  handover: { issued: 0, redeemed: 0, refused: 0 },
 });
 let stats = freshStats();
 const evidence = new Map();
@@ -71,8 +78,11 @@ const registrations = new Map(); // operationId -> {objectId, recordId, holder, 
 const unitOperations = new Map(); // objectId -> operationId
 const proposals = new Map(); // registration operationId -> proposal
 const reservations = new Map(); // objectId -> reservation
+// r14 one-time handover tickets: ticket -> {evidence, units, exp, used}.
+const handoverTickets = new Map();
 const resetState = () => {
   evidence.clear();
+  handoverTickets.clear();
   registrations.clear();
   unitOperations.clear();
   proposals.clear();
@@ -310,6 +320,32 @@ async function registrationAnswer(operationId, objectId, holder, extra = {}) {
   };
 }
 
+/** The /evidence answer: the opaque handle and the units it covers. */
+async function evidenceAnswer(handle, units) {
+  const listed = [];
+  for (const objectId of units) {
+    const object = await (
+      await fetch(`${MOCK_API}/public/objects/${objectId}`)
+    ).json();
+    listed.push({
+      recordId: `rec-${objectId.slice(-4)}`,
+      objectId,
+      title: object.metadata.name,
+      serialNumber: object.custom.serialNumber,
+      model: object.custom.model,
+      registration: object.owner.toLowerCase().endsWith("155ae")
+        ? "available"
+        : "already_registered",
+    });
+  }
+  return {
+    status: "evidence_accepted",
+    evidence: handle,
+    units: listed,
+    secretReturned: false,
+  };
+}
+
 async function runtime(request, response, url, manifest) {
   const body = await readJson(request);
   if (!body)
@@ -319,6 +355,68 @@ async function runtime(request, response, url, manifest) {
     });
   const route = url.pathname.slice("/api/product-face/v1".length);
 
+  if (route === "/handover") {
+    // r14 step 2: the EXISTING evidence exchange, then a one-time ticket
+    // bound to this application, version and artifact. Only {walletEntryUrl,
+    // ticket} is answered; the grant never leaves the runtime.
+    const units = GRANTS[String(body.grant || "").trim()];
+    if (!units) {
+      stats.handover.refused += 1;
+      return send(response, 400, {
+        status: "face_evidence_grant_invalid",
+        ...ZERO,
+      });
+    }
+    const handle = opaqueHandle();
+    evidence.set(handle, units);
+    const ticket = randomBytes(32).toString("base64url");
+    handoverTickets.set(ticket, {
+      evidence: handle,
+      units,
+      exp: Date.now() + HANDOVER_TICKET_TTL_MS,
+      used: false,
+      applicationId: manifest.applicationId,
+      version: manifest.version,
+      artifactHash: manifest.artifactHash,
+    });
+    stats.handover.issued += 1;
+    return send(response, 200, {
+      walletEntryUrl: WALLET_ENTRY_URL,
+      ticket,
+    });
+  }
+
+  if (route === "/handover/redeem") {
+    // r14 step 5: atomically consumed once; answers exactly what /evidence
+    // answers.
+    const entry = handoverTickets.get(String(body.ticket || ""));
+    const refusal = !entry
+      ? "face_handover_ticket_invalid"
+      : entry.used
+        ? "face_handover_ticket_used"
+        : entry.exp <= Date.now()
+          ? "face_handover_ticket_expired"
+          : entry.applicationId !== manifest.applicationId ||
+              entry.artifactHash !== manifest.artifactHash
+            ? "face_handover_ticket_binding_mismatch"
+            : "";
+    if (refusal) {
+      stats.handover.refused += 1;
+      return send(response, 409, {
+        status: "refused",
+        reason: refusal,
+        ...ZERO,
+      });
+    }
+    entry.used = true;
+    stats.handover.redeemed += 1;
+    return send(
+      response,
+      200,
+      await evidenceAnswer(entry.evidence, entry.units),
+    );
+  }
+
   if (route === "/evidence") {
     const units = GRANTS[String(body.grant || "").trim()];
     if (!units)
@@ -326,28 +424,7 @@ async function runtime(request, response, url, manifest) {
     // r9: an opaque, random handle only; nothing in it names a session.
     const handle = opaqueHandle();
     evidence.set(handle, units);
-    const listed = [];
-    for (const objectId of units) {
-      const object = await (
-        await fetch(`${MOCK_API}/public/objects/${objectId}`)
-      ).json();
-      listed.push({
-        recordId: `rec-${objectId.slice(-4)}`,
-        objectId,
-        title: object.metadata.name,
-        serialNumber: object.custom.serialNumber,
-        model: object.custom.model,
-        registration: object.owner.toLowerCase().endsWith("155ae")
-          ? "available"
-          : "already_registered",
-      });
-    }
-    return send(response, 200, {
-      status: "evidence_accepted",
-      evidence: handle,
-      units: listed,
-      secretReturned: false,
-    });
+    return send(response, 200, await evidenceAnswer(handle, units));
   }
 
   if (route === "/registrations") {
@@ -751,6 +828,7 @@ const server = createServer(async (request, response) => {
         assertions: stats.assertions,
         registrations: stats.registrations,
         reserve: stats.reserve,
+        handover: stats.handover,
         reservations: Object.fromEntries(reservations),
         // Leaves under data.custom of each originated proposal.
         proposalLeaves: [...proposals.values()].map((proposal) => {
@@ -761,6 +839,46 @@ const server = createServer(async (request, response) => {
           return count(proposal.input.data.custom);
         }),
       });
+    }
+    // r14 step 2: the runtime's minimal handover page. Strict CSP, no
+    // referrer, not framable; its script strips the fragment at once, posts
+    // the grant same-origin and goes to the wallet entry with the ticket in
+    // the fragment only.
+    if (/^\/face\/handover\/[a-z0-9._-]+\/?$/.test(url.pathname)) {
+      response.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy":
+          "default-src 'none'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+        "Referrer-Policy": "no-referrer",
+        "X-Frame-Options": "DENY",
+        "Cache-Control": "no-store",
+      });
+      response.end(
+        `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Opening your wallet (fixture)</title></head><body><p id="status">Opening your wallet… (labelled local fixture)</p><script src="/face/handover-page.js"></script></body></html>`,
+      );
+      return;
+    }
+    if (url.pathname === "/face/handover-page.js") {
+      response.writeHead(200, {
+        "Content-Type": "text/javascript; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
+      response.end(`(async () => {
+        const fragment = new URLSearchParams(location.hash.slice(1));
+        history.replaceState(null, "", location.pathname + location.search);
+        const grant = fragment.get("access");
+        const settle = fragment.get("settle");
+        const status = document.getElementById("status");
+        if (!grant) { status.textContent = "This link is incomplete."; return; }
+        const answer = await fetch("/api/product-face/v1/handover", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(settle ? { grant, settle } : { grant }),
+        }).then((r) => r.json()).catch(() => ({}));
+        if (!answer.walletEntryUrl || !answer.ticket) { status.textContent = "This link cannot be used."; return; }
+        location.replace(answer.walletEntryUrl + "#ticket=" + encodeURIComponent(answer.ticket));
+      })();`);
+      return;
     }
     // A different-origin page used to prove forged messages are ignored.
     if (url.pathname === "/forged/") {

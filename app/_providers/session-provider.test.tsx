@@ -49,7 +49,15 @@ function renderSession(
   );
 }
 
-beforeEach(() => loadSession.mockReset());
+const clearFaceHandover = jest.fn(async () => undefined);
+jest.mock("@/app/_services/product-face.client", () => ({
+  clearFaceHandover: () => clearFaceHandover(),
+}));
+
+beforeEach(() => {
+  loadSession.mockReset();
+  clearFaceHandover.mockClear();
+});
 
 test("replacing an authenticated wallet removes the previous account's cache", async () => {
   const client = new QueryClient({
@@ -66,6 +74,8 @@ test("replacing an authenticated wallet removes the previous account's cache", a
   await waitFor(() => expect(loadSession).toHaveBeenCalledTimes(1));
   expect(client.getQueryData(inventoryKey)).toBeUndefined();
   expect(client.getQueryData(activityKey)).toBeUndefined();
+  // contract r14: a pending face handover never passes to another account.
+  expect(clearFaceHandover).toHaveBeenCalled();
 });
 
 test("refreshing the same wallet preserves its account cache", async () => {
@@ -82,6 +92,7 @@ test("refreshing the same wallet preserves its account cache", async () => {
   expect(client.getQueryData(inventoryKey)).toEqual({
     objects: ["account-a-object"],
   });
+  expect(clearFaceHandover).not.toHaveBeenCalled();
 });
 
 function ListenForEnd({

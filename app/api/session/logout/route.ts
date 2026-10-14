@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { clearFaceHandover } from "@/api/face-handover";
 import { clearFaceJournal } from "@/api/face-journal";
 import { clearSessionCookie, revokeSession } from "@/api/server-session";
 import { mutationGuard } from "@/api/request";
@@ -15,5 +16,7 @@ export async function POST(request: NextRequest) {
   clearSessionCookie(response);
   // The product-face journal is bound to this session; end it with it.
   clearFaceJournal(response, request);
+  // A pending face handover (contract r14) never outlives a sign-out.
+  clearFaceHandover(response);
   return response;
 }

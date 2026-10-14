@@ -437,6 +437,14 @@
     "emptyDescription": "This wallet has no product programmes available yet.",
     "publisher": "Published by {publisher}",
     "open": "Open {programme}",
+    "handover": {
+      "title": "Product registration",
+      "working": "Opening your product registration…",
+      "unavailable": "This registration link can't be opened in this wallet.",
+      "invalid": "This registration link is incomplete. Open it again from the message you received.",
+      "failed": "We couldn't open your registration right now. Open the link again in a moment.",
+      "home": "Go to your wallet"
+    },
     "back": "Back to products",
     "backShort": "Back",
     "about": "About {programme}",

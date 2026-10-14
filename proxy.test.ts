@@ -183,6 +183,24 @@ test("only protected routes are offered as a return path", () => {
   }
 });
 
+test("the face handover entry works signed-out and is never a return path (r14)", () => {
+  // Not redirected: a sign-in redirect would carry the #ticket fragment along.
+  const entry = visit("/products/morrow-home/handover");
+  expect(entry.status).toBe(200);
+  expect(entry.headers.get("location")).toBeNull();
+  // Other product routes stay protected.
+  expect(visit("/products/morrow-home/register").headers.get("location")).toBe(
+    `http://localhost/login?next=${encodeURIComponent("/products/morrow-home/register")}`,
+  );
+  // The handover entry is never followed after sign-in.
+  expect(
+    visit(
+      `/login?next=${encodeURIComponent("/products/morrow-home/handover")}`,
+      "smarttoken_viewer=sealed",
+    ).headers.get("location"),
+  ).toBe("http://localhost/inventory");
+});
+
 // Without a valid SESSION_SECRET the session routes, the backend proxy and the
 // product-face BFF fail closed before any handler runs.
 describe("session key gate", () => {

@@ -33,6 +33,7 @@ import {
   readSettleProposal,
   selectProgrammeProduct,
   sha256Hash,
+  takeFaceHandoverTicket,
   writeFaceJournal,
 } from "@/app/_services/product-face.client";
 
@@ -241,6 +242,9 @@ export function useProductFaceHost({
         application,
         holder,
         task,
+        // contract r14: a handover the context read took for this launch;
+        // handed to the face once, on the register task only.
+        handover: takeFaceHandoverTicket(launchId),
         handlers,
         onInitialized: (started) => {
           dispatch({ type: "live" });

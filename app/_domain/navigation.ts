@@ -8,7 +8,19 @@ export const PROTECTED_ROUTE_PREFIXES = [
 
 export const RETURN_PATH_MAX_LENGTH = 512;
 
+/**
+ * contract r14: the face handover entry, /products/<slug>/handover. It works
+ * signed-out (it carries a ticket in its fragment, which a sign-in redirect
+ * would carry along), so it is neither protected nor a return path.
+ */
+const HANDOVER_ENTRY = /^\/products\/[a-z0-9][a-z0-9-]{1,62}\/handover\/?$/;
+
+export function isHandoverEntryPath(pathname: string) {
+  return HANDOVER_ENTRY.test(pathname);
+}
+
 export function isProtectedPath(pathname: string) {
+  if (isHandoverEntryPath(pathname)) return false;
   return PROTECTED_ROUTE_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );

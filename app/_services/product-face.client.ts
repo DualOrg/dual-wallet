@@ -91,11 +91,79 @@ function base(slug: string) {
   return `/api/faces/${encodeURIComponent(slug)}`;
 }
 
-export async function loadProductFaceContext(face: FaceLaunch) {
-  return faceRequest<{ application: ProductFaceApplication; frameUrl: string }>(
-    face,
-    "/context",
-  );
+// contract r14: a handover ticket the context read handed over, held in
+// memory for its launch only until the host's initialize takes it. It is
+// never part of the query cache, a URL or any storage.
+const handoverTickets = new Map<string, string>();
+
+/** Takes (and forgets) the handover ticket handed over for this launch. */
+export function takeFaceHandoverTicket(launchId: string) {
+  const ticket = handoverTickets.get(launchId);
+  handoverTickets.delete(launchId);
+  return ticket;
+}
+
+export async function loadProductFaceContext(
+  face: FaceLaunch,
+  task: string = "/",
+) {
+  const { handover, ...context } = await faceRequest<{
+    application: ProductFaceApplication;
+    frameUrl: string;
+    handover?: { ticket?: unknown };
+  }>(face, `/context?task=${encodeURIComponent(task)}`);
+  if (typeof handover?.ticket === "string") {
+    handoverTickets.set(face.launchId, handover.ticket);
+  }
+  return context;
+}
+
+/**
+ * The wallet's face handover entry (contract r14): hands the runtime's
+ * one-time ticket to the BFF, which keeps it in the sealed pre-auth cookie.
+ * Answers where to go next (the register task).
+ */
+export async function submitFaceHandover(slug: string, ticket: string) {
+  let response: Response;
+  try {
+    response = await fetch(`${base(slug)}/handover`, {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      referrerPolicy: "no-referrer",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ticket }),
+    });
+  } catch {
+    throw new ProductFaceError("temporarily_unavailable");
+  }
+  const body = (await response.json().catch(() => ({}))) as {
+    code?: unknown;
+    next?: unknown;
+  };
+  if (!response.ok || typeof body.next !== "string") {
+    throw new ProductFaceError(
+      typeof body.code === "string" ? body.code : "temporarily_unavailable",
+      response.status,
+    );
+  }
+  return body.next;
+}
+
+/** Drops any pending face handover (an account change, contract r14). */
+export async function clearFaceHandover() {
+  try {
+    await fetch("/api/session/face-handover", {
+      method: "DELETE",
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+  } catch {
+    // Best effort: the cookie also expires within ten minutes.
+  }
 }
 
 export async function readProgrammeUnit(face: FaceLaunch, objectId: string) {

@@ -1081,7 +1081,12 @@ describe("application-variant transport", () => {
   };
 
   function open(
-    options: { url?: string; handlers?: ProductFaceHandlers } = {},
+    options: {
+      url?: string;
+      handlers?: ProductFaceHandlers;
+      task?: string;
+      handover?: string;
+    } = {},
   ) {
     const postMessage = jest.fn();
     const frame = {
@@ -1092,7 +1097,8 @@ describe("application-variant transport", () => {
       frameUrl: options.url ?? frameUrl,
       application,
       holder: HOLDER,
-      task: "/register",
+      task: options.task ?? "/register",
+      handover: options.handover,
       handlers: options.handlers ?? handlers(),
     });
     if (!host) throw new Error("bridge refused to start");
@@ -1181,6 +1187,40 @@ describe("application-variant transport", () => {
       /token|cookie|assertion|signature|wallet_id/,
     );
     host?.close();
+  });
+
+  it("hands a face handover ticket over in the initialize context, on the register task only (r14)", async () => {
+    const ticket = "t".repeat(43);
+    const withTicket = open({ handover: ticket });
+    expect(withTicket.received).toEqual([]);
+    withTicket.ready();
+    await tick();
+    expect(
+      (withTicket.received[0].context as Record<string, unknown>).handover,
+    ).toEqual({ ticket });
+    // A second ready on the same channel initializes nothing again.
+    withTicket.ready();
+    await tick();
+    expect(
+      withTicket.received.filter(
+        (message) => message.type === "dual.face.initialize",
+      ),
+    ).toHaveLength(1);
+    withTicket.host.close();
+
+    // Another task: the ticket is not handed over (and is dropped).
+    const elsewhere = open({ handover: ticket, task: "/products" });
+    elsewhere.ready();
+    await tick();
+    expect(elsewhere.received[0].context).not.toHaveProperty("handover");
+    elsewhere.host.close();
+
+    // Without a ticket the context has no handover key at all.
+    const plain = open();
+    plain.ready();
+    await tick();
+    expect(plain.received[0].context).not.toHaveProperty("handover");
+    plain.host.close();
   });
 
   it.each([

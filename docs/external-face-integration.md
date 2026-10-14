@@ -299,6 +299,7 @@ exactly these keys:
 | `canonicalRegistration` | `{stateField, lifecycleTargetField, settledStates, unconfirmedStates, endedStates}`, disjoint state sets                                      |
 | `settle` (optional)     | `{action, alias?, inputTemplate, fromStates, targetStates}` or Studio's `{action, inputPath, leaves, fromStates, targetStates}`; see G6 below |
 | `linkedRuntimes` (opt.) | at most one `{purpose: "claims-warranty", applicationId, origin, instanceId}`: the Warranty runtime connected to this programme (r10)         |
+| `handover` (opt.)       | exactly `{enabled: boolean}`; absent is off. Lets face-enabled handover links enter this face (r14)                                           |
 
 Invalid entries are dropped, a slug configured twice drops every entry using
 it, and malformed JSON is an empty registry. A linked runtime is as strict:
@@ -327,6 +328,7 @@ POST.
 | `GET /api/faces/[slug]/operations/[operationId]` | read-only status from the journal and the wallet's canonical readback; never retries, mints or executes                                                             |
 | `POST /api/faces/[slug]/assertions`              | mints one assertion for one exact runtime request                                                                                                                   |
 | `POST /api/faces/[slug]/settle-proposal`         | trusted runtime read of the settle proposal (G6)                                                                                                                    |
+| `POST /api/faces/[slug]/handover`                | signed-out allowed, no launch header: stores a face handover ticket in the pre-auth cookie for a handover-enabled slug (r14)                                        |
 
 **Artifact verification.** The context route fetches `manifest.json` and
 `index.html` from the pinned path without credentials, redirects refused,
@@ -562,6 +564,32 @@ payment is taken. The write assertion's target binds
 `{case_id, quote_version, amount, currency}`; a different quote from the face
 is refused with `quote_changed` and needs a fresh read and confirmation.
 
+**Face-enabled handover (contract r14).** A new face-enabled handover link
+goes to the face runtime first; the runtime exchanges the grant itself and
+sends the browser to `https://<wallet>/products/<slug>/handover#ticket=<ticket>`
+(the fragment only). That wallet route works signed-out (the request proxy
+neither protects it nor accepts it as a return path, so a sign-in redirect
+never carries the fragment along). Its client reads the fragment and strips
+it with `history.replaceState` before anything else, then posts the ticket to
+`POST /api/faces/[slug]/handover`. Only a registry slug whose binding has
+`handover: {enabled: true}` stores anything: the ticket goes into one sealed
+(purpose bound to the slug), HttpOnly, host-only, `SameSite=Strict` cookie,
+`Secure` in production, that lives ten minutes. Then the page replaces itself
+with `/products/<slug>/register`, which a signed-out visitor reaches through
+sign-in with the validated `next=`. On the register task the context read
+(`?task=/register`) takes the ticket and clears the cookie in the same
+response; the client keeps it in memory for that launch only (not in the
+query cache, a URL or storage) and the host puts `handover: {ticket}` into the
+application-variant initialize context exactly once, on the register task
+only. Another task, another slug, a reload or a replayed read hands nothing
+over. Logout clears the cookie, and an account change clears it through
+`DELETE /api/session/face-handover`. An unknown slug, a binding without
+handover or a malformed ticket shows an error and stores nothing. The ticket
+itself is a one-time capability at the face runtime (`/handover/redeem`);
+the wallet's cookie clearing is not a server-side single use, so two context
+reads racing with the same cookie could both carry it, and only the runtime's
+redeem decides.
+
 **Session teardown.** `SessionProvider.onSessionEnd` notifies before logout
 revokes the session, on expiry and on an account change. The host sends
 `session.ended`, closes the channel, removes the frame, clears the selection
@@ -594,8 +622,10 @@ for the seeded Morrow units) or `settle_proposal_unavailable` with its reason,
 `registration.settle.reserve` with one atomic dispatch claim (`won` once,
 `already_claimed` for every later call, the same settle operation included),
 `registration.settle.verify` requiring that reservation, the read-only
-`registration.settle.status` (from the fake api-v3 action logs) and
-`registration.pending.read`. Test modes lose reserve answers
+`registration.settle.status` (from the fake api-v3 action logs),
+`registration.pending.read`, and the r14 handover page
+(`/face/handover/<applicationId>`), `/handover` (one-time ticket, ten minutes)
+and `/handover/redeem` (consumed once, answering what `/evidence` answers). Test modes lose reserve answers
 (`/__test__/mode {loseReserveResponses}`) or execute answers (fake api-v3
 `/__test__/mode {loseExecuteResponses}`). The suite checks, in Chromium, that
 every cookie stays within 4096 bytes and is stored with two concurrent launches

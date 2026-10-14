@@ -40,6 +40,7 @@ export function startProductFaceBridge({
   application,
   holder,
   task,
+  handover,
   handlers,
   onInitialized,
 }: {
@@ -48,6 +49,8 @@ export function startProductFaceBridge({
   application: ProductFaceApplication;
   holder: string;
   task: string;
+  /** contract r14: a one-time handover ticket for the register task. */
+  handover?: string;
   handlers: ProductFaceHandlers;
   onInitialized?: (host: ProductFaceBridgeHost) => void;
 }): ProductFaceBridgeHost | undefined {
@@ -56,6 +59,7 @@ export function startProductFaceBridge({
     return undefined;
   }
   const session = new ProductFaceSession(application, holder, task);
+  let pendingHandover = handover;
   // A context change caused by a request is announced after that request's
   // response, so the face never sees the event before the context it names.
   const queuedEvents: Array<{ event: string; payload: object }> = [];
@@ -75,12 +79,21 @@ export function startProductFaceBridge({
     child,
     targetOrigin: application.origin,
     verifyReady: (ready) => productFaceApplicationMatches(application, ready),
-    initializationContext: () =>
-      productFaceInitializeContext(
+    initializationContext: () => {
+      // The ticket is handed over at most once, and only when the face opens
+      // on the register task; it is then forgotten either way.
+      const ticket =
+        pendingHandover && session.task === "/register"
+          ? pendingHandover
+          : undefined;
+      pendingHandover = undefined;
+      return productFaceInitializeContext(
         application,
         session.task,
         productFaceOperationNames(),
-      ),
+        ticket,
+      );
+    },
     resolve: (request) => resolveProductFaceRequest(request, runtime),
     onResponded: () => {
       for (const queued of queuedEvents.splice(0)) {

@@ -38,6 +38,12 @@ export interface ProductFaceBinding {
   canonicalRegistration: CanonicalRegistrationRules;
   settle: SettleRules | null;
   linkedRuntimes: LinkedRuntime[];
+  /**
+   * contract r14: whether face-enabled handover links may enter this
+   * programme's face through /products/<slug>/handover. Off unless the
+   * registry entry says {enabled: true}.
+   */
+  handover: { enabled: boolean };
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]{1,62}$/;
@@ -73,6 +79,7 @@ const BINDING_KEYS = [
   "canonicalRegistration",
   "settle",
   "linkedRuntimes",
+  "handover",
 ] as const;
 const LINKED_RUNTIME_KEYS = [
   "purpose",
@@ -275,6 +282,19 @@ function linkedRuntimes(
     : undefined;
 }
 
+/** Exactly {enabled: boolean}; absent is off. Anything else is invalid. */
+function handoverRule(value: unknown): { enabled: boolean } | undefined {
+  if (value === undefined) return { enabled: false };
+  if (
+    !record(value) ||
+    Object.keys(value).length !== 1 ||
+    typeof value.enabled !== "boolean"
+  ) {
+    return undefined;
+  }
+  return { enabled: value.enabled };
+}
+
 function binding(
   value: unknown,
   production: boolean,
@@ -332,6 +352,8 @@ function binding(
   if (linked.some((item) => item.applicationId === applicationId)) {
     return undefined;
   }
+  const handover = handoverRule(value.handover);
+  if (!handover) return undefined;
   return {
     slug,
     applicationId,
@@ -347,6 +369,7 @@ function binding(
     canonicalRegistration,
     settle,
     linkedRuntimes: linked,
+    handover,
   };
 }
 

@@ -14,6 +14,7 @@ import type { AuthenticationMethod } from "@/app/_domain/session";
 import type { ViewerWallet } from "@/app/_domain/wallet";
 import { queryKeys } from "@/app/_hooks/query-keys";
 import { sessionQueryOptions } from "@/app/_hooks/query-options";
+import { clearFaceHandover } from "@/app/_services/product-face.client";
 import { logoutSession } from "@/app/_services/session.client";
 
 interface SessionValue {
@@ -43,6 +44,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const loggingOut = useRef(false);
 
   const notifySessionEnd = useCallback((reason: SessionEndReason) => {
+    // contract r14: a face handover carried in for one account is never
+    // handed to another (logout clears it on the server itself).
+    if (reason === "account_changed") void clearFaceHandover();
     for (const listener of Array.from(endListeners.current)) listener(reason);
   }, []);
 

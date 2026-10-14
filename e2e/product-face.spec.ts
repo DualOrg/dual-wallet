@@ -619,3 +619,195 @@ test("a fresh sign-in recovers the original operation's status read-only and nev
   expect(await holderUpdates(UNIT_A)).toBe(0);
   expect((await object(UNIT_A)).custom.state).toBe("Transfer pending");
 });
+
+// ---------------------------------------------------------------------------
+// contract r14 faceEnabledHandover: a face-enabled handover link opens the
+// wallet face on the register task, through sign-in, with no grant pasting.
+// The labelled fake runtime serves the handover page, /handover and
+// /handover/redeem; the host hands the one-time ticket to the face in its
+// initialize context, recorded here from the host page's MessagePort.
+
+const HANDOVER_LINK = `${FIXTURE}/face/handover/studio.morrow-home#access=MH-HANDOVER-A`;
+const HANDOVER_COOKIE = "dual_face_handover";
+
+async function recordInitializeContexts(page: Page) {
+  await page.addInitScript(() => {
+    const original = MessagePort.prototype.postMessage;
+    MessagePort.prototype.postMessage = function (
+      this: MessagePort,
+      message: unknown,
+      ...rest: unknown[]
+    ) {
+      const data = message as {
+        type?: string;
+        context?: { handover?: unknown };
+      };
+      if (data?.type === "dual.face.initialize") {
+        const record = window as unknown as { __faceHandovers?: unknown[] };
+        (record.__faceHandovers ||= []).push(data.context?.handover ?? null);
+      }
+      return (original as (...args: unknown[]) => void).call(
+        this,
+        message,
+        ...rest,
+      );
+    } as typeof MessagePort.prototype.postMessage;
+  });
+}
+
+const handedOver = (page: Page) =>
+  page.evaluate(
+    () =>
+      (window as unknown as { __faceHandovers?: unknown[] }).__faceHandovers ??
+      [],
+  );
+
+async function handoverCookie(page: Page) {
+  return (await page.context().cookies("http://demo.localhost:3000")).find(
+    (cookie) => cookie.name === HANDOVER_COOKIE,
+  );
+}
+
+/** Redeems a ticket from inside the face frame, as the face does (r14 step 5). */
+async function redeemFromFace(page: Page, ticket: string) {
+  const frame = page
+    .frames()
+    .find((candidate) => candidate.url().startsWith(FIXTURE));
+  if (!frame) throw new Error("face frame not found");
+  return frame.evaluate(async (value) => {
+    const response = await fetch("/api/product-face/v1/handover/redeem", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ticket: value }),
+    });
+    return { status: response.status, body: await response.json() };
+  }, ticket);
+}
+
+test("a face-enabled handover link opens the register task through sign-in and hands the ticket to the face once", async ({
+  page,
+}) => {
+  await recordInitializeContexts(page);
+  await page.goto(HANDOVER_LINK);
+  // Signed out: through sign-in, returning to the register task. No ticket
+  // in any URL.
+  await expect(page).toHaveURL(
+    `/login?next=${encodeURIComponent("/products/morrow-home/register")}`,
+  );
+  expect(page.url()).not.toContain("ticket");
+  const cookie = await handoverCookie(page);
+  expect(cookie).toMatchObject({
+    httpOnly: true,
+    sameSite: "Strict",
+    path: "/",
+    domain: "demo.localhost",
+  });
+  expect(cookie!.value.length + cookie!.name.length).toBeLessThan(4096);
+  expect(cookie!.expires * 1000 - Date.now()).toBeLessThanOrEqual(600_000);
+
+  await page.getByLabel("Email address").fill(EMAIL);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL("/products/morrow-home/register");
+  await expect(
+    face(page).getByRole("button", { name: "Check link" }),
+  ).toBeVisible();
+
+  // The host handed exactly one ticket to the face, and the cookie is gone.
+  const handovers = (await handedOver(page)) as Array<{
+    ticket: string;
+  } | null>;
+  expect(handovers).toHaveLength(1);
+  const ticket = handovers[0]!.ticket;
+  expect(ticket).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  expect(await handoverCookie(page)).toBeUndefined();
+
+  // The face redeems it once at its runtime: the evidence for unit A.
+  const redeemed = await redeemFromFace(page, ticket);
+  expect(redeemed).toMatchObject({
+    status: 200,
+    body: {
+      status: "evidence_accepted",
+      units: [{ objectId: UNIT_A }],
+    },
+  });
+  expect((await redeemFromFace(page, ticket)).body).toMatchObject({
+    reason: "face_handover_ticket_used",
+  });
+
+  // A reload hands nothing over again.
+  await page.reload();
+  await expect(
+    face(page).getByRole("button", { name: "Check link" }),
+  ).toBeVisible();
+  expect(await handedOver(page)).toEqual([null]);
+  expect((await stats()).handover).toEqual({
+    issued: 1,
+    redeemed: 1,
+    refused: 1,
+  });
+
+  // The handover entry is not in the history.
+  await page.goBack();
+  expect(page.url()).not.toContain("/handover");
+});
+
+test("a signed-in arrival goes straight to the register task", async ({
+  page,
+}) => {
+  await signIn(page);
+  await expect(
+    face(page).getByRole("heading", { name: "Arc Care" }),
+  ).toBeVisible();
+  await recordInitializeContexts(page);
+  await page.goto(HANDOVER_LINK);
+  await expect(page).toHaveURL("/products/morrow-home/register");
+  await expect(
+    face(page).getByRole("button", { name: "Check link" }),
+  ).toBeVisible();
+  const handovers = (await handedOver(page)) as Array<{
+    ticket: string;
+  } | null>;
+  expect(handovers).toHaveLength(1);
+  expect(handovers[0]?.ticket).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  expect(await handoverCookie(page)).toBeUndefined();
+});
+
+test("a wrong slug refuses, strips the fragment and stores nothing", async ({
+  page,
+}) => {
+  await page.goto(`/products/unknown-brand/handover#ticket=${"z".repeat(43)}`);
+  await expect(
+    page.getByText("This registration link can't be opened in this wallet."),
+  ).toBeVisible();
+  expect(new URL(page.url()).hash).toBe("");
+  expect(await handoverCookie(page)).toBeUndefined();
+  // A malformed ticket for a real programme is refused the same way.
+  await page.goto("/products/morrow-home/handover#ticket=short");
+  await expect(
+    page.getByText(
+      "This registration link is incomplete. Open it again from the message you received.",
+    ),
+  ).toBeVisible();
+  expect(new URL(page.url()).hash).toBe("");
+  expect(await handoverCookie(page)).toBeUndefined();
+});
+
+test("signing out clears a pending handover", async ({ page }) => {
+  await signIn(page, "/inventory");
+  await expect(page).toHaveURL("/inventory");
+  // A pending handover, as the entry stores it.
+  const stored = await page.evaluate(async (ticket) => {
+    const response = await fetch("/api/faces/morrow-home/handover", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ticket }),
+    });
+    return response.status;
+  }, "p".repeat(43));
+  expect(stored).toBe(200);
+  expect(await handoverCookie(page)).toBeDefined();
+  await page.getByRole("button", { name: "Sign out" }).first().click();
+  await expect(page).toHaveURL(/\/login$/);
+  expect(await handoverCookie(page)).toBeUndefined();
+});

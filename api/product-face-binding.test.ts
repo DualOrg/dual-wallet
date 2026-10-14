@@ -236,6 +236,35 @@ describe("product application registry", () => {
     });
   });
 
+  describe("face handover (contract r14)", () => {
+    it("is off unless the entry says {enabled: true}", () => {
+      expect(parse([bindingInput()])[0].handover).toEqual({ enabled: false });
+      expect(
+        parse([bindingInput({ handover: { enabled: true } })])[0].handover,
+      ).toEqual({ enabled: true });
+      expect(
+        parse([bindingInput({ handover: { enabled: false } })])[0].handover,
+      ).toEqual({ enabled: false });
+    });
+
+    it.each([
+      ["true", true],
+      ["an empty object", {}],
+      ["a string flag", { enabled: "true" }],
+      ["an extra key", { enabled: true, walletOrigin: "https://x.example" }],
+      ["an array", [{ enabled: true }]],
+    ])("drops the whole binding for %s", (_label, handover) => {
+      expect(parse([bindingInput({ handover })])).toEqual([]);
+    });
+
+    it("is not a browser field", () => {
+      const application = toProductFaceApplication(
+        parse([bindingInput({ handover: { enabled: true } })])[0],
+      );
+      expect(application).not.toHaveProperty("handover");
+    });
+  });
+
   it("allows loopback http only outside production", () => {
     const local = bindingInput({ origin: "http://localhost:4101" });
     expect(parse([local], false)).toHaveLength(1);

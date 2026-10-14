@@ -111,6 +111,8 @@ const registry = artifact
           fromStates: ["Transfer pending"],
           targetStates: ["Authenticity verified"],
         },
+        // contract r14: face-enabled handover links may enter this face.
+        handover: { enabled: true },
       },
     ]
   : [];
@@ -152,6 +154,9 @@ export default defineConfig({
         PRODUCT_FACE_ASSERTION_PUBLIC_KEY: publicKey,
         PRODUCT_FACE_ASSERTION_KEY_ID: keyId,
         PRODUCT_FACE_WALLET_ORIGIN: "http://demo.localhost:3000",
+        // contract r14: the wallet host entry the runtime publishes.
+        PRODUCT_FACE_WALLET_ENTRY:
+          "http://demo.localhost:3000/products/morrow-home/handover",
       },
     },
     {

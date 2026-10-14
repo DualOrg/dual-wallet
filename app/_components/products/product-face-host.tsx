@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ArrowLeft, LoaderCircle, ShieldCheck } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -11,6 +12,7 @@ import { ProductFaceConfirmationDialog } from "@/app/_components/products/produc
 import {
   newFaceLaunchId,
   ProductFaceError,
+  taskPathFromPathname,
   type ProductFaceApplication,
   type SessionEndReason,
 } from "@/app/_domain/product-face";
@@ -173,11 +175,13 @@ export function ProductFaceHost({ slug }: { slug: string }) {
     instance: 0,
     launchId: newFaceLaunchId(),
   }));
+  const pathname = usePathname();
   const context = useQuery(
     productFaceContextQueryOptions(
       slug,
       phase.launchId,
       Boolean(wallet) && phase.status === "open",
+      taskPathFromPathname(pathname, slug) ?? "/",
     ),
   );
   const errorCode =
