@@ -1,6 +1,6 @@
 {
   "contract": "dual-product-face-v1",
-  "revision": 4,
+  "revision": 5,
   "status": "first_source_delivery",
   "summary": "Full-size, first-party reviewed product face inside the authenticated Dual wallet. Uses the existing dual.face.bridge v1 envelope, handshake and limits; adds a programme ('application') context variant and named capability modules. No second postMessage protocol, no generic fetch/proxy/token operation.",
   "protocol": {
@@ -42,7 +42,7 @@
       "templateIds": "Dual template ids (24 hex) that belong to the programme",
       "projectionFields": "public custom fields the host may project to the face, subset of [recordId,title,serialNumber,model,manufacturer,state]",
       "canonicalRegistration": "{stateField:\"state\", lifecycleTargetField:\"lifecycle.target_state\", settledStates:[\"Registered\",\"Authenticity verified\",\"In service\",\"Transferred\"], unconfirmedStates:[\"Transfer pending\"], endedStates:[\"Recalled\",\"Stolen\",\"Retired\"]}",
-      "settle": "{action, inputTemplate (EXACT nested shape: every key and nested key listed; leaf values are literal or enum from targetStates; no other keys; no arbitrary custom updates), fromStates:[\"Transfer pending\"], targetStates:[...]} — host allowlist data"
+      "settle": "{action, inputTemplate, fromStates, targetStates}; inputTemplate mirrors the EXACT nested input shape; each leaf is one of {literal:<value>} | {enum:[...]} (values from targetStates) | {unchanged:true} (must equal the fresh host-read object value) | {runtimeIssued:<anchored regex>} (per-event commitment ids/hashes/timestamps; format-checked and hash-bound through the server-read proposal). Any key not in the template, or a leaf failing its rule, is refused. Studio exports productFaceSettleInputTemplate(); the harness writes it into PRODUCT_FACE_APPLICATIONS."
     },
     "readyIdentity": "dual.face.ready.application must be {id, version, publisher, programme, artifact, contract:'dual-product-face-v1'} and EVERY value must equal the binding exactly (version exact, not just major); mismatch closes the channel"
   },
@@ -184,7 +184,8 @@
         "not_in_programme",
         "action_in_progress",
         "assertion_unprovisioned"
-      ]
+      ],
+      "requestHash": "registration.submit assertions use request_hash = sha256(canonical JSON {object_id, operation_id}) (keys sorted, no whitespace) because the host sees only those; every other runtime operation hashes the full canonical request body excluding the assertion"
     },
     "programme.operation.status": {
       "payload": {
@@ -365,7 +366,8 @@
         },
         "result": "operation-specific; every response carries status, writesExecuted, dualWritesExecuted (integer or null), unknownWriteOutcomes (integer or null), secretReturned:false"
       }
-    }
+    },
+    "routingHeader": "x-tig-product-face-application: <applicationId> on every runtime API call (face and wallet BFF server-to-server) when several applications share one runtime origin; runtime refuses a mismatch with the served artifact"
   },
   "brandConfig": {
     "schema": "tig-product-face-brand-v1",
@@ -401,7 +403,8 @@
     "G3": "Claims pack lacks information-request and quote approve/decline. IN SCOPE: second Studio increment adds them additively (new pack revision, new transitions/roles/canonical mappings; old grants keep their exact permittedActionIds and gain nothing; closed != repaired; quote approval captures no payment; documented migration).",
     "G4": "Passport model content has no setup/troubleshooting/manual fields; supplied as versioned face content",
     "G5": "no backend face-application registry; wallet uses a deployment-configured server-only registry",
-    "G6": "RESOLVED IN SCOPE (implementation in progress): holder settle via programme.product.settle.request + registration.settle.propose/verify; requires the exact reviewed Dual action mapping of the brand-proposed verify_authenticity."
+    "G6": "RESOLVED IN SCOPE (implementation in progress): holder settle via programme.product.settle.request + registration.settle.propose/verify; requires the exact reviewed Dual action mapping of the brand-proposed verify_authenticity.",
+    "G6b": "Settle requires an outstanding brand verify_authenticity proposal (settle_proposal_unavailable otherwise). Automatic brand proposal after a face handoff that lands in ownership_moved_dual_state_pending is not built yet: IN SCOPE, to be implemented under the same brand pre-authorisation that issued the owner link (brand authority proposes; the holder signs)."
   },
   "runtimeOperations": {
     "registration.submit": "write; issued only via programme.registration.authorize",
