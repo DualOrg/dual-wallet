@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ViewerWallet } from "@/app/_domain/wallet";
 import type { SessionPayload } from "@/app/_services/session.client";
@@ -140,4 +140,24 @@ test("logout tells authenticated faces first, then revokes the session", async (
   await waitFor(() => expect(value).toBeDefined());
   await value!.logout();
   expect(order).toEqual(["end:logout", "revoke"]);
+});
+
+test("an expired session tells authenticated faces it ended", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  client.setQueryData(sessionQueryKey, session("wallet-a"));
+  const onEnd = jest.fn();
+  render(
+    <QueryClientProvider client={client}>
+      <SessionProvider>
+        <ListenForEnd onEnd={onEnd} />
+      </SessionProvider>
+    </QueryClientProvider>,
+  );
+  expect(onEnd).not.toHaveBeenCalled();
+  // A terminal 401 makes the session query resolve to null.
+  act(() => client.setQueryData(sessionQueryKey, null));
+  await waitFor(() => expect(onEnd).toHaveBeenCalledWith("expired"));
+  expect(onEnd).toHaveBeenCalledTimes(1);
 });
