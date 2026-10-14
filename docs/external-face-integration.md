@@ -283,24 +283,24 @@ server-only JSON array in `PRODUCT_FACE_APPLICATIONS`
 (`api/product-face-binding.ts`, `api/product-face-registry.ts`). Each entry has
 exactly these keys:
 
-| Key                     | Rule                                                                                                                                          |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `slug`                  | `^[a-z0-9][a-z0-9-]{1,62}$`, unique                                                                                                           |
-| `applicationId`         | `^[a-z0-9][a-z0-9._-]{1,127}$`                                                                                                                |
-| `version`               | exact semver (no range, no build metadata)                                                                                                    |
-| `publisher`             | `^[a-z0-9][a-z0-9._-]{1,63}$`                                                                                                                 |
-| `programmeId`           | `^[a-z0-9][a-z0-9._-]{1,63}$`                                                                                                                 |
-| `programmeName`         | plain display text, at most 80 characters                                                                                                     |
-| `origin`                | exact `https` origin with a DNS host name; loopback `http` only outside production                                                            |
-| `path`                  | exactly `/face/<applicationId>/<version>/<64 hex of artifactHash>/`                                                                           |
-| `artifactHash`          | `sha256:<64 lowercase hex>`                                                                                                                   |
-| `templateIds`           | 1–32 unique lowercase 24-hex Dual template IDs                                                                                                |
-| `projectionFields`      | subset of `recordId,title,serialNumber,model,manufacturer,state`                                                                              |
-| `canonicalRegistration` | `{stateField, lifecycleTargetField, settledStates, unconfirmedStates, endedStates}`, disjoint state sets                                      |
-| `settle` (optional)     | `{action, alias?, inputTemplate, fromStates, targetStates, preserveUnlisted}` or Studio's `{action, inputPath, leaves, fromStates, targetStates, preserveUnlisted}`; see G6 below |
+| Key                      | Rule                                                                                                                                                                                                                                                |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `slug`                   | `^[a-z0-9][a-z0-9-]{1,62}$`, unique                                                                                                                                                                                                                 |
+| `applicationId`          | `^[a-z0-9][a-z0-9._-]{1,127}$`                                                                                                                                                                                                                      |
+| `version`                | exact semver (no range, no build metadata)                                                                                                                                                                                                          |
+| `publisher`              | `^[a-z0-9][a-z0-9._-]{1,63}$`                                                                                                                                                                                                                       |
+| `programmeId`            | `^[a-z0-9][a-z0-9._-]{1,63}$`                                                                                                                                                                                                                       |
+| `programmeName`          | plain display text, at most 80 characters                                                                                                                                                                                                           |
+| `origin`                 | exact `https` origin with a DNS host name; loopback `http` only outside production                                                                                                                                                                  |
+| `path`                   | exactly `/face/<applicationId>/<version>/<64 hex of artifactHash>/`                                                                                                                                                                                 |
+| `artifactHash`           | `sha256:<64 lowercase hex>`                                                                                                                                                                                                                         |
+| `templateIds`            | 1–32 unique lowercase 24-hex Dual template IDs                                                                                                                                                                                                      |
+| `projectionFields`       | subset of `recordId,title,serialNumber,model,manufacturer,state`                                                                                                                                                                                    |
+| `canonicalRegistration`  | `{stateField, lifecycleTargetField, settledStates, unconfirmedStates, endedStates}`, disjoint state sets                                                                                                                                            |
+| `settle` (optional)      | `{action, alias?, inputTemplate, fromStates, targetStates, preserveUnlisted}` or Studio's `{action, inputPath, leaves, fromStates, targetStates, preserveUnlisted}`; see G6 below                                                                   |
 | `transferRequest` (opt.) | G8 request step, settle shaped: `{action: "update", inputPath, leaves, fromStates, targetStates, preserveUnlisted}` (fromStates settled, targetStates unconfirmed, no alias); absent: `programme.product.transfer.sign` is `capability_not_granted` |
-| `linkedRuntimes` (opt.) | at most one `{purpose: "claims-warranty", applicationId, origin, instanceId}`: the Warranty runtime connected to this programme (r10)         |
-| `handover` (opt.)       | exactly `{enabled: boolean}`; absent is off. Lets face-enabled handover links enter this face (r14)                                           |
+| `linkedRuntimes` (opt.)  | at most one `{purpose: "claims-warranty", applicationId, origin, instanceId}`: the Warranty runtime connected to this programme (r10)                                                                                                               |
+| `handover` (opt.)        | exactly `{enabled: boolean}`; absent is off. Lets face-enabled handover links enter this face (r14)                                                                                                                                                 |
 
 Invalid entries are dropped, a slug configured twice drops every entry using
 it, and malformed JSON is an empty registry. A linked runtime is as strict:
