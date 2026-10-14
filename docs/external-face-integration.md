@@ -293,9 +293,15 @@ exactly these keys:
 | `projectionFields`      | subset of `recordId,title,serialNumber,model,manufacturer,state`                                                                              |
 | `canonicalRegistration` | `{stateField, lifecycleTargetField, settledStates, unconfirmedStates, endedStates}`, disjoint state sets                                      |
 | `settle` (optional)     | `{action, alias?, inputTemplate, fromStates, targetStates}` or Studio's `{action, inputPath, leaves, fromStates, targetStates}`; see G6 below |
+| `linkedRuntimes` (opt.) | at most one `{purpose: "claims-warranty", applicationId, origin, instanceId}`: the Warranty runtime connected to this programme (r10)         |
 
 Invalid entries are dropped, a slug configured twice drops every entry using
-it, and malformed JSON is an empty registry. `next.config.ts` derives the CSP
+it, and malformed JSON is an empty registry. A linked runtime is as strict:
+exactly its four keys, an exact origin under the same `https`/loopback rule,
+`instanceId` matching `^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$`, an application
+other than the face itself, one per purpose; any invalid linked runtime drops
+the whole entry. Linked runtimes stay server-side: they are not frame origins
+and are not in the browser-safe binding. `next.config.ts` derives the CSP
 `frame-src` additions from the same parser, so they are exactly the registry
 origins with no wildcard. The CSP is computed at build time: a new product
 origin needs a rebuild, and an origin the build did not see is blocked.
@@ -336,7 +342,9 @@ from the bound runtime, not the face: the BFF calls
 host-minted assertion, for `registration.settle.propose` and `case.read`
 only, with a 64 KiB response cap, an 8 s timeout and the routing header
 `x-tig-product-face-application: <applicationId>`. Only a narrow projection
-(proposal or quote) reaches the browser.
+(proposal or quote) reaches the browser. Since contract r10 `case.read` goes to
+the linked Warranty runtime's origin with that runtime's application ID in the
+routing header, not to the face's own runtime.
 
 ### Wallet assertion (G1 seam)
 
@@ -350,6 +358,16 @@ wallet's account address, read server-side), `operation`, `op_id`, `target`,
 cookie; tokens and the sealed cookie rotate, the ID does not), `iat`,
 `exp = iat + 60` and a fresh `jti`. Nothing from the browser or face names the
 holder, wallet or subject; such a key is refused.
+
+**Case operations (contract r10).** For `case.*` and `cases.list` the `aud` is
+the linked Warranty runtime, `<linked applicationId>@<linked origin>`; every
+other claim stays the same, `artifact` included (the face's artifact). The
+face still sends the request to its own runtime, which relays it unchanged;
+the Warranty runtime verifies the assertion and the holder's ownership itself.
+Without a linked runtime the BFF mints nothing for a case operation and
+answers `409 case_runtime_not_linked`. `cases.list` is treated as a case
+operation because it lists the holder's cases, which live in the Warranty
+runtime; the contract names only `case.*`.
 
 Before every mint the server re-checks the session, the wallet, the journal
 and, for product-scoped operations, that the server-side selection still
@@ -509,7 +527,7 @@ the reservation is `not_submitted`; a lost or failed execution is
 **No proposal (G6b).** The runtime originates the brand's proposal; when it
 has none it answers `settle_proposal_unavailable` with a reason
 (`issuer_preauthorisation_absent`, `issuer_preauthorisation_expired`,
-`issuer_auto_proposal_used`). The host shows that reason in its own notice
+`issuer_auto_proposal_used`, and since r12 `issuer_settle_policy_absent`). The host shows that reason in its own notice
 and invents nothing; the face receives `settle_proposal_unavailable`.
 
 Status stays `ownership_moved_state_pending` until the

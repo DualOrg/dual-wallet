@@ -11,6 +11,18 @@ import {
   type SettleRules,
 } from "../app/_domain/product-face";
 
+/**
+ * contract r10: a Warranty runtime explicitly connected to this Passport
+ * programme. Server-only; used ONLY as the assertion audience and target for
+ * case operations.
+ */
+export interface LinkedRuntime {
+  purpose: "claims-warranty";
+  applicationId: string;
+  origin: string;
+  instanceId: string;
+}
+
 export interface ProductFaceBinding {
   slug: string;
   applicationId: string;
@@ -25,6 +37,7 @@ export interface ProductFaceBinding {
   projectionFields: ProjectionField[];
   canonicalRegistration: CanonicalRegistrationRules;
   settle: SettleRules | null;
+  linkedRuntimes: LinkedRuntime[];
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]{1,62}$/;
@@ -59,7 +72,16 @@ const BINDING_KEYS = [
   "projectionFields",
   "canonicalRegistration",
   "settle",
+  "linkedRuntimes",
 ] as const;
+const LINKED_RUNTIME_KEYS = [
+  "purpose",
+  "applicationId",
+  "origin",
+  "instanceId",
+] as const;
+const LINKED_PURPOSES = ["claims-warranty"] as const;
+const INSTANCE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
 const CANONICAL_KEYS = [
   "stateField",
   "lifecycleTargetField",
@@ -213,6 +235,46 @@ function settleRules(
   };
 }
 
+/**
+ * As strict as the main binding: exactly the four keys, an allowed purpose,
+ * an exact application ID, origin (https; loopback only outside production)
+ * and instance ID, at most one runtime per purpose. Anything else invalidates
+ * the whole binding.
+ */
+function linkedRuntimes(
+  value: unknown,
+  production: boolean,
+): LinkedRuntime[] | undefined {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > LINKED_PURPOSES.length) return;
+  const parsed: LinkedRuntime[] = [];
+  for (const item of value) {
+    if (
+      !record(item) ||
+      Object.keys(item).length !== LINKED_RUNTIME_KEYS.length ||
+      !onlyKeys(item, LINKED_RUNTIME_KEYS) ||
+      !(LINKED_PURPOSES as readonly unknown[]).includes(item.purpose) ||
+      typeof item.applicationId !== "string" ||
+      !APPLICATION_ID.test(item.applicationId) ||
+      typeof item.instanceId !== "string" ||
+      !INSTANCE_ID.test(item.instanceId)
+    ) {
+      return undefined;
+    }
+    const origin = validFaceOrigin(item.origin, production);
+    if (!origin) return undefined;
+    parsed.push({
+      purpose: item.purpose as LinkedRuntime["purpose"],
+      applicationId: item.applicationId,
+      origin,
+      instanceId: item.instanceId,
+    });
+  }
+  return new Set(parsed.map((item) => item.purpose)).size === parsed.length
+    ? parsed
+    : undefined;
+}
+
 function binding(
   value: unknown,
   production: boolean,
@@ -264,6 +326,12 @@ function binding(
   }
   const settle = settleRules(value.settle, canonicalRegistration);
   if (settle === undefined) return undefined;
+  const linked = linkedRuntimes(value.linkedRuntimes, production);
+  if (!linked) return undefined;
+  // A linked runtime is another application than the face itself.
+  if (linked.some((item) => item.applicationId === applicationId)) {
+    return undefined;
+  }
   return {
     slug,
     applicationId,
@@ -278,6 +346,7 @@ function binding(
     projectionFields,
     canonicalRegistration,
     settle,
+    linkedRuntimes: linked,
   };
 }
 

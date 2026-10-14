@@ -36,6 +36,12 @@ import { POST as logoutPOST } from "@/app/api/session/logout/route";
 import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
 
 const UNIT = "aaaaaaaaaaaaaaaaaaaaaaaa";
+const LINKED_WARRANTY = {
+  purpose: "claims-warranty",
+  applicationId: "tig.claims.morrow-warranty",
+  origin: "https://warranty.example",
+  instanceId: "tig-app-warranty0001",
+};
 const OTHER = "bbbbbbbbbbbbbbbbbbbbbbbb";
 const SLUG = "morrow-home";
 // r6: the face's hash over its entire exact runtime registrations body.
@@ -522,14 +528,14 @@ describe("product face BFF", () => {
     });
   });
 
-  it("caps outstanding unexpired assertions per session", async () => {
+  it("caps outstanding unexpired assertions per launch", async () => {
     const browser = new Browser();
     getObjectById.mockResolvedValue(smartObject(UNIT, HOLDER));
     const { body } = await select(browser, UNIT);
     const statuses: number[] = [];
     for (let index = 0; index < 11; index += 1) {
       const result = await mint(browser, {
-        operation: "cases.list",
+        operation: "products.private.read",
         operation_id: `read-op-${String(index).padStart(4, "0")}`,
         target: { object_id: UNIT },
         request_hash: `sha256:${"2".repeat(64)}`,
@@ -541,17 +547,24 @@ describe("product face BFF", () => {
   });
 
   it("binds quote decisions to the quote the wallet read itself", async () => {
+    // contract r10: case operations belong to the linked Warranty runtime.
+    process.env.PRODUCT_FACE_APPLICATIONS = JSON.stringify([
+      bindingInput({ linkedRuntimes: [LINKED_WARRANTY] }),
+    ]);
     const browser = new Browser();
     getObjectById.mockResolvedValue(smartObject(UNIT, HOLDER));
     const { body } = await select(browser, UNIT);
     const original = global.fetch;
     const runtimeCalls: Array<Record<string, unknown>> = [];
     global.fetch = jest.fn(async (url: string, init: RequestInit) => {
-      // Fixed endpoint, routing header, no browser Origin or cookies.
-      expect(url).toBe("https://faces.example/api/product-face/v1/operations");
+      // The linked runtime's fixed endpoint and routing header, no browser
+      // Origin or cookies.
+      expect(url).toBe(
+        "https://warranty.example/api/product-face/v1/operations",
+      );
       const headers = new Headers(init.headers);
       expect(headers.get("x-tig-product-face-application")).toBe(
-        "tig.passport.morrow-home",
+        "tig.claims.morrow-warranty",
       );
       expect(headers.get("origin")).toBeNull();
       expect(headers.get("cookie")).toBeNull();
@@ -618,12 +631,66 @@ describe("product face BFF", () => {
         status: 409,
         body: { code: "quote_changed" },
       });
-      expect((await approve("149.90")).status).toBe(200);
+      const approved = await approve("149.90");
+      expect(approved.status).toBe(200);
+      // r10: the Warranty runtime is the audience; the artifact is the face's.
+      const claims = JSON.parse(
+        Buffer.from(
+          approved.body.assertion.split(".")[1],
+          "base64url",
+        ).toString("utf8"),
+      );
+      expect(claims).toMatchObject({
+        aud: "tig.claims.morrow-warranty@https://warranty.example",
+        app_id: "tig.passport.morrow-home",
+        artifact: `sha256:${ARTIFACT_HEX}`,
+        origin: "https://faces.example",
+        operation: "case.quote.approve",
+      });
+      const readClaims = JSON.parse(
+        Buffer.from(
+          String(runtimeCalls[0].assertion).split(".")[1],
+          "base64url",
+        ).toString("utf8"),
+      );
+      expect(readClaims.aud).toBe(
+        "tig.claims.morrow-warranty@https://warranty.example",
+      );
       // The runtime was read once; no payment endpoint exists or was called.
       expect(runtimeCalls).toHaveLength(1);
     } finally {
       global.fetch = original;
     }
+  });
+
+  it("mints case operations only for a linked Warranty runtime; others keep the face audience", async () => {
+    const browser = new Browser();
+    getObjectById.mockResolvedValue(smartObject(UNIT, HOLDER));
+    const { body } = await select(browser, UNIT);
+    const request = (operation: string) =>
+      mint(browser, {
+        operation,
+        operation_id: "read-op-0001",
+        target:
+          operation === "case.read"
+            ? { object_id: UNIT, case_id: "case-1" }
+            : { object_id: UNIT },
+        request_hash: `sha256:${"4".repeat(64)}`,
+        context_id: body.context_id,
+      });
+    expect(await request("case.read")).toMatchObject({
+      status: 409,
+      body: { code: "case_runtime_not_linked" },
+    });
+    const own = await request("products.private.read");
+    expect(own.status).toBe(200);
+    expect(
+      JSON.parse(
+        Buffer.from(own.body.assertion.split(".")[1], "base64url").toString(
+          "utf8",
+        ),
+      ).aud,
+    ).toBe("tig.passport.morrow-home@https://faces.example");
   });
 
   it("obtains and validates the settle proposal itself", async () => {

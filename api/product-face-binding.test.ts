@@ -5,6 +5,7 @@ import {
   parseProductFaceApplications,
   productFaceFrameOrigins,
 } from "@/api/product-face-binding";
+import { toProductFaceApplication } from "@/api/product-face-registry";
 import { ARTIFACT_HEX, bindingInput } from "@/test/product-face-fixtures";
 
 const parse = (entries: unknown[], production = true) =>
@@ -167,6 +168,72 @@ describe("product application registry", () => {
         }),
       ]),
     ).toEqual([]);
+  });
+
+  describe("linked runtimes (contract r10)", () => {
+    const linked = {
+      purpose: "claims-warranty",
+      applicationId: "tig.claims.morrow-warranty",
+      origin: "https://warranty.example",
+      instanceId: "tig-app-warranty0001",
+    };
+
+    it("parses a linked Warranty runtime and defaults to none", () => {
+      expect(parse([bindingInput()])[0].linkedRuntimes).toEqual([]);
+      expect(
+        parse([bindingInput({ linkedRuntimes: [linked] })])[0].linkedRuntimes,
+      ).toEqual([linked]);
+    });
+
+    it.each([
+      ["not an array", linked],
+      ["an extra key", [{ ...linked, token: "x" }]],
+      ["a missing key", [{ ...linked, instanceId: undefined }]],
+      ["another purpose", [{ ...linked, purpose: "loyalty" }]],
+      ["an invalid application id", [{ ...linked, applicationId: "Bad App" }]],
+      [
+        "a non-exact origin",
+        [{ ...linked, origin: "https://warranty.example/" }],
+      ],
+      ["a wildcard origin", [{ ...linked, origin: "https://*.example" }]],
+      ["plain http", [{ ...linked, origin: "http://warranty.example" }]],
+      ["an invalid instance id", [{ ...linked, instanceId: "a b" }]],
+      [
+        "the same purpose twice",
+        [linked, { ...linked, instanceId: "tig-app-2" }],
+      ],
+      [
+        "the face itself",
+        [{ ...linked, applicationId: "tig.passport.morrow-home" }],
+      ],
+    ])("drops the whole binding for %s", (_label, linkedRuntimes) => {
+      expect(parse([bindingInput({ linkedRuntimes })])).toEqual([]);
+    });
+
+    it("allows a loopback linked origin only outside production", () => {
+      const local = [
+        bindingInput({
+          origin: "http://localhost:4101",
+          linkedRuntimes: [{ ...linked, origin: "http://localhost:4102" }],
+        }),
+      ];
+      expect(parse(local, false)).toHaveLength(1);
+      expect(parse(local, true)).toEqual([]);
+    });
+
+    it("stays server-only: never a frame origin or a browser field", () => {
+      const raw = JSON.stringify([bindingInput({ linkedRuntimes: [linked] })]);
+      expect(productFaceFrameOrigins(raw, { production: true })).toEqual([
+        "https://faces.example",
+      ]);
+      const browserApplication = toProductFaceApplication(
+        parse([bindingInput({ linkedRuntimes: [linked] })])[0],
+      );
+      expect(browserApplication).not.toHaveProperty("linkedRuntimes");
+      expect(JSON.stringify(browserApplication)).not.toContain(
+        "warranty.example",
+      );
+    });
   });
 
   it("allows loopback http only outside production", () => {

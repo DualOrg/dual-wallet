@@ -86,6 +86,11 @@ export interface FaceAssertionInput {
   target: AssertionTarget;
   requestHash: string;
   sidHash: string;
+  /**
+   * contract r10: for case operations, the linked Warranty runtime. Only the
+   * audience changes; every other claim (the FACE artifact included) stays.
+   */
+  audience?: { applicationId: string; origin: string };
   now?: number;
 }
 
@@ -104,7 +109,9 @@ export function mintFaceAssertion(input: FaceAssertionInput) {
   const header = { alg: "EdDSA", typ: ASSERTION_TYPE, kid: signer.kid };
   const claims = {
     iss: input.issuer,
-    aud: `${input.binding.applicationId}@${input.binding.origin}`,
+    aud: input.audience
+      ? `${input.audience.applicationId}@${input.audience.origin}`
+      : `${input.binding.applicationId}@${input.binding.origin}`,
     app_id: input.binding.applicationId,
     app_version: input.binding.version,
     artifact: input.binding.artifactHash,

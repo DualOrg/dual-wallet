@@ -60,7 +60,7 @@ export type TrustedReadResult =
  * a narrow projection and nothing else reaches the browser.
  */
 export async function trustedRuntimeRead(
-  binding: ProductFaceBinding,
+  binding: Pick<ProductFaceBinding, "origin" | "applicationId">,
   request: TrustedReadRequest,
   assertion: string,
 ): Promise<TrustedReadResult> {

@@ -517,6 +517,15 @@ export const trustedRuntimeReadOperations = [
 ] as const satisfies readonly RuntimeOperation[];
 export type TrustedRuntimeRead = (typeof trustedRuntimeReadOperations)[number];
 
+/**
+ * contract r10: case operations are the linked Warranty runtime's. Their
+ * assertions name it as the audience and the host's case.read goes to it.
+ * cases.list reads that runtime's own cases as well.
+ */
+export function isLinkedCaseOperation(operation: RuntimeOperation) {
+  return operation.startsWith("case.") || operation === "cases.list";
+}
+
 /** Runtime operations only the wallet BFF itself calls; never face-authorized. */
 export const hostOnlyRuntimeOperations = [
   "registration.settle.propose",

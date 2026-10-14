@@ -46,6 +46,7 @@ import {
   isRecordId,
   isRequestHash,
   isHostOnlyRuntimeOperation,
+  isLinkedCaseOperation,
   isRuntimeOperation,
   isRuntimeWriteOperation,
   isSettleProposalUnavailableReason,
@@ -186,6 +187,13 @@ interface MintRequest {
   requestHash: string;
 }
 
+/** The Warranty runtime connected to this programme, if any (r10). */
+function linkedCaseRuntime(context: FaceRequestContext) {
+  return context.binding.linkedRuntimes.find(
+    (runtime) => runtime.purpose === "claims-warranty",
+  );
+}
+
 /** Mints one assertion and records its expiry against the outstanding cap. */
 function mint(
   context: FaceRequestContext,
@@ -198,6 +206,14 @@ function mint(
   if (!faceAssertionSigner()) return fail("face_assertion_unprovisioned", 503);
   const issuer = walletIssuerOrigin(request);
   if (!issuer) return fail("invalid_origin", 403);
+  // contract r10: a case operation's audience is the linked Warranty runtime;
+  // without one, nothing is minted for it.
+  const linked = isLinkedCaseOperation(input.operation)
+    ? linkedCaseRuntime(context)
+    : undefined;
+  if (isLinkedCaseOperation(input.operation) && !linked) {
+    return fail("case_runtime_not_linked", 409);
+  }
   const now = Date.now();
   const outstanding = journal.mints.filter((expiry) => expiry > now);
   if (outstanding.length >= MAX_OUTSTANDING_ASSERTIONS) {
@@ -213,6 +229,14 @@ function mint(
     target: input.target,
     requestHash: input.requestHash,
     sidHash: context.owner.sidHash,
+    ...(linked
+      ? {
+          audience: {
+            applicationId: linked.applicationId,
+            origin: linked.origin,
+          },
+        }
+      : {}),
     now,
   });
   if (!minted) return fail("face_assertion_unprovisioned", 503);
@@ -481,8 +505,14 @@ async function trustedRead(
     requestHash: runtimeRequestHash(read),
   });
   if (!minted.ok) return minted;
+  // r10: case.read goes to the linked Warranty runtime, not the face's own.
+  const linked = isLinkedCaseOperation(read.operation)
+    ? linkedCaseRuntime(context)
+    : undefined;
   const result = await trustedRuntimeRead(
-    context.binding,
+    linked
+      ? { origin: linked.origin, applicationId: linked.applicationId }
+      : context.binding,
     read,
     minted.assertion,
   );
