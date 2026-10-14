@@ -530,6 +530,20 @@ proposal and the fresh object; runtime-issued commitments (hashes, ids,
 timestamps) are listed separately under a technical disclosure, and values that
 stay the same are not shown.
 
+**Executing after a won reservation (settle and transfer steps).** A
+holder-signed step captures the signing wallet session (wallet ID, holder
+account, sign-in method, controller) when it begins. After the awaited
+reservation answers `dispatch: "won"` the capability re-asserts, before
+calling the executor, that the face session is live, the same product
+selection is current and the wallet session is exactly the captured one. The
+host's executors check the same again themselves (defence in depth) and run
+only while their own launch is live, so an account change, logout, expiry,
+torn-down launch or new selection during that await never reaches a
+signature, and never signs with another account's credentials. Such a step is
+not executed, cancelled, retried or reserved again: its journal entry stays
+submitted under its original correlation, its status reads `outcome_unknown`,
+and only the runtime's reviewed recovery can release it.
+
 **Settle reservation (contract r8/r11).** After the confirmation the BFF
 records the settle as `submitted` and, before ANY holder execution, calls the
 runtime's `registration.settle.reserve` server to server (assertion operation

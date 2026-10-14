@@ -3,6 +3,10 @@ import type {
   ProductFaceCapability,
   ProductFaceRuntime,
 } from "@/app/_lib/external-face-bridge/capabilities/product-types";
+import {
+  sameExecutor,
+  type ExecutorIdentity,
+} from "@/app/_lib/external-face-bridge/core/executor-identity";
 import { toProductProjection } from "@/app/_lib/external-face-bridge/core/product-context";
 import {
   faceError,
@@ -81,6 +85,44 @@ export function assertStillCurrent(
   if (session.selection?.contextId !== selection.contextId) {
     throw faceError("stale_context");
   }
+}
+
+/**
+ * Immediately before a holder-signed execution (after the awaited runtime
+ * reservation): the face session is live, the same product is still
+ * selected, and the wallet session that may sign is exactly the one that
+ * began the operation. Anything else refuses before the executor is called.
+ */
+export function assertStillExecutable(
+  session: ProductFaceSession,
+  selection: ProductFaceSelection,
+  began: ExecutorIdentity,
+  current: ExecutorIdentity | null,
+) {
+  session.assertLive();
+  if (
+    session.selection?.contextId !== selection.contextId ||
+    session.selection.objectId !== selection.objectId
+  ) {
+    throw faceError("stale_context");
+  }
+  if (
+    !sameExecutor(began, current) ||
+    began.holder !== session.holder.toLowerCase()
+  ) {
+    throw faceError("session_ended");
+  }
+}
+
+/** The signing identity when a holder-signed operation begins. */
+export function beginningExecutor(
+  session: ProductFaceSession,
+  current: ExecutorIdentity | null,
+) {
+  if (!current || current.holder !== session.holder.toLowerCase()) {
+    throw faceError("session_ended");
+  }
+  return current;
 }
 
 function clearSelection(runtime: ProductFaceRuntime) {

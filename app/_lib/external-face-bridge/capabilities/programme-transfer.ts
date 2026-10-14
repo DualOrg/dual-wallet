@@ -13,9 +13,12 @@ import { isOperationId } from "@/app/_domain/product-face";
 import type { ProductFaceCapability } from "@/app/_lib/external-face-bridge/capabilities/product-types";
 import {
   assertStillCurrent,
+  assertStillExecutable,
+  beginningExecutor,
   callWalletService as call,
   requireContext,
 } from "@/app/_lib/external-face-bridge/capabilities/programme-products";
+import { ExternalFaceBridgeError } from "@/app/_lib/external-face-bridge/core/errors";
 import {
   faceError,
   toBridgeError,
@@ -61,6 +64,11 @@ export function transferCapabilities(): ProductFaceCapability[] {
         const rules = session.application.transferRequest;
         if (!rules) throw faceError("capability_not_granted");
         if (session.pendingConfirmation) throw faceError("action_in_progress");
+        // Who began this operation: only exactly this wallet session may sign it.
+        const executor = beginningExecutor(
+          session,
+          handlers.executorIdentity(),
+        );
 
         session.pendingConfirmation = true;
         let begun = false;
@@ -200,9 +208,12 @@ export function transferCapabilities(): ProductFaceCapability[] {
           } catch (error) {
             if (
               error instanceof ProductFaceError &&
+              // Refused by the BFF before anything was sent to the runtime.
               [
                 "stale_context",
                 "not_owned",
+                "proposal_rejected",
+                "capability_not_granted",
                 "assertion_limit",
                 "face_assertion_unprovisioned",
               ].includes(error.code)
@@ -226,13 +237,39 @@ export function transferCapabilities(): ProductFaceCapability[] {
           if (submitted.reservation !== "won") {
             throw faceError("outcome_unknown");
           }
+          // The reservation was won for THIS session, launch and selection.
+          // Anything that changed during that await (logout, expiry, an
+          // account change, a torn-down launch, another selection) means the
+          // step is never executed from here: the submitted journal entry
+          // keeps its original correlation, its status reads outcome_unknown,
+          // and only the reviewed recovery can release it. No cancel, no
+          // retry, no second reservation.
+          try {
+            assertStillExecutable(
+              session,
+              selection,
+              executor,
+              handlers.executorIdentity(),
+            );
+          } catch (error) {
+            if (
+              error instanceof ExternalFaceBridgeError &&
+              error.code === "stale_context"
+            ) {
+              throw faceError("outcome_unknown");
+            }
+            throw error;
+          }
           let actionId: string;
           try {
-            ({ actionId } = await handlers.executeTransfer({
-              objectId: selection.objectId,
-              action: proposal.action,
-              input: proposal.input,
-            }));
+            ({ actionId } = await handlers.executeTransfer(
+              {
+                objectId: selection.objectId,
+                action: proposal.action,
+                input: proposal.input,
+              },
+              executor,
+            ));
           } catch {
             throw faceError("outcome_unknown");
           }

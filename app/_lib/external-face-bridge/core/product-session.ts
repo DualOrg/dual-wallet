@@ -17,6 +17,7 @@ import type { TransferProposal } from "@/app/_domain/product-face-transfer";
 import { ProductFaceError } from "@/app/_domain/product-face";
 import type { RuntimeAssertionTarget } from "@/app/_lib/external-face-bridge/core/product-context";
 import { ExternalFaceBridgeError } from "@/app/_lib/external-face-bridge/core/errors";
+import type { ExecutorIdentity } from "@/app/_lib/external-face-bridge/core/executor-identity";
 
 export interface ProductFaceSelection {
   contextId: string;
@@ -93,24 +94,40 @@ export interface ProductFaceHandlers {
     operationId: string;
     objectId: string;
   }): Promise<{ proposal: SettleProposal; changes: SettleFieldChange[] }>;
-  executeSettle(input: {
-    objectId: string;
-    action: string;
-    alias?: string;
-    input: Record<string, unknown>;
-  }): Promise<{ actionId: string }>;
+  /**
+   * The wallet session that may sign right now (null when signed out), so a
+   * holder-signed operation can capture who began it.
+   */
+  executorIdentity(): ExecutorIdentity | null;
+  /**
+   * Executes as the holder. `as` is the identity captured when the operation
+   * began: the executor refuses (session_ended) before any signature unless
+   * the live session is still exactly that identity.
+   */
+  executeSettle(
+    input: {
+      objectId: string;
+      action: string;
+      alias?: string;
+      input: Record<string, unknown>;
+    },
+    as: ExecutorIdentity,
+  ): Promise<{ actionId: string }>;
   /** G8: the next transfer step, read by the wallet itself (trusted read). */
   readTransferProposal(input: {
     contextId: string;
     offerId: string;
     objectId: string;
   }): Promise<TransferProposal>;
-  /** G8: executes exactly a validated transfer step as the holder. */
-  executeTransfer(input: {
-    objectId: string;
-    action: "update" | "transfer";
-    input: Record<string, unknown>;
-  }): Promise<{ actionId: string }>;
+  /** G8: executes exactly a validated transfer step as the holder (`as`: see executeSettle). */
+  executeTransfer(
+    input: {
+      objectId: string;
+      action: "update" | "transfer";
+      input: Record<string, unknown>;
+    },
+    as: ExecutorIdentity,
+  ): Promise<{ actionId: string }>;
   /** G8: verify or read the status of a submitted step; never executes. */
   transferProgress(operationId: string): Promise<{
     status: "transfer_request_committed" | "transferred" | "outcome_unknown";

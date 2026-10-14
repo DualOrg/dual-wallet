@@ -13,6 +13,8 @@ import {
   startProductFaceBridge,
   type ProductFaceHandlers,
 } from "@/app/_lib/external-face-bridge";
+import type { ExecutorIdentity } from "@/app/_lib/external-face-bridge/core/executor-identity";
+import type { JournalTransitionRequest } from "@/app/_lib/external-face-bridge/core/product-session";
 import {
   application,
   edit,
@@ -21,6 +23,119 @@ import {
   TEMPLATE_A,
   TEMPLATE_B,
 } from "@/test/product-face-fixtures";
+
+// The wallet session that began an operation (account A) and another (B).
+const IDENTITY_A: ExecutorIdentity = {
+  walletId: "wallet-a",
+  holder: HOLDER.toLowerCase(),
+  authenticationMethod: "email",
+  controller: null,
+};
+const IDENTITY_B: ExecutorIdentity = {
+  walletId: "wallet-b",
+  holder: "0x00000000000000000000000000000000000000b2",
+  authenticationMethod: "email",
+  controller: null,
+};
+
+/**
+ * A stateful LOCAL FAKE of the BFF journal (one entry per operation id): a
+ * submitted entry refuses a second begin (operation_already_submitted); the
+ * submit answers dispatch "won" once, after `duringReserve` ran inside that
+ * await (a logout, an account change, a selection change, an expiry).
+ */
+function journalStore(duringReserve: () => void = () => {}) {
+  const entries = new Map<
+    string,
+    {
+      phase: string;
+      correlation: Record<string, unknown>;
+      transitions: string[];
+    }
+  >();
+  let submits = 0;
+  const journal = jest.fn(async (request: JournalTransitionRequest) => {
+    const entry = entries.get(request.operation_id);
+    if (request.transition === "begin") {
+      if (entry && entry.phase === "submitted") {
+        throw new ProductFaceError("operation_already_submitted", 409);
+      }
+      entries.set(request.operation_id, {
+        phase: "confirming",
+        correlation: {
+          kind: request.kind,
+          operation: request.operation,
+          object_id: request.object_id,
+          proposal_id: request.proposal_id,
+          offer_id: request.offer_id,
+        },
+        transitions: ["begin"],
+      });
+      return {};
+    }
+    if (!entry) throw new ProductFaceError("unknown_operation", 404);
+    entry.transitions.push(request.transition);
+    if (request.transition === "confirm") entry.phase = "confirmed";
+    if (request.transition === "cancel") entry.phase = "cancelled";
+    if (request.transition === "submit") {
+      entry.phase = "submitted";
+      submits += 1;
+      duringReserve();
+      return { reservation: "won" as const };
+    }
+    return {};
+  });
+  return { journal, entries, submits: () => submits };
+}
+
+// What changes while the reservation is being awaited.
+type RaceRun = {
+  session: ProductFaceSession;
+  identity: { current: ExecutorIdentity | null };
+};
+const RACES: Array<[string, (run: RaceRun) => void]> = [
+  [
+    "logout",
+    ({ session, identity }) => {
+      session.ended = "logout";
+      session.selection = null;
+      identity.current = null;
+    },
+  ],
+  [
+    "an account change A to B (the launch ended)",
+    ({ session, identity }) => {
+      session.ended = "account_changed";
+      session.selection = null;
+      identity.current = IDENTITY_B;
+    },
+  ],
+  [
+    "an account change A to B before the launch heard of it",
+    ({ identity }) => {
+      identity.current = IDENTITY_B;
+    },
+  ],
+  [
+    "a selection change",
+    ({ session }) => {
+      session.selection = {
+        contextId: `context-other-${"y".repeat(16)}`,
+        objectId: UNIT_B,
+        product: product(UNIT_B),
+      };
+      session.generation += 1;
+    },
+  ],
+  [
+    "the session expiring",
+    ({ session, identity }) => {
+      session.ended = "expired";
+      session.selection = null;
+      identity.current = null;
+    },
+  ],
+];
 
 const UNIT_A = "aaaaaaaaaaaaaaaaaaaaaaaa";
 const UNIT_B = "bbbbbbbbbbbbbbbbbbbbbbbb";
@@ -99,6 +214,7 @@ function handlers(overrides: Partial<ProductFaceHandlers> = {}) {
     confirm: jest.fn(async () => true),
     navigate: jest.fn(),
     sha256: jest.fn(async () => `sha256:${"0".repeat(64)}`),
+    executorIdentity: jest.fn(() => IDENTITY_A),
     ...overrides,
   } as jest.Mocked<ProductFaceHandlers>;
   return value;
@@ -789,11 +905,11 @@ describe("holder settle (G6)", () => {
       "execute",
       "journal:record_action",
     ]);
-    expect(handlerSet.executeSettle).toHaveBeenCalledWith({
-      objectId: UNIT_A,
-      action: "update",
-      input: proposal.input,
-    });
+    // As the identity that began it, which the executor re-checks itself.
+    expect(handlerSet.executeSettle).toHaveBeenCalledWith(
+      { objectId: UNIT_A, action: "update", input: proposal.input },
+      IDENTITY_A,
+    );
     expect(handlerSet.confirm).toHaveBeenCalledWith({
       kind: "settle",
       product: { objectId: UNIT_A, name: pendingProduct.name },
@@ -1011,6 +1127,57 @@ describe("holder settle (G6)", () => {
     expect(order).toEqual(["journal:begin", "journal:cancel"]);
   });
 
+  it.each(RACES)(
+    "%s during the awaited settle reserve: never executed, the entry stays submitted under its original correlation, a later attempt is outcome_unknown and nothing is reserved again",
+    async (_label, race) => {
+      const identity = { current: IDENTITY_A as ExecutorIdentity | null };
+      const ref: { run?: Awaited<ReturnType<typeof settleRuntime>> } = {};
+      const store = journalStore(() =>
+        race({ session: ref.run!.session, identity }),
+      );
+      const run = await settleRuntime({
+        journal: store.journal,
+        executorIdentity: jest.fn(() => identity.current),
+      });
+      ref.run = run;
+      await expect(
+        run.call("programme.product.settle.request", run.request),
+      ).rejects.toMatchObject({
+        code: expect.stringMatching(/^(session_ended|outcome_unknown)$/),
+      });
+      expect(run.handlers.executeSettle).toHaveBeenCalledTimes(0);
+      const entry = store.entries.get(run.request.settle_operation_id)!;
+      expect(entry.phase).toBe("submitted");
+      expect(entry.transitions).toEqual(["begin", "confirm", "submit"]);
+      expect(entry.correlation).toEqual({
+        kind: "settle",
+        operation: "update",
+        object_id: UNIT_A,
+        proposal_id: proposal.proposalId,
+        offer_id: undefined,
+      });
+      // Account A again, on a fresh launch: the settle only reads.
+      const again = runtimeFor(run.handlers);
+      identity.current = IDENTITY_A;
+      const { context_id } = (await again.call("programme.product.select", {
+        object_id: UNIT_A,
+      })) as { context_id: string };
+      await expect(
+        again.call("programme.product.settle.request", {
+          ...run.request,
+          context_id,
+        }),
+      ).rejects.toMatchObject({ code: "outcome_unknown" });
+      await expect(
+        again.call("programme.operation.status", {
+          operation_id: run.request.operation_id,
+        }),
+      ).resolves.toMatchObject({ status: "outcome_unknown" });
+      expect(store.submits()).toBe(1);
+      expect(run.handlers.executeSettle).toHaveBeenCalledTimes(0);
+    },
+  );
+
   it("reports a lost execution as outcome_unknown and never re-executes", async () => {
     const lost = await settleRuntime({
       executeSettle: jest.fn(async () => {
@@ -1160,11 +1327,10 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
       step: "request",
       recipient: RECIPIENT,
     });
-    expect(run.handlers.executeTransfer).toHaveBeenCalledWith({
-      objectId: UNIT_A,
-      action: "update",
-      input: requestStep.input,
-    });
+    expect(run.handlers.executeTransfer).toHaveBeenCalledWith(
+      { objectId: UNIT_A, action: "update", input: requestStep.input },
+      IDENTITY_A,
+    );
   });
 
   it("the recipient shown and signed is the host-read one; the face cannot name or change it", async () => {
@@ -1192,11 +1358,10 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
     expect(run.handlers.confirm).toHaveBeenCalledWith(
       expect.objectContaining({ step: "transfer", recipient: RECIPIENT }),
     );
-    expect(run.handlers.executeTransfer).toHaveBeenCalledWith({
-      objectId: UNIT_A,
-      action: "transfer",
-      input: { to: RECIPIENT },
-    });
+    expect(run.handlers.executeTransfer).toHaveBeenCalledWith(
+      { objectId: UNIT_A, action: "transfer", input: { to: RECIPIENT } },
+      IDENTITY_A,
+    );
   });
 
   it.each([
@@ -1357,6 +1522,83 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
     await expect(
       none.call("programme.product.transfer.sign", run.request),
     ).rejects.toMatchObject({ code: "no_selection" });
+  });
+
+  it("Root's reproduction: an account change during the awaited reserve never reaches the executor", async () => {
+    const run = await transferRuntime();
+    const journal = run.handlers.journal;
+    run.handlers.journal = jest.fn(async (request) => {
+      const result = await journal(request);
+      if (request.transition === "submit")
+        run.session.ended = "account_changed";
+      return result;
+    });
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).rejects.toMatchObject({ code: "session_ended" });
+    expect(run.handlers.executeTransfer).toHaveBeenCalledTimes(0);
+  });
+
+  describe.each([
+    ["request", requestStep],
+    ["transfer", transferStep],
+  ])("after the %s step's reservation was won", (step, proposal) => {
+    it.each(RACES)(
+      "%s during the awaited reserve: never executed, the entry stays submitted under its original correlation, a later read is outcome_unknown and nothing is reserved again",
+      async (_label, race) => {
+        const identity = { current: IDENTITY_A as ExecutorIdentity | null };
+        const ref: { run?: Awaited<ReturnType<typeof transferRuntime>> } = {};
+        const store = journalStore(() =>
+          race({ session: ref.run!.session, identity }),
+        );
+        const progress = jest.fn(async () => ({
+          status: "outcome_unknown" as const,
+        }));
+        const run = await transferRuntime({
+          readTransferProposal: jest.fn(async () => proposal),
+          journal: store.journal,
+          executorIdentity: jest.fn(() => identity.current),
+          transferProgress:
+            progress as unknown as ProductFaceHandlers["transferProgress"],
+        });
+        ref.run = run;
+        await expect(
+          run.call("programme.product.transfer.sign", run.request),
+        ).rejects.toMatchObject({
+          code: expect.stringMatching(/^(session_ended|outcome_unknown)$/),
+        });
+        expect(run.handlers.executeTransfer).toHaveBeenCalledTimes(0);
+        const entry = store.entries.get(run.request.step_operation_id)!;
+        expect(entry.phase).toBe("submitted");
+        expect(entry.transitions).toEqual(["begin", "confirm", "submit"]);
+        expect(entry.correlation).toEqual({
+          kind: "transfer",
+          operation: `transfer.${step}`,
+          object_id: UNIT_A,
+          proposal_id: proposal.proposalId,
+          offer_id: OFFER,
+        });
+
+        // Account A's wallet again, on a fresh launch: the same step only reads.
+        const again = runtimeFor(run.handlers);
+        identity.current = IDENTITY_A;
+        const { context_id } = (await again.call("programme.product.select", {
+          object_id: UNIT_A,
+        })) as { context_id: string };
+        await expect(
+          again.call("programme.product.transfer.sign", {
+            ...run.request,
+            context_id,
+          }),
+        ).rejects.toMatchObject({ code: "outcome_unknown" });
+        expect(progress).toHaveBeenCalledWith(run.request.step_operation_id);
+        expect(store.submits()).toBe(1);
+        expect(run.handlers.executeTransfer).toHaveBeenCalledTimes(0);
+        expect(
+          store.entries.get(run.request.step_operation_id)!.transitions,
+        ).toEqual(["begin", "confirm", "submit"]);
+      },
+    );
   });
 
   it("cancelled natively: the journal entry is cancelled and nothing is reserved or executed", async () => {

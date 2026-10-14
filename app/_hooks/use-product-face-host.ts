@@ -18,6 +18,10 @@ import {
   type ProductFaceHandlers,
 } from "@/app/_lib/external-face-bridge";
 import type { ProductFaceHostNotice } from "@/app/_lib/external-face-bridge/core/product-session";
+import {
+  executeAs,
+  executorIdentityOf,
+} from "@/app/_lib/external-face-bridge/core/executor-identity";
 import { useSession } from "@/app/_providers/session-provider";
 import {
   executeSettleAction,
@@ -172,6 +176,12 @@ export function useProductFaceHost({
       if (!holder || state.status === "ended") return;
       host.current?.close();
       const face = { slug, launchId };
+      // This launch's own host, live: not ended, not replaced, not torn down.
+      const launched: { host?: ProductFaceBridgeHost } = {};
+      const liveHost = () =>
+        Boolean(launched.host) &&
+        host.current === launched.host &&
+        launched.host?.session.ended === null;
       const guard = async <T>(work: () => Promise<T>) => {
         try {
           return await work();
@@ -210,30 +220,38 @@ export function useProductFaceHost({
           guard(() => mintFaceAssertion(face, request)),
         readSettleProposal: (input) =>
           guard(() => readSettleProposal(face, input)),
-        executeSettle: (input) => {
-          const { authenticationMethod, wallet } = sessionRef.current;
-          if (!authenticationMethod) {
-            return Promise.reject(new ProductFaceError("session_expired", 401));
-          }
-          return executeSettleAction({
-            ...input,
-            authenticationMethod,
-            controllerAddress: wallet?.controller.address,
-          });
-        },
+        executorIdentity: () => executorIdentityOf(sessionRef.current),
+        // Defence in depth: the executors themselves sign only while this
+        // launch is live and the CURRENT wallet session is exactly the one
+        // that began the operation; otherwise they refuse before anything is
+        // prepared or signed (an account change never signs with the new
+        // account's credentials).
+        executeSettle: (input, as) =>
+          executeAs(
+            as,
+            executorIdentityOf(sessionRef.current),
+            liveHost(),
+            (identity) =>
+              executeSettleAction({
+                ...input,
+                authenticationMethod: identity.authenticationMethod,
+                controllerAddress: identity.controller ?? undefined,
+              }),
+          ),
         readTransferProposal: (input) =>
           guard(() => readTransferProposal(face, input)),
-        executeTransfer: (input) => {
-          const { authenticationMethod, wallet } = sessionRef.current;
-          if (!authenticationMethod) {
-            return Promise.reject(new ProductFaceError("session_expired", 401));
-          }
-          return executeTransferAction({
-            ...input,
-            authenticationMethod,
-            controllerAddress: wallet?.controller.address,
-          });
-        },
+        executeTransfer: (input, as) =>
+          executeAs(
+            as,
+            executorIdentityOf(sessionRef.current),
+            liveHost(),
+            (identity) =>
+              executeTransferAction({
+                ...input,
+                authenticationMethod: identity.authenticationMethod,
+                controllerAddress: identity.controller ?? undefined,
+              }),
+          ),
         transferProgress: (operationId) =>
           guard(() => readTransferProgress(face, operationId)),
         confirm: (request) =>
@@ -254,7 +272,7 @@ export function useProductFaceHost({
         },
         sha256: sha256Hash,
       };
-      host.current = startProductFaceBridge({
+      launched.host = startProductFaceBridge({
         frame,
         frameUrl,
         application,
@@ -296,6 +314,7 @@ export function useProductFaceHost({
             .catch(() => undefined);
         },
       });
+      host.current = launched.host;
     },
     [application, frameUrl, launchId, router, slug, state.status, task],
   );

@@ -9,9 +9,12 @@ import {
 import type { ProductFaceCapability } from "@/app/_lib/external-face-bridge/capabilities/product-types";
 import {
   assertStillCurrent,
+  assertStillExecutable,
+  beginningExecutor,
   callWalletService as call,
   requireContext,
 } from "@/app/_lib/external-face-bridge/capabilities/programme-products";
+import { ExternalFaceBridgeError } from "@/app/_lib/external-face-bridge/core/errors";
 import {
   faceError,
   toBridgeError,
@@ -48,6 +51,11 @@ export function settleCapabilities(): ProductFaceCapability[] {
         if (session.pendingConfirmation) throw faceError("action_in_progress");
         const settle = session.application.settle;
         if (!settle) throw faceError("proposal_rejected");
+        // Who began this operation: only exactly this wallet session may sign it.
+        const executor = beginningExecutor(
+          session,
+          handlers.executorIdentity(),
+        );
 
         session.pendingConfirmation = true;
         let begun = false;
@@ -205,14 +213,37 @@ export function settleCapabilities(): ProductFaceCapability[] {
           if (submitted.reservation !== "won") {
             throw faceError("outcome_unknown");
           }
+          // The reservation was won for THIS session, launch and selection;
+          // if any of them changed during that await the settle is never
+          // executed from here (outcome_unknown under its original
+          // correlation, read-only status, reviewed recovery only).
+          try {
+            assertStillExecutable(
+              session,
+              selection,
+              executor,
+              handlers.executorIdentity(),
+            );
+          } catch (error) {
+            if (
+              error instanceof ExternalFaceBridgeError &&
+              error.code === "stale_context"
+            ) {
+              throw faceError("outcome_unknown");
+            }
+            throw error;
+          }
           let actionId: string;
           try {
-            ({ actionId } = await handlers.executeSettle({
-              objectId: selection.objectId,
-              action: proposal.action,
-              ...(settle.alias ? { alias: settle.alias } : {}),
-              input: proposal.input,
-            }));
+            ({ actionId } = await handlers.executeSettle(
+              {
+                objectId: selection.objectId,
+                action: proposal.action,
+                ...(settle.alias ? { alias: settle.alias } : {}),
+                input: proposal.input,
+              },
+              executor,
+            ));
           } catch {
             throw faceError("outcome_unknown");
           }
