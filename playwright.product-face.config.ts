@@ -45,6 +45,11 @@ const publicKey = keys.publicKey
 const keyId = "wallet-face-e2e";
 
 export const MORROW_TEMPLATE = "6a0000000000000000000001";
+// The fake api-v3's Morrow specification fields (e2e/mock-api.mjs).
+const SPEC_FIELDS = Array.from(
+  { length: 27 },
+  (_, index) => `spec_${String(index + 1).padStart(2, "0")}`,
+);
 
 const registry = artifact
   ? [
@@ -78,15 +83,30 @@ const registry = artifact
           unconfirmedStates: ["Transfer pending"],
           endedStates: ["Recalled", "Stolen", "Retired"],
         },
-        // The shape Studio's productFaceSettleInputTemplate() exports.
+        // The shape Studio's productFaceSettleInputTemplate() exports. With
+        // the local fake runtime the proposal carries the unit's COMPLETE
+        // custom map (35 leaves); integrated mode keeps the Studio harness
+        // unit's template.
         settle: {
           action: "update",
           inputPath: "data.custom",
           leaves: {
             state: { enum: ["Authenticity verified"] },
             "lifecycle.target_state": { enum: ["Authenticity verified"] },
-            serialNumber: { unchanged: true },
             action_hash: { runtimeIssued: "sha256_hex" },
+            ...Object.fromEntries(
+              (process.env.MOCK_PROGRAMME_DUAL_URL
+                ? ["serialNumber"]
+                : [
+                    "recordId",
+                    "title",
+                    "serialNumber",
+                    "model",
+                    "manufacturer",
+                    ...SPEC_FIELDS,
+                  ]
+              ).map((field) => [field, { unchanged: true }]),
+            ),
           },
           fromStates: ["Transfer pending"],
           targetStates: ["Authenticity verified"],

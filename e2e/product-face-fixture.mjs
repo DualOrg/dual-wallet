@@ -4,7 +4,7 @@
 // labelled FAKE of the contract runtime endpoints that verifies the wallet's
 // one-time assertions with the ephemeral test public key and performs the
 // "issuer transfer" through the local fake api-v3 test hook.
-import { createHash, createPublicKey, verify } from "node:crypto";
+import { createHash, createPublicKey, randomBytes, verify } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
@@ -47,10 +47,37 @@ const GRANTS = {
   "MH-HANDOVER-AB": ["6a00000000000000000000a1", "6a00000000000000000000b2"],
 };
 
-let mode = { transferState: "Registered", holdRegistrations: false };
-let stats = { assertions: {}, registrations: 0, jti: new Set() };
+const DEFAULT_MODE = {
+  transferState: "Registered",
+  holdRegistrations: false,
+  // G6b: when set, settle.propose has no proposal and states this reason.
+  proposalUnavailable: "",
+  // Reserve answers lost after the reservation was made (the BFF never sees them).
+  loseReserveResponses: 0,
+};
+let mode = { ...DEFAULT_MODE };
+const freshStats = () => ({
+  assertions: {},
+  registrations: 0,
+  jti: new Set(),
+  reserve: { won: 0, already_claimed: 0, already_reserved: 0, lost: 0 },
+});
+let stats = freshStats();
 const evidence = new Map();
 const held = [];
+// Durable fake runtime state (in memory): registrations and the unit-level
+// single flight, originated settle proposals, and settle reservations.
+const registrations = new Map(); // operationId -> {objectId, recordId, holder, status}
+const unitOperations = new Map(); // objectId -> operationId
+const proposals = new Map(); // registration operationId -> proposal
+const reservations = new Map(); // objectId -> reservation
+const resetState = () => {
+  evidence.clear();
+  registrations.clear();
+  unitOperations.clear();
+  proposals.clear();
+  reservations.clear();
+};
 
 const withoutAssertion = (body) =>
   Object.fromEntries(
@@ -180,6 +207,109 @@ const ZERO = {
   secretReturned: false,
 };
 
+const opaqueHandle = () => randomBytes(32).toString("base64url");
+const PROPOSAL_TTL_MS = 15 * 60_000;
+
+async function holderActions(objectId, holder, sinceIso) {
+  const response = await fetch(
+    `${MOCK_API}/__test__/action-logs?object_id=${objectId}`,
+  );
+  if (!response.ok) return undefined;
+  const { action_logs: logs } = await response.json();
+  const since = Date.parse(sinceIso);
+  return logs.filter(
+    (log) =>
+      log.name === "update" &&
+      String(log.account).toLowerCase() === holder.toLowerCase() &&
+      Date.parse(log.when_created ?? log.created_at ?? sinceIso) >=
+        since - 1000,
+  );
+}
+
+/**
+ * G6b: the runtime originates the brand's proposal for the holder's own
+ * unit (the COMPLETE custom map, Studio-shaped), or states why there is none.
+ */
+async function originateProposal(operationId, objectId, holder) {
+  if (mode.proposalUnavailable) {
+    return { unavailable: mode.proposalUnavailable };
+  }
+  const existing = proposals.get(operationId);
+  if (existing && Date.parse(existing.expires_at) > Date.now()) return existing;
+  const current = await (
+    await fetch(`${MOCK_API}/__test__/objects/${objectId}`)
+  ).json();
+  const custom = { ...(current.custom ?? {}) };
+  delete custom.lifecycle;
+  const input = {
+    data: {
+      custom: {
+        ...custom,
+        state: "Authenticity verified",
+        lifecycle: { target_state: "Authenticity verified" },
+        action_hash: createHash("sha256")
+          .update(`${objectId}:${operationId}`)
+          .digest("hex"),
+      },
+    },
+  };
+  const proposal = {
+    proposal_id: `psp-${randomBytes(12).toString("hex")}`,
+    operation_id: operationId,
+    object_id: objectId,
+    action: "update",
+    input,
+    proposal_hash: sha256(
+      canonical({ object_id: objectId, action: "update", input }),
+    ),
+    expires_at: new Date(Date.now() + PROPOSAL_TTL_MS).toISOString(),
+    holder,
+  };
+  proposals.set(operationId, proposal);
+  return proposal;
+}
+
+const proposalView = (proposal) =>
+  proposal?.unavailable
+    ? {
+        status: "unavailable",
+        reason: proposal.unavailable,
+        nextStep: "brand_operator_proposal",
+      }
+    : { status: "proposed", expiresAt: proposal.expires_at };
+
+async function registrationAnswer(operationId, objectId, holder, extra = {}) {
+  const result = await readback(objectId, holder);
+  const status =
+    result.status === "pending" ? "outcome_unknown" : result.status;
+  const record = registrations.get(operationId);
+  if (record) record.status = status;
+  let settle = {};
+  if (status === "ownership_moved_state_pending") {
+    const reserved = reservations.get(objectId);
+    const proposal = await originateProposal(operationId, objectId, holder);
+    settle = {
+      nextStep:
+        reserved && reserved.state !== "committed"
+          ? "check_settle_status"
+          : proposal.unavailable
+            ? "brand_operator_proposal"
+            : "settle_on_wallet",
+      settleProposal: proposalView(proposal),
+    };
+  }
+  return {
+    ok: true,
+    status,
+    operationId,
+    objectId,
+    actionId: null,
+    ...settle,
+    ...ZERO,
+    ...extra,
+  };
+}
+
 async function runtime(request, response, url, manifest) {
   const body = await readJson(request);
   if (!body)
@@ -193,7 +323,8 @@ async function runtime(request, response, url, manifest) {
     const units = GRANTS[String(body.grant || "").trim()];
     if (!units)
       return send(response, 400, { status: "face_evidence_grant_invalid" });
-    const handle = `ev-${Math.random().toString(36).slice(2)}`;
+    // r9: an opaque, random handle only; nothing in it names a session.
+    const handle = opaqueHandle();
     evidence.set(handle, units);
     const listed = [];
     for (const objectId of units) {
@@ -215,6 +346,7 @@ async function runtime(request, response, url, manifest) {
       status: "evidence_accepted",
       evidence: handle,
       units: listed,
+      secretReturned: false,
     });
   }
 
@@ -237,13 +369,47 @@ async function runtime(request, response, url, manifest) {
     });
     if (typeof verified === "string")
       return send(response, 403, { status: "refused", reason: verified });
+    const holder = verified.claims.holder;
+    // r8 unit-level single flight: one registration per unit while another
+    // is pending or unknown; the same operation replays its recorded result.
+    const current = unitOperations.get(objectId);
+    if (current && current !== body.operationId) {
+      const other = registrations.get(current);
+      if (
+        other &&
+        !["registered", "refused", "not_submitted"].includes(other.status)
+      ) {
+        return send(response, 409, {
+          ok: false,
+          status: "refused",
+          reason: "operation_conflict",
+          operationId: body.operationId,
+          objectId,
+          existingOperationId: current,
+          ...ZERO,
+        });
+      }
+    }
+    if (current === body.operationId && registrations.has(current)) {
+      return send(
+        response,
+        200,
+        await registrationAnswer(current, objectId, holder, { replayed: true }),
+      );
+    }
+    unitOperations.set(objectId, body.operationId);
+    registrations.set(body.operationId, {
+      objectId,
+      recordId: body.recordId,
+      holder,
+      status: "outcome_unknown",
+    });
     stats.registrations += 1;
     if (mode.holdRegistrations) {
       // Simulates a lost frame mid-operation: the request is never answered.
       held.push(response);
       return;
     }
-    const holder = verified.claims.holder;
     await fetch(`${MOCK_API}/__test__/issuer-transfer`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -256,20 +422,19 @@ async function runtime(request, response, url, manifest) {
           : {}),
       }),
     });
-    const result = await readback(objectId, holder);
-    return send(response, 200, {
-      status: result.status,
-      operationId: body.operationId,
-      objectId,
-      actionId: null,
-      writeOutcome: "committed",
-      accounting: {
-        providerWritesExecuted: 0,
-        dualWritesExecuted: 1,
-        readbacksExecuted: 1,
-        unknownWriteOutcomes: 0,
-      },
-    });
+    return send(
+      response,
+      200,
+      await registrationAnswer(body.operationId, objectId, holder, {
+        writeOutcome: "committed",
+        accounting: {
+          providerWritesExecuted: 0,
+          dualWritesExecuted: 1,
+          readbacksExecuted: 1,
+          unknownWriteOutcomes: 0,
+        },
+      }),
+    );
   }
 
   if (route === "/registrations/status") {
@@ -289,24 +454,38 @@ async function runtime(request, response, url, manifest) {
     });
     if (typeof verified === "string")
       return send(response, 403, { status: "refused", reason: verified });
-    const result = await readback(target.object_id, verified.claims.holder);
-    return send(response, 200, {
-      status: result.status === "pending" ? "outcome_unknown" : result.status,
-      operationId: body.operationId,
-      objectId: target.object_id,
-      actionId: null,
-      ...ZERO,
-    });
+    return send(
+      response,
+      200,
+      await registrationAnswer(
+        body.operationId,
+        target.object_id,
+        verified.claims.holder,
+      ),
+    );
   }
 
   if (route === "/operations") {
     const { assertion, ...rest } = body;
+    const objectId = body.target?.object_id;
+    // r8: the reserve assertion's request_hash is over exactly
+    // {proposal_id, settle_operation_id, object_id}.
+    const requestHash =
+      body.operation === "registration.settle.reserve"
+        ? sha256(
+            canonical({
+              proposal_id: body.input?.proposal_id,
+              settle_operation_id: body.operationId,
+              object_id: objectId,
+            }),
+          )
+        : sha256(canonical(rest));
     const verified = await verifyAssertion(assertion, {
       manifest,
       operation: body.operation,
       opId: body.operationId,
       target: body.target,
-      requestHash: sha256(canonical(rest)),
+      requestHash,
     });
     if (typeof verified === "string")
       return send(response, 403, {
@@ -314,7 +493,7 @@ async function runtime(request, response, url, manifest) {
         reason: verified,
         ...ZERO,
       });
-    const objectId = body.target?.object_id;
+    const holder = verified.claims.holder;
     if (body.operation === "products.private.read") {
       return send(response, 200, {
         status: "private_product_read",
@@ -328,52 +507,221 @@ async function runtime(request, response, url, manifest) {
         ...ZERO,
       });
     }
+    if (body.operation === "registration.pending.read") {
+      // r9: the ORIGINAL pending registration of this unit for this holder.
+      const operationId = unitOperations.get(objectId);
+      const record = operationId && registrations.get(operationId);
+      if (!record || record.holder.toLowerCase() !== holder.toLowerCase()) {
+        return send(response, 404, {
+          ok: false,
+          status: "not_submitted",
+          reason: "registration_pending_not_found",
+          objectId,
+          ...ZERO,
+        });
+      }
+      const answer = await registrationAnswer(operationId, objectId, holder);
+      const reserved = reservations.get(objectId);
+      return send(response, 200, {
+        ...answer,
+        recordId: record.recordId,
+        ...(reserved && reserved.state !== "committed"
+          ? {
+              settleReservation: {
+                settle_operation_id: reserved.settleOperationId,
+                state: reserved.state,
+              },
+            }
+          : {}),
+      });
+    }
     if (body.operation === "registration.settle.propose") {
       if (request.headers.origin)
         return send(response, 403, {
           status: "face_trusted_read_server_only",
           ...ZERO,
         });
-      const current = await (
-        await fetch(`${MOCK_API}/__test__/objects/${objectId}`)
-      ).json();
-      // Studio-shaped reviewed proposal: the Dual update body for the unit.
-      const input = {
-        data: {
-          custom: {
-            state: "Authenticity verified",
-            lifecycle: { target_state: "Authenticity verified" },
-            serialNumber: current.custom?.serialNumber,
-            action_hash: createHash("sha256")
-              .update(`${objectId}:${body.operationId}`)
-              .digest("hex"),
-          },
-        },
-      };
+      const proposal = await originateProposal(
+        body.operationId,
+        objectId,
+        holder,
+      );
+      if (proposal.unavailable) {
+        return send(response, 409, {
+          ok: false,
+          status: "settle_proposal_unavailable",
+          reason: proposal.unavailable,
+          nextStep: "brand_operator_proposal",
+          ...ZERO,
+        });
+      }
+      const view = { ...proposal };
+      delete view.holder;
       return send(response, 200, {
         ok: true,
         status: "settle_proposed",
-        proposal_id: `psp-${body.operationId}`,
-        operation_id: body.operationId,
+        ...view,
+        ...ZERO,
+      });
+    }
+    if (body.operation === "registration.settle.reserve") {
+      // r8/r11: server to server only; ONE durable dispatch claim per unit.
+      if (request.headers.origin)
+        return send(response, 403, {
+          status: "face_trusted_read_server_only",
+          ...ZERO,
+        });
+      const proposalId = body.input?.proposal_id;
+      const proposal = [...proposals.values()].find(
+        (item) =>
+          item.proposal_id === proposalId && item.object_id === objectId,
+      );
+      if (!proposal || proposal.holder.toLowerCase() !== holder.toLowerCase()) {
+        return send(response, 404, {
+          ok: false,
+          status: "face_settle_proposal_required",
+          ...ZERO,
+        });
+      }
+      const view = (reservation) => ({
+        proposal_id: reservation.proposalId,
+        settle_operation_id: reservation.settleOperationId,
         object_id: objectId,
-        action: "update",
-        input,
-        proposal_hash: sha256(
-          canonical({ object_id: objectId, action: "update", input }),
-        ),
-        expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+        operation_id: reservation.registrationOperationId,
+        state: reservation.state,
+        action_id: reservation.actionId,
+        reserved_at: reservation.reservedAt,
+      });
+      const existing = reservations.get(objectId);
+      if (existing) {
+        // Every later call, the same settle operation included, is
+        // already_claimed and must never be used to execute.
+        const same = existing.settleOperationId === body.operationId;
+        stats.reserve[same ? "already_claimed" : "already_reserved"] += 1;
+        return send(response, same ? 200 : 409, {
+          ok: same,
+          status: same ? "granted" : "already_reserved",
+          ...(same ? { idempotent: true } : {}),
+          dispatch: "already_claimed",
+          reservation: view(existing),
+          ...ZERO,
+        });
+      }
+      // The atomic step: create-if-absent in this single-threaded fake.
+      const reservation = {
+        proposalId,
+        settleOperationId: body.operationId,
+        registrationOperationId: proposal.operation_id,
+        holder,
+        state: "granted",
+        actionId: null,
+        reservedAt: new Date().toISOString(),
+      };
+      reservations.set(objectId, reservation);
+      if (mode.loseReserveResponses > 0) {
+        mode.loseReserveResponses -= 1;
+        stats.reserve.lost += 1;
+        request.socket.destroy();
+        return;
+      }
+      stats.reserve.won += 1;
+      return send(response, 200, {
+        ok: true,
+        status: "granted",
+        dispatch: "won",
+        reservation: view(reservation),
         ...ZERO,
       });
     }
     if (body.operation === "registration.settle.verify") {
-      const result = await readback(objectId, verified.claims.holder);
-      return send(response, 200, {
-        status: result.status,
-        operationId: body.operationId,
+      const reservation = reservations.get(objectId);
+      if (
+        !reservation ||
+        reservation.settleOperationId !== body.input?.settle_operation_id ||
+        reservation.registrationOperationId !== body.operationId
+      ) {
+        return send(response, 409, {
+          ok: false,
+          status: "ownership_moved_state_pending",
+          reason: "face_settle_reservation_required",
+          operationId: body.operationId,
+          objectId,
+          ...ZERO,
+        });
+      }
+      reservation.actionId = body.input.action_id;
+      const answer = await registrationAnswer(
+        body.operationId,
         objectId,
-        actionId: body.input?.action_id ?? null,
-        ...ZERO,
-      });
+        holder,
+        {
+          actionId: body.input.action_id,
+        },
+      );
+      if (answer.status === "registered") reservation.state = "committed";
+      return send(response, 200, answer);
+    }
+    if (body.operation === "registration.settle.status") {
+      // Read-only: the reservation and the holder's own action on the fake
+      // Dual. Found => verify; not found => outcome_unknown. Never executes.
+      const reservation = reservations.get(objectId);
+      if (!reservation || reservation.settleOperationId !== body.operationId) {
+        return send(response, 404, {
+          ok: false,
+          status: "not_submitted",
+          reason: "face_settle_reservation_not_found",
+          objectId,
+          ...ZERO,
+        });
+      }
+      let actionId = reservation.actionId;
+      if (!actionId) {
+        const found = await holderActions(
+          objectId,
+          holder,
+          reservation.reservedAt,
+        );
+        if (!found) {
+          return send(response, 202, {
+            ok: false,
+            status: "outcome_unknown",
+            reason: "face_settle_readback_unavailable",
+            operationId: reservation.registrationOperationId,
+            objectId,
+            nextStep: "check_status",
+            ...ZERO,
+          });
+        }
+        if (!found.length) {
+          return send(response, 202, {
+            ok: false,
+            status: "outcome_unknown",
+            reason: "face_settle_action_not_found",
+            operationId: reservation.registrationOperationId,
+            objectId,
+            nextStep: "check_status",
+            settleOperationId: reservation.settleOperationId,
+            ...ZERO,
+          });
+        }
+        actionId = found[0].id;
+        reservation.actionId = actionId;
+      }
+      const answer = await registrationAnswer(
+        reservation.registrationOperationId,
+        objectId,
+        holder,
+        {
+          actionId,
+          settleStatus: {
+            settleOperationId: reservation.settleOperationId,
+            recoveredFromDual: true,
+            executedNothing: true,
+          },
+        },
+      );
+      if (answer.status === "registered") reservation.state = "committed";
+      return send(response, 200, answer);
     }
     return send(response, 200, { status: "ok", ...ZERO });
   }
@@ -392,16 +740,26 @@ const server = createServer(async (request, response) => {
       return send(response, 200, mode);
     }
     if (url.pathname === "/__test__/reset" && request.method === "POST") {
-      mode = { transferState: "Registered", holdRegistrations: false };
-      stats = { assertions: {}, registrations: 0, jti: new Set() };
+      mode = { ...DEFAULT_MODE };
+      stats = freshStats();
       held.splice(0).forEach((pending) => pending.destroy());
-      evidence.clear();
+      resetState();
       return send(response, 200, { ok: true });
     }
     if (url.pathname === "/__test__/stats") {
       return send(response, 200, {
         assertions: stats.assertions,
         registrations: stats.registrations,
+        reserve: stats.reserve,
+        reservations: Object.fromEntries(reservations),
+        // Leaves under data.custom of each originated proposal.
+        proposalLeaves: [...proposals.values()].map((proposal) => {
+          const count = (value) =>
+            value && typeof value === "object" && !Array.isArray(value)
+              ? Object.values(value).reduce((sum, item) => sum + count(item), 0)
+              : 1;
+          return count(proposal.input.data.custom);
+        }),
       });
     }
     // A different-origin page used to prove forged messages are ignored.

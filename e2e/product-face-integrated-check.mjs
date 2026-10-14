@@ -21,6 +21,11 @@ const REGISTRATION = process.env.CHECK_OPERATION || "reg-harness-morr-0001";
 const SETTLE = `settle-check-${Date.now().toString(36)}`;
 const RUNTIME = process.env.CHECK_RUNTIME || "http://localhost:4180";
 const TENANT = "demo.localhost:3000";
+// One face launch (frame): the BFF keeps this launch's own journal.
+const LAUNCH = createHash("sha256")
+  .update(`launch-${Date.now()}`)
+  .digest("base64url")
+  .slice(0, 32);
 
 const jar = new Map();
 const cookie = () =>
@@ -39,6 +44,7 @@ function call(method, path, body) {
         headers: {
           host: TENANT,
           origin: `http://${TENANT}`,
+          "x-dual-face-launch": LAUNCH,
           "content-type": "application/json",
           cookie: cookie(),
           ...(data ? { "content-length": Buffer.byteLength(data) } : {}),
@@ -114,6 +120,7 @@ step(
   proposal.status === 200,
 );
 if (!p) process.exit(1);
+let reservation = null;
 for (const transition of ["begin", "confirm", "submit"]) {
   const result = await call(
     "POST",
@@ -132,9 +139,21 @@ for (const transition of ["begin", "confirm", "submit"]) {
   );
   step(
     `journal ${transition}`,
-    result.body.operation?.phase,
+    `${result.body.operation?.phase ?? result.body.code}`,
     result.status === 200,
   );
+  if (transition === "submit") reservation = result.body.reservation ?? null;
+}
+// contract r8/r11: the holder executes ONLY on a reserve answer that the BFF
+// itself received with dispatch:"won".
+if (
+  !step(
+    "runtime settle reservation won",
+    String(reservation),
+    reservation === "won",
+  )
+) {
+  process.exit(1);
 }
 // The existing executor's email path, through the allow-listed proxy.
 const executed = await call("POST", "/api/backend/ebus/execute", {

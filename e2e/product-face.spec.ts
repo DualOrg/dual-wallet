@@ -262,16 +262,270 @@ test("a task link survives sign-in and Back/Forward between two products", async
     .getByRole("button", { name: "Open" })
     .click();
   await expect(page).toHaveURL(`/products/morrow-home/products/${OWNED_A}`);
-  await expect(face(page).locator(".pf-facts")).toContainText("MH-ARC-0101");
+  await expect(face(page).locator(".pf-facts").first()).toContainText(
+    "MH-ARC-0101",
+  );
 
   await face(page).getByLabel("Product", { exact: true }).selectOption(OWNED_B);
   await expect(page).toHaveURL(`/products/morrow-home/products/${OWNED_B}`);
-  await expect(face(page).locator(".pf-facts")).toContainText("MH-ARC-0102");
+  await expect(face(page).locator(".pf-facts").first()).toContainText(
+    "MH-ARC-0102",
+  );
 
   await page.goBack();
   await expect(page).toHaveURL(`/products/morrow-home/products/${OWNED_A}`);
-  await expect(face(page).locator(".pf-facts")).toContainText("MH-ARC-0101");
+  await expect(face(page).locator(".pf-facts").first()).toContainText(
+    "MH-ARC-0101",
+  );
 
   await page.reload();
-  await expect(face(page).locator(".pf-facts")).toContainText("MH-ARC-0101");
+  await expect(face(page).locator(".pf-facts").first()).toContainText(
+    "MH-ARC-0101",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Contract r8/r11 durable reservation and per-launch journals, in a real
+// browser. The fake api-v3 records every holder action; the labelled fake
+// runtime implements registration.settle.reserve (dispatch won/already_claimed
+// atomically), settle.status and pending.read.
+
+async function holderUpdates(objectId: string) {
+  const { action_logs: logs } = (await (
+    await fetch(`${MOCK_API}/__test__/action-logs?object_id=${objectId}`)
+  ).json()) as { action_logs: Array<{ name: string; account: string }> };
+  return logs.filter(
+    (log) => log.name === "update" && log.account.toLowerCase() === WALLET,
+  ).length;
+}
+
+/** Registers unit A into Transfer pending (ownership moved, state not yet). */
+async function registerPending(page: Page) {
+  await post(`${FIXTURE}/__test__/mode`, { transferState: "Transfer pending" });
+  await signIn(page);
+  const dialog = await startRegistration(page);
+  await dialog.getByRole("button", { name: "Register product" }).click();
+  await expect(
+    face(page).locator(
+      '[data-registration-status="ownership_moved_state_pending"]',
+    ),
+  ).toBeVisible();
+}
+
+const settleDialog = (page: Page) =>
+  page.getByRole("dialog", { name: "Confirm your product registration" });
+
+test("every cookie stays within browser limits and is stored: a 35-leaf proposal and two concurrent launches", async ({
+  page,
+  context,
+}) => {
+  test.skip(!REGISTRATION_READY, NEEDS_R6_FACE);
+  await registerPending(page);
+  // A second launch of the same face, concurrently, in another tab.
+  const second = await context.newPage();
+  await second.goto(`/products/morrow-home/products/${OWNED_A}`);
+  await expect(face(second).locator(".pf-facts").first()).toContainText(
+    "MH-ARC-0101",
+  );
+  await face(page)
+    .getByRole("button", { name: "Confirm on your wallet" })
+    .click();
+  await expect(settleDialog(page)).toBeVisible();
+  expect((await stats()).proposalLeaves).toEqual([35]);
+
+  const check = async () => {
+    const cookies = await context.cookies();
+    for (const cookie of cookies) {
+      expect(
+        cookie.name.length + cookie.value.length,
+        cookie.name,
+      ).toBeLessThanOrEqual(4096);
+    }
+    const launches = cookies.filter((cookie) =>
+      cookie.name.startsWith("dual_face_launch_"),
+    );
+    // Both launches' journals were actually stored, side by side.
+    expect(launches).toHaveLength(2);
+    expect(cookies.some((cookie) => cookie.name === "smarttoken_viewer")).toBe(
+      true,
+    );
+    return launches.map((cookie) => cookie.name.length + cookie.value.length);
+  };
+  const beforeSettle = await check();
+  await settleDialog(page)
+    .getByRole("button", { name: "Sign and confirm" })
+    .click();
+  await expect(
+    face(page).locator('[data-registration-status="registered"]'),
+  ).toBeVisible();
+  const afterSettle = await check();
+  test.info().annotations.push({
+    type: "cookie sizes (name+value bytes)",
+    description: JSON.stringify({ beforeSettle, afterSettle }),
+  });
+  expect(await holderUpdates(UNIT_A)).toBe(1);
+});
+
+test("two tabs, the same original operation and the SAME settle operation, concurrently: exactly one holder execution", async ({
+  page,
+  context,
+}) => {
+  test.skip(!REGISTRATION_READY, NEEDS_R6_FACE);
+  await registerPending(page);
+  // From here every face frame draws the same "random" ids, so both tabs
+  // resume the same original registration with the same settle operation id.
+  await context.addInitScript(() => {
+    if (location.origin !== "http://localhost:4101") return;
+    let seed = 0x2f6b9e1;
+    crypto.getRandomValues = (<T extends ArrayBufferView | null>(array: T) => {
+      const bytes = new Uint8Array(array!.buffer);
+      for (let index = 0; index < bytes.length; index += 1) {
+        seed ^= seed << 13;
+        seed ^= seed >>> 17;
+        seed ^= seed << 5;
+        bytes[index] = seed & 0xff;
+      }
+      return array;
+    }) as Crypto["getRandomValues"];
+  });
+  const tabs = [await context.newPage(), await context.newPage()];
+  for (const tab of tabs) {
+    await tab.goto(`/products/morrow-home/products/${UNIT_A}`);
+    await face(tab)
+      .getByRole("button", { name: "Finish registration" })
+      .click();
+    await expect(settleDialog(tab)).toBeVisible();
+  }
+  await Promise.all(
+    tabs.map((tab) =>
+      settleDialog(tab)
+        .getByRole("button", { name: "Sign and confirm" })
+        .click(),
+    ),
+  );
+  await expect
+    .poll(async () => {
+      const { reserve } = await stats();
+      return reserve.won + reserve.already_claimed + reserve.already_reserved;
+    })
+    .toBe(2);
+  const { reserve } = await stats();
+  // The same settle operation id: one won, the other already_claimed.
+  expect(reserve).toMatchObject({
+    won: 1,
+    already_claimed: 1,
+    already_reserved: 0,
+  });
+  await expect.poll(() => holderUpdates(UNIT_A)).toBe(1);
+  // The tab that did not win executed nothing and reconciles read-only.
+  for (const tab of tabs) {
+    await expect(
+      face(tab).locator(
+        '[data-registration-status="registered"], [data-registration-status="outcome_unknown"]',
+      ),
+    ).toBeVisible();
+  }
+  expect(await holderUpdates(UNIT_A)).toBe(1);
+  expect((await object(UNIT_A)).custom.state).toBe("Authenticity verified");
+});
+
+test("a lost reserve response executes nothing; the status stays unknown and is never reclaimed", async ({
+  page,
+}) => {
+  test.skip(!REGISTRATION_READY, NEEDS_R6_FACE);
+  await registerPending(page);
+  await post(`${FIXTURE}/__test__/mode`, { loseReserveResponses: 1 });
+  await face(page)
+    .getByRole("button", { name: "Confirm on your wallet" })
+    .click();
+  await settleDialog(page)
+    .getByRole("button", { name: "Sign and confirm" })
+    .click();
+  await expect(
+    face(page).locator('[data-registration-status="outcome_unknown"]'),
+  ).toBeVisible();
+  await face(page).getByRole("button", { name: "Check status" }).click();
+  await expect(
+    face(page).locator('[data-registration-status="outcome_unknown"]'),
+  ).toBeVisible();
+  const { reserve } = await stats();
+  expect(reserve).toMatchObject({ won: 0, lost: 1, already_claimed: 0 });
+  expect(await holderUpdates(UNIT_A)).toBe(0);
+  expect((await object(UNIT_A)).custom.state).toBe("Transfer pending");
+});
+
+test("a lost response after execute reconciles read-only, with no re-execution", async ({
+  page,
+}) => {
+  test.skip(!REGISTRATION_READY, NEEDS_R6_FACE);
+  await registerPending(page);
+  await post(`${MOCK_API}/__test__/mode`, { loseExecuteResponses: 1 });
+  await face(page)
+    .getByRole("button", { name: "Confirm on your wallet" })
+    .click();
+  await settleDialog(page)
+    .getByRole("button", { name: "Sign and confirm" })
+    .click();
+  await expect(
+    face(page).locator('[data-registration-status="outcome_unknown"]'),
+  ).toBeVisible();
+  // The action ran; only its answer was lost.
+  expect(await holderUpdates(UNIT_A)).toBe(1);
+  // registration.settle.status finds it in the fake Dual's action logs.
+  await face(page).getByRole("button", { name: "Check status" }).click();
+  await expect(
+    face(page).locator('[data-registration-status="registered"]'),
+  ).toBeVisible();
+  const after = await stats();
+  expect(after.reserve).toMatchObject({ won: 1, already_claimed: 0, lost: 0 });
+  expect(after.assertions["registration.settle.reserve"]).toBe(1);
+  expect(after.assertions["registration.settle.status"]).toBe(1);
+  expect(await holderUpdates(UNIT_A)).toBe(1);
+});
+
+test("a fresh sign-in recovers the original operation's status read-only and never executes", async ({
+  page,
+}) => {
+  test.skip(!REGISTRATION_READY, NEEDS_R6_FACE);
+  await registerPending(page);
+  // The reserve answer is lost: the runtime holds the claim, nobody executes.
+  await post(`${FIXTURE}/__test__/mode`, { loseReserveResponses: 1 });
+  await face(page)
+    .getByRole("button", { name: "Confirm on your wallet" })
+    .click();
+  await settleDialog(page)
+    .getByRole("button", { name: "Sign and confirm" })
+    .click();
+  await expect(
+    face(page).locator('[data-registration-status="outcome_unknown"]'),
+  ).toBeVisible();
+
+  // A fresh sign-in has no journal: the face finds the ORIGINAL registration
+  // through registration.pending.read and checks it through settle.status.
+  await page.getByRole("button", { name: "Sign out" }).first().click();
+  await expect(page).toHaveURL(/\/login$/);
+  await signIn(page, `/products/morrow-home/products/${UNIT_A}`);
+  await expect(
+    face(page).getByText(
+      "We are checking your registration. Please do not start it again.",
+    ),
+  ).toBeVisible();
+  await face(page)
+    .getByRole("button", { name: "Check registration status" })
+    .click();
+  await expect(
+    face(page).locator('[data-registration-status="outcome_unknown"]'),
+  ).toBeVisible();
+  const after = await stats();
+  // Read-only: no new reservation, nothing executed, the outcome stays unknown.
+  expect(after.reserve).toMatchObject({ won: 0, lost: 1, already_claimed: 0 });
+  expect(after.assertions["registration.settle.reserve"]).toBe(1);
+  expect(after.assertions["registration.pending.read"]).toBeGreaterThanOrEqual(
+    1,
+  );
+  expect(after.assertions["registration.settle.status"]).toBeGreaterThanOrEqual(
+    1,
+  );
+  expect(await holderUpdates(UNIT_A)).toBe(0);
+  expect((await object(UNIT_A)).custom.state).toBe("Transfer pending");
 });

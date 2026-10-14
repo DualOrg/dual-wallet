@@ -57,6 +57,20 @@ export const PROGRAMME = {
   password: "correct horse battery staple",
 };
 
+// Morrow units carry a full specification sheet, so the holder settle
+// proposal (the COMPLETE custom map) has 35 leaves.
+export const SPEC_FIELDS = Array.from(
+  { length: 27 },
+  (_, index) => `spec_${String(index + 1).padStart(2, "0")}`,
+);
+const specSheet = (serial) =>
+  Object.fromEntries(
+    SPEC_FIELDS.map((field, index) => [
+      field,
+      `${serial} specification line ${index + 1} (local fake value)`,
+    ]),
+  );
+
 function programmeObject(id, { owner, template, name, serial, state }) {
   return {
     id,
@@ -83,6 +97,7 @@ function programmeObject(id, { owner, template, name, serial, state }) {
       model: "ARC-G1",
       manufacturer: "Morrow Home",
       state,
+      ...specSheet(serial),
     },
     when_created: "2026-09-01T09:00:00.000Z",
     when_modified: "2026-09-01T09:00:00.000Z",
@@ -150,6 +165,8 @@ function seedProgramme() {
 
 let objects = seedProgramme();
 let actionLogs = [];
+// Test mode: execute answers to drop after the action ran (a lost response).
+let loseExecuteResponses = 0;
 // Integrated mode: the templates the wallet registry binds live in the Studio
 // fake Dual, so reads of their objects, and the holder's own settle execute,
 // go there instead of this store.
@@ -335,7 +352,24 @@ async function handleProgramme(request, response, url) {
   if (method === "POST" && path === "/__test__/reset") {
     objects = seedProgramme();
     actionLogs = [];
+    loseExecuteResponses = 0;
     return respond(response, 200, { ok: true });
+  }
+  if (method === "POST" && path === "/__test__/mode") {
+    const body = await readBody(request);
+    loseExecuteResponses = Number(body?.loseExecuteResponses ?? 0) || 0;
+    return respond(response, 200, { loseExecuteResponses });
+  }
+  // The fake runtime's read-only reconcile and the suites read these: who
+  // executed what on which object (no auth; local fake only).
+  if (method === "GET" && path === "/__test__/action-logs") {
+    const objectId = url.searchParams.get("object_id");
+    return respond(response, 200, {
+      action_logs: actionLogs.filter(
+        (log) =>
+          !objectId || log.affected_objects.some((o) => o.id === objectId),
+      ),
+    });
   }
   if (method === "POST" && path === "/__test__/issuer-transfer") {
     const body = await readBody(request);
@@ -494,9 +528,17 @@ async function handleProgramme(request, response, url) {
     object.custom = mergeCustom(object.custom, update.data?.custom ?? {});
     object.when_modified = new Date().toISOString();
     const id = `action-${randomBytes(6).toString("hex")}`;
-    actionLogs.unshift(
-      actionLog(id, "update", object.id, PROGRAMME.walletAddress),
-    );
+    actionLogs.unshift({
+      ...actionLog(id, "update", object.id, PROGRAMME.walletAddress),
+      // The executed custom update, so a reconcile can match it to a proposal.
+      executed: { custom: update.data?.custom ?? {} },
+    });
+    if (loseExecuteResponses > 0) {
+      // The action ran; its answer never reaches the wallet.
+      loseExecuteResponses -= 1;
+      request.socket.destroy();
+      return true;
+    }
     return respond(response, 200, { action_id: id, steps: [] });
   }
   return undefined;
