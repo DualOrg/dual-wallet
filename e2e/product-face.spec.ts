@@ -489,6 +489,15 @@ test("two tabs, the same original operation and the SAME settle operation, concu
       .click();
     await expect(settleDialog(tab)).toBeVisible();
   }
+  // The race this test is about is at the reserve: without a barrier the
+  // first tab could reserve, execute and settle the unit before the second
+  // tab's request is checked (it is then refused settle_not_required before
+  // any reserve, which proves nothing about the reserve). The fake runtime
+  // holds every reserve ANSWER until both reserve requests have arrived (the
+  // first arrival still wins atomically), so neither tab can execute before
+  // both requests reached the reserve. A request that never arrives is
+  // released after 6 s and shows as released: "deadline".
+  await post(`${FIXTURE}/__test__/mode`, { reserveBarrier: 2 });
   await Promise.all(
     tabs.map((tab) =>
       settleDialog(tab)
@@ -502,7 +511,9 @@ test("two tabs, the same original operation and the SAME settle operation, concu
       return reserve.won + reserve.already_claimed + reserve.already_reserved;
     })
     .toBe(2);
-  const { reserve } = await stats();
+  const { reserve, reserveBarrier } = await stats();
+  // Both requests reached the reserve while the winner's answer was held.
+  expect(reserveBarrier).toEqual({ arrivals: 2, released: "all_arrived" });
   // The same settle operation id: one won, the other already_claimed.
   expect(reserve).toMatchObject({
     won: 1,

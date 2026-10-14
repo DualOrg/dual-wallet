@@ -85,13 +85,26 @@ const DEFAULT_MODE = {
   // G8 cancel race: the holder's cancel lands inside the next transfer
   // reserve's window (after the reservation, before the offer decision).
   cancelInsideNextTransferReserve: false,
+  // Test-only barrier (two tabs, the SAME settle operation): each settle
+  // reserve is decided the moment it arrives (the atomic create-if-absent is
+  // unchanged, so the first arrival wins), but no reserve ANSWER leaves until
+  // this many reserve requests have arrived, or for at most
+  // RESERVE_BARRIER_MAX_MS. The winner therefore cannot execute before the
+  // other tab's request reaches the reserve; a request that never arrives is
+  // released by the deadline and shows as released: "deadline". 0 is off.
+  reserveBarrier: 0,
 };
+// Below the wallet BFF's 8 s runtime timeout (api/face-runtime.ts), so a held
+// answer is never turned into a lost one.
+const RESERVE_BARRIER_MAX_MS = 6_000;
+const reserveBarrierWaiters = [];
 let mode = { ...DEFAULT_MODE };
 const freshStats = () => ({
   assertions: {},
   registrations: 0,
   jti: new Set(),
   reserve: { won: 0, already_claimed: 0, already_reserved: 0, lost: 0 },
+  reserveBarrier: { arrivals: 0, released: null },
   handover: { issued: 0, redeemed: 0, refused: 0 },
   transfer: {
     offered: 0,
@@ -106,6 +119,33 @@ const freshStats = () => ({
   },
 });
 let stats = freshStats();
+
+// mode.reserveBarrier: hold this reserve's answer until enough reserve
+// requests have arrived (see DEFAULT_MODE). Every held answer is released
+// together, in arrival order.
+async function reserveBarrierHold() {
+  if (!(mode.reserveBarrier > 0)) return;
+  const barrier = stats.reserveBarrier;
+  barrier.arrivals += 1;
+  if (barrier.arrivals >= mode.reserveBarrier) {
+    barrier.released ??= "all_arrived";
+    reserveBarrierWaiters.splice(0).forEach((release) => release());
+    return;
+  }
+  await new Promise((resolve) => {
+    const release = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      barrier.released ??= "deadline";
+      const at = reserveBarrierWaiters.indexOf(release);
+      if (at >= 0) reserveBarrierWaiters.splice(at, 1);
+      resolve();
+    }, RESERVE_BARRIER_MAX_MS);
+    reserveBarrierWaiters.push(release);
+  });
+}
 const evidence = new Map();
 const held = [];
 // Durable fake runtime state (in memory): registrations and the unit-level
@@ -831,6 +871,7 @@ async function runtime(request, response, url, manifest) {
         // already_claimed and must never be used to execute.
         const same = existing.settleOperationId === body.operationId;
         stats.reserve[same ? "already_claimed" : "already_reserved"] += 1;
+        await reserveBarrierHold();
         return send(response, same ? 200 : 409, {
           ok: same,
           status: same ? "granted" : "already_reserved",
@@ -858,6 +899,7 @@ async function runtime(request, response, url, manifest) {
         return;
       }
       stats.reserve.won += 1;
+      await reserveBarrierHold();
       return send(response, 200, {
         ok: true,
         status: "granted",
@@ -1420,12 +1462,15 @@ const server = createServer(async (request, response) => {
       mode = { ...mode, ...(await readJson(request)) };
       if (!mode.holdRegistrations)
         held.splice(0).forEach((pending) => pending.destroy());
+      if (!(mode.reserveBarrier > 0))
+        reserveBarrierWaiters.splice(0).forEach((release) => release());
       return send(response, 200, mode);
     }
     if (url.pathname === "/__test__/reset" && request.method === "POST") {
       mode = { ...DEFAULT_MODE };
       stats = freshStats();
       held.splice(0).forEach((pending) => pending.destroy());
+      reserveBarrierWaiters.splice(0).forEach((release) => release());
       resetState();
       return send(response, 200, { ok: true });
     }
@@ -1452,6 +1497,7 @@ const server = createServer(async (request, response) => {
         assertions: stats.assertions,
         registrations: stats.registrations,
         reserve: stats.reserve,
+        reserveBarrier: stats.reserveBarrier,
         handover: stats.handover,
         transfer: stats.transfer,
         offers: [...offers.values()].map((offer) => ({
