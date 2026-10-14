@@ -340,7 +340,8 @@
           "evidence": "",
           "recordId": "",
           "operationId": "",
-          "assertion": "register scope"
+          "objectId": "",
+          "assertion": "registration.submit; request_hash over the canonical body minus assertion"
         },
         "result": {
           "status": "RegistrationStatus",
