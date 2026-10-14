@@ -9,7 +9,11 @@ import {
   walletIssuerOrigin,
 } from "@/api/face-assertion";
 import { parseProductFaceApplications } from "@/api/product-face-binding";
-import { bindingInput, HOLDER } from "@/test/product-face-fixtures";
+import {
+  bindingInput,
+  CHECKSUM_HOLDER,
+  HOLDER,
+} from "@/test/product-face-fixtures";
 
 const [binding] = parseProductFaceApplications(
   JSON.stringify([bindingInput()]),
@@ -51,6 +55,23 @@ afterEach(() => {
 });
 
 describe("wallet face assertions", () => {
+  it("names the holder as the canonical lowercase address, whatever case Dual returns", () => {
+    process.env.FACE_ASSERTION_KEY_ID = "wallet-face-1";
+    process.env.FACE_ASSERTION_SIGNING_KEY = pem;
+    // Dual returns the account address in EIP-55 mixed case; the runtimes
+    // accept and compare only the lowercase form (a mixed-case holder is
+    // refused there as face_assertion_claims_invalid, 401).
+    const minted = mintFaceAssertion({ ...input, holder: CHECKSUM_HOLDER })!;
+    const { claims, signed } = decode(minted.assertion);
+    expect(signed).toBe(true);
+    expect(claims.holder).toBe(CHECKSUM_HOLDER.toLowerCase());
+    expect(claims.holder).toMatch(/^0x[a-f0-9]{40}$/);
+    expect(
+      decode(mintFaceAssertion({ ...input, holder: HOLDER })!.assertion).claims
+        .holder,
+    ).toBe(HOLDER);
+  });
+
   it("fails closed when the signing key is absent or invalid", () => {
     expect(mintFaceAssertion(input)).toBeUndefined();
     process.env.FACE_ASSERTION_KEY_ID = "wallet-face-1";

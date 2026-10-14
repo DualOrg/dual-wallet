@@ -119,7 +119,10 @@ export function mintFaceAssertion(input: FaceAssertionInput) {
     programme: input.binding.programmeId,
     origin: input.binding.origin,
     sub: input.walletId,
-    holder: input.holder,
+    // The canonical lowercase 0x address. Dual returns the account address as
+    // written (EIP-55 mixed case); the runtimes compare and store holders in
+    // lowercase, and their assertion check accepts only that form.
+    holder: input.holder.toLowerCase(),
     operation: input.operation,
     op_id: input.operationId,
     target: input.target,

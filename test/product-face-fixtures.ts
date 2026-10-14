@@ -26,6 +26,8 @@ export function edit(
 export const TEMPLATE_A = "65f0a1b2c3d4e5f6a7b8c9d0";
 export const TEMPLATE_B = "65f0a1b2c3d4e5f6a7b8c9d1";
 export const HOLDER = "0x1234567890abcdef1234567890abcdef12345678";
+/** A Dual account address as Dual returns it: EIP-55 mixed case (the EIP-55 test vector). */
+export const CHECKSUM_HOLDER = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 
 export function bindingInput(overrides: Record<string, unknown> = {}) {
   return {

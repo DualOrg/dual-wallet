@@ -8,6 +8,7 @@ import { DEFAULT_ORGANIZATION_ID } from "@/api/tenant";
 import {
   ARTIFACT_HEX,
   bindingInput,
+  CHECKSUM_HOLDER,
   HOLDER,
   TEMPLATE_A,
 } from "@/test/product-face-fixtures";
@@ -327,6 +328,66 @@ describe("product face BFF", () => {
       }),
     ]);
     expect(JSON.stringify(listed.body)).not.toContain(minted.body.assertion);
+  });
+
+  it("an EIP-55 mixed-case Dual account: assertions carry the canonical lowercase holder, and the face still binds the same wallet", async () => {
+    const base = await getWallet();
+    getWallet.mockResolvedValue({
+      ...base,
+      account: { ...base.account, address: CHECKSUM_HOLDER },
+    });
+    const lowercase = CHECKSUM_HOLDER.toLowerCase();
+    const browser = new Browser();
+    const operationId = "register-op-0090";
+    await confirmRegistration(browser, operationId);
+    const minted = await mint(browser, {
+      operation: "registration.submit",
+      operation_id: operationId,
+      target: { object_id: UNIT },
+      request_hash: REQUEST_HASH,
+    });
+    expect(minted.status).toBe(200);
+    const claims = JSON.parse(
+      Buffer.from(minted.body.assertion.split(".")[1], "base64url").toString(),
+    );
+    expect(claims).toMatchObject({ holder: lowercase, sub: "wallet-1" });
+    // Ownership stays case-insensitive: a unit Dual reports in either case is this wallet's.
+    for (const owner of [lowercase, CHECKSUM_HOLDER]) {
+      getObjectByIdPublic.mockResolvedValue(smartObject(UNIT, owner));
+      expect(
+        await operations(browser, {
+          transition: "begin",
+          kind: "registration",
+          operation: "registration.submit",
+          operation_id: `register-op-009${owner === lowercase ? 1 : 2}`,
+          object_id: UNIT,
+          record_id: "rec-0001",
+          request_hash: REQUEST_HASH,
+        }),
+      ).toMatchObject({
+        status: 409,
+        body: { code: "already_registered_to_you" },
+      });
+      getObjectById.mockResolvedValue(smartObject(UNIT, owner));
+      const selected = await select(browser, UNIT);
+      expect(selected.status).toBe(200);
+      const read = await mint(browser, {
+        operation: "products.private.read",
+        operation_id: `read-op-009${owner === lowercase ? 1 : 2}`,
+        target: { object_id: UNIT },
+        request_hash: `sha256:${"1".repeat(64)}`,
+        context_id: selected.body.context_id,
+      });
+      expect(read.status).toBe(200);
+      expect(
+        JSON.parse(
+          Buffer.from(
+            read.body.assertion.split(".")[1],
+            "base64url",
+          ).toString(),
+        ).holder,
+      ).toBe(lowercase);
+    }
   });
 
   it("binds registration to the projection's record and the face's request hash", async () => {
