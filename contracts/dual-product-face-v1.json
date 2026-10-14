@@ -1,6 +1,6 @@
 {
   "contract": "dual-product-face-v1",
-  "revision": 14,
+  "revision": 15,
   "status": "first_source_delivery",
   "summary": "Full-size, first-party reviewed product face inside the authenticated Dual wallet. Uses the existing dual.face.bridge v1 envelope, handshake and limits; adds a programme ('application') context variant and named capability modules. No second postMessage protocol, no generic fetch/proxy/token operation.",
   "protocol": {
@@ -43,7 +43,8 @@
       "projectionFields": "public custom fields the host may project to the face, subset of [recordId,title,serialNumber,model,manufacturer,state]",
       "canonicalRegistration": "{stateField:\"state\", lifecycleTargetField:\"lifecycle.target_state\", settledStates:[\"Registered\",\"Authenticity verified\",\"In service\",\"Transferred\"], unconfirmedStates:[\"Transfer pending\"], endedStates:[\"Recalled\",\"Stolen\",\"Retired\"]}",
       "settle": "CANONICAL SHAPE {action:\"update\", inputPath:\"data.custom\", leaves:{\"<dotted path under inputPath>\": leafRule}, fromStates, targetStates}. leafRule = {literal:v} | {enum:[...]} | {unchanged:true} | {runtimeIssued:<formatName>}. Every key of the proposal input under inputPath must be a listed leaf and every listed leaf must be present; because api-v3 Update documents only top-level merge (\"Anything you leave out stays as it is\") and does not state whether data.custom merges or replaces, the proposal carries the COMPLETE custom map and the host refuses unless every key of the fresh object custom is a listed leaf (no key can be dropped under replace semantics). Open canonical question for api-v3 owners: merge vs replace of nested data.custom.",
-      "linkedRuntimes": "[{purpose:\"claims-warranty\", applicationId, origin (exact), instanceId}] — server-only registry data naming the Warranty runtime explicitly connected to this Passport programme (Phase 2 connect); used ONLY as the assertion audience and target for case.* operations"
+      "linkedRuntimes": "[{purpose:\"claims-warranty\", applicationId, origin (exact), instanceId}] — server-only registry data naming the Warranty runtime explicitly connected to this Passport programme (Phase 2 connect); used ONLY as the assertion audience and target for case.* operations",
+      "handover": "{enabled: boolean}; absent = off (r14 face-enabled handover entry allowed only when true)"
     },
     "readyIdentity": "dual.face.ready.application must be {id, version, publisher, programme, artifact, contract:'dual-product-face-v1'} and EVERY value must equal the binding exactly (version exact, not just major); mismatch closes the channel"
   },
@@ -551,6 +552,21 @@
     "step4_handToFace": "on the register task, the BFF context read consumes and clears that cookie (one-time) and the host passes initialize context handover:{ticket} to the face (application variant, register task only; never logged, never put in the URL). Logout or account change clears it.",
     "step5_redeem": "the face POSTs the ticket to /api/product-face/v1/handover/redeem (same-origin); the runtime atomically consumes it once and answers exactly what /evidence answers (opaque evidence handle + units). Registration then continues unchanged (host confirmation, assertion, readback, G6 settle).",
     "security": "no grant, evidence handle, role session or CSRF ever reaches the wallet; the ticket is a one-time face-runtime capability with no authority until an assertion-verified registration binds the evidence to a holder; replay, expiry, wrong slug/application/origin all refuse with zero writes; legacy #access links on the legacy portal path are unaffected",
-    "ownership": "Studio worker: runtime handover page + /handover + /handover/redeem + ticket store, face client consumption of context.handover, issue_owner_link face-enabled form. Brand/host lane: wallet /products/<slug>/handover route, BFF handover cookie + context field + login return, registry binding field handover:{enabled}, Studio publication of the wallet host entry (walletOrigin+slug) as the runtime configuration and in the binding proposal."
+    "ownership": "Studio worker: runtime handover page + /handover + /handover/redeem + ticket store, face client consumption of context.handover, issue_owner_link face-enabled form. Brand/host lane: wallet /products/<slug>/handover route, BFF handover cookie + context field + login return, registry binding field handover:{enabled}, Studio publication of the wallet host entry (walletOrigin+slug) as the runtime configuration and in the binding proposal.",
+    "walletEntryConfig": "runtime env TIG_PRODUCT_FACE_WALLET_ENTRY = canonical JSON {\"slug\":\"<wallet slug>\",\"walletOrigin\":\"<exact https origin; loopback http only outside production>\"}; walletOrigin MUST be one of TIG_PRODUCT_FACE_WALLET_ORIGINS; the runtime derives <walletOrigin>/products/<slug>/handover itself; anything else (missing, malformed, extra keys, non-allowlisted origin) fails closed without consuming the grant. Test fixtures that need a full URL derive it the same way."
+  },
+  "revisionRule": "src/product-face-contract.mjs PRODUCT_FACE_CONTRACT_REVISION, every emitted manifest contractRevision and both repo copies of this file must equal this revision; a newer artifact may only be pinned by a host whose contract copy is at least that revision",
+  "publication": {
+    "record": "{applicationId, version, artifactHash, contractRevision, brandContentHash, approvedBy (authenticated programme owner id), approvedAt, draftHash}; approval binds the authenticated programme owner AND the exact draft content hash; any edit after approval needs re-approval",
+    "authority": "brand edit/preview/review/publish/upgrade/rollback run only through existing authenticated Studio operator paths (workspace owner/role checks as for other Studio catalog operations); no new grants; publication output is a REVIEWED DEPLOYMENT PROPOSAL (exact PRODUCT_FACE_APPLICATIONS entry + runtime env values) applied by existing authorities outside Studio",
+    "upgrade": "compatible only when the contract major and revision floor are kept, the capability set is not widened, semantic states are kept and every taskPath route is kept; declared redirects or transition serving count ONLY when the runtime/face actually implement them — until then the upgrade is refused (fail closed) and never advertised as compatible",
+    "transition": "TIG_PRODUCT_FACE_TRANSITION_ARTIFACTS lists at most 2 earlier pinned artifacts the runtime keeps serving until their in-flight operations settle; until the runtime implements it, upgrades that need it are refused",
+    "rollback": "re-point to a prior immutable version whose stored bytes still verify (never re-emitted); new binding proposal; audited; in-flight operations keep their original correlation",
+    "binding": "the binding proposal replaces exactly this slug's entry (path + artifactHash switch atomically)"
+  },
+  "portability": {
+    "goal": "minimal second host proves the SAME pinned artifact and host capability contract work outside the Dual wallet without copied customer screens",
+    "shape": "a small reference host (kit) on a different origin that frames the identical content-addressed artifact, implements the dual.face.bridge v1 host side for the application variant with the same capability names/payloads/errors, the same artifact verification, and delegates authority to its own server-authorised BFF (fake/local for tests); conformance tests run the same face against it",
+    "limits": "no React/customer screens copied; no wallet credentials; capabilities the second host cannot authorise are simply not granted (face handles missing capabilities)"
   }
 }
