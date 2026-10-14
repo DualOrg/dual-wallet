@@ -1,6 +1,6 @@
 {
   "contract": "dual-product-face-v1",
-  "revision": 8,
+  "revision": 9,
   "status": "first_source_delivery",
   "summary": "Full-size, first-party reviewed product face inside the authenticated Dual wallet. Uses the existing dual.face.bridge v1 envelope, handshake and limits; adds a programme ('application') context variant and named capability modules. No second postMessage protocol, no generic fetch/proxy/token operation.",
   "protocol": {
@@ -423,7 +423,8 @@
     "registration.settle.propose": "read; returns the reviewed brand-proposed holder action {object_id, action, input} + proposal_hash for the holder own unit in ownership_moved_dual_state_pending (assertion holder == verified record owner)",
     "registration.settle.verify": "validate+commit; given the holder-executed action_id and proposal_hash: action log signer == assertion holder, object == unit, executed payload == proposal, Dual readback settled, passportCanonicalState agrees => registered; zero Dual writes by the runtime; no issuer signature",
     "registration.settle.reserve": "write (runtime store only, zero Dual writes); atomic single reservation per proposal/unit; see durableReservation.settle",
-    "registration.settle.status": "read-only reconcile of a reservation via Dual action logs; never executes"
+    "registration.settle.status": "read-only reconcile of a reservation via Dual action logs; never executes",
+    "registration.pending.read": "read (per-operation assertion, target {object_id}); returns the ORIGINAL pending registration for that unit whose handoff recipient is the assertion holder: {operationId, status, nextStep, settleProposal?}; used by the face to resume Finish registration, including after a fresh sign-in with no wallet journal; never creates a new intent"
   },
   "artifactVerification": {
     "mechanism": "pinned immutable, content-addressed artifact",
@@ -504,5 +505,16 @@
     "quote": "case.quote.approve/decline are idempotent per {case_id, quote_version}; a second different operation id for the same quote version returns the recorded decision",
     "wallet": "wallet journal keeps only ids/hashes/phases (no proposal or quote content) and is keyed per launch/frame (launch_id) so two tabs never overwrite each other; selection context is per launch; every mint re-verifies server-side; the runtime reservation is the authoritative guard"
   },
-  "sessionSecret": "wallet production must fail closed when SESSION_SECRET is missing/invalid (503 session_unavailable); no public or derived fallback key; local tests use explicit ephemeral keys"
+  "sessionSecret": "wallet production must fail closed when SESSION_SECRET is missing/invalid (503 session_unavailable); no public or derived fallback key; local tests use explicit ephemeral keys",
+  "evidenceHandle": {
+    "rule": "the evidence handle returned to the face is ONLY a random opaque id (>= 32 random bytes, base64url). The exchanged owner role session, its CSRF token and any grant material stay in protected server-side evidence storage keyed by a hash of the handle; nothing in any face-visible response, error, log or receipt contains or encodes (base64/base64url/hex/JSON) a role-session id, CSRF token or grant; secretReturned is false",
+    "binding": "evidence is bound at creation to the runtime origin/application/version/artifact and its recordIds, has a short TTL (<= 15 min) and bounded uses; its first assertion-verified use binds it to that holder (wallet), programme and context; any later use by another holder, record, origin or application is refused",
+    "roleEndpoints": "the server-side exchange for the face path never emits Set-Cookie to the face and the role session is unreachable from the existing same-origin role endpoints (/api/access/*, /api/purpose-runtime/*) by the face",
+    "legacy": "handles in the earlier pfe1.<id>.<payload> form are refused"
+  },
+  "faceUx": {
+    "resume": "a product page for a unit with a pending/unconfirmed/unknown registration shows a primary Finish registration (or recovery) action that resumes the ORIGINAL operation via registration.pending.read; no new intent",
+    "collection": "collection copy is derived from item statuses; never claims everything is registered while any item is pending/unknown",
+    "hierarchy": "friendly actionable state first; raw record state, content version and ids go into a technical disclosure"
+  }
 }
