@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { isFaceSlug } from "@/api/face-journal";
 import {
+  faceContextError,
   faceError,
   resolveFaceRequest,
   type FaceRequestContext,
@@ -75,30 +76,36 @@ export async function bindFaceExecution(
   if (context instanceof NextResponse) {
     return { bound: true, refused: context };
   }
+  // From here a refusal carries the session this request resolved, which
+  // may have been renewed: its refresh token must not be presented twice.
+  const refuseIn = (code: string, status: number) => ({
+    bound: true as const,
+    refused: faceContextError(context, code, status),
+  });
   if (context.wallet.id !== walletId) {
-    return refuse("face_execution_unbound", 409);
+    return refuseIn("face_execution_unbound", 409);
   }
   const entry = context.journal.entries.find(
     (item) => item.operationId === operationId,
   );
   if (!entry || (entry.kind !== "settle" && entry.kind !== "transfer")) {
-    return refuse("face_execution_unbound", 409);
+    return refuseIn("face_execution_unbound", 409);
   }
   if (
     entry.phase !== "submitted" ||
     entry.dispatch !== "won" ||
     entry.actionId !== undefined
   ) {
-    return refuse("face_execution_not_pending", 409);
+    return refuseIn("face_execution_not_pending", 409);
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(new TextDecoder().decode(body ?? new ArrayBuffer(0)));
   } catch {
-    return refuse("face_execution_mismatch", 400);
+    return refuseIn("face_execution_mismatch", 400);
   }
   if (!faceExecutionBodyMatches(parsed, entry)) {
-    return refuse("face_execution_mismatch", 400);
+    return refuseIn("face_execution_mismatch", 400);
   }
   return { bound: true, context };
 }

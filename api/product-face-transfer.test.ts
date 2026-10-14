@@ -22,10 +22,11 @@ import {
 } from "@/test/product-face-fixtures";
 
 const getWallet = jest.fn();
+const refreshToken = jest.fn();
 const getObjectById = jest.fn();
 const getObjectByIdPublic = jest.fn();
 jest.mock("@/api/web-sdk-client", () => ({
-  getWalletsApi: () => ({ getWallet, logout: jest.fn() }),
+  getWalletsApi: () => ({ getWallet, refreshToken, logout: jest.fn() }),
   getObjectsApi: () => ({ getObjectById, getObjectByIdPublic }),
 }));
 
@@ -175,7 +176,12 @@ class Browser {
     {
       face,
       cookies = this.cookies,
-    }: { face?: Record<string, string>; cookies?: Map<string, string> } = {},
+      keep = false,
+    }: {
+      face?: Record<string, string>;
+      cookies?: Map<string, string>;
+      keep?: boolean;
+    } = {},
   ) {
     const response = await instance.backend(
       new NextRequest(`http://localhost/api/backend/${path.join("/")}`, {
@@ -191,6 +197,7 @@ class Browser {
       }),
       { params: Promise.resolve({ path }) },
     );
+    if (keep) this.take(response);
     return {
       status: response.status,
       body: (await response.json().catch(() => null)) as Record<
@@ -1253,6 +1260,55 @@ describe("contract r18: a face step is prepared and executed only by the session
       if (code) expect(result.body).toMatchObject({ code });
     }
     expect(count("prepare") + count("execute")).toBe(0);
+  });
+
+  it("a refusal after the session was renewed carries the renewed session; its refresh token is never presented twice", async () => {
+    const { count } = upstream();
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    await wonStep(instance, browser);
+    // Past the access token's expiry: this request renews the session.
+    const later = Date.now() + 65 * 60 * 1000;
+    const clock = jest.spyOn(Date, "now").mockReturnValue(later);
+    try {
+      refreshToken.mockReset().mockResolvedValue({
+        accessToken: jwt({
+          org_id: DEFAULT_ORGANIZATION_ID,
+          exp: Math.floor(later / 1000) + 3600,
+        }),
+        refreshToken: jwt({ exp: Math.floor(later / 1000) + 7200 }),
+      });
+      const before = new Map(browser.cookies);
+      const face = faceHeaders(browser, { "x-dual-face-wallet": "wallet-2" });
+      expect(
+        await browser.backend(instance, ["ebus", "execute"], signed, {
+          face,
+          keep: true,
+        }),
+      ).toMatchObject({
+        status: 409,
+        body: { code: "face_execution_unbound" },
+      });
+      expect(refreshToken).toHaveBeenCalledTimes(1);
+      const renewed = [...browser.cookies].filter(
+        ([name, value]) =>
+          !name.startsWith("dual_face_launch_") && before.get(name) !== value,
+      );
+      expect(renewed).toHaveLength(1);
+      // The next request uses the renewed session: no second refresh.
+      expect(
+        (
+          await browser.backend(instance, ["ebus", "execute"], signed, {
+            face,
+            keep: true,
+          })
+        ).status,
+      ).toBe(409);
+      expect(refreshToken).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(count("execute")).toBe(0);
   });
 
   it("the generic executor (no face binding) is forwarded unchanged", async () => {
