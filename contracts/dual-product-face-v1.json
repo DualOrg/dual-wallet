@@ -1,6 +1,6 @@
 {
   "contract": "dual-product-face-v1",
-  "revision": 5,
+  "revision": 6,
   "status": "first_source_delivery",
   "summary": "Full-size, first-party reviewed product face inside the authenticated Dual wallet. Uses the existing dual.face.bridge v1 envelope, handshake and limits; adds a programme ('application') context variant and named capability modules. No second postMessage protocol, no generic fetch/proxy/token operation.",
   "protocol": {
@@ -168,8 +168,10 @@
     },
     "programme.registration.authorize": {
       "payload": {
-        "object_id": "24 hex (Dual object of the exact unit, resolved by the runtime from handover evidence)",
-        "operation_id": "^[a-z0-9-]{8,64}$ (face-generated idempotency id)"
+        "object_id": "24 hex",
+        "operation_id": "^[a-z0-9-]{8,64}$",
+        "record_id": "Passport record id the runtime resolved from evidence",
+        "request_hash": "sha256:<hex> of the canonical JSON of the EXACT runtime registrations request body excluding the assertion ({evidence, recordId, operationId, objectId, ...all fields})"
       },
       "result": {
         "status": "authorized",
@@ -185,7 +187,7 @@
         "action_in_progress",
         "assertion_unprovisioned"
       ],
-      "requestHash": "registration.submit assertions use request_hash = sha256(canonical JSON {object_id, operation_id}) (keys sorted, no whitespace) because the host sees only those; every other runtime operation hashes the full canonical request body excluding the assertion"
+      "requestHash": "The assertion binds the ENTIRE exact registration request: request_hash is computed by the face over the full canonical body (assertion excluded) and carried unchanged into the assertion; the host verifies object_id/record_id against the public projection (custom.recordId) and the operation_id against its journal; the runtime recomputes the hash over the body it actually receives and refuses any difference. (Supersedes r5 object/op-only hash.)"
     },
     "programme.operation.status": {
       "payload": {
