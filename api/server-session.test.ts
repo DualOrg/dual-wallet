@@ -1,6 +1,7 @@
 /**
  * @jest-environment node
  */
+import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { DEFAULT_ORGANIZATION_ID } from "@/api/tenant";
 import { ResponseError } from "@/api/web-sdk/runtime";
@@ -16,6 +17,7 @@ import {
   establishSession,
   readSession,
   revokeSession,
+  sealForPurpose,
 } from "@/api/server-session";
 import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
 
@@ -183,37 +185,98 @@ test("a rejected refresh token ends the session", async () => {
   });
 });
 
-// A deployment with no SESSION_SECRET has to seal a session anyway. Throwing
-// here turned one missing variable into a 502 on every sign-in — email, passkey
-// and EOA alike, since all of them end in establishSession — with nothing in the
-// logs and the thrown message echoed to the browser.
-test("production without SESSION_SECRET seals the session and says so", async () => {
-  const previousNodeEnv = process.env.NODE_ENV;
-  const previousSecret = process.env.SESSION_SECRET;
-  delete process.env.SESSION_SECRET;
-  (process.env as Record<string, string>).NODE_ENV = "production";
-  const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
-
-  try {
-    jest.resetModules();
-    const prod = await import("@/api/server-session");
-    const response = NextResponse.json({});
-
-    expect(prod.establishSession(response, login(), tenant, "email")).toBe(
-      true,
-    );
-    expect(
-      response.cookies.get("__Host-smarttoken_viewer")?.value,
-    ).toBeTruthy();
-    // Silently weaker is how this went unnoticed for a whole deployment.
-    expect(warn).toHaveBeenCalled();
-  } finally {
-    warn.mockRestore();
-    (process.env as Record<string, string>).NODE_ENV = previousNodeEnv!;
-    if (previousSecret !== undefined)
-      process.env.SESSION_SECRET = previousSecret;
-    jest.resetModules();
+// There is no fallback key: a key derivable from the source would let anyone
+// author their own session cookie. Production without a valid SESSION_SECRET
+// seals nothing, opens nothing and says so in the operator log; the session
+// routes answer 503 session_unavailable (proxy.test.ts).
+describe("session key", () => {
+  async function withEnvironment(
+    nodeEnv: string,
+    secret: string | undefined,
+    run: (module: typeof import("@/api/server-session")) => Promise<void>,
+  ) {
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousSecret = process.env.SESSION_SECRET;
+    if (secret === undefined) delete process.env.SESSION_SECRET;
+    else process.env.SESSION_SECRET = secret;
+    (process.env as Record<string, string>).NODE_ENV = nodeEnv;
+    const error = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      jest.resetModules();
+      await run(await import("@/api/server-session"));
+    } finally {
+      error.mockRestore();
+      (process.env as Record<string, string>).NODE_ENV = previousNodeEnv!;
+      if (previousSecret === undefined) delete process.env.SESSION_SECRET;
+      else process.env.SESSION_SECRET = previousSecret;
+      jest.resetModules();
+    }
   }
+
+  for (const [label, secret] of [
+    ["a missing", undefined],
+    ["an invalid (16-byte)", randomBytes(16).toString("base64")],
+    ["an invalid (not base64)", "not a key at all, just text"],
+  ] as const) {
+    it(`production with ${label} key seals nothing and opens nothing`, async () => {
+      // Values sealed earlier with a real key must not open either.
+      const sealedElsewhere = signIn();
+      const purposeSealedElsewhere = sealForPurpose("any", { a: 1 });
+      await withEnvironment("production", secret, async (prod) => {
+        expect(prod.sessionAvailable()).toBe(false);
+        const response = NextResponse.json({});
+        expect(() =>
+          prod.establishSession(response, login(), tenant, "email"),
+        ).toThrow(prod.SessionUnavailableError);
+        expect(
+          response.cookies.get("__Host-smarttoken_viewer"),
+        ).toBeUndefined();
+        expect(() => prod.sealForPurpose("any", { a: 1 })).toThrow(
+          "Sign-in is unavailable",
+        );
+        expect(prod.readSession(requestWith(sealedElsewhere))).toBeUndefined();
+        expect(
+          prod.unsealForPurpose("any", purposeSealedElsewhere),
+        ).toBeUndefined();
+        expect(console.error).toHaveBeenCalledWith(
+          expect.stringContaining("wallet sessions are unavailable"),
+        );
+      });
+    });
+  }
+
+  it("a local run with an explicit ephemeral key seals and opens its own sessions only", async () => {
+    const key = randomBytes(32).toString("base64");
+    let sealed = "";
+    await withEnvironment("development", key, async (local) => {
+      expect(local.sessionAvailable()).toBe(true);
+      const response = NextResponse.json({});
+      expect(local.establishSession(response, login(), tenant, "email")).toBe(
+        true,
+      );
+      sealed = response.cookies.get("smarttoken_viewer")!.value;
+      expect(local.readSession(requestWith(sealed))).toMatchObject({
+        organizationId: tenant.organizationId,
+        host: tenant.host,
+      });
+      const value = local.sealForPurpose("purpose-a", { ok: true });
+      expect(local.unsealForPurpose("purpose-a", value)).toEqual({ ok: true });
+      expect(local.unsealForPurpose("purpose-b", value)).toBeUndefined();
+    });
+    // Another run's ephemeral key cannot open it.
+    await withEnvironment(
+      "development",
+      randomBytes(32).toString("base64"),
+      async (other) => {
+        expect(other.readSession(requestWith(sealed))).toBeUndefined();
+      },
+    );
+    // A local run without an explicit key has no implicit one either.
+    await withEnvironment("development", undefined, async (none) => {
+      expect(none.sessionAvailable()).toBe(false);
+      expect(none.readSession(requestWith(sealed))).toBeUndefined();
+    });
+  });
 });
 
 // Dropping the cookie is not a sign-out on its own: the refresh token sealed

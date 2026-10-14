@@ -68,8 +68,14 @@ over labels, and all unknown hosts and labels fall back to `*`.
 ```bash
 cp .env.example .env.local
 npm ci
-npm run dev
+SESSION_SECRET="$(openssl rand -base64 32)" npm run dev
 ```
+
+`SESSION_SECRET` is required in every environment: there is no fallback key,
+and without a valid one sign-in and every session route answer
+`503 session_unavailable`. Set it in `.env.local` to keep local sign-ins across
+restarts, or pass an ephemeral one as above. The unit and e2e suites generate
+their own ephemeral key per run.
 
 Open [http://demo.localhost:3000](http://demo.localhost:3000) or [http://localhost:3000](http://localhost:3000). Both currently resolve to the wildcard organization.
 
@@ -213,13 +219,14 @@ The session is a sealed cookie rather than process-local state, so instances no
 longer have to be pinned to one. `MAX_INSTANCES` still defaults to 1; raise it
 when you have picked a ceiling.
 
-**Set `SESSION_SECRET` for any real deployment.** Unset, sessions are sealed
-with a key derived from a constant in this repository — which is public, so it
-is not a secret and gives no tamper-evidence at all. Generate 32 bytes of base64
-with `openssl rand -base64 32`, store it in Secret Manager, and pass the secret
-name as `SESSION_SECRET_NAME`; the deploy target mounts it rather than putting
-it on the command line. Keep it stable across deploys, because changing it signs
-every wallet out.
+**`SESSION_SECRET` is required.** Without a valid key (32 bytes of base64) the
+wallet fails closed: nothing is sealed, existing cookies do not open, and sign-in
+and every session route answer `503 session_unavailable`. There is no derived or
+default key. Generate one with `openssl rand -base64 32`, store it in Secret
+Manager, and pass the secret name as `SESSION_SECRET_NAME`; the deploy target
+mounts it rather than putting it on the command line and refuses to deploy
+without it. Keep it stable across deploys, because changing it signs every
+wallet out.
 
 Wildcard tenant DNS and TLS routing remains an infrastructure concern and is not
 changed by these targets.

@@ -9,9 +9,8 @@ PROJECT_ID ?=
 IMAGE ?= eu.gcr.io/$(PROJECT_ID)/$(SERVICE):latest
 
 # Name of the Secret Manager secret holding SESSION_SECRET, 32 bytes of base64
-# from `openssl rand -base64 32`. Unset, the service seals sessions with a key
-# derived from a constant in this repository, which is public and therefore no
-# secret at all. Set it for any deployment that matters.
+# from `openssl rand -base64 32`. Required: without a valid key the service
+# fails closed (503 session_unavailable on sign-in and every session route).
 SESSION_SECRET_NAME ?=
 
 # The session is a sealed cookie, not process-local state, so instances no
@@ -49,7 +48,7 @@ help:
 	@echo "  make image-build   Build the deployment image for ENV=$(ENV)"
 	@echo "  make image-push    Push the deployment image for ENV=$(ENV)"
 	@echo "  make deploy        Deploy the existing image for ENV=$(ENV)"
-	@echo "Deployment requires PROJECT_ID, and SESSION_SECRET_NAME for a real session key."
+	@echo "Deployment requires PROJECT_ID and SESSION_SECRET_NAME (the session key; there is no fallback)."
 
 install:
 	npm ci
@@ -81,7 +80,7 @@ deploy-config-check:
 	@test -n "$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS)" || (echo "NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS is required" >&2; exit 1)
 	@test -n "$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS)" || (echo "NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS is required" >&2; exit 1)
 	@test -n "$(DEFAULT_ORGANIZATION_ID)" || echo "WARNING: DEFAULT_ORGANIZATION_ID is unset; only /<organization-id> entry links will resolve." >&2
-	@test -n "$(SESSION_SECRET_NAME)" || echo "WARNING: SESSION_SECRET_NAME is unset; sessions will be sealed with the public fallback key." >&2
+	@test -n "$(SESSION_SECRET_NAME)" || (echo "SESSION_SECRET_NAME is required: without it every sign-in answers 503 session_unavailable" >&2; exit 1)
 	@test -n "$(FACE_ASSERTION_SIGNING_KEY_NAME)" || echo "WARNING: FACE_ASSERTION_SIGNING_KEY_NAME is unset; product-face assertions will fail closed." >&2
 
 image-build: deploy-config-check
@@ -105,7 +104,7 @@ deploy: deploy-config-check
 		--image "$(IMAGE)" \
 		--allow-unauthenticated \
 		--max-instances $(MAX_INSTANCES) \
-		$(if $(SESSION_SECRET_NAME),--set-secrets "SESSION_SECRET=$(SESSION_SECRET_NAME):latest",) \
+		--set-secrets "SESSION_SECRET=$(SESSION_SECRET_NAME):latest" \
 		$(if $(FACE_ASSERTION_SIGNING_KEY_NAME),--set-secrets "FACE_ASSERTION_SIGNING_KEY=$(FACE_ASSERTION_SIGNING_KEY_NAME):latest",) \
 		--update-env-vars '^|^PRODUCT_FACE_APPLICATIONS=$(PRODUCT_FACE_APPLICATIONS)|FACE_ASSERTION_KEY_ID=$(FACE_ASSERTION_KEY_ID)' \
 		--update-env-vars "^|^API_URL=$(API_URL)|VIEWER_BASE_DOMAIN=$(VIEWER_BASE_DOMAIN)|DEFAULT_ORGANIZATION_ID=$(DEFAULT_ORGANIZATION_ID)|NEXT_PUBLIC_APP_URL=$(NEXT_PUBLIC_APP_URL)|NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS=$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS)|NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS=$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS)"

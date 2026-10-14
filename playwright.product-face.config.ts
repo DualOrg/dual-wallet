@@ -1,4 +1,4 @@
-import { generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
@@ -9,6 +9,8 @@ import { defineConfig, devices } from "@playwright/test";
 // http://localhost:4101. No sibling repository is needed.
 
 const FIXTURES = path.join(__dirname, "e2e", "fixtures", "product-face");
+// An explicit, ephemeral session key for this run (no fallback key exists).
+const sessionSecret = randomBytes(32).toString("base64");
 
 function pinnedArtifact() {
   if (!existsSync(FIXTURES)) return undefined;
@@ -142,6 +144,8 @@ export default defineConfig({
       env: {
         ...process.env,
         API_URL: "http://127.0.0.1:4010",
+        // An explicit, ephemeral session key for this run; there is no fallback.
+        SESSION_SECRET: process.env.SESSION_SECRET ?? sessionSecret,
         VIEWER_BASE_DOMAIN: "wallet.dual.network",
         DEFAULT_ORGANIZATION_ID: "000000000000000000000001",
         NEXT_PUBLIC_APP_URL: "http://demo.localhost:3000",

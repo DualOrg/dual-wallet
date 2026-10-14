@@ -182,3 +182,50 @@ test("only protected routes are offered as a return path", () => {
     );
   }
 });
+
+// Without a valid SESSION_SECRET the session routes, the backend proxy and the
+// product-face BFF fail closed before any handler runs.
+describe("session key gate", () => {
+  const previous = process.env.SESSION_SECRET;
+  afterEach(() => {
+    if (previous === undefined) delete process.env.SESSION_SECRET;
+    else process.env.SESSION_SECRET = previous;
+  });
+  const gated = [
+    "/api/session",
+    "/api/session/login",
+    "/api/session/passkey/login/verify",
+    "/api/backend/wallets/me",
+    "/api/faces/morrow-home/assertions",
+  ];
+
+  for (const [label, secret] of [
+    ["missing", undefined],
+    ["invalid", Buffer.alloc(16, 7).toString("base64")],
+  ] as const) {
+    test(`a ${label} key answers 503 session_unavailable with a clear message`, async () => {
+      if (secret === undefined) delete process.env.SESSION_SECRET;
+      else process.env.SESSION_SECRET = secret;
+      for (const path of gated) {
+        const response = visit(path);
+        expect(response.status).toBe(503);
+        expect(response.headers.get("cache-control")).toBe("no-store");
+        expect(await response.json()).toEqual({
+          code: "session_unavailable",
+          message: expect.stringContaining("no valid session key configured"),
+        });
+      }
+      // Pages and public routes are unaffected by the gate.
+      expect(visit("/api/public/objects/x/display/card").status).not.toBe(503);
+    });
+  }
+
+  test("an explicit key lets the session routes through", () => {
+    process.env.SESSION_SECRET = Buffer.alloc(32, 9).toString("base64");
+    for (const path of gated) {
+      const response = visit(path);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+    }
+  });
+});

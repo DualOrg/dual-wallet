@@ -1,5 +1,10 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import {
+  SESSION_UNAVAILABLE_CODE,
+  SESSION_UNAVAILABLE_MESSAGE,
+  sessionKeyFromEnv,
+} from "@/api/session-key";
 import { ORGANIZATION_COOKIE_NAME, SESSION_COOKIE_NAME } from "@/api/settings";
 import { chosenOrganizationId } from "@/api/tenant";
 import { isProtectedPath, safeReturnPath } from "@/app/_domain/navigation";
@@ -36,7 +41,19 @@ function isAuthEntry(pathname: string, query: URLSearchParams) {
   );
 }
 
+// The routes that seal or open a session: sign-in and session, the backend
+// proxy and the product-face BFF. Without a valid SESSION_SECRET they fail
+// closed here, before any handler runs.
+const SESSION_API = /^\/api\/(?:session|backend|faces)(?:\/|$)/;
+
 export function proxy(request: NextRequest) {
+  if (SESSION_API.test(request.nextUrl.pathname)) {
+    if (sessionKeyFromEnv()) return NextResponse.next();
+    return NextResponse.json(
+      { code: SESSION_UNAVAILABLE_CODE, message: SESSION_UNAVAILABLE_MESSAGE },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   const url = request.nextUrl.clone();
   const first = ENTRY_PREFIX.exec(url.pathname);
   const prefixed = chosenOrganizationId(first?.[1]);
@@ -105,5 +122,10 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico).*)",
+    "/api/session/:path*",
+    "/api/backend/:path*",
+    "/api/faces/:path*",
+  ],
 };

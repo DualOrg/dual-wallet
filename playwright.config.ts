@@ -1,4 +1,8 @@
+import { randomBytes } from "node:crypto";
 import { defineConfig, devices } from "@playwright/test";
+
+// An explicit, ephemeral session key for this run (no fallback key exists).
+const sessionSecret = randomBytes(32).toString("base64");
 
 export default defineConfig({
   testDir: "./e2e",
@@ -36,6 +40,8 @@ export default defineConfig({
       env: {
         ...process.env,
         API_URL: "http://127.0.0.1:4010",
+        // An explicit, ephemeral session key for this run; there is no fallback.
+        SESSION_SECRET: process.env.SESSION_SECRET ?? sessionSecret,
         VIEWER_BASE_DOMAIN: "wallet.dual.network",
         DEFAULT_ORGANIZATION_ID: "000000000000000000000001",
         NEXT_PUBLIC_APP_URL: "http://demo.localhost:3000",

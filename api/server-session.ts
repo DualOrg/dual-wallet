@@ -10,6 +10,12 @@ import type { NextRequest } from "next/server";
 import type { NextResponse } from "next/server";
 import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
 import type { RefreshTokenOut } from "@/api/web-sdk/models/RefreshTokenOut";
+import {
+  SESSION_UNAVAILABLE_CODE,
+  SESSION_UNAVAILABLE_MESSAGE,
+  sessionKeyFromEnv,
+  sessionKeyProblem,
+} from "@/api/session-key";
 import { SESSION_COOKIE_NAME } from "@/api/settings";
 import type { TenantContext } from "@/api/tenant";
 import { tenantFromRequest } from "@/api/tenant";
@@ -45,46 +51,62 @@ export type SessionResult =
   | { status: "expired" }
   | { status: "unavailable"; state: SessionState };
 
-let cachedKey: Buffer | undefined;
+let cachedKey: { secret: string | undefined; key: Buffer } | undefined;
+let reportedProblem: string | undefined;
 
-// ponytail: SESSION_SECRET is optional for now. Unset or unusable, the key is
-// derived from a constant in this file — obfuscation, not a secret, since anyone
-// with the source can reproduce it. The sealed cookie format does not change, so
-// restoring a real key is this function and nothing else.
-//
-// What is given up until then is tamper-evidence, not confidentiality: the GCM
-// tag no longer proves the client did not author its own cookie, and
-// organizationId, host and accessExpiresAt are the fields that depend on it.
-// They decide tenant binding in readSession and refresh timing in
-// activeSession, and neither is a JWT claim the backend re-checks.
-//
-// It throws on neither branch on purpose. Throwing here surfaced a missing
-// variable as a 502 on every sign-in, with nothing in the logs and the message
-// echoed to the browser; a deployment that is merely less protected should not
-// look like one that is broken.
-function sessionKey() {
-  if (cachedKey) return cachedKey;
+/**
+ * Thrown when a session would be sealed without a valid SESSION_SECRET. The
+ * request proxy answers the session routes and the BFF with 503
+ * session_unavailable before this can be reached; this is the backstop.
+ */
+export class SessionUnavailableError extends Error {
+  readonly code = SESSION_UNAVAILABLE_CODE;
+  constructor() {
+    super(SESSION_UNAVAILABLE_MESSAGE);
+  }
+}
+
+// The key is SESSION_SECRET, 32 bytes of base64 (openssl rand -base64 32), in
+// every environment. There is no derived or default key: a key anyone can
+// reproduce from the source would let a client author its own cookie (tenant,
+// host and refresh timing included), so without a valid key the wallet fails
+// closed. Nothing is sealed, every sealed cookie reads as absent, and the
+// session routes answer 503 session_unavailable (see proxy.ts).
+function sessionKey(): Buffer | undefined {
   const secret = process.env.SESSION_SECRET;
-  const supplied = secret ? Buffer.from(secret, "base64") : undefined;
-  if (supplied?.length === 32) {
-    cachedKey = supplied;
-    return cachedKey;
+  if (cachedKey && cachedKey.secret === secret) return cachedKey.key;
+  const key = sessionKeyFromEnv(secret);
+  if (!key) {
+    const problem = sessionKeyProblem(secret);
+    if (problem && problem !== reportedProblem) {
+      reportedProblem = problem;
+      console.error(
+        problem === "missing"
+          ? "SESSION_SECRET is unset; wallet sessions are unavailable (503 session_unavailable)."
+          : "SESSION_SECRET is not 32 bytes of base64 (openssl rand -base64 32); wallet sessions are unavailable (503 session_unavailable).",
+      );
+    }
+    cachedKey = undefined;
+    return undefined;
   }
-  if (isProduction) {
-    console.warn(
-      secret
-        ? "SESSION_SECRET is not 32 bytes of base64 (openssl rand -base64 32); sealing sessions with the derived fallback key."
-        : "SESSION_SECRET is unset; sealing sessions with the derived fallback key.",
-    );
-  }
-  // Stable across dev restarts so local sign-ins survive a recompile.
-  cachedKey = createHash("sha256").update("smarttoken-viewer-dev").digest();
-  return cachedKey;
+  cachedKey = { secret, key };
+  return key;
+}
+
+/** Whether sessions can be sealed and opened at all. */
+export function sessionAvailable() {
+  return Boolean(sessionKey());
+}
+
+function requiredSessionKey() {
+  const key = sessionKey();
+  if (!key) throw new SessionUnavailableError();
+  return key;
 }
 
 function seal(state: SessionState) {
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", sessionKey(), iv);
+  const cipher = createCipheriv("aes-256-gcm", requiredSessionKey(), iv);
   const body = Buffer.concat([
     cipher.update(JSON.stringify(state), "utf8"),
     cipher.final(),
@@ -97,7 +119,7 @@ function seal(state: SessionState) {
 // as a different kind of cookie. The session cookie format is unchanged.
 export function sealForPurpose(purpose: string, value: unknown) {
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", sessionKey(), iv);
+  const cipher = createCipheriv("aes-256-gcm", requiredSessionKey(), iv);
   cipher.setAAD(Buffer.from(purpose, "utf8"));
   const body = Buffer.concat([
     cipher.update(JSON.stringify(value), "utf8"),
@@ -107,14 +129,12 @@ export function sealForPurpose(purpose: string, value: unknown) {
 }
 
 export function unsealForPurpose(purpose: string, value: string): unknown {
+  const key = sessionKey();
+  if (!key) return undefined;
   try {
     const raw = Buffer.from(value, "base64url");
     if (raw.length <= 28) return undefined;
-    const decipher = createDecipheriv(
-      "aes-256-gcm",
-      sessionKey(),
-      raw.subarray(0, 12),
-    );
+    const decipher = createDecipheriv("aes-256-gcm", key, raw.subarray(0, 12));
     decipher.setAAD(Buffer.from(purpose, "utf8"));
     decipher.setAuthTag(raw.subarray(12, 28));
     return JSON.parse(
@@ -146,14 +166,12 @@ export function sessionIdHash(state: SessionState) {
 }
 
 function unseal(value: string): SessionState | undefined {
+  const key = sessionKey();
+  if (!key) return undefined;
   try {
     const raw = Buffer.from(value, "base64url");
     if (raw.length <= 28) return undefined;
-    const decipher = createDecipheriv(
-      "aes-256-gcm",
-      sessionKey(),
-      raw.subarray(0, 12),
-    );
+    const decipher = createDecipheriv("aes-256-gcm", key, raw.subarray(0, 12));
     decipher.setAuthTag(raw.subarray(12, 28));
     const json = Buffer.concat([
       decipher.update(raw.subarray(28)),
