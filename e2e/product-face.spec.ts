@@ -1023,7 +1023,7 @@ test("G8: A transfers to B through a one-time link; B accepts through sign-in; A
   const acceptDialog = pageB.getByRole("dialog", {
     name: "Accept this product into your wallet?",
   });
-  // Proposed r19: B's own confirmation names the product B's wallet read
+  // r19: B's own confirmation names the product B's wallet read
   // itself (the runtime's transfer.acceptance.read, then Dual's public
   // projection): its name, serial and model, and B's own wallet. Nothing
   // about the previous owner (A): not A's address, in full or shortened.
@@ -1097,7 +1097,7 @@ test("G8: A transfers to B through a one-time link; B accepts through sign-in; A
   await recipient.close();
 });
 
-test("G8 (proposed r19): a face naming another unit than the acceptance's is refused by B's wallet; nothing is confirmed, minted or accepted", async ({
+test("G8 (r19): a face naming another unit than the acceptance's is refused by B's wallet; nothing is confirmed, minted or accepted", async ({
   page,
   browser,
 }) => {

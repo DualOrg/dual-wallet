@@ -548,7 +548,7 @@ export function readTransferProposal(
 }
 
 /**
- * Proposed r19, the recipient's host: the unit this launch's acceptance is
+ * r19, the recipient's host: the unit this launch's acceptance is
  * for, read by the BFF itself (the runtime's transfer.acceptance.read with the
  * ticket it kept, then Dual's public projection). The wallet's own
  * transfer.accept confirmation names it, and the acceptance is bound to it.

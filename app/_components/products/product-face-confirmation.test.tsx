@@ -55,7 +55,7 @@ describe("ProductFaceConfirmationDialog", () => {
     expect(onAnswer).toHaveBeenLastCalledWith(true);
   });
 
-  it("names the offered product the wallet read itself when accepting a transfer: its name and projection fields only (G8, proposed r19)", () => {
+  it("names the offered product the wallet read itself when accepting a transfer: its name and projection fields only (G8, r19)", () => {
     const onAnswer = renderDialog({
       kind: "transfer_accept",
       unit: {

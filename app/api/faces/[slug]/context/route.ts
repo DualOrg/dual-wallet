@@ -65,7 +65,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     },
   );
   applyFaceHandoverRead(response, handover);
-  // Proposed r19: the BFF keeps the acceptance ticket it hands this launch's
+  // r19: the BFF keeps the acceptance ticket it hands this launch's
   // face, sealed and bound to the launch and session, to read which unit it is
   // for (transfer.acceptance.read) and name it in the wallet's confirmation.
   if (handover.ticket && handover.kind === "accept") {

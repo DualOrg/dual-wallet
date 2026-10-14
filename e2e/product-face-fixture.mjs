@@ -93,7 +93,7 @@ const DEFAULT_MODE = {
   // other tab's request reaches the reserve; a request that never arrives is
   // released by the deadline and shows as released: "deadline". 0 is off.
   reserveBarrier: 0,
-  // G8 negative (proposed r19): transfer.offer.read previews this unit
+  // G8 negative (r19): transfer.offer.read previews this unit
   // instead of the offered one, as a tampered or stale preview would. The
   // face then names another unit for its acceptance; "" is off.
   offerReadUnit: "",
@@ -120,7 +120,7 @@ const freshStats = () => ({
     committed: 0,
     acceptIssued: 0,
     acceptRedeemed: 0,
-    // Proposed r19: the recipient host's acceptance reads, and acceptances
+    // r19: the recipient host's acceptance reads, and acceptances
     // refused for naming no unit or another unit than the offer's.
     acceptanceRead: 0,
     acceptUnitRefused: 0,
@@ -585,7 +585,7 @@ async function runtime(request, response, url, manifest) {
       });
     }
     const ticket = randomBytes(32).toString("base64url");
-    // Proposed r19: the acceptance names the offer's unit, for the
+    // r19: the acceptance names the offer's unit, for the
     // recipient host's transfer.acceptance.read.
     acceptTickets.set(ticket, {
       offer: body.offer,
@@ -1180,7 +1180,7 @@ async function transferOperation(request, response, body, holder, manifest) {
     });
   }
   if (operation === "transfer.acceptance.read") {
-    // Proposed r19: the recipient's HOST (server to server) reads which unit
+    // r19: the recipient's HOST (server to server) reads which unit
     // the acceptance ticket it handed its face is for. Exactly
     // {acceptance_ticket}, target {}; issued or redeemed, unexpired; the offer
     // open (or accepted by this same recipient). ONLY {object_id} answers.
@@ -1250,7 +1250,7 @@ async function transferOperation(request, response, body, holder, manifest) {
         ...ZERO,
       });
     }
-    // Proposed r19: the acceptance names exactly the offered unit.
+    // r19: the acceptance names exactly the offered unit.
     if (
       Object.keys(target).join(",") !== "object_id" ||
       !/^[a-f0-9]{24}$/.test(String(target.object_id))

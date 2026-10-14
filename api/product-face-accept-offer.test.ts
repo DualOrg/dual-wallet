@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  */
-// G8, proposed contract r19 (accept names the product), the recipient's host
+// G8, contract r19 (accept names the product), the recipient's host
 // through the real BFF routes:
 // - the accept task's context read hands the acceptance ticket to the face
 //   once (r16) and the BFF keeps it, sealed, HttpOnly, SameSite=Strict, bound
@@ -222,7 +222,7 @@ class Browser {
 }
 
 /**
- * LOCAL FAKE of the runtime's transfer.acceptance.read (proposed r19): it
+ * LOCAL FAKE of the runtime's transfer.acceptance.read (r19): it
  * answers ONLY {object_id} for the one acceptance ticket, to the recipient's
  * own assertion bound to exactly that request.
  */
@@ -334,7 +334,7 @@ afterEach(() => {
   delete process.env.FACE_ASSERTION_SIGNING_KEY;
 });
 
-describe("G8 acceptance names the product (proposed r19), the recipient's host", () => {
+describe("G8 acceptance names the product (r19), the recipient's host", () => {
   it("keeps the handed ticket sealed and server-only, reads the unit itself, names it from the public projection and mints the acceptance only for it", async () => {
     const runtime = fakeAcceptanceRuntime();
     global.fetch = runtime.fetchImpl as unknown as typeof fetch;

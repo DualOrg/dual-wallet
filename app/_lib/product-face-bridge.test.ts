@@ -1716,7 +1716,7 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
     expect(run.handlers.confirm).toHaveBeenCalledTimes(1);
   });
 
-  it("the recipient's acceptance names the unit the wallet read itself, is confirmed natively and is minted only for that unit (proposed r19); progress reads need no selection", async () => {
+  it("the recipient's acceptance names the unit the wallet read itself, is confirmed natively and is minted only for that unit (r19); progress reads need no selection", async () => {
     const run = runtimeFor(handlers());
     await expect(
       run.call("programme.runtime.authorize", {
@@ -1782,7 +1782,7 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
     }
   });
 
-  it("an acceptance the face names for another unit, or for no unit, is refused: nothing confirmed, nothing minted (proposed r19)", async () => {
+  it("an acceptance the face names for another unit, or for no unit, is refused: nothing confirmed, nothing minted (r19)", async () => {
     // The face names another unit than the one the wallet read for its acceptance.
     const other = runtimeFor(handlers());
     await expect(

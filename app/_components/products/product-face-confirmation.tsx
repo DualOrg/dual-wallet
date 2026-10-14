@@ -166,7 +166,7 @@ export function ProductFaceConfirmationDialog({
       </>
     );
   } else if (request.kind === "transfer_accept") {
-    // The offered unit the wallet read itself (proposed r19); nothing about
+    // The offered unit the wallet read itself (r19); nothing about
     // its current owner.
     title = t("transferAccept.title");
     description = t("transferAccept.description");

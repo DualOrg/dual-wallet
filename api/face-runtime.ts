@@ -237,7 +237,7 @@ export interface TransferRuntimeRequest {
     | "transfer.reserve"
     | "transfer.verify"
     | "transfer.status"
-    // Proposed r19: the recipient's host reads which unit its acceptance is for.
+    // r19: the recipient's host reads which unit its acceptance is for.
     | "transfer.acceptance.read";
   operationId: string;
   target: AssertionTarget;
@@ -261,7 +261,7 @@ export type TransferRuntimeResult =
  * G8 (contract r16 transfer.sign): one of the holder's host's own
  * server-to-server transfer calls to the bound runtime, or the recipient's
  * host reading which unit its acceptance is for (transfer.acceptance.read,
- * proposed r19). Fixed endpoint, five allowlisted operations, bounded
+ * r19). Fixed endpoint, five allowlisted operations, bounded
  * response, timeout, no cookies and no redirects. A 202 (an outcome not yet
  * known) is an answer, not a failure.
  */

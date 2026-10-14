@@ -181,7 +181,7 @@ const ACCEPTANCE_CLOSED = new Set([
 ]);
 
 /**
- * Proposed r19, the recipient's host: the unit this launch's acceptance is
+ * r19, the recipient's host: the unit this launch's acceptance is
  * for, for the wallet's own transfer.accept confirmation. The BFF reads it
  * itself with the acceptance ticket it kept for this launch and session
  * (transfer.acceptance.read, server to server, the session's own assertion),

@@ -10,7 +10,7 @@ import {
 
 type Params = { params: Promise<{ slug: string }> };
 
-// Proposed r19: the recipient's host reads which unit this launch's acceptance
+// r19: the recipient's host reads which unit this launch's acceptance
 // is for (the runtime's transfer.acceptance.read, server to server, then
 // Dual's public projection) for its own transfer.accept confirmation, and
 // binds that unit to the kept acceptance: a transfer.accept assertion is then

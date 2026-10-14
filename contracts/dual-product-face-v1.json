@@ -1,6 +1,6 @@
 {
   "contract": "dual-product-face-v1",
-  "revision": 18,
+  "revision": 19,
   "status": "first_source_delivery",
   "summary": "Full-size, first-party reviewed product face inside the authenticated Dual wallet. Uses the existing dual.face.bridge v1 envelope, handshake and limits; adds a programme ('application') context variant and named capability modules. No second postMessage protocol, no generic fetch/proxy/token operation.",
   "protocol": {
@@ -89,7 +89,7 @@
       "signatures",
       "raw DTOs"
     ],
-    "acceptance": "{ticket} once, only on the wallet's acceptance entry for the same account/session (r17)"
+    "acceptance": "{ticket} once, only on the wallet's acceptance entry for the same account/session (r17); r19: the host also keeps it, sealed and server-only, to read the offered unit (acceptNamesProduct)"
   },
   "taskPath": {
     "pattern": "^/(?:[a-z0-9][a-z0-9-]{0,47}(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,79}){0,3})?$",
@@ -435,7 +435,7 @@
     "G5": "no backend face-application registry; wallet uses a deployment-configured server-only registry",
     "G6": "RESOLVED IN SCOPE (implementation in progress): holder settle via programme.product.settle.request + registration.settle.propose/verify; requires the exact reviewed Dual action mapping of the brand-proposed verify_authenticity.",
     "G6b": "Auto-proposal requires contract.settleOriginationAuthority (explicit signed release-bound settle policy); transfer-only grants fall back to the brand-operator proposal.",
-    "G9": "transition serving and declared redirects are shipped in the Studio runtime (8b52918); Studio publication adoption is pending (it still refuses artifact-switching upgrades)"
+    "G9": "RESOLVED IN SOURCE (r19): transition serving and declared redirects ship in the Studio runtime (8b52918) and Studio publication adopts them (stored-artifact transition packaging, the switch rules, emitted redirects); the fresh non-additive publish of a face with redirects or a transition set stays refused fail closed"
   },
   "runtimeOperations": {
     "registration.submit": "write; issued only via programme.registration.authorize",
@@ -534,7 +534,13 @@
       "transfer_reservation_already_decided",
       "transfer_reservation_refused",
       "face_transfer_recovery_server_only",
-      "transfer_action_found_after_release"
+      "transfer_action_found_after_release",
+      "transfer_accept_target_required",
+      "transfer_accept_unit_mismatch",
+      "face_accept_ticket_unbound",
+      "transfer_action_ambiguous_after_release",
+      "face_settle_action_ambiguous_after_release",
+      "face_settle_action_found_after_release"
     ],
     "rule": "error.message is display text only; decisions use code"
   },
@@ -629,7 +635,7 @@
       "wallet": "the registry entry for the slug is replaced in one change (path, artifactHash and version together); launch journals are bound to session, wallet, launch, slug and programme, not to the artifact, so journaled operations continue under the new binding",
       "order": "1) the runtime release with pin = new and T = [previous] (and passportFaces listing both); 2) the wallet registry replacement; 3) re-derive settle and transferRequest from the serving release's inspection and rebind; 4) a later release that drops T once no in-flight operation is recorded under it",
       "support": "Studio publication derives its support from the shipped runtime's exported PRODUCT_FACE_RUNTIME_TRANSITION_SUPPORT, never from configuration or injection; until it adopts it, an upgrade that switches the artifact is refused (transition_serving_unsupported)",
-      "status": "runtime shipped in Studio 8b52918 (PRODUCT_FACE_RUNTIME_TRANSITION_SUPPORT {transitionServing:true, declaredRedirects:true}); publication adoption is pending"
+      "status": "runtime shipped in Studio 8b52918 (PRODUCT_FACE_RUNTIME_TRANSITION_SUPPORT {transitionServing:true, declaredRedirects:true}); publication adopts it through the whole chain (r19): stored-artifact transition packaging (earlier artifacts from their stored write-once bytes, verified against their hash, never re-emitted), the product_face_transition / product_face_transition_retired switch rules, the draft's approved redirects emitted, and passportFaces listing every served version. A FRESH (non-additive) publish of a version whose face carries declared redirects or a transition set is refused fail closed (product_face_bundle_publication_mismatch / product_face_transition_artifact_missing); existing apps take face versions through the additive lane"
     },
     "rollback": {
       "transition": "re-point to a prior immutable version whose STORED bytes verify (never re-emitted), with T = [current], when it is compatible in reverse: the same application, publisher and programme, equal semanticsHash and contract major, target capabilities ⊇ current, and every current route kept by the target; in-flight operations of the current version then complete under their original correlations",
@@ -653,7 +659,8 @@
       "transfer.offer": "write (runtime store only): the holder creates a one-time offer for an owned, canonical-agreeing unit; answers an opaque offer ticket for an acceptance link",
       "transfer.offer.read": "read: offer state for its holder",
       "transfer.cancel": "write (runtime store only): the holder cancels before acceptance or before submission; never after a won dispatch",
-      "transfer.accept": "write (runtime store only): the recipient redeems the offer ticket once; the recipient wallet is bound from the recipient's assertion holder",
+      "transfer.accept": "write (runtime store only): the recipient redeems the offer ticket once for exactly the offered unit (target {object_id}, r19); the recipient wallet is bound from the recipient's assertion holder",
+      "transfer.acceptance.read": "trusted server-to-server read by the RECIPIENT's host BFF (r19): the offered unit's object_id only, for the acceptance ticket it handed its face; nothing used up",
       "transfer.read": "read: the holder or the bound recipient reads the offer/transfer progress",
       "transfer.propose": "trusted server-to-server read by the HOLDER's host BFF: the exact reviewed holder-signed Dual transfer payload + proposal hash for the bound recipient",
       "transfer.reserve": "write (runtime store only): one-use dispatch claim (dispatch:won only on the atomic create; replays already_claimed; never reclaimed)",
@@ -669,7 +676,9 @@
       "transfer_submitted",
       "transfer_recipient_is_holder",
       "transfer_not_owned",
-      "transfer_state_pending"
+      "transfer_state_pending",
+      "transfer_accept_target_required",
+      "transfer_accept_unit_mismatch"
     ],
     "status": "Studio: runtime 5fc90b9, race fix 41de3ec, reviewed transfer-step recovery 364cd25 (readback-confirmed release 541e71f), acceptance entry 4490311, face screens dd3f30f, recipient in propose 82c6f9e, complete map 7a0aa19. Wallet: host operation and acceptance entry 010fe23, exact request template b079e15; the post-reserve session and selection guard is required (Root regression on ca1e931)",
     "recipientDisclosure": "transfer.propose (trusted, server to server; an Origin is refused) answers recipient, the wallet bound at acceptance from the recipient's own assertion, so the holder's host can check it and name it in its native confirmation; the face never receives it from the runtime directly",
@@ -716,5 +725,53 @@
     "client": "the executor re-checks the live identity (the launch is live and the current session is exactly the identity captured at begin) before preparing, after preparing, after signing (passkey or EOA) and immediately before executing; any change stops the step before anything else is sent",
     "outcome": "a refused or stopped step is never cancelled, retried, re-reserved or re-prepared: the submitted journal entry keeps its original correlation and reads outcome_unknown through the read-only status; only the reviewed recovery can release it. These refusals are host-internal; the face sees outcome_unknown.",
     "limits": "the journal is a sealed cookie, so the proxy cannot make a second execute by the SAME session atomic; exactly-once dispatch remains the runtime reservation (one won per step), and the host executes only after its own won and never retries"
+  },
+  "acceptNamesProduct": {
+    "revision": 19,
+    "rule": "the recipient's native transfer.accept confirmation names the ACTUAL offered unit, read by the recipient's own host, and the acceptance is bound to that unit; the face never supplies the product",
+    "acceptanceTicket": "POST /api/product-face/v1/accept stores the offer's objectId and offerId with the acceptance ticket; /accept/redeem is unchanged",
+    "runtimeOperation": {
+      "transfer.acceptance.read": "trusted server-to-server read by the RECIPIENT's host BFF (any Origin: 403 face_trusted_read_server_only): which unit the acceptance ticket it handed its face is for",
+      "input": "{acceptance_ticket} exactly (43-character base64url)",
+      "target": "{} exactly",
+      "assertion": "the recipient's own wallet assertion for this exact request (operation transfer.acceptance.read, request_hash over {operation, operationId, target, input})",
+      "found": "the ticket is issued or redeemed, unexpired (ten minutes at most), and bound to this applicationId, a served {version, artifactHash}, this faceOrigin and the configured wallet entry; the offer it names exists with the same objectId and ticket hash; the offer's recorded artifact may continue it (r17); the caller is not the offer's holder; unless the caller is the offer's bound recipient, the offer is open (offered, unexpired)",
+      "answer": "200 {ok:true, status:\"transfer_acceptance\", object_id} plus zero counters and secretReturned:false",
+      "privacy": "the answer is ONLY the unit's object_id: no holder or recipient, no wallet address, no case, no document, no contact, no product text",
+      "sideEffects": "none: the ticket is not used up, the offer is not changed, no Dual or provider write",
+      "refusals": {
+        "face_request_invalid": "400: another input or target",
+        "face_wallet_entry_unprovisioned": "503",
+        "face_runtime_unprovisioned": "503: the store or offer cannot be read",
+        "face_accept_ticket_unknown": "404",
+        "face_accept_ticket_binding_mismatch": "409: another application, artifact, face origin or wallet entry",
+        "face_accept_ticket_used": "409: neither issued nor redeemed",
+        "face_accept_ticket_expired": "410",
+        "face_accept_ticket_unbound": "409: a ticket that names no unit or offer (minted before r19)",
+        "transfer_offer_not_found": "404: the offer is missing, or its unit or ticket hash differs",
+        "transfer_recipient_is_holder": "409",
+        "transfer_offer_cancelled": "409",
+        "transfer_offer_expired": "410",
+        "transfer_offer_used": "409: accepted by another recipient or submitted"
+      }
+    },
+    "transferAccept": "transfer.accept target is exactly {object_id} of the offered unit. Missing, empty ({}), extra keys or malformed: 400 transfer_accept_target_required; another unit than the offer's: 409 transfer_accept_unit_mismatch. Nothing is accepted in either case (zero writes). The same recipient's exact replay with the offered unit still answers idempotent; another unit never does. There is NO compatibility path for target {}: G8 is not hosted yet, so no older G8 face exists",
+    "face": "the face sends transfer.accept with target {object_id} taken from its own transfer.offer.read preview (input {ticket} unchanged); when its host refuses with invalid_request or stale_context it says the wallet accepts only the transfer it opened from the sender's link, to open that link again, and that nothing was changed",
+    "host": {
+      "keep": "the accept task's context read, which hands the acceptance ticket to the face once (r16), also keeps it for the BFF only: sealed (AES-256-GCM, purpose-bound), HttpOnly, SameSite=Strict, host-only cookie (__Host- in production), bound to the slug, launch and session {walletId, sidHash}, for at most the ticket's ten minutes; logout, session expiry and an account change clear it; another launch, programme, session or a tampered cookie reads nothing. The ticket is never put in another response, a URL or the face again. One acceptance is kept at a time: opening a second acceptance replaces the first, which then fails closed (invalid_request) and must be opened again",
+      "read": "POST /api/faces/<slug>/accept-offer, empty body: the BFF calls transfer.acceptance.read itself (server to server, the session's own assertion), then reads that unit from Dual's PUBLIC projection; its template must be in binding.templateIds (else not_in_programme) and this wallet must not hold it (else already_registered_to_you); it answers {unit} with the unit's canonical facts (objectId, templateId, name, imageUrl, recordId, the binding's projection fields, readback {ownerIsYou, state, lifecycleTarget}, registration; never an owner address, a case or a document) and binds unit.objectId to the kept acceptance",
+      "confirm": "the native transfer_accept confirmation names that unit: its name and the binding's projection fields only, plus the user's own wallet (shortened); never the previous owner's address, the readback owner, a case or a document",
+      "mint": "an assertion for transfer.accept is minted only for target {object_id} equal to the bound unit; a face naming another unit: stale_context (409); no kept or read acceptance for this launch and session (a pasted link, another tab or session, an expired ticket): invalid_request (400); nothing is confirmed or minted",
+      "errors": "accept-offer maps: transfer_recipient_is_holder or a held unit -> already_registered_to_you (409); transfer_offer_cancelled|expired|used|not_found -> transfer_cancelled (409); any other refusal or an answer without a unit -> invalid_request (409); not in the programme or a projection of another unit -> not_in_programme (404); unreadable projection -> not_found (404); runtime unavailable -> runtime_unavailable (503), shown to the face as temporarily_unavailable"
+    },
+    "consequences": "a transfer link pasted into the face can still be previewed (transfer.offer.read) but is accepted only by opening it, so the recipient's host holds its acceptance; the host can name and bind the unit only within the acceptance ticket's ten minutes, after which the link must be opened again",
+    "status": "shipped in source: the Studio runtime, face and manifest, and the wallet BFF, capability, confirmation and e2e"
+  },
+  "releaseSuccessors": {
+    "revision": 19,
+    "rule": "after a reviewed release, the successor reservation records what it replaced (transfer: supersededSteps; settle: supersededCorrelations), and a late holder action of a released attempt never stands in for the successor: it is never committed or refused automatically; a settle or step that was never released is unchanged",
+    "transfer_action_ambiguous_after_release": "409, status recovery_required, nextStep contact_support, with correlation and superseded [{step_operation_id, proposal_id}]. After a reviewed release, a holder action found for the successor step may be a released attempt's: for the transfer step always, since a Dual transfer cannot tell the attempts apart; for the request step when the content is the successor's but a released attempt's update may have overwritten it. Never committed or refused automatically. A released attempt's action alone answers 202 outcome_unknown transfer_action_not_found. The successor's own executor (transfer.verify with its action id) still commits.",
+    "face_settle_action_ambiguous_after_release": "409, status recovery_required, nextStep contact_support, with settleOperationId, correlation and superseded [{settle_operation_id, proposal_id}]: registration.settle.status for a successor settle reservation (supersededCorrelations) when the object's content is a released attempt's AND more than one holder update follows the reservation. A released attempt's update alone answers 202 outcome_unknown face_settle_action_not_found with releasedAttemptActionFound:true. The successor's own action, reported by settle.verify or the newest found by status, still commits; a settle that was never released is unchanged.",
+    "host": "the wallet maps every non-committed status answer, these included, to outcome_unknown; it never retries or re-reserves"
   }
 }

@@ -106,7 +106,7 @@ export function runtimeCapabilities(): ProductFaceCapability[] {
         const operationId = payload.operation_id;
         const requestHash = payload.request_hash;
         // G8: the recipient's preview names no unit (target {}); its
-        // acceptance names the offered unit (proposed r19); either party reads
+        // acceptance names the offered unit (r19); either party reads
         // an offer's progress by its unit; none needs a selected owned product
         // and the runtime authorises each by the holder.
         if (isUnscopedTransferOperation(operation)) {
@@ -121,7 +121,7 @@ export function runtimeCapabilities(): ProductFaceCapability[] {
           if (operation === "transfer.accept") {
             // Accepting binds THIS wallet as the recipient: the wallet's own
             // confirmation first, naming the unit the wallet read itself for
-            // the acceptance it opened (proposed r19: the runtime's
+            // the acceptance it opened (r19: the runtime's
             // transfer.acceptance.read, then Dual's public projection). The
             // face may accept only exactly that unit; no product, owner or
             // recipient text is taken from the face. Ownership moves only

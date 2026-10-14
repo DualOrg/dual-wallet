@@ -8,7 +8,7 @@ import {
   type FaceHandoverOwner,
 } from "@/api/face-handover";
 
-// Proposed contract r19 (accept names the product): the acceptance ticket the
+// Contract r19 (accept names the product): the acceptance ticket the
 // context read handed ONE launch's face on its accept task is also kept here,
 // by the BFF only, in a sealed (AES-256-GCM, purpose-bound), HttpOnly,
 // SameSite=Strict, host-only cookie bound to that launch, slug and session

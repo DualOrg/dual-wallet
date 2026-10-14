@@ -342,7 +342,7 @@ export async function authorizeAssertion(
         : undefined
       : parseTarget(body.target, operation);
     if (!unscopedTarget) return fail("invalid_request", 400);
-    // Proposed r19: an acceptance is minted only for exactly the unit this
+    // r19: an acceptance is minted only for exactly the unit this
     // launch's kept acceptance was read for (accept-offer), never another.
     if (operation === "transfer.accept") {
       const kept = readFaceAcceptance(request, {

@@ -4,7 +4,7 @@
   "brandId": "morrow-home",
   "contentVersion": "2026.10.1",
   "contract": "dual-product-face-v1",
-  "contractRevision": 18,
+  "contractRevision": 19,
   "files": {
     "assets/arc-grinder.svg": "sha256:f7f25c8f6695b5f247643080e0f4f9ffc1e73ddf8d5720bafc31b3ccffd33faf",
     "assets/hero.svg": "sha256:78e8e2ff943804a491da878bb55d5922b8f4a9c64970b2b763f72d46d49a398c",

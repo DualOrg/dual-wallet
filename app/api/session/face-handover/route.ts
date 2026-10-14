@@ -15,7 +15,7 @@ export async function DELETE(request: NextRequest) {
     { headers: { "Cache-Control": "no-store" } },
   );
   clearFaceHandover(response);
-  // A kept transfer acceptance (proposed r19) is bound to the session anyway;
+  // A kept transfer acceptance (r19) is bound to the session anyway;
   // it is dropped with the handover.
   clearFaceAcceptance(response);
   return response;

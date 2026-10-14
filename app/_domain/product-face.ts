@@ -499,7 +499,7 @@ export const runtimeOperationNames = [
   "transfer.reserve",
   "transfer.verify",
   "transfer.status",
-  // Proposed r19: the recipient's host reads which unit its acceptance is for.
+  // r19: the recipient's host reads which unit its acceptance is for.
   "transfer.acceptance.read",
 ] as const;
 export type RuntimeOperation = (typeof runtimeOperationNames)[number];
@@ -580,7 +580,7 @@ export const hostOnlyRuntimeOperations = [
 /**
  * G8 operations a face may run without a selected owned product: the
  * recipient previews an offer (target {}) and accepts it for the offered unit
- * (target {object_id}, proposed r19), and either party reads an offer's
+ * (target {object_id}, r19), and either party reads an offer's
  * progress by its unit (target {object_id}). The runtime authorises each by
  * the assertion holder alone (the offer's holder or bound recipient).
  */
@@ -596,7 +596,7 @@ export function isUnscopedTransferOperation(value: RuntimeOperation) {
 
 /**
  * Unscoped transfer operations whose target is empty (no unit named). Since
- * the proposed r19, transfer.accept names the offered unit ({object_id}): the
+ * the r19, transfer.accept names the offered unit ({object_id}): the
  * unit the host read itself for its acceptance and named in its confirmation.
  */
 export function transferOperationTargetsNothing(value: RuntimeOperation) {
@@ -1074,7 +1074,7 @@ export type ProductFaceConfirmation =
   | {
       /**
        * G8: accept an offered product into this wallet. The unit is the one
-       * the wallet itself read for the acceptance it opened (proposed r19),
+       * the wallet itself read for the acceptance it opened (r19),
        * from Dual's public projection: never face text, an owner address, a
        * case or a document.
        */

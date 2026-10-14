@@ -686,7 +686,7 @@ the recorded action, or reads `transfer.status`; asking again with the same
 step operation id only reads. `transfer.offer` and `transfer.cancel` are
 host-confirmed runtime writes for the selected product; the recipient's
 `transfer.offer.read` (target `{}`) and `transfer.accept` (target
-`{object_id}`, proposed r19) and either party's `transfer.read` need no
+`{object_id}`, r19) and either party's `transfer.read` need no
 selection, and `transfer.accept` is confirmed natively first. The acceptance
 link opens the runtime's accept page, which continues to
 `/products/<slug>/handover#accept=<ticket>`; the entry stores it as kind
@@ -694,7 +694,7 @@ link opens the runtime's accept page, which continues to
 `/products/<slug>/accept`, where the context read (`?task=/accept`) hands it
 to the face once as `acceptance: {ticket}`.
 
-**Accept names the product (proposed r19).** The same context read also keeps
+**Accept names the product (r19).** The same context read also keeps
 that acceptance ticket for the BFF only: a sealed (AES-256-GCM,
 purpose-bound), HttpOnly, SameSite=Strict, host-only cookie
 (`__Host-dual_face_acceptance` in production) bound to the slug, the launch
