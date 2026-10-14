@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
+import { safeReturnPath } from "@/app/_domain/navigation";
 import { useSession } from "@/app/_providers/session-provider";
 import {
   requestPasswordReset,
@@ -19,7 +20,16 @@ export function useVerifyAccount() {
       // A link may be followed with no session at all, so where to go next
       // depends on whether there is one to go with.
       const wallet = await session.refresh();
-      router.replace(wallet ? "/inventory" : "/login");
+      const next = safeReturnPath(
+        new URLSearchParams(window.location.search).get("next"),
+      );
+      router.replace(
+        wallet
+          ? (next ?? "/inventory")
+          : next
+            ? `/login?next=${encodeURIComponent(next)}`
+            : "/login",
+      );
       router.refresh();
     },
   });

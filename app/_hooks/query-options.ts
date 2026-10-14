@@ -11,6 +11,7 @@ import {
   listActivityPage,
   listInventoryPage,
 } from "@/app/_services/inventory.client";
+import { loadProductFaceContext } from "@/app/_services/product-face.client";
 import { loadSession } from "@/app/_services/session.client";
 
 // ponytail: one fixed interval, no server-driven expiry hint. Shorten this if
@@ -63,5 +64,17 @@ export function activityQueryOptions(
       ? ({ signal }) =>
           listActivityPage({ search, status, walletId, cursor, signal })
       : skipToken,
+  });
+}
+
+export function productFaceContextQueryOptions(slug: string, enabled: boolean) {
+  return queryOptions({
+    queryKey: queryKeys.productFaces.context(slug),
+    queryFn: enabled ? () => loadProductFaceContext(slug) : skipToken,
+    // A context load resets the server-side selection, so it is read once per
+    // host mount and never refetched underneath a live face.
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: 0,
+    retry: false,
   });
 }

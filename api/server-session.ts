@@ -26,7 +26,7 @@ const REFRESH_MARGIN_MS = 30_000;
 // The session lives entirely in the cookie. Holding it in process memory loses
 // every signed-in wallet whenever the container is replaced or a request lands
 // on a second instance, which on a scale-to-zero platform is routine.
-interface SessionState {
+export interface SessionState {
   accessToken: string;
   refreshToken: string;
   accessExpiresAt: number;
@@ -34,6 +34,10 @@ interface SessionState {
   host: string;
   authenticationMethod: AuthenticationMethod;
   persistent?: boolean;
+  // Stable, random identity of this sign-in. Tokens rotate and the sealed
+  // cookie changes on every renewal, so product-face assertions and the face
+  // operation journal bind to a hash of this value instead.
+  sessionId?: string;
 }
 
 export type SessionResult =
@@ -86,6 +90,59 @@ function seal(state: SessionState) {
     cipher.final(),
   ]);
   return Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64url");
+}
+
+// Other host-only cookies sealed with the session key use additional
+// authenticated data naming their purpose, so no sealed value can be replayed
+// as a different kind of cookie. The session cookie format is unchanged.
+export function sealForPurpose(purpose: string, value: unknown) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", sessionKey(), iv);
+  cipher.setAAD(Buffer.from(purpose, "utf8"));
+  const body = Buffer.concat([
+    cipher.update(JSON.stringify(value), "utf8"),
+    cipher.final(),
+  ]);
+  return Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64url");
+}
+
+export function unsealForPurpose(purpose: string, value: string): unknown {
+  try {
+    const raw = Buffer.from(value, "base64url");
+    if (raw.length <= 28) return undefined;
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      sessionKey(),
+      raw.subarray(0, 12),
+    );
+    decipher.setAAD(Buffer.from(purpose, "utf8"));
+    decipher.setAuthTag(raw.subarray(12, 28));
+    return JSON.parse(
+      Buffer.concat([
+        decipher.update(raw.subarray(28)),
+        decipher.final(),
+      ]).toString("utf8"),
+    ) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+export function newSessionId() {
+  return randomBytes(18).toString("base64url");
+}
+
+/** Gives a session sealed before session IDs existed one; the caller reseals. */
+export function withSessionId(state: SessionState): SessionState {
+  return state.sessionId ? state : { ...state, sessionId: newSessionId() };
+}
+
+/** One-way, purpose-bound hash of the session identity; never the credential. */
+export function sessionIdHash(state: SessionState) {
+  if (!state.sessionId) return undefined;
+  return createHash("sha256")
+    .update(`dual-wallet-session:${state.sessionId}`)
+    .digest("base64url");
 }
 
 function unseal(value: string): SessionState | undefined {
@@ -199,6 +256,7 @@ export function establishSession(
     host: tenant.host,
     authenticationMethod,
     persistent,
+    sessionId: newSessionId(),
   });
   return true;
 }

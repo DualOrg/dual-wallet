@@ -690,6 +690,166 @@ button {
   margin: 0 auto;
   padding: 54px clamp(24px, 5vw, 72px) 80px;
 }
+/* A programme's product face fills the content area below its identity bar. */
+.main:has(> .content-full) {
+  display: flex;
+  min-height: 100svh;
+  flex-direction: column;
+}
+.content.content-full {
+  display: flex;
+  width: 100%;
+  flex: 1;
+  flex-direction: column;
+  padding: 0;
+}
+.product-face-shell {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.product-face-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  padding: 10px clamp(16px, 3vw, 28px);
+}
+.product-face-back {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 12px;
+  color: var(--ink);
+  padding: 0 10px;
+  font-weight: 700;
+}
+.product-face-back:hover {
+  background: var(--brand-soft);
+}
+.product-face-back:focus-visible {
+  outline: 3px solid var(--brand-strong);
+  outline-offset: 1px;
+}
+.product-face-identity-copy {
+  min-width: 0;
+}
+.product-face-identity-copy h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.05rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.product-face-identity-copy p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.product-face-stage {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.product-face-frame {
+  display: block;
+  width: 100%;
+  min-height: 480px;
+  flex: 1;
+  border: 0;
+  background: var(--surface);
+}
+.product-face-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 18px clamp(16px, 3vw, 28px);
+}
+.product-face-ended {
+  display: grid;
+  max-width: 560px;
+  gap: 14px;
+  padding: 24px clamp(16px, 3vw, 28px);
+}
+.product-face-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.product-face-confirm-note {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 700;
+}
+.product-face-changes {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.product-face-changes caption {
+  margin-bottom: 8px;
+  color: var(--ink);
+  font-weight: 700;
+  text-align: left;
+}
+.product-face-changes th,
+.product-face-changes td {
+  border-top: 1px solid var(--border);
+  padding: 8px 6px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.product-programme-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.product-programme-link {
+  display: grid;
+  min-height: 72px;
+  grid-template-columns: 44px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 14px;
+  color: var(--ink);
+  padding: 14px 18px;
+}
+.product-programme-link:hover {
+  border-color: var(--border-strong);
+}
+.product-programme-link:focus-visible {
+  outline: 3px solid var(--brand-strong);
+  outline-offset: 2px;
+}
+.product-programme-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 14px;
+  color: var(--content-accent);
+  background: var(--brand-soft);
+}
+.product-programme-copy {
+  display: grid;
+  min-width: 0;
+}
+.product-programme-copy span {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
 .page-header {
   display: flex;
   align-items: flex-end;
@@ -1680,6 +1840,12 @@ button {
   }
   .content {
     padding: 36px 18px 90px;
+  }
+  .content.content-full {
+    padding: 0;
+  }
+  .product-face-frame {
+    min-height: 420px;
   }
   .page-header {
     align-items: flex-start;

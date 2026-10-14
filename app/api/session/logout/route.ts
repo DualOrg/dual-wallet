@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { clearFaceJournal } from "@/api/face-journal";
 import { clearSessionCookie, revokeSession } from "@/api/server-session";
 import { mutationGuard } from "@/api/request";
 
@@ -12,5 +13,7 @@ export async function POST(request: NextRequest) {
   await revokeSession(request);
   const response = NextResponse.json({ ok: true });
   clearSessionCookie(response);
+  // The product-face journal is bound to this session; end it with it.
+  clearFaceJournal(response);
   return response;
 }

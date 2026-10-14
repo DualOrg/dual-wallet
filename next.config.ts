@@ -1,7 +1,16 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
+import { productFaceFrameOrigins } from "./api/product-face-binding";
 
 const isDevelopment = process.env.NODE_ENV === "development";
+
+// Product applications are framed from the exact origins the server-only
+// registry binds. The registry is read at build time here, so a new product
+// origin needs a rebuild; an origin missing from the CSP fails closed.
+const productFaceOrigins = productFaceFrameOrigins(
+  process.env.PRODUCT_FACE_APPLICATIONS,
+  { production: process.env.NODE_ENV === "production" },
+);
 
 const nextConfig: NextConfig = {
   output: "standalone",
@@ -38,11 +47,13 @@ const nextConfig: NextConfig = {
               "img-src 'self' data: blob: https:",
               "font-src 'self' data:",
               "connect-src 'self' https: wss:",
-              `frame-src 'self' https:${
-                isDevelopment
-                  ? " http://localhost:4100 http://127.0.0.1:4100"
-                  : ""
-              }`,
+              [
+                "frame-src 'self' https:",
+                ...(isDevelopment
+                  ? ["http://localhost:4100", "http://127.0.0.1:4100"]
+                  : []),
+                ...productFaceOrigins,
+              ].join(" "),
               "worker-src 'self' blob:",
               ...(isDevelopment ? [] : ["upgrade-insecure-requests"]),
             ].join("; "),

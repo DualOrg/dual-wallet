@@ -83,3 +83,61 @@ test("refreshing the same wallet preserves its account cache", async () => {
     objects: ["account-a-object"],
   });
 });
+
+function ListenForEnd({
+  onEnd,
+  onReady,
+}: {
+  onEnd: (reason: string) => void;
+  onReady?: (value: ReturnType<typeof useSession>) => void;
+}) {
+  const current = useSession();
+  useEffect(() => current.onSessionEnd(onEnd), [current, onEnd]);
+  useEffect(() => {
+    onReady?.(current);
+  }, [current, onReady]);
+  return null;
+}
+
+test("an account change tells authenticated faces before its cache goes", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  client.setQueryData(sessionQueryKey, session("wallet-a"));
+  loadSession.mockResolvedValue(session("wallet-b"));
+  const onEnd = jest.fn();
+  render(
+    <QueryClientProvider client={client}>
+      <SessionProvider>
+        <ListenForEnd onEnd={onEnd} />
+        <ReplaceSession walletId="wallet-b" />
+      </SessionProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(onEnd).toHaveBeenCalledWith("account_changed"));
+});
+
+test("logout tells authenticated faces first, then revokes the session", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  client.setQueryData(sessionQueryKey, session("wallet-a"));
+  const order: string[] = [];
+  const { logoutSession } = jest.requireMock("@/app/_services/session.client");
+  logoutSession.mockImplementation(async () => {
+    order.push("revoke");
+    return { ok: true };
+  });
+  let value: ReturnType<typeof useSession> | undefined;
+  const onEnd = (reason: string) => order.push(`end:${reason}`);
+  render(
+    <QueryClientProvider client={client}>
+      <SessionProvider>
+        <ListenForEnd onEnd={onEnd} onReady={(next) => (value = next)} />
+      </SessionProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(value).toBeDefined());
+  await value!.logout();
+  expect(order).toEqual(["end:logout", "revoke"]);
+});

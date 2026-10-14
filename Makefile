@@ -25,6 +25,14 @@ NEXT_PUBLIC_APP_URL ?= https://wallet.dual.network
 NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS ?= https://faces.dual.network
 NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS ?= dual.dpp@1=https://faces.dual.network/dpp/v1/
 
+# Server-only product-application registry (JSON array). It is also a build
+# input: next.config.ts derives the exact CSP frame-src origins from it.
+PRODUCT_FACE_APPLICATIONS ?= []
+# Secret Manager secret holding the Ed25519 PKCS8 PEM that signs product-face
+# assertions, and its key ID. Unset, assertions fail closed (503).
+FACE_ASSERTION_SIGNING_KEY_NAME ?=
+FACE_ASSERTION_KEY_ID ?=
+
 .PHONY: help install dev build check test sdk-sync deploy-config-check image-build image-push deploy deploy-dev deploy-prod wallet wallet-dev wallet-prod
 
 help:
@@ -74,6 +82,7 @@ deploy-config-check:
 	@test -n "$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS)" || (echo "NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS is required" >&2; exit 1)
 	@test -n "$(DEFAULT_ORGANIZATION_ID)" || echo "WARNING: DEFAULT_ORGANIZATION_ID is unset; only /<organization-id> entry links will resolve." >&2
 	@test -n "$(SESSION_SECRET_NAME)" || echo "WARNING: SESSION_SECRET_NAME is unset; sessions will be sealed with the public fallback key." >&2
+	@test -n "$(FACE_ASSERTION_SIGNING_KEY_NAME)" || echo "WARNING: FACE_ASSERTION_SIGNING_KEY_NAME is unset; product-face assertions will fail closed." >&2
 
 image-build: deploy-config-check
 	docker build \
@@ -82,6 +91,7 @@ image-build: deploy-config-check
 		--build-arg NEXT_PUBLIC_APP_URL="$(NEXT_PUBLIC_APP_URL)" \
 		--build-arg NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS="$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS)" \
 		--build-arg NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS="$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS)" \
+		--build-arg PRODUCT_FACE_APPLICATIONS='$(PRODUCT_FACE_APPLICATIONS)' \
 		-t "$(IMAGE)" \
 		.
 
@@ -96,6 +106,8 @@ deploy: deploy-config-check
 		--allow-unauthenticated \
 		--max-instances $(MAX_INSTANCES) \
 		$(if $(SESSION_SECRET_NAME),--set-secrets "SESSION_SECRET=$(SESSION_SECRET_NAME):latest",) \
+		$(if $(FACE_ASSERTION_SIGNING_KEY_NAME),--set-secrets "FACE_ASSERTION_SIGNING_KEY=$(FACE_ASSERTION_SIGNING_KEY_NAME):latest",) \
+		--update-env-vars '^|^PRODUCT_FACE_APPLICATIONS=$(PRODUCT_FACE_APPLICATIONS)|FACE_ASSERTION_KEY_ID=$(FACE_ASSERTION_KEY_ID)' \
 		--update-env-vars "^|^API_URL=$(API_URL)|VIEWER_BASE_DOMAIN=$(VIEWER_BASE_DOMAIN)|DEFAULT_ORGANIZATION_ID=$(DEFAULT_ORGANIZATION_ID)|NEXT_PUBLIC_APP_URL=$(NEXT_PUBLIC_APP_URL)|NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS=$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS)|NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS=$(NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS)"
 
 deploy-dev: ENV=dev

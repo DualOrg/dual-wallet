@@ -1,0 +1,1134 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  ProductFaceError,
+  type ProductFaceConfirmation,
+  type ProgrammeProduct,
+  type ProgrammeUnitFacts,
+} from "@/app/_domain/product-face";
+import {
+  ProductFaceSession,
+  productFaceOperationNames,
+  resolveProductFaceRequest,
+  startProductFaceBridge,
+  type ProductFaceHandlers,
+} from "@/app/_lib/external-face-bridge";
+import {
+  application,
+  HOLDER,
+  TEMPLATE_A,
+  TEMPLATE_B,
+} from "@/test/product-face-fixtures";
+
+const UNIT_A = "aaaaaaaaaaaaaaaaaaaaaaaa";
+const UNIT_B = "bbbbbbbbbbbbbbbbbbbbbbbb";
+
+function product(
+  objectId: string,
+  overrides: Partial<ProgrammeProduct> = {},
+): ProgrammeProduct {
+  return {
+    objectId,
+    templateId: TEMPLATE_A,
+    name: `Arc grinder ${objectId.slice(0, 2)}`,
+    owner: HOLDER,
+    custom: { serialNumber: `SN-${objectId.slice(0, 3)}`, state: "Registered" },
+    modifiedAt: new Date("2026-10-01T00:00:00Z"),
+    ...overrides,
+  };
+}
+
+function unit(overrides: Partial<ProgrammeUnitFacts> = {}): ProgrammeUnitFacts {
+  return {
+    objectId: UNIT_A,
+    templateId: TEMPLATE_A,
+    name: "Arc grinder",
+    fields: { serialNumber: "SN-1", model: "Arc" },
+    readback: { ownerIsYou: false, state: "Issued", lifecycleTarget: null },
+    registration: "not_owned",
+    ...overrides,
+  };
+}
+
+function handlers(overrides: Partial<ProductFaceHandlers> = {}) {
+  let contexts = 0;
+  const value: jest.Mocked<ProductFaceHandlers> = {
+    listProducts: jest.fn(async ({ templateId }) => ({
+      products:
+        templateId === TEMPLATE_A
+          ? [product(UNIT_A)]
+          : [product(UNIT_B, { templateId: TEMPLATE_B })],
+    })),
+    selectProduct: jest.fn(async (objectId: string) => {
+      contexts += 1;
+      return {
+        contextId: `context-${contexts}-${"x".repeat(16)}`,
+        product: product(objectId),
+      };
+    }),
+    readProduct: jest.fn(async (objectId: string) => product(objectId)),
+    readActions: jest.fn(async () => ["update"]),
+    readAttributes: jest.fn(async () => [{ key: "colour", value: "slate" }]),
+    readHistory: jest.fn(async () => [
+      {
+        actionId: "action-1",
+        action: "Register",
+        status: "completed" as const,
+        when: new Date("2026-10-02T00:00:00Z"),
+      },
+    ]),
+    readUnit: jest.fn(async () => unit()),
+    journal: jest.fn(async () => ({})),
+    operationStatus: jest.fn(async () => ({
+      status: "outcome_unknown" as const,
+      objectId: UNIT_A,
+      readback: { ownerIsYou: false, state: "Issued" },
+    })),
+    mintAssertion: jest.fn(async () => "header.claims.signature"),
+    readSettleProposal: jest.fn(),
+    executeSettle: jest.fn(async () => ({ actionId: "action-settle-1" })),
+    confirm: jest.fn(async () => true),
+    navigate: jest.fn(),
+    sha256: jest.fn(async () => `sha256:${"0".repeat(64)}`),
+    ...overrides,
+  } as jest.Mocked<ProductFaceHandlers>;
+  return value;
+}
+
+function runtimeFor(handlerSet = handlers()) {
+  const session = new ProductFaceSession(application, HOLDER, "/");
+  const events = { contextChanged: jest.fn() };
+  let id = 0;
+  const call = (operation: string, payload: unknown = {}) =>
+    resolveProductFaceRequest(
+      {
+        type: "dual.face.request",
+        protocol: "dual.face.bridge",
+        version: 1,
+        request_id: `request-${(id += 1)}`,
+        operation,
+        payload,
+      },
+      { session, handlers: handlerSet, events },
+    );
+  return { session, events, call, handlers: handlerSet };
+}
+
+describe("product face contract consistency", () => {
+  const contract = JSON.parse(
+    readFileSync(
+      join(process.cwd(), "contracts/dual-product-face-v1.json"),
+      "utf8",
+    ),
+  ) as { operations: Record<string, unknown> };
+
+  it("implements exactly the contract operations and no extra authority", () => {
+    expect([...productFaceOperationNames()].sort()).toEqual(
+      Object.keys(contract.operations).sort(),
+    );
+    const names = productFaceOperationNames();
+    expect(names).not.toContain("object.action.request");
+    expect(names.some((name) => name.startsWith("object."))).toBe(false);
+    expect(
+      names.some((name) =>
+        /fetch|proxy|token|cookie|execute|claim/i.test(name),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("application-variant capabilities", () => {
+  it("starts with no object and refuses product work without a selection", async () => {
+    const { call } = runtimeFor();
+    await expect(call("programme.context.read")).resolves.toEqual({
+      application: {
+        id: application.id,
+        version: application.version,
+        publisher: application.publisher,
+      },
+      programme: application.programme,
+      selected: null,
+      signed_in: true,
+    });
+    await expect(
+      call("programme.product.read", { context_id: "context-x" }),
+    ).rejects.toMatchObject({ code: "no_selection" });
+    await expect(call("bridge.ping")).resolves.toEqual({ pong: true });
+  });
+
+  it("lists only programme products held by the wallet, with opaque cursors", async () => {
+    const list = jest.fn(
+      async ({ templateId }: { templateId: string; next?: string }) =>
+        templateId === TEMPLATE_A
+          ? {
+              products: [
+                product(UNIT_A),
+                product("cccccccccccccccccccccccc", { owner: "0xsomeoneelse" }),
+              ],
+              next: "upstream-cursor",
+            }
+          : { products: [product(UNIT_B, { templateId: TEMPLATE_B })] },
+    );
+    const { call } = runtimeFor(handlers({ listProducts: list }));
+    const first = (await call("programme.products.list")) as {
+      products: Array<Record<string, unknown>>;
+      next: string;
+    };
+    expect(first.products).toEqual([
+      expect.objectContaining({
+        object_id: UNIT_A,
+        owned_by_you: true,
+        fields: { serialNumber: "SN-aaa", state: "Registered" },
+      }),
+    ]);
+    expect(first.products[0]).not.toHaveProperty("owner");
+    expect(first.products[0]).not.toHaveProperty("custom");
+    expect(first.next).not.toBe("upstream-cursor");
+    await expect(
+      call("programme.products.list", { next: "upstream-cursor" }),
+    ).rejects.toMatchObject({ code: "invalid_request" });
+    await call("programme.products.list", { next: first.next });
+    expect(list).toHaveBeenLastCalledWith({
+      templateId: TEMPLATE_A,
+      next: "upstream-cursor",
+    });
+  });
+
+  it("refuses products not owned or not in the programme", async () => {
+    const notOwned = runtimeFor(
+      handlers({
+        selectProduct: jest.fn(async (objectId: string) => ({
+          contextId: "context-1-xxxxxxxxxxxxxxxx",
+          product: product(objectId, { owner: "0xsomeoneelse" }),
+        })),
+      }),
+    );
+    await expect(
+      notOwned.call("programme.product.select", { object_id: UNIT_A }),
+    ).rejects.toMatchObject({ code: "not_owned" });
+    const foreign = runtimeFor(
+      handlers({
+        selectProduct: jest.fn(async (objectId: string) => ({
+          contextId: "context-1-xxxxxxxxxxxxxxxx",
+          product: product(objectId, {
+            templateId: "000000000000000000000000",
+          }),
+        })),
+      }),
+    );
+    await expect(
+      foreign.call("programme.product.select", { object_id: UNIT_A }),
+    ).rejects.toMatchObject({ code: "not_in_programme" });
+    const server = runtimeFor(
+      handlers({
+        selectProduct: jest.fn(async () => {
+          throw new ProductFaceError("not_owned", 403);
+        }),
+      }),
+    );
+    await expect(
+      server.call("programme.product.select", { object_id: UNIT_A }),
+    ).rejects.toMatchObject({ code: "not_owned" });
+  });
+
+  it("invalidates the previous context when switching products", async () => {
+    const { call, events } = runtimeFor();
+    const first = (await call("programme.product.select", {
+      object_id: UNIT_A,
+    })) as { context_id: string };
+    const second = (await call("programme.product.select", {
+      object_id: UNIT_B,
+    })) as { context_id: string };
+    expect(second.context_id).not.toBe(first.context_id);
+    await expect(
+      call("programme.product.history.read", { context_id: first.context_id }),
+    ).rejects.toMatchObject({ code: "stale_context" });
+    await expect(
+      call("programme.product.attributes.read", {
+        context_id: second.context_id,
+      }),
+    ).resolves.toEqual({
+      context_id: second.context_id,
+      attributes: [{ key: "colour", value: "slate" }],
+      next: null,
+    });
+    expect(events.contextChanged).toHaveBeenCalledWith(
+      second.context_id,
+      "selected",
+    );
+  });
+
+  it("drops a delayed response whose context changed", async () => {
+    let release!: (value: ProgrammeProduct) => void;
+    const handlerSet = handlers();
+    const { call } = runtimeFor(handlerSet);
+    const first = (await call("programme.product.select", {
+      object_id: UNIT_A,
+    })) as { context_id: string };
+    handlerSet.readProduct.mockImplementationOnce(
+      () =>
+        new Promise<ProgrammeProduct>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const late = call("programme.product.read", {
+      context_id: first.context_id,
+    });
+    await call("programme.product.select", { object_id: UNIT_B });
+    release(product(UNIT_A));
+    await expect(late).rejects.toMatchObject({ code: "stale_context" });
+  });
+
+  it("rejects unknown payload keys", async () => {
+    const { call } = runtimeFor();
+    await expect(
+      call("programme.product.select", { object_id: UNIT_A, owner: HOLDER }),
+    ).rejects.toMatchObject({ code: "invalid_request" });
+    await expect(
+      call("navigation.task.update", { path: "/register", url: "https://x" }),
+    ).rejects.toMatchObject({ code: "invalid_request" });
+    await expect(
+      call("programme.registration.authorize", {
+        object_id: UNIT_A,
+        operation_id: "register-op-0001",
+        recipient: "0xattacker",
+      }),
+    ).rejects.toMatchObject({ code: "invalid_request" });
+  });
+
+  it("mirrors valid task paths and refuses invalid ones", async () => {
+    const { call, handlers: handlerSet } = runtimeFor();
+    await expect(
+      call("navigation.task.update", { path: "/register/unit-7" }),
+    ).resolves.toEqual({ path: "/register/unit-7" });
+    expect(handlerSet.navigate).toHaveBeenCalledWith(
+      "/register/unit-7",
+      "push",
+    );
+    await call("navigation.task.update", {
+      path: "/register/unit-7",
+      title: "Register",
+    });
+    expect(handlerSet.navigate).toHaveBeenLastCalledWith(
+      "/register/unit-7",
+      "replace",
+    );
+    for (const path of ["//evil", "/a/../b", "https://evil", "/A"]) {
+      await expect(
+        call("navigation.task.update", { path }),
+      ).rejects.toMatchObject({ code: "invalid_request" });
+    }
+  });
+
+  it("refuses everything after the session ended", async () => {
+    const { call, session } = runtimeFor();
+    session.ended = "logout";
+    await expect(call("programme.context.read")).rejects.toMatchObject({
+      code: "session_ended",
+    });
+  });
+});
+
+describe("registration", () => {
+  const authorize = {
+    object_id: UNIT_A,
+    operation_id: "register-op-0001",
+  };
+
+  it("confirms natively, journals before minting, and returns one assertion", async () => {
+    const order: string[] = [];
+    const handlerSet = handlers({
+      journal: jest.fn(async (request) => {
+        order.push(`journal:${request.transition}`);
+        return request.transition === "begin" ? { unit: unit() } : {};
+      }),
+      confirm: jest.fn(async (request: ProductFaceConfirmation) => {
+        order.push(`confirm:${request.kind}`);
+        return true;
+      }),
+      mintAssertion: jest.fn(async (request) => {
+        order.push(`mint:${request.operation}`);
+        return "assertion-1";
+      }),
+    });
+    const { call, session } = runtimeFor(handlerSet);
+    await expect(
+      call("programme.registration.authorize", authorize),
+    ).resolves.toEqual({
+      status: "authorized",
+      operation_id: "register-op-0001",
+      assertion: "assertion-1",
+    });
+    expect(order).toEqual([
+      "journal:begin",
+      "confirm:registration",
+      "journal:confirm",
+      "mint:registration.submit",
+    ]);
+    expect(handlerSet.confirm).toHaveBeenCalledWith({
+      kind: "registration",
+      unit: unit(),
+    });
+    expect(session.issuedOperations.has("register-op-0001")).toBe(true);
+  });
+
+  it("never requests or executes claim_ownership for registration", async () => {
+    const handlerSet = handlers();
+    const { call } = runtimeFor(handlerSet);
+    await call("programme.registration.authorize", authorize);
+    expect(handlerSet.executeSettle).not.toHaveBeenCalled();
+    const everyCall = JSON.stringify(
+      Object.values(handlerSet).map((fn) => (fn as jest.Mock).mock.calls),
+    );
+    expect(everyCall).not.toMatch(/claim_ownership|claimOwnership/);
+    expect(handlerSet.mintAssertion).toHaveBeenCalledWith({
+      operation: "registration.submit",
+      operation_id: "register-op-0001",
+      target: { object_id: UNIT_A },
+    });
+  });
+
+  it("cancels before minting as not submitted", async () => {
+    const handlerSet = handlers({ confirm: jest.fn(async () => false) });
+    const { call } = runtimeFor(handlerSet);
+    await expect(
+      call("programme.registration.authorize", authorize),
+    ).rejects.toMatchObject({ code: "user_cancelled" });
+    expect(handlerSet.mintAssertion).not.toHaveBeenCalled();
+    expect(handlerSet.journal).toHaveBeenLastCalledWith({
+      transition: "cancel",
+      operation_id: "register-op-0001",
+    });
+  });
+
+  it("refuses units already held or outside the programme", async () => {
+    const registered = runtimeFor(
+      handlers({
+        readUnit: jest.fn(async () =>
+          unit({
+            readback: {
+              ownerIsYou: true,
+              state: "Registered",
+              lifecycleTarget: null,
+            },
+            registration: "registered",
+          }),
+        ),
+      }),
+    );
+    await expect(
+      registered.call("programme.registration.authorize", authorize),
+    ).rejects.toMatchObject({ code: "already_registered_to_you" });
+    const pending = runtimeFor(
+      handlers({
+        readUnit: jest.fn(async () =>
+          unit({
+            readback: {
+              ownerIsYou: true,
+              state: "Transfer pending",
+              lifecycleTarget: "Registered",
+            },
+            registration: "ownership_moved_state_pending",
+          }),
+        ),
+      }),
+    );
+    await expect(
+      pending.call("programme.registration.authorize", authorize),
+    ).rejects.toMatchObject({ code: "ownership_moved_state_pending" });
+    const foreign = runtimeFor(
+      handlers({
+        readUnit: jest.fn(async () => {
+          throw new ProductFaceError("not_in_programme", 404);
+        }),
+      }),
+    );
+    await expect(
+      foreign.call("programme.registration.authorize", authorize),
+    ).rejects.toMatchObject({ code: "not_in_programme" });
+  });
+
+  it("allows one pending confirmation per face", async () => {
+    let answer!: (value: boolean) => void;
+    const handlerSet = handlers({
+      confirm: jest.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            answer = resolve;
+          }),
+      ),
+    });
+    const { call } = runtimeFor(handlerSet);
+    const first = call("programme.registration.authorize", authorize);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expect(
+      call("programme.registration.authorize", {
+        ...authorize,
+        operation_id: "register-op-0002",
+      }),
+    ).rejects.toMatchObject({ code: "action_in_progress" });
+    answer(false);
+    await expect(first).rejects.toMatchObject({ code: "user_cancelled" });
+  });
+
+  it("does not re-mint an operation that already left the wallet", async () => {
+    const handlerSet = handlers({
+      journal: jest.fn(async () => {
+        throw new ProductFaceError("operation_already_submitted", 409);
+      }),
+    });
+    const { call } = runtimeFor(handlerSet);
+    await expect(
+      call("programme.registration.authorize", authorize),
+    ).rejects.toMatchObject({ code: "operation_already_submitted" });
+    expect(handlerSet.confirm).not.toHaveBeenCalled();
+    expect(handlerSet.mintAssertion).not.toHaveBeenCalled();
+  });
+
+  it("reports pending only for an operation this live host issued", async () => {
+    const live = runtimeFor();
+    await live.call("programme.registration.authorize", authorize);
+    await expect(
+      live.call("programme.operation.status", {
+        operation_id: "register-op-0001",
+      }),
+    ).resolves.toMatchObject({ status: "pending" });
+    // After a reload the same readback is outcome_unknown, and status never mints.
+    const reloaded = runtimeFor();
+    await expect(
+      reloaded.call("programme.operation.status", {
+        operation_id: "register-op-0001",
+      }),
+    ).resolves.toMatchObject({ status: "outcome_unknown" });
+    expect(reloaded.handlers.mintAssertion).not.toHaveBeenCalled();
+  });
+
+  it("passes a canonical not-registered status through unchanged", async () => {
+    const { call } = runtimeFor(
+      handlers({
+        operationStatus: jest.fn(async () => ({
+          status: "ownership_moved_state_pending" as const,
+          objectId: UNIT_A,
+          readback: { ownerIsYou: true, state: "Transfer pending" },
+        })),
+      }),
+    );
+    await expect(
+      call("programme.operation.status", { operation_id: "register-op-0001" }),
+    ).resolves.toEqual({
+      operation_id: "register-op-0001",
+      status: "ownership_moved_state_pending",
+      object_id: UNIT_A,
+      readback: { owner_is_you: true, state: "Transfer pending" },
+    });
+  });
+});
+
+describe("runtime authorization", () => {
+  const hash = `sha256:${"1".repeat(64)}`;
+
+  async function selected(handlerSet = handlers()) {
+    const runtime = runtimeFor(handlerSet);
+    const { context_id } = (await runtime.call("programme.product.select", {
+      object_id: UNIT_A,
+    })) as { context_id: string };
+    return { ...runtime, contextId: context_id };
+  }
+
+  it("mints reads for the selected product without a dialog", async () => {
+    const { call, handlers: handlerSet, contextId } = await selected();
+    await expect(
+      call("programme.runtime.authorize", {
+        operation: "cases.list",
+        operation_id: "read-op-0001",
+        target: { object_id: UNIT_A },
+        request_hash: hash,
+      }),
+    ).resolves.toEqual({ assertion: "header.claims.signature" });
+    expect(handlerSet.confirm).not.toHaveBeenCalled();
+    expect(handlerSet.mintAssertion).toHaveBeenCalledWith(
+      expect.objectContaining({ context_id: contextId }),
+    );
+    await expect(
+      call("programme.runtime.authorize", {
+        operation: "cases.list",
+        operation_id: "read-op-0002",
+        target: { object_id: UNIT_B },
+        request_hash: hash,
+      }),
+    ).rejects.toMatchObject({ code: "stale_context" });
+    await expect(
+      call("programme.runtime.authorize", {
+        operation: "registration.submit",
+        operation_id: "read-op-0003",
+        target: { object_id: UNIT_A },
+        request_hash: hash,
+      }),
+    ).rejects.toMatchObject({ code: "invalid_request" });
+  });
+
+  it("confirms writes natively and cancels as not submitted", async () => {
+    const handlerSet = handlers({ confirm: jest.fn(async () => false) });
+    const { call } = await selected(handlerSet);
+    await expect(
+      call("programme.runtime.authorize", {
+        operation: "case.open",
+        operation_id: "case-op-0001",
+        target: { object_id: UNIT_A },
+        request_hash: hash,
+      }),
+    ).rejects.toMatchObject({ code: "user_cancelled" });
+    expect(handlerSet.confirm).toHaveBeenCalledWith({
+      kind: "runtime",
+      operation: "case.open",
+      product: { objectId: UNIT_A, name: "Arc grinder aa" },
+    });
+    expect(handlerSet.mintAssertion).not.toHaveBeenCalled();
+  });
+
+  it("refuses a quote decision whose quote differs from the host-read quote", async () => {
+    const quote = {
+      caseId: "case-1",
+      quoteVersion: "q2",
+      provider: "Morrow Service Centre",
+      amount: "149.90",
+      currency: "EUR",
+    };
+    const handlerSet = handlers({
+      journal: jest.fn(async (request) =>
+        request.transition === "begin" ? { quote } : {},
+      ),
+    });
+    const { call } = await selected(handlerSet);
+    const target = {
+      object_id: UNIT_A,
+      case_id: "case-1",
+      quote_version: "q1",
+      amount: "99.00",
+      currency: "EUR",
+    };
+    await expect(
+      call("programme.runtime.authorize", {
+        operation: "case.quote.approve",
+        operation_id: "quote-op-0001",
+        target,
+        request_hash: hash,
+      }),
+    ).rejects.toMatchObject({ code: "quote_changed" });
+    expect(handlerSet.confirm).not.toHaveBeenCalled();
+    await expect(
+      call("programme.runtime.authorize", {
+        operation: "case.quote.approve",
+        operation_id: "quote-op-0002",
+        target: { ...target, quote_version: "q2", amount: "149.90" },
+        request_hash: hash,
+      }),
+    ).resolves.toEqual({ assertion: "header.claims.signature" });
+    expect(handlerSet.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "runtime", quote }),
+    );
+  });
+});
+
+describe("holder settle (G6)", () => {
+  const pendingProduct = product(UNIT_A, {
+    custom: {
+      state: "Transfer pending",
+      lifecycle: { target_state: "Registered" },
+    },
+  });
+  const proposal = {
+    proposalId: "proposal-1",
+    operationId: "register-op-0001",
+    objectId: UNIT_A,
+    action: "update",
+    input: {
+      custom: {
+        state: "Authenticity verified",
+        lifecycle: { target_state: "Authenticity verified" },
+      },
+    },
+    proposalHash: `sha256:${"0".repeat(64)}`,
+    expiresAt: new Date(Date.now() + 60_000),
+  };
+
+  async function settleRuntime(overrides: Partial<ProductFaceHandlers> = {}) {
+    const order: string[] = [];
+    const handlerSet = handlers({
+      selectProduct: jest.fn(async () => ({
+        contextId: "context-settle-xxxxxxxxxxxx",
+        product: pendingProduct,
+      })),
+      readProduct: jest.fn(async () => pendingProduct),
+      readSettleProposal: jest.fn(async () => ({ proposal, changes: [] })),
+      journal: jest.fn(async (request) => {
+        order.push(`journal:${request.transition}`);
+        return {};
+      }),
+      executeSettle: jest.fn(async () => {
+        order.push("execute");
+        return { actionId: "action-settle-1" };
+      }),
+      ...overrides,
+    });
+    const runtime = runtimeFor(handlerSet);
+    const { context_id } = (await runtime.call("programme.product.select", {
+      object_id: UNIT_A,
+    })) as { context_id: string };
+    const request = {
+      context_id,
+      operation_id: "register-op-0001",
+      settle_operation_id: "settle-op-0001",
+    };
+    return { ...runtime, order, request };
+  }
+
+  it("executes exactly the host-read proposal as the holder, journalled first", async () => {
+    const {
+      call,
+      handlers: handlerSet,
+      order,
+      request,
+    } = await settleRuntime();
+    await expect(
+      call("programme.product.settle.request", request),
+    ).resolves.toEqual({
+      status: "submitted",
+      settle_operation_id: "settle-op-0001",
+      action_id: "action-settle-1",
+    });
+    expect(order).toEqual([
+      "journal:begin",
+      "journal:confirm",
+      "journal:submit",
+      "execute",
+      "journal:record_action",
+    ]);
+    expect(handlerSet.executeSettle).toHaveBeenCalledWith({
+      objectId: UNIT_A,
+      action: "update",
+      input: proposal.input,
+    });
+    expect(handlerSet.confirm).toHaveBeenCalledWith({
+      kind: "settle",
+      product: { objectId: UNIT_A, name: pendingProduct.name },
+      action: "update",
+      changes: [
+        {
+          field: "custom.state",
+          from: "Transfer pending",
+          to: "Authenticity verified",
+        },
+        {
+          field: "custom.lifecycle.target_state",
+          from: "Registered",
+          to: "Authenticity verified",
+        },
+      ],
+    });
+  });
+
+  it("ignores a face-supplied proposal", async () => {
+    const { call, request, handlers: handlerSet } = await settleRuntime();
+    await expect(
+      call("programme.product.settle.request", {
+        ...request,
+        proposal: { action: "transfer", input: { to: "0xattacker" } },
+      }),
+    ).rejects.toMatchObject({ code: "invalid_request" });
+    expect(handlerSet.executeSettle).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "a hash mismatch",
+      { sha256: jest.fn(async () => `sha256:${"9".repeat(64)}`) },
+    ],
+    [
+      "a proposal for another unit",
+      {
+        readSettleProposal: jest.fn(async () => ({
+          proposal: { ...proposal, objectId: UNIT_B },
+          changes: [],
+        })),
+      },
+    ],
+    [
+      "a nested extra key",
+      {
+        readSettleProposal: jest.fn(async () => ({
+          proposal: {
+            ...proposal,
+            input: {
+              custom: { ...proposal.input.custom, owner: "0xattacker" },
+            },
+          },
+          changes: [],
+        })),
+      },
+    ],
+    [
+      "an expired proposal",
+      {
+        readSettleProposal: jest.fn(async () => ({
+          proposal: { ...proposal, expiresAt: new Date(Date.now() - 1) },
+          changes: [],
+        })),
+      },
+    ],
+    [
+      "an unavailable action",
+      { readActions: jest.fn(async () => ["transfer"]) },
+    ],
+  ])("refuses %s", async (_label, overrides) => {
+    const {
+      call,
+      request,
+      handlers: handlerSet,
+    } = await settleRuntime(overrides as Partial<ProductFaceHandlers>);
+    await expect(
+      call("programme.product.settle.request", request),
+    ).rejects.toMatchObject({ code: "proposal_rejected" });
+    expect(handlerSet.executeSettle).not.toHaveBeenCalled();
+  });
+
+  it("refuses a product that is not owned or not pending", async () => {
+    const notOwned = await settleRuntime();
+    notOwned.handlers.readProduct.mockResolvedValueOnce({
+      ...pendingProduct,
+      owner: "0xsomeoneelse",
+    });
+    await expect(
+      notOwned.call("programme.product.settle.request", notOwned.request),
+    ).rejects.toMatchObject({ code: "not_owned" });
+    const settled = await settleRuntime();
+    settled.handlers.readProduct.mockResolvedValueOnce(product(UNIT_A));
+    await expect(
+      settled.call("programme.product.settle.request", settled.request),
+    ).rejects.toMatchObject({ code: "settle_not_required" });
+  });
+
+  it("cancels before execution as not submitted", async () => {
+    const {
+      call,
+      request,
+      handlers: handlerSet,
+      order,
+    } = await settleRuntime({
+      confirm: jest.fn(async () => false),
+    });
+    await expect(
+      call("programme.product.settle.request", request),
+    ).rejects.toMatchObject({ code: "user_cancelled" });
+    expect(handlerSet.executeSettle).not.toHaveBeenCalled();
+    expect(order).toEqual(["journal:begin", "journal:cancel"]);
+  });
+
+  it("reports a lost execution as outcome_unknown and never re-executes", async () => {
+    const lost = await settleRuntime({
+      executeSettle: jest.fn(async () => {
+        throw new Error("network lost");
+      }),
+    });
+    await expect(
+      lost.call("programme.product.settle.request", lost.request),
+    ).rejects.toMatchObject({ code: "outcome_unknown" });
+    expect(lost.order).toEqual([
+      "journal:begin",
+      "journal:confirm",
+      "journal:submit",
+    ]);
+
+    const again = await settleRuntime({
+      journal: jest.fn(async (request) => {
+        if (request.transition === "begin") {
+          throw new ProductFaceError("operation_already_submitted", 409);
+        }
+        return {};
+      }),
+    });
+    await expect(
+      again.call("programme.product.settle.request", again.request),
+    ).rejects.toMatchObject({ code: "outcome_unknown" });
+    expect(again.handlers.executeSettle).not.toHaveBeenCalled();
+    expect(again.handlers.confirm).not.toHaveBeenCalled();
+  });
+});
+
+describe("application-variant transport", () => {
+  class FakePort {
+    peer!: FakePort;
+    onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
+    closed = false;
+    postMessage(data: unknown) {
+      if (this.closed) return;
+      queueMicrotask(() => this.peer.onmessage?.({ data } as MessageEvent));
+    }
+    start() {}
+    close() {
+      this.closed = true;
+    }
+  }
+  class FakeMessageChannel {
+    port1: MessagePort;
+    port2: MessagePort;
+    constructor() {
+      const one = new FakePort();
+      const two = new FakePort();
+      one.peer = two;
+      two.peer = one;
+      this.port1 = one as unknown as MessagePort;
+      this.port2 = two as unknown as MessagePort;
+    }
+  }
+  const originalChannel = global.MessageChannel;
+  const originalEncoder = global.TextEncoder;
+  beforeAll(() => {
+    global.MessageChannel =
+      FakeMessageChannel as unknown as typeof MessageChannel;
+    global.TextEncoder = class {
+      encode(value: string) {
+        return new Uint8Array(value.length);
+      }
+    } as typeof TextEncoder;
+  });
+  afterAll(() => {
+    global.MessageChannel = originalChannel;
+    global.TextEncoder = originalEncoder;
+  });
+
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const frameUrl = `${application.origin}${application.path}`;
+  const readyIdentity = {
+    id: application.id,
+    version: application.version,
+    publisher: application.publisher,
+    programme: application.programme.id,
+    artifact: application.artifact,
+    contract: "dual-product-face-v1",
+  };
+
+  function open(
+    options: { url?: string; handlers?: ProductFaceHandlers } = {},
+  ) {
+    const postMessage = jest.fn();
+    const frame = {
+      contentWindow: { postMessage },
+    } as unknown as HTMLIFrameElement;
+    const host = startProductFaceBridge({
+      frame,
+      frameUrl: options.url ?? frameUrl,
+      application,
+      holder: HOLDER,
+      task: "/register",
+      handlers: options.handlers ?? handlers(),
+    });
+    if (!host) throw new Error("bridge refused to start");
+    const [bootstrap, targetOrigin, [port]] = postMessage.mock.calls[0] as [
+      { channel_id: string },
+      string,
+      MessagePort[],
+    ];
+    const received: Array<Record<string, unknown>> = [];
+    port.onmessage = (event) =>
+      received.push(event.data as Record<string, unknown>);
+    const ready = (application: Record<string, unknown> = readyIdentity) =>
+      port.postMessage({
+        type: "dual.face.ready",
+        protocol: "dual.face.bridge",
+        version: 1,
+        channel_id: bootstrap.channel_id,
+        application,
+      });
+    const request = (
+      requestId: string,
+      operation: string,
+      payload = {},
+      extra = {},
+    ) =>
+      port.postMessage({
+        type: "dual.face.request",
+        protocol: "dual.face.bridge",
+        version: 1,
+        request_id: requestId,
+        operation,
+        payload,
+        ...extra,
+      });
+    return { host, postMessage, targetOrigin, received, ready, request };
+  }
+
+  it("refuses a frame outside the exact bound origin and pinned path", () => {
+    for (const url of [
+      `https://faces.example.evil${application.path}`,
+      `https://faces.example:8443${application.path}`,
+      `http://faces.example${application.path}`,
+      "https://faces.example/face/tig.passport.morrow-home/1.0.0/",
+      `https://faces.example/face/other/1.0.0/${"a".repeat(64)}/`,
+    ]) {
+      const postMessage = jest.fn();
+      const host = startProductFaceBridge({
+        frame: {
+          contentWindow: { postMessage },
+        } as unknown as HTMLIFrameElement,
+        frameUrl: url,
+        application,
+        holder: HOLDER,
+        task: "/",
+        handlers: handlers(),
+      });
+      expect(host).toBeUndefined();
+      expect(postMessage).not.toHaveBeenCalled();
+    }
+  });
+
+  it("initializes only after an exact ready identity, with no wallet data", async () => {
+    const { targetOrigin, received, ready, host } = open();
+    expect(targetOrigin).toBe("https://faces.example");
+    ready();
+    await tick();
+    expect(received[0]).toMatchObject({
+      type: "dual.face.initialize",
+      context: {
+        object_id: null,
+        variant: "application",
+        public: false,
+        object: null,
+        application: {
+          id: application.id,
+          version: "1.0.0",
+          publisher: "morrow-home",
+        },
+        programme: application.programme,
+        task: { path: "/register" },
+      },
+    });
+    const serialized = JSON.stringify(received[0]).toLowerCase();
+    expect(serialized).not.toContain(HOLDER.toLowerCase());
+    expect(serialized).not.toMatch(
+      /token|cookie|assertion|signature|wallet_id/,
+    );
+    host?.close();
+  });
+
+  it.each([
+    ["version", { version: "1.0.1" }],
+    ["major-only version", { version: "1" }],
+    ["publisher", { publisher: "tidewell" }],
+    ["programme", { programme: "tidewell-care" }],
+    ["artifact", { artifact: `sha256:${"b".repeat(64)}` }],
+    ["contract", { contract: "dual-product-face-v2" }],
+    ["application id", { id: "tig.passport.tidewell" }],
+    ["an extra key", { scope: "admin" }],
+  ])("closes the channel on a mismatched %s", async (_label, change) => {
+    const { received, ready, request } = open();
+    ready({ ...readyIdentity, ...change });
+    await tick();
+    request("request-1", "bridge.ping");
+    await tick();
+    expect(received).toEqual([]);
+  });
+
+  it("closes the channel when a required identity key is missing", async () => {
+    const { received, ready } = open();
+    const partial: Record<string, unknown> = { ...readyIdentity };
+    delete partial.artifact;
+    ready(partial);
+    await tick();
+    expect(received).toEqual([]);
+  });
+
+  it("rejects unknown envelope keys and duplicate request ids", async () => {
+    const { received, ready, request, host } = open();
+    ready();
+    await tick();
+    request("request-1", "bridge.ping", {}, { token: "x" });
+    await tick();
+    expect(received.at(-1)).toMatchObject({
+      request_id: "request-1",
+      ok: false,
+      error: { code: "invalid_request" },
+    });
+    request("request-2", "bridge.ping");
+    await tick();
+    expect(received.at(-1)).toMatchObject({ ok: true, result: { pong: true } });
+    request("request-2", "bridge.ping");
+    await tick();
+    expect(received.at(-1)).toMatchObject({
+      ok: false,
+      error: { code: "invalid_request" },
+    });
+    request("request-3", "object.action.request", { name: "claim_ownership" });
+    await tick();
+    expect(received.at(-1)).toMatchObject({
+      ok: false,
+      error: { code: "capability_denied" },
+    });
+    host?.close();
+  });
+
+  it("ignores forged window messages from any origin", async () => {
+    const handlerSet = handlers();
+    const { ready, received, host } = open({ handlers: handlerSet });
+    ready();
+    await tick();
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        origin: "https://faces.example",
+        data: {
+          type: "dual.face.request",
+          protocol: "dual.face.bridge",
+          version: 1,
+          request_id: "forged",
+          operation: "programme.registration.authorize",
+          payload: { object_id: UNIT_A, operation_id: "forged-op-0001" },
+        },
+      }),
+    );
+    await tick();
+    expect(handlerSet.readUnit).not.toHaveBeenCalled();
+    expect(received).toHaveLength(1);
+    host?.close();
+  });
+
+  it("sends session.ended first and then refuses everything", async () => {
+    const { ready, received, request, host } = open();
+    ready();
+    await tick();
+    host?.end("logout");
+    await tick();
+    expect(received.at(-1)).toMatchObject({
+      type: "dual.face.event",
+      event: "session.ended",
+      payload: { reason: "logout" },
+    });
+    const count = received.length;
+    request("request-after", "programme.context.read");
+    await tick();
+    expect(received).toHaveLength(count);
+    expect(host?.session.ended).toBe("logout");
+  });
+
+  it("restores task paths and reports operation updates as events", async () => {
+    const { ready, received, host } = open();
+    ready();
+    await tick();
+    host?.restoreTask("/register/unit-7");
+    host?.operationUpdated("register-op-0001", "outcome_unknown");
+    await tick();
+    expect(received.slice(-2)).toEqual([
+      expect.objectContaining({
+        event: "navigation.task.restore",
+        payload: { path: "/register/unit-7" },
+      }),
+      expect.objectContaining({
+        event: "operation.updated",
+        payload: {
+          operation_id: "register-op-0001",
+          status: "outcome_unknown",
+        },
+      }),
+    ]);
+    host?.close();
+  });
+});

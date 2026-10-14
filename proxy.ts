@@ -2,8 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { ORGANIZATION_COOKIE_NAME, SESSION_COOKIE_NAME } from "@/api/settings";
 import { chosenOrganizationId } from "@/api/tenant";
-
-const PROTECTED = ["/inventory", "/activity", "/settings"];
+import { isProtectedPath, safeReturnPath } from "@/app/_domain/navigation";
 const AUTH_ENTRY = ["/login", "/register", "/forgot-password"];
 
 // Every unauthorized route. Each one keeps the organization in the address bar,
@@ -62,21 +61,24 @@ export function proxy(request: NextRequest) {
   const entry = organizationId ? `/${organizationId}` : "";
 
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE_NAME)?.value);
-  const protectedRoute = PROTECTED.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
+  const protectedRoute = isProtectedPath(pathname);
 
   let response: NextResponse;
   if (protectedRoute && !hasSession) {
+    // Sign-in returns to the exact route and task that was asked for, as a
+    // validated same-origin relative path. Anything else is dropped.
+    const next = safeReturnPath(`${pathname}${url.search}`);
     url.pathname = `${entry}/login`;
-    url.search = "";
+    url.search = next ? `?next=${encodeURIComponent(next)}` : "";
     response = NextResponse.redirect(url);
   } else if (hasSession && isAuthEntry(pathname, url.searchParams)) {
     // ponytail: a visitor signed in to one organization who opens another one's
     // entry link goes to /inventory first, then back to /login once the session
     // fails its tenant check. Unsealing the session here would save the hop.
-    url.pathname = "/inventory";
-    url.search = "";
+    const next = safeReturnPath(url.searchParams.get("next"));
+    const target = new URL(next ?? "/inventory", url);
+    url.pathname = target.pathname;
+    url.search = target.search;
     response = NextResponse.redirect(url);
   } else if (!prefixed && entry && PUBLIC.includes(pathname)) {
     // The organization is known but absent from the address bar: a link from

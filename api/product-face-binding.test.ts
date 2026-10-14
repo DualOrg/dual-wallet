@@ -1,0 +1,126 @@
+/**
+ * @jest-environment node
+ */
+import {
+  parseProductFaceApplications,
+  productFaceFrameOrigins,
+} from "@/api/product-face-binding";
+import { ARTIFACT_HEX, bindingInput } from "@/test/product-face-fixtures";
+
+const parse = (entries: unknown[], production = true) =>
+  parseProductFaceApplications(JSON.stringify(entries), { production });
+
+describe("product application registry", () => {
+  it("parses a complete binding", () => {
+    const [binding] = parse([bindingInput()]);
+    expect(binding).toMatchObject({
+      slug: "morrow-home",
+      applicationId: "tig.passport.morrow-home",
+      version: "1.0.0",
+      origin: "https://faces.example",
+      artifactHash: `sha256:${ARTIFACT_HEX}`,
+      settle: { action: "update", fromStates: ["Transfer pending"] },
+    });
+  });
+
+  it("fails closed on malformed configuration", () => {
+    expect(
+      parseProductFaceApplications(undefined, { production: true }),
+    ).toEqual([]);
+    expect(
+      parseProductFaceApplications("{not json", { production: true }),
+    ).toEqual([]);
+    expect(parseProductFaceApplications("{}", { production: true })).toEqual(
+      [],
+    );
+  });
+
+  it.each([
+    ["an unknown key", { extra: true }],
+    ["a bad slug", { slug: "Morrow Home" }],
+    ["a version range", { version: "^1.0.0" }],
+    ["a major-only version", { version: "1" }],
+    ["a wildcard origin", { origin: "https://*.example" }],
+    ["an origin with a path", { origin: "https://faces.example/x" }],
+    ["plain http in production", { origin: "http://faces.example" }],
+    ["loopback http in production", { origin: "http://localhost:4101" }],
+    [
+      "a path that is not content-addressed",
+      { path: "/face/tig.passport.morrow-home/1.0.0/" },
+    ],
+    [
+      "a path for another artifact",
+      { path: `/face/tig.passport.morrow-home/1.0.0/${"b".repeat(64)}/` },
+    ],
+    ["a malformed artifact hash", { artifactHash: "sha256:xyz" }],
+    ["an uppercase template id", { templateIds: ["65F0A1B2C3D4E5F6A7B8C9D0"] }],
+    ["no templates", { templateIds: [] }],
+    ["an unknown projection field", { projectionFields: ["owner"] }],
+    [
+      "overlapping canonical states",
+      {
+        canonicalRegistration: {
+          ...bindingInput().canonicalRegistration,
+          endedStates: ["Registered"],
+        },
+      },
+    ],
+    [
+      "a claim_ownership settle",
+      { settle: { ...bindingInput().settle, action: "claim_ownership" } },
+    ],
+    [
+      "a transfer settle",
+      { settle: { ...bindingInput().settle, action: "transfer" } },
+    ],
+    [
+      "a settle from a settled state",
+      { settle: { ...bindingInput().settle, fromStates: ["Registered"] } },
+    ],
+    [
+      "a settle to an unsettled state",
+      {
+        settle: {
+          ...bindingInput().settle,
+          targetStates: ["Transfer pending"],
+        },
+      },
+    ],
+    [
+      "a settle template with an arbitrary leaf",
+      {
+        settle: {
+          ...bindingInput().settle,
+          inputTemplate: { custom: { state: "anything" } },
+        },
+      },
+    ],
+    ["markup in the programme name", { programmeName: "<b>Arc</b>" }],
+  ])("drops a binding with %s", (_label, override) => {
+    expect(parse([bindingInput(override)])).toEqual([]);
+  });
+
+  it("allows loopback http only outside production", () => {
+    const local = bindingInput({ origin: "http://localhost:4101" });
+    expect(parse([local], false)).toHaveLength(1);
+    expect(parse([local], true)).toHaveLength(0);
+  });
+
+  it("drops every binding of a duplicated slug", () => {
+    expect(
+      parse([bindingInput(), bindingInput({ programmeName: "Other" })]),
+    ).toEqual([]);
+  });
+
+  it("derives exact frame origins, never a wildcard", () => {
+    const raw = JSON.stringify([
+      bindingInput(),
+      bindingInput({ slug: "tidewell", origin: "https://tidewell.example" }),
+      bindingInput({ slug: "broken", origin: "https://*.example" }),
+    ]);
+    expect(productFaceFrameOrigins(raw, { production: true })).toEqual([
+      "https://faces.example",
+      "https://tidewell.example",
+    ]);
+  });
+});

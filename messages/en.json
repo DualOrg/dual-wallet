@@ -41,7 +41,8 @@
     "logout": "Sign out",
     "account": "Your account",
     "mainNavigation": "Main navigation",
-    "skipToContent": "Skip to main content"
+    "skipToContent": "Skip to main content",
+    "products": "Products"
   },
   "profileMenu": {
     "account": "Your account",
@@ -427,5 +428,82 @@
     "deleteConfirm": "Type DELETE to confirm",
     "deleteAction": "Permanently delete account",
     "deleteConfirmValue": "DELETE"
+  },
+  "products": {
+    "eyebrow": "Programmes",
+    "title": "Products",
+    "description": "Open a product programme to register and use the products you own.",
+    "emptyTitle": "No product programmes",
+    "emptyDescription": "This wallet has no product programmes available yet.",
+    "publisher": "Published by {publisher}",
+    "open": "Open {programme}",
+    "back": "Back to products",
+    "identityLabel": "Product application",
+    "reviewed": "Reviewed application",
+    "frameTitle": "{programme} product application",
+    "loading": "Opening the product application…",
+    "errors": {
+      "artifact_mismatch": "This product application could not be verified, so it was not opened.",
+      "artifact_unavailable": "This product application is unavailable right now. Try again shortly.",
+      "unknown_application": "This product programme is not available in this wallet.",
+      "session_expired": "Your session has expired. Sign in again to continue.",
+      "generic": "This product application could not be opened. Try again shortly."
+    },
+    "ended": {
+      "logout": "You signed out, so the product application was closed.",
+      "expired": "Your session ended, so the product application was closed.",
+      "account_changed": "You switched account, so the product application was closed.",
+      "reopen": "Open again"
+    },
+    "confirm": {
+      "requestedBy": "Requested by {publisher} for {programme}",
+      "yourWallet": "Your wallet",
+      "product": "Product",
+      "cancel": "Cancel",
+      "noPayment": "No payment is taken.",
+      "registration": {
+        "title": "Register this product to your wallet?",
+        "description": "The product moves to your wallet through the publisher's registration. Nothing is charged.",
+        "confirm": "Register product"
+      },
+      "runtime": {
+        "title": "Confirm this request",
+        "description": "The application asks to do this for your product.",
+        "confirm": "Confirm",
+        "case": "Case",
+        "operation": "Request",
+        "operations": {
+          "case_open": "Open a service case",
+          "case_evidence_submit": "Add evidence to a case",
+          "case_information_provide": "Send requested information",
+          "case_quote_approve": "Approve a service quote",
+          "case_quote_decline": "Decline a service quote"
+        }
+      },
+      "quote": {
+        "provider": "Provider (from the publisher)",
+        "amount": "Amount",
+        "version": "Quote version"
+      },
+      "settle": {
+        "title": "Confirm your product registration",
+        "description": "Your wallet signs this change to your product to complete its registration.",
+        "confirm": "Sign and confirm",
+        "changes": "Changes to your product",
+        "field": "Field",
+        "from": "Now",
+        "to": "After",
+        "empty": "Not set"
+      },
+      "fields": {
+        "name": "Name",
+        "recordId": "Record",
+        "title": "Title",
+        "serialNumber": "Serial number",
+        "model": "Model",
+        "manufacturer": "Manufacturer",
+        "state": "Status"
+      }
+    }
   }
 }

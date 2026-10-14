@@ -48,9 +48,10 @@ test("the route guards run on the stripped path", () => {
   const anonymous = visit(`/${ORGANIZATION}/inventory`);
 
   expect(anonymous.status).toBe(307);
-  // Sent to sign in, and still in the organization that was asked for.
+  // Sent to sign in, still in the organization that was asked for, and told
+  // where to come back to.
   expect(anonymous.headers.get("location")).toBe(
-    `http://localhost/${ORGANIZATION}/login`,
+    `http://localhost/${ORGANIZATION}/login?next=%2Finventory`,
   );
   expect(anonymous.cookies.get(ORGANIZATION_COOKIE)?.value).toBe(ORGANIZATION);
 
@@ -136,4 +137,48 @@ test("a reset link keeps its token in a browser that is already signed in", () =
   expect(
     visit(`/${ORGANIZATION}/reset-password`, signedIn).headers.get("location"),
   ).toBe("http://localhost/inventory");
+});
+
+test("a product task link survives sign-in as a validated return path", () => {
+  const task = "/products/morrow-home/register/unit-7?step=confirm";
+  const anonymous = visit(task);
+  expect(anonymous.status).toBe(307);
+  expect(anonymous.headers.get("location")).toBe(
+    `http://localhost/login?next=${encodeURIComponent(task)}`,
+  );
+
+  // Once signed in, the auth entry forwards to that exact path and query.
+  const signedIn = visit(
+    `/login?next=${encodeURIComponent(task)}`,
+    "smarttoken_viewer=sealed",
+  );
+  expect(signedIn.headers.get("location")).toBe(`http://localhost${task}`);
+});
+
+test("an unsafe return path is never followed", () => {
+  for (const next of [
+    "//evil.example/products",
+    "https://evil.example/products",
+    "/\\evil.example/products",
+    "/products/a#fragment",
+    "/api/session/logout",
+    "/login",
+    "products/relative",
+    `/products/${"a".repeat(600)}`,
+    "/products/../settings/../../x",
+  ]) {
+    const response = visit(
+      `/login?next=${encodeURIComponent(next)}`,
+      "smarttoken_viewer=sealed",
+    );
+    expect(response.headers.get("location")).toBe("http://localhost/inventory");
+  }
+});
+
+test("only protected routes are offered as a return path", () => {
+  for (const path of ["/products", "/activity?status=failed", "/settings"]) {
+    expect(visit(path).headers.get("location")).toBe(
+      `http://localhost/login?next=${encodeURIComponent(path)}`,
+    );
+  }
 });

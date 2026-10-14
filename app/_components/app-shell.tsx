@@ -9,6 +9,7 @@ import {
   LogOut,
   Menu,
   Moon,
+  PackageCheck,
   Settings,
   Sun,
   X,
@@ -16,12 +17,14 @@ import {
 import { useTranslations } from "next-intl";
 import { Brand } from "@/app/_components/design-system/brand";
 import { UserProfileMenu } from "@/app/_components/user-profile-menu";
+import { safeReturnPath } from "@/app/_domain/navigation";
 import { useSession } from "@/app/_providers/session-provider";
 import { useTheme } from "@/app/_providers/theme-provider";
 import { cn } from "@/app/_utils/cn";
 
 const links = [
   { href: "/inventory", key: "inventory", icon: Boxes },
+  { href: "/products", key: "products", icon: PackageCheck },
   { href: "/activity", key: "activity", icon: Activity },
   { href: "/settings", key: "settings", icon: Settings },
 ] as const;
@@ -55,12 +58,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { wallet, isLoading, isAuthenticated, logout } = useSession();
   const { theme, toggleTheme } = useTheme();
   const menuTrigger = useRef<HTMLButtonElement>(null);
+  const signingOut = useRef(false);
   const router = useRouter();
+  const pathname = usePathname();
   const t = useTranslations("nav");
   const common = useTranslations("common");
+  // A programme's product face uses the whole content area.
+  const fullSize = /^\/products\/[^/]+/.test(pathname);
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) router.replace("/login");
+    if (isLoading || isAuthenticated) return;
+    // An expired session returns here after sign-in; an explicit sign-out
+    // replaces this with a plain /login below.
+    const next = signingOut.current
+      ? undefined
+      : safeReturnPath(`${window.location.pathname}${window.location.search}`);
+    router.replace(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
   }, [isAuthenticated, isLoading, router]);
 
   useEffect(() => {
@@ -75,6 +88,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [mobileOpen]);
 
   const signOut = async () => {
+    signingOut.current = true;
     await logout();
     router.replace("/login");
     router.refresh();
@@ -143,7 +157,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {signOutButton}
           </nav>
         ) : null}
-        <main className="content" id="main-content" tabIndex={-1}>
+        <main
+          className={cn("content", fullSize && "content-full")}
+          id="main-content"
+          tabIndex={-1}
+        >
           {children}
         </main>
       </div>
