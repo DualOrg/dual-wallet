@@ -705,6 +705,9 @@ test("a face-enabled handover link opens the register task through sign-in and h
   expect(cookie!.value.length + cookie!.name.length).toBeLessThan(4096);
   expect(cookie!.expires * 1000 - Date.now()).toBeLessThanOrEqual(600_000);
 
+  // The script navigation commits before the sign-in form has hydrated;
+  // input typed earlier would be reset by hydration.
+  await page.waitForLoadState("networkidle");
   await page.getByLabel("Email address").fill(EMAIL);
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();

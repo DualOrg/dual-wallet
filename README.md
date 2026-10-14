@@ -100,7 +100,8 @@ Development also allows `http://localhost:4100` and `http://127.0.0.1:4100`. The
 - Programme product applications at `/products` and
   `/products/<slug>/<task>`: register a product, use its care, history and
   service tasks, and settle a pending registration, with wallet-owned
-  confirmations and canonical readback
+  confirmations and canonical readback; a face-enabled handover link opens the
+  register task through sign-in at `/products/<slug>/handover`
 - Profile/language updates and account deletion
 
 Operator and admin surfaces are intentionally outside this app shell and can be added as a separate role-gated area later.

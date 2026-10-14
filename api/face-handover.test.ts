@@ -73,6 +73,45 @@ describe("face handover cookie (contract r14)", () => {
     });
   });
 
+  it("in production is a __Host- cookie: Secure, path /, no Domain", async () => {
+    const previous = process.env.NODE_ENV;
+    (process.env as Record<string, string>).NODE_ENV = "production";
+    try {
+      jest.resetModules();
+      const prod = await import("@/api/face-handover");
+      expect(prod.FACE_HANDOVER_COOKIE).toBe("__Host-dual_face_handover");
+      const response = NextResponse.json({});
+      prod.writeFaceHandover(response, "morrow-home", TICKET);
+      const cookie = response.cookies.get(prod.FACE_HANDOVER_COOKIE)!;
+      expect(cookie).toMatchObject({
+        secure: true,
+        httpOnly: true,
+        sameSite: "strict",
+        path: "/",
+        maxAge: FACE_HANDOVER_TTL_SECONDS,
+      });
+      expect(cookie).not.toHaveProperty("domain");
+      const request = new NextRequest(
+        "https://demo.wallet.example/api/faces/morrow-home/context",
+        { headers: { cookie: `${prod.FACE_HANDOVER_COOKIE}=${cookie.value}` } },
+      );
+      expect(prod.readFaceHandover(request, "morrow-home")).toEqual({
+        ticket: TICKET,
+        clear: true,
+      });
+      const cleared = NextResponse.json({});
+      prod.clearFaceHandover(cleared);
+      expect(cleared.cookies.get(prod.FACE_HANDOVER_COOKIE)).toMatchObject({
+        value: "",
+        secure: true,
+        path: "/",
+      });
+    } finally {
+      (process.env as Record<string, string>).NODE_ENV = previous!;
+      jest.resetModules();
+    }
+  });
+
   it("clears with an expired, empty cookie", () => {
     const response = NextResponse.json({});
     clearFaceHandover(response);

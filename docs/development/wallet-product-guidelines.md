@@ -27,6 +27,10 @@ activity, settings, sharing, or external-face behavior.
   registry; a programme entry has no selected or owned object. A programme's
   reviewed product application runs full-size at `/products/<slug><task>`,
   and the task path is the bookmarkable, Back/Forward-able state.
+- `/products/<slug>/handover` (contract r14) is the one product route that
+  works signed-out. It strips a face handover ticket from its fragment, hands
+  it to the BFF only for a programme whose binding enables handover, and
+  leaves for `/products/<slug>/register`. It is never a sign-in return path.
 - A signed-out visit to a protected route returns there after sign-in only
   through a validated same-origin relative `next` path to a protected route.
 - Public object viewing is owned by the sibling `../viewer` application. This
