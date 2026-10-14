@@ -56,14 +56,17 @@ export function startProductFaceBridge({
     return undefined;
   }
   const session = new ProductFaceSession(application, holder, task);
+  // A context change caused by a request is announced after that request's
+  // response, so the face never sees the event before the context it names.
+  const queuedEvents: Array<{ event: string; payload: object }> = [];
   const runtime: ProductFaceRuntime = {
     session,
     handlers,
     events: {
       contextChanged(contextId, reason) {
-        channel?.postEvent("programme.context.changed", {
-          context_id: contextId,
-          reason,
+        queuedEvents.push({
+          event: "programme.context.changed",
+          payload: { context_id: contextId, reason },
         });
       },
     },
@@ -79,6 +82,11 @@ export function startProductFaceBridge({
         productFaceOperationNames(),
       ),
     resolve: (request) => resolveProductFaceRequest(request, runtime),
+    onResponded: () => {
+      for (const queued of queuedEvents.splice(0)) {
+        channel?.postEvent(queued.event, queued.payload);
+      }
+    },
     onInitialized: () => onInitialized?.(host),
     onClose: () => {
       session.selection = null;

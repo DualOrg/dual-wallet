@@ -333,6 +333,25 @@ export function readProgrammeProductHistory(
 }
 
 /**
+ * A reviewed `update` proposal carries the Dual update body `{data: {custom}}`
+ * for the unit; the executor's form takes `custom`. Nothing else is mapped.
+ */
+function settleFormInput(action: string, input: Record<string, unknown>) {
+  if (action !== "update" || !("data" in input)) return input;
+  const data = input.data;
+  if (
+    Object.keys(input).length !== 1 ||
+    !data ||
+    typeof data !== "object" ||
+    Array.isArray(data) ||
+    Object.keys(data).join(",") !== "custom"
+  ) {
+    throw new ProductFaceError("proposal_rejected");
+  }
+  return { custom: (data as Record<string, unknown>).custom };
+}
+
+/**
  * Executes exactly the validated settle proposal as the holder through the
  * wallet's existing executor (email execute, or passkey/EOA prepare + sign +
  * execute). `claim_ownership` can never reach this path.
@@ -362,7 +381,7 @@ export async function executeSettleAction({
   const request = buildInventoryAction(
     action,
     objectId,
-    bridgeActionInput(action, input),
+    bridgeActionInput(action, settleFormInput(action, input)),
   );
   const result = await executeInventoryAction(
     alias ? { ...request, alias } : request,

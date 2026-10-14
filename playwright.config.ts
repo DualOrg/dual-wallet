@@ -2,6 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
+  // The product-face suite has its own servers: playwright.product-face.config.ts.
+  testIgnore: ["product-face.spec.ts"],
   // Next dev compiles App Router entries on demand. A single browser worker
   // keeps navigation deterministic while the local web server warms routes.
   fullyParallel: false,

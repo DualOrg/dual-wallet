@@ -1109,6 +1109,33 @@ describe("application-variant transport", () => {
     expect(host?.session.ended).toBe("logout");
   });
 
+  it("announces a selection only after the response that created it", async () => {
+    const { ready, received, request, host } = open();
+    ready();
+    await tick();
+    request("request-select", "programme.product.select", {
+      object_id: UNIT_A,
+    });
+    await tick();
+    await tick();
+    const response = received.findIndex(
+      (message) => message.request_id === "request-select",
+    );
+    const event = received.findIndex(
+      (message) => message.event === "programme.context.changed",
+    );
+    expect(response).toBeGreaterThan(0);
+    expect(event).toBeGreaterThan(response);
+    expect(received[event]).toMatchObject({
+      payload: {
+        context_id: (received[response].result as { context_id: string })
+          .context_id,
+        reason: "selected",
+      },
+    });
+    host?.close();
+  });
+
   it("restores task paths and reports operation updates as events", async () => {
     const { ready, received, host } = open();
     ready();

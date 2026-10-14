@@ -6,3 +6,5 @@ playwright-report/
 test-results/
 public/
 package-lock.json
+# Pinned, content-addressed product-face artifacts: reformatting changes their hashes.
+e2e/fixtures/

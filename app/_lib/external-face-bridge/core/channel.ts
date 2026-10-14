@@ -34,6 +34,7 @@ export function openBridgeChannel({
   initializationContext,
   resolve,
   onSuccess,
+  onResponded,
   onInitialized,
   onClose,
 }: {
@@ -43,6 +44,8 @@ export function openBridgeChannel({
   initializationContext: () => object;
   resolve: (request: BridgeRequest) => Promise<unknown>;
   onSuccess?: (request: BridgeRequest) => void;
+  /** Runs after a response is posted, so follow-up events never overtake it. */
+  onResponded?: () => void;
   onInitialized?: () => void;
   onClose?: () => void;
 }): BridgeChannel | undefined {
@@ -191,7 +194,8 @@ export function openBridgeChannel({
             failure.retryable,
           ),
         );
-      });
+      })
+      .finally(() => onResponded?.());
   };
   channel.port1.start();
   child.postMessage(

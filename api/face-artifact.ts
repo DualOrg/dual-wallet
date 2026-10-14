@@ -2,7 +2,6 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import type { ProductFaceBinding } from "@/api/product-face-binding";
-import { canonicalJson } from "@/app/_domain/product-face";
 
 const MAX_MANIFEST_BYTES = 64 * 1024;
 const MAX_INDEX_BYTES = 256 * 1024;
@@ -74,12 +73,17 @@ const sha256Hex = (value: Buffer | string) =>
   createHash("sha256").update(value).digest("hex");
 
 /**
- * artifactHash = sha256 over the canonical JSON (sorted keys, no whitespace)
- * of `manifest.files`, a map of artifact-relative file name to
- * `sha256:<hex>` of that file's bytes.
+ * artifactHash = sha256 over the lines `<name>\t<sha256:hex>\n` of
+ * `manifest.files`, sorted by file name — the emitter's algorithm
+ * (contract.artifactVerification). `manifest.files` maps every artifact file
+ * except manifest.json to `sha256:<hex>` of its bytes.
  */
 export function artifactHashFromFiles(files: Record<string, string>) {
-  return `sha256:${sha256Hex(canonicalJson(files))}`;
+  const lines = Object.keys(files)
+    .sort()
+    .map((name) => `${name}\t${files[name]}\n`)
+    .join("");
+  return `sha256:${sha256Hex(lines)}`;
 }
 
 export function sriFromFileHash(fileHash: string) {
@@ -174,7 +178,11 @@ export function verifyArtifactDocuments(
   if (
     (record.applicationId !== undefined &&
       record.applicationId !== binding.applicationId) ||
-    (record.version !== undefined && record.version !== binding.version)
+    (record.version !== undefined && record.version !== binding.version) ||
+    (record.artifactHash !== undefined &&
+      record.artifactHash !== binding.artifactHash) ||
+    (record.contract !== undefined &&
+      record.contract !== "dual-product-face-v1")
   ) {
     return false;
   }

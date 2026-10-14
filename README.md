@@ -91,6 +91,10 @@ Development also allows `http://localhost:4100` and `http://127.0.0.1:4100`. The
 - Forgot/reset password
 - Kernel smart-account inventory, object details and versioned action logs
 - External face `card` views in inventory and `detail` views on object pages
+- Programme product applications at `/products` and
+  `/products/<slug>/<task>`: register a product, use its care, history and
+  service tasks, and settle a pending registration, with wallet-owned
+  confirmations and canonical readback
 - Profile/language updates and account deletion
 
 Operator and admin surfaces are intentionally outside this app shell and can be added as a separate role-gated area later.
@@ -107,6 +111,15 @@ receives signatures, cookies, JWTs, or an arbitrary API proxy. The builder
 guide, DPP child, and protocol live in the sibling `external-faces` project.
 wallet-specific rendering, capability grants, file ownership, verification,
 and release impact are documented in
+[External-face integration](./docs/external-face-integration.md).
+
+Programme product applications (`dual-product-face-v1`, shared contract in
+`contracts/dual-product-face-v1.json`) are bound by the server-only
+`PRODUCT_FACE_APPLICATIONS` registry and pinned to a content-addressed,
+host-verified artifact. The wallet issues one-time Ed25519 assertions
+(`FACE_ASSERTION_SIGNING_KEY`, `FACE_ASSERTION_KEY_ID`; fail closed when
+absent) per runtime operation and keeps an operation journal in a sealed
+host-only cookie. See the product application section of
 [External-face integration](./docs/external-face-integration.md).
 
 Bridge internals are modular: `app/_lib/external-face-bridge/core/` owns the
@@ -150,7 +163,12 @@ The command records the source commit in `api/web-sdk/.source-commit`. It marks 
 npm run check
 npm run build
 npm run test:e2e
+npm run test:e2e:product-face
 ```
+
+`test:e2e:product-face` runs the actual wallet against a local fake `api-v3`
+and the pinned emitted Studio artifact with a labelled fake runtime on a second
+origin (`http://localhost:4101`); signing keys are generated per run.
 
 The Playwright suite contains deterministic mocked `api-v3` scenarios for email,
 EOA and passkey authentication, verification/recovery, tenant protection,

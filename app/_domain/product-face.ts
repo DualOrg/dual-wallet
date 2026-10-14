@@ -532,8 +532,15 @@ export function checkSettleProposal(
   for (const [field, value] of leaves) {
     const to = displayValue(value);
     if (to === null) return { ok: false, reason: "proposal_rejected" };
-    const current = field.startsWith("custom.")
-      ? readPath(currentCustom, field.slice("custom.".length))
+    // `custom.x` (form input) and `data.custom.x` (the Dual update body) both
+    // name the unit's own custom field x.
+    const customPath = field.startsWith("custom.")
+      ? field.slice("custom.".length)
+      : field.startsWith("data.custom.")
+        ? field.slice("data.custom.".length)
+        : undefined;
+    const current = customPath
+      ? readPath(currentCustom, customPath)
       : undefined;
     changes.push({ field, from: displayValue(current), to });
   }

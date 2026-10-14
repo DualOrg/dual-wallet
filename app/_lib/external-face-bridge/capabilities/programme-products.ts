@@ -172,23 +172,34 @@ export function productCapabilities(): ProductFaceCapability[] {
         }
         session.assertLive();
         const objectId = payload.object_id;
-        // A new selection invalidates the previous context immediately.
-        clearSelection(runtime);
+        // A new selection invalidates the previous context immediately. The
+        // face asked for the switch, so only the outcome is announced: the new
+        // context, or "cleared" when the switch fails.
+        const hadSelection = Boolean(session.selection);
+        session.selection = null;
         session.generation += 1;
         const generation = session.generation;
-        const result = await call(() => handlers.selectProduct(objectId));
-        session.assertLive();
-        if (session.generation !== generation) throw faceError("stale_context");
-        const product = heldProduct(runtime, result.product);
-        if (product.objectId !== objectId) throw faceError("not_owned");
-        session.selection = {
-          contextId: result.contextId,
-          objectId,
-          product,
-        };
-        events.contextChanged(result.contextId, "selected");
+        let product: ProgrammeProduct;
+        let contextId: string;
+        try {
+          const result = await call(() => handlers.selectProduct(objectId));
+          session.assertLive();
+          if (session.generation !== generation) {
+            throw faceError("stale_context");
+          }
+          product = heldProduct(runtime, result.product);
+          if (product.objectId !== objectId) throw faceError("not_owned");
+          contextId = result.contextId;
+        } catch (error) {
+          if (hadSelection && session.generation === generation) {
+            events.contextChanged(null, "cleared");
+          }
+          throw error;
+        }
+        session.selection = { contextId, objectId, product };
+        events.contextChanged(contextId, "selected");
         return {
-          context_id: result.contextId,
+          context_id: contextId,
           product: toProductProjection(
             product,
             session.application,

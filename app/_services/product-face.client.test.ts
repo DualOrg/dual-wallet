@@ -104,6 +104,27 @@ describe("holder settle execution", () => {
     expect(executeAction).toHaveBeenCalledTimes(1);
   });
 
+  it("maps the reviewed Dual update body onto the same executor input", async () => {
+    const { executeAction } = api();
+    await executeSettleAction({
+      objectId: OBJECT,
+      action: "update",
+      input: { data: { custom: input.custom } },
+      authenticationMethod: "email",
+    });
+    expect(executeAction).toHaveBeenCalledWith({
+      executeRequest: { action: expectedAction, nonce: 0 },
+    });
+    await expect(
+      executeSettleAction({
+        objectId: OBJECT,
+        action: "update",
+        input: { data: { custom: input.custom, secret: "x" } },
+        authenticationMethod: "email",
+      }),
+    ).rejects.toMatchObject({ code: "proposal_rejected" });
+  });
+
   it.each(["claim_ownership", "transfer", "burn", "permit"])(
     "never executes %s as a settle",
     async (action) => {

@@ -70,6 +70,12 @@ remains. Keep the guides synchronized with architectural changes.
   - `/settings`: current wallet profile and account settings, authentication
     information that the API actually exposes, logout, and carefully confirmed
     destructive actions when implemented.
+  - `/products`: the programmes in the server-only product-application
+    registry, with no selected or owned object.
+  - `/products/[slug]/[[...task]]`: a programme's reviewed product application
+    full-size in a cross-origin iframe, with stable task links. Follow the
+    product application section of `docs/external-face-integration.md` and
+    `contracts/dual-product-face-v1.json`.
 - `/` redirects to `/inventory` for an authenticated session and `/login`
   otherwise. Authentication pages redirect authenticated users to inventory.
 - The wallet is an end-user surface. Do not copy console administration,
@@ -87,6 +93,8 @@ remains. Keep the guides synchronized with architectural changes.
   - Inventory feature: `app/(authorized)/inventory/`
   - Activity feature: `app/(authorized)/activity/`
   - Settings feature: `app/(authorized)/settings/`
+  - Product application host: `app/(authorized)/products/`
+  - Product-face BFF routes: `app/api/faces/[slug]/`
   - Stable generated-DTO adapters: `app/_adapters/`
   - Domain models, errors, and view states: `app/_domain/`
   - Wallet use cases and transport orchestration: `app/_services/`
@@ -441,6 +449,12 @@ documents it links. Keep that guide synchronized with the code and tests.
   - `VIEWER_BASE_DOMAIN`: parent wallet domain. The left-most tenant subdomain
     is resolved by the server-owned map in `api/tenant.ts` to the organization
     ObjectID injected by the BFF into account operations.
+  - `PRODUCT_FACE_APPLICATIONS`: the product-application registry (JSON
+    array). Not secret, but never `NEXT_PUBLIC_*`; it is also a build input
+    for the exact CSP `frame-src` origins.
+  - `FACE_ASSERTION_SIGNING_KEY` and `FACE_ASSERTION_KEY_ID`: the Ed25519
+    signer for one-time product-face assertions. Secret; absent or invalid
+    fails closed with 503.
 - Public build-time values only when browser code genuinely needs them:
   - `NEXT_PUBLIC_APP_URL`
   - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`

@@ -133,7 +133,7 @@ export function ProductFaceConfirmationDialog({
             {request.changes.map((change) => (
               <tr key={change.field}>
                 <th scope="row">
-                  {fieldLabel(change.field.replace(/^custom\./, ""))}
+                  {fieldLabel(change.field.replace(/^(?:data\.)?custom\./, ""))}
                 </th>
                 <td>{change.from ?? t("settle.empty")}</td>
                 <td>{change.to}</td>

@@ -6,7 +6,9 @@
   - [UI and accessibility guidelines](./development/ui-accessibility-guidelines.md)
   - [Architecture and logic guidelines](./development/architecture-logic-guidelines.md)
   - [React and state guidelines](./development/react-state-guidelines.md)
-- [External-face integration and change guide](./external-face-integration.md)
+- [External-face integration and change guide](./external-face-integration.md),
+  including the product application host (`dual-product-face-v1`, shared
+  contract in [`contracts/dual-product-face-v1.json`](../contracts/dual-product-face-v1.json))
 - [Dedicated applications, authentication, and shared packages](./dedicated-applications.md)
 - Specs:
   - [Wallet branding contract](./specs/2026-08-20-wallet-branding-design.md)

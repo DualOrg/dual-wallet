@@ -161,3 +161,56 @@ describe("pinned artifact verification", () => {
     }
   });
 });
+
+describe("pinned emitted Studio artifact fixture", () => {
+  // The e2e fixture is the Studio emitter's real output; this proves the
+  // wallet's independent verification accepts exactly it, and nothing edited.
+  const { existsSync, readdirSync, readFileSync } =
+    jest.requireActual<typeof import("node:fs")>("node:fs");
+  const root = `${process.cwd()}/e2e/fixtures/product-face`;
+  const pinned = existsSync(root)
+    ? readdirSync(root).flatMap((app) =>
+        readdirSync(`${root}/${app}`).flatMap((version) =>
+          readdirSync(`${root}/${app}/${version}`).map((hash) => ({
+            app,
+            version,
+            hash,
+            dir: `${root}/${app}/${version}/${hash}`,
+          })),
+        ),
+      )
+    : [];
+
+  it.each(pinned.map((item) => [item.app, item]))(
+    "verifies %s and refuses a one-byte change",
+    (_app, { app, version, hash, dir }) => {
+      const manifest = readFileSync(`${dir}/manifest.json`);
+      const index = readFileSync(`${dir}/index.html`);
+      const parsed = JSON.parse(manifest.toString("utf8"));
+      const [binding] = parseProductFaceApplications(
+        JSON.stringify([
+          bindingInput({
+            applicationId: app,
+            version,
+            publisher: parsed.publisher,
+            programmeId: parsed.programmeId,
+            programmeName: parsed.programmeName,
+            artifactHash: `sha256:${hash}`,
+            path: `/face/${app}/${version}/${hash}/`,
+          }),
+        ]),
+        { production: true },
+      );
+      expect(binding).toBeDefined();
+      expect(artifactHashFromFiles(parsed.files)).toBe(`sha256:${hash}`);
+      expect(verifyArtifactDocuments(binding, manifest, index)).toBe(true);
+      expect(
+        verifyArtifactDocuments(
+          binding,
+          manifest,
+          Buffer.concat([index, Buffer.from(" ")]),
+        ),
+      ).toBe(false);
+    },
+  );
+});
