@@ -20,6 +20,12 @@ jest.mock("@/api/web-sdk-client", () => ({
   getWalletsApi: () => ({ getWallet, logout: jest.fn() }),
   getObjectsApi: () => ({ getObjectById, getObjectByIdPublic }),
 }));
+// Artifact verification is the real one for every test; only the navigation
+// regression stands in a verified artifact for its own context reads.
+jest.mock("@/api/face-artifact", () => {
+  const actual = jest.requireActual("@/api/face-artifact");
+  return { ...actual, verifyFaceArtifact: jest.fn(actual.verifyFaceArtifact) };
+});
 
 import {
   establishSession,
@@ -27,7 +33,10 @@ import {
   unsealForPurpose,
 } from "@/api/server-session";
 import { resetIssueGuard } from "@/api/product-face-operations";
-import { resetFaceArtifactCache } from "@/api/face-artifact";
+import {
+  resetFaceArtifactCache,
+  verifyFaceArtifact,
+} from "@/api/face-artifact";
 import { GET as contextGET } from "@/app/api/faces/[slug]/context/route";
 import { POST as selectionPOST } from "@/app/api/faces/[slug]/selection/route";
 import {
@@ -39,9 +48,12 @@ import { POST as assertionsPOST } from "@/app/api/faces/[slug]/assertions/route"
 import { POST as proposalPOST } from "@/app/api/faces/[slug]/settle-proposal/route";
 import { POST as logoutPOST } from "@/app/api/session/logout/route";
 import {
+  listFaceOperations,
+  loadProductFaceContext,
   mintFaceAssertion,
   readFaceOperationStatus,
 } from "@/app/_services/product-face.client";
+import { MAX_FACE_LAUNCHES } from "@/api/face-journal";
 import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
 
 const UNIT = "aaaaaaaaaaaaaaaaaaaaaaaa";
@@ -1926,6 +1938,48 @@ describe("registration history after a fresh sign-in (exact operation, read-only
   });
 });
 
+// Routes the wallet's host client's relative /api/faces requests to the real
+// route handlers with this browser's cookies and launch; anything else (the
+// runtime) goes to the runtime double already installed.
+function hostClient(browser: Browser) {
+  const runtimeFetch = global.fetch;
+  global.fetch = jest.fn(async (input: string, init: RequestInit = {}) => {
+    const url = String(input);
+    if (!url.startsWith(`/api/faces/${SLUG}`)) return runtimeFetch(input, init);
+    const body =
+      init.body === undefined ? undefined : JSON.parse(String(init.body));
+    const path = url.slice(`/api/faces/${SLUG}`.length).split("?")[0];
+    const statusPath = /^\/operations\/([^/]+)$/.exec(path);
+    type Handler = (
+      request: NextRequest,
+      context: { params: Promise<unknown> },
+    ) => Promise<Response>;
+    const handler = (
+      statusPath
+        ? statusGET
+        : path === "/assertions"
+          ? assertionsPOST
+          : path === "/context"
+            ? contextGET
+            : path === "/operations" && body === undefined
+              ? operationsGET
+              : undefined
+    ) as Handler | undefined;
+    if (!handler) throw new Error(`unexpected face path ${path}`);
+    const params = statusPath
+      ? { slug: SLUG, operationId: decodeURIComponent(statusPath[1]) }
+      : slugParams;
+    return browser.take(
+      await handler(browser.request(url, body), {
+        params: Promise.resolve(params),
+      }),
+    );
+  }) as unknown as typeof fetch;
+  return () => {
+    global.fetch = runtimeFetch;
+  };
+}
+
 // The face's own status sequence for a recovered registration, through the
 // wallet's real host client (what the bridge's programme.operation.status and
 // programme.runtime.authorize capabilities call): the host's recovered status,
@@ -1935,43 +1989,6 @@ describe("registration history after a fresh sign-in (exact operation, read-only
 describe("the face's status read after a recovered registration (host client sequence)", () => {
   const faceStatusHash = (operationId: string) =>
     `sha256:${createHash("sha256").update(JSON.stringify({ operationId })).digest("hex")}`;
-
-  // Routes the host client's relative /api/faces requests to the real route
-  // handlers with this browser's cookies and launch; anything else (the
-  // runtime) goes to the runtime double already installed.
-  function hostClient(browser: Browser) {
-    const runtimeFetch = global.fetch;
-    global.fetch = jest.fn(async (input: string, init: RequestInit = {}) => {
-      const url = String(input);
-      if (!url.startsWith(`/api/faces/${SLUG}`))
-        return runtimeFetch(input, init);
-      const body =
-        init.body === undefined ? undefined : JSON.parse(String(init.body));
-      const path = url.slice(`/api/faces/${SLUG}`.length);
-      const statusPath = /^\/operations\/([^/]+)$/.exec(path);
-      const handler = statusPath
-        ? statusGET
-        : path === "/assertions"
-          ? assertionsPOST
-          : undefined;
-      if (!handler) throw new Error(`unexpected face path ${path}`);
-      const params = statusPath
-        ? { slug: SLUG, operationId: decodeURIComponent(statusPath[1]) }
-        : slugParams;
-      const response = browser.take(
-        await (
-          handler as (
-            request: NextRequest,
-            context: { params: Promise<unknown> },
-          ) => Promise<Response>
-        )(browser.request(url, body), { params: Promise.resolve(params) }),
-      );
-      return response;
-    }) as unknown as typeof fetch;
-    return () => {
-      global.fetch = runtimeFetch;
-    };
-  }
 
   async function recoveredFixture(operationId: string, { signIn = true } = {}) {
     const issuedAt = Date.now();
@@ -2156,5 +2173,174 @@ describe("the face's status read after a recovered registration (host client seq
         request_hash: faceStatusHash(operationId),
       }),
     ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+  });
+});
+
+// Ordinary result-page navigation in ONE session: every face-host mount takes
+// a fresh launch id and its bootstrap (context, then the operations list)
+// persists that launch's journal, usually empty. The launch that holds an
+// unresolved issued registration must survive those empty launches inside
+// the same MAX_FACE_LAUNCHES budget, untouched (never re-sealed), so the
+// recovered status keeps answering for it.
+describe("launch retention during ordinary result-page navigation (one session)", () => {
+  const launchCookies = (browser: Browser) =>
+    [...browser.cookies.keys()].filter((name) =>
+      name.startsWith("dual_face_launch_"),
+    );
+  // One face-host mount: a fresh launch, the host's bootstrap reads, and the
+  // result page's status read for the registration it shows.
+  async function mountResultPage(
+    browser: Browser,
+    launchId: string,
+    operationId: string,
+  ) {
+    browser.launchId = launchId;
+    const face = { slug: SLUG, launchId };
+    await loadProductFaceContext(face, "/");
+    await listFaceOperations(face);
+    return readFaceOperationStatus(face, operationId);
+  }
+  const launchId = (n: number) => `launch-${String(n).padStart(28, "0")}`;
+
+  it("keeps the unresolved registration's launch while empty launches fill the budget, so the status keeps answering", async () => {
+    const operationId = "register-op-0581";
+    const runtime = runtimeRegistrationStatus({
+      [operationId]: runtimeAnswered(
+        operationId,
+        "ownership_moved_state_pending",
+      ),
+    });
+    jest
+      .mocked(verifyFaceArtifact)
+      .mockImplementation(async () => ({ ok: true }));
+    const browser = new Browser();
+    let restore = () => {};
+    try {
+      await issueRegistration(browser, operationId);
+      const evidenceName = `dual_face_launch_${browser.launchId}`;
+      const evidence = browser.cookies.get(evidenceName)!;
+      getObjectByIdPublic.mockResolvedValue(
+        smartObject(UNIT, HOLDER, { state: "Transfer pending" }),
+      );
+      restore = hostClient(browser);
+      // Current result -> earlier result -> back to current, repeatedly.
+      for (let mount = 1; mount <= 2 * MAX_FACE_LAUNCHES; mount += 1) {
+        const status = await mountResultPage(
+          browser,
+          launchId(mount),
+          operationId,
+        );
+        expect(status).toMatchObject({
+          objectId: UNIT,
+          readback: { ownerIsYou: true, state: "Transfer pending" },
+        });
+        // The registration's own sealed evidence: kept, byte for byte.
+        expect(browser.cookies.get(evidenceName)).toBe(evidence);
+        // Still inside the same budget.
+        expect(launchCookies(browser).length).toBeLessThanOrEqual(
+          MAX_FACE_LAUNCHES,
+        );
+      }
+      // The face's read-only status read still follows it (07315e4).
+      const face = { slug: SLUG, launchId: browser.launchId };
+      const assertion = await mintFaceAssertion(face, {
+        operation: "registration.status",
+        operation_id: operationId,
+        target: { object_id: UNIT },
+        request_hash: `sha256:${createHash("sha256").update(JSON.stringify({ operationId })).digest("hex")}`,
+      });
+      expect(claimsOf(assertion)).toMatchObject({
+        operation: "registration.status",
+        op_id: operationId,
+      });
+    } finally {
+      restore();
+      runtime.restore();
+      jest
+        .mocked(verifyFaceArtifact)
+        .mockImplementation(
+          jest.requireActual("@/api/face-artifact").verifyFaceArtifact,
+        );
+    }
+  });
+
+  it("stays bounded: with more unresolved registrations than slots the oldest goes first, empty launches before any of them, and another account still clears them", async () => {
+    const ids = [
+      "register-op-0591",
+      "register-op-0592",
+      "register-op-0593",
+      "register-op-0594",
+    ];
+    const runtime = runtimeRegistrationStatus(
+      Object.fromEntries(
+        ids.map((id) => [
+          id,
+          runtimeAnswered(id, "ownership_moved_state_pending"),
+        ]),
+      ),
+    );
+    jest
+      .mocked(verifyFaceArtifact)
+      .mockImplementation(async () => ({ ok: true }));
+    const browser = new Browser();
+    let restore = () => {};
+    try {
+      const evidence: string[] = [];
+      for (const [index, id] of ids.entries()) {
+        browser.launchId = launchId(100 + index);
+        await issueRegistration(browser, id);
+        evidence.push(`dual_face_launch_${browser.launchId}`);
+      }
+      restore = hostClient(browser);
+      getObjectByIdPublic.mockResolvedValue(
+        smartObject(UNIT, HOLDER, { state: "Transfer pending" }),
+      );
+      // An empty mount: four unresolved launches compete for three other slots;
+      // the oldest unresolved one is the one dropped, never an evidence cookie
+      // for a newer one, and the empty current launch stays as the current one.
+      await mountResultPage(browser, launchId(200), ids[3]);
+      expect(launchCookies(browser).length).toBe(MAX_FACE_LAUNCHES);
+      expect(browser.cookies.has(evidence[0])).toBe(false);
+      for (const name of evidence.slice(1))
+        expect(browser.cookies.has(name)).toBe(true);
+      // Further empty mounts drop the previous empty launch, not the evidence.
+      await mountResultPage(browser, launchId(201), ids[3]);
+      expect(browser.cookies.has(`dual_face_launch_${launchId(200)}`)).toBe(
+        false,
+      );
+      for (const name of evidence.slice(1))
+        expect(browser.cookies.has(name)).toBe(true);
+      restore();
+      restore = () => {};
+      // Another account on the same browser: its first write still drops them.
+      const account = await getWallet();
+      getWallet.mockResolvedValue({
+        ...account,
+        id: "wallet-2",
+        account: {
+          ...account.account,
+          address: "0x00000000000000000000000000000000000000b2",
+        },
+      });
+      const other = signInAgain(browser, launchId(300));
+      restore = hostClient(other);
+      await loadProductFaceContext(
+        { slug: SLUG, launchId: launchId(300) },
+        "/",
+      );
+      for (const name of evidence) expect(other.cookies.has(name)).toBe(false);
+      expect(launchCookies(other)).toEqual([
+        `dual_face_launch_${launchId(300)}`,
+      ]);
+      getWallet.mockResolvedValue(account);
+    } finally {
+      restore();
+      runtime.restore();
+      jest
+        .mocked(verifyFaceArtifact)
+        .mockImplementation(
+          jest.requireActual("@/api/face-artifact").verifyFaceArtifact,
+        );
+    }
   });
 });

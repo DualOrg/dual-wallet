@@ -251,6 +251,27 @@ function holdsRegistrationHistory(sealed: Partial<SealedJournal>, now: number) {
   );
 }
 
+/**
+ * How much a kept launch's sealed journal is worth keeping, within the same
+ * MAX_FACE_LAUNCHES budget: unresolved evidence that a registration's one
+ * assertion left the wallet first (2), then any other unfinished work (1),
+ * then an empty or finished launch (0). Every face-host mount persists a new,
+ * usually empty, launch; recency alone would let those evict the evidence a
+ * result page is still reading.
+ */
+function retentionRank(sealed: Partial<SealedJournal>, now: number) {
+  if (typeof sealed.slug !== "string" || typeof sealed.programme !== "string")
+    return 0;
+  const entries = sealedEntries(sealed, sealed.slug, sealed.programme, now);
+  const unfinished = (entry: FaceJournalEntry) =>
+    entry.phase !== "settled" && entry.phase !== "cancelled";
+  if (
+    entries.some((entry) => recoverableRegistration(entry) && unfinished(entry))
+  )
+    return 2;
+  return entries.some(unfinished) ? 1 : 0;
+}
+
 function cookieOptions(maxAge?: number) {
   return {
     httpOnly: true,
@@ -316,7 +337,8 @@ export function writeFaceJournal(
   // wallet's earlier sessions' that still hold a registration whose one
   // assertion was issued (their sealed evidence, kept as it is, never
   // re-sealed). Anything else (unreadable, another wallet's, an earlier
-  // session's without such history, or the oldest) is dropped.
+  // session's without such history) is dropped; within the budget the
+  // least worth keeping goes first (retentionRank), the oldest within a rank.
   const others = launchCookies(request)
     .filter(([launchId]) => launchId !== scope.launchId)
     .map(([launchId, value]) => {
@@ -328,9 +350,10 @@ export function writeFaceJournal(
       return {
         launchId,
         at: kept && typeof opened.at === "number" ? opened.at : -1,
+        rank: kept ? retentionRank(opened, now) : -1,
       };
     })
-    .sort((left, right) => right.at - left.at);
+    .sort((left, right) => right.rank - left.rank || right.at - left.at);
   others.forEach((other, index) => {
     if (other.at < 0 || index >= MAX_FACE_LAUNCHES - 1) {
       response.cookies.set(
