@@ -77,7 +77,36 @@ export interface FaceJournalEntry {
   createdAt: number;
   updatedAt: number;
   issuedAt?: number;
+  /**
+   * A registration whose one-time assertion the runtime provably never
+   * accepted and can no longer accept (registrationClosable). The closure is
+   * read-only and zero-write; the entry keeps every other field as it was.
+   */
+  closure?: JournalClosure;
 }
+
+export interface JournalClosure {
+  reason: "runtime_never_accepted";
+  at: number;
+}
+
+/**
+ * How long after its one registration.submit assertion was issued a
+ * registration can be proven never accepted. Every acceptance of that request
+ * needs its evidence handle (bound into the request hash the wallet confirmed)
+ * to still be loadable, and the runtime keeps evidence 15 minutes from its
+ * creation, before the face could hash it. Add the runtime's longest request
+ * (300 s), the assertion lifetime (60 s) and clock skew (60 s): 30 minutes
+ * leaves a margin. The runtime journal is created before any dispatch, so
+ * after this a runtime answer of face_operation_not_found for the operation
+ * proves it never ran and never can.
+ */
+export const REGISTRATION_CLOSE_AFTER_MS = 30 * 60 * 1000;
+/**
+ * The runtime keeps an operation journal 30 days; only within that does its
+ * absence mean anything. (This journal drops an open entry after 7 days.)
+ */
+const RUNTIME_JOURNAL_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * Entries one launch journal holds. The journal is per launch (one frame), so
@@ -133,7 +162,8 @@ export function parseJournalEntry(
     (entry.requestHash !== undefined && !isRequestHash(entry.requestHash)) ||
     !timestamp(entry.createdAt) ||
     !timestamp(entry.updatedAt) ||
-    (entry.issuedAt !== undefined && !timestamp(entry.issuedAt))
+    (entry.issuedAt !== undefined && !timestamp(entry.issuedAt)) ||
+    (entry.closure !== undefined && !closureOf(entry))
   ) {
     return undefined;
   }
@@ -172,7 +202,28 @@ export function parseJournalEntry(
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
     ...(entry.issuedAt ? { issuedAt: entry.issuedAt as number } : {}),
+    ...(entry.closure ? { closure: closureOf(entry) as JournalClosure } : {}),
   };
+}
+
+/** A closure is only ever a not_submitted settled registration's. */
+function closureOf(entry: Record<string, unknown>): JournalClosure | undefined {
+  const closure = entry.closure as Record<string, unknown> | undefined;
+  if (
+    !closure ||
+    typeof closure !== "object" ||
+    Array.isArray(closure) ||
+    Object.keys(closure).sort().join(",") !== "at,reason" ||
+    closure.reason !== "runtime_never_accepted" ||
+    !timestamp(closure.at) ||
+    entry.kind !== "registration" ||
+    entry.phase !== "settled" ||
+    entry.status !== "not_submitted" ||
+    !timestamp(entry.issuedAt)
+  ) {
+    return undefined;
+  }
+  return { reason: "runtime_never_accepted", at: closure.at };
 }
 
 const terminal = (phase: JournalPhase) =>
@@ -202,9 +253,39 @@ export function withDispatchWon(
   );
 }
 
+/**
+ * A registration this launch issued its one assertion for, old enough that a
+ * runtime answer of face_operation_not_found proves it never ran and never
+ * can (REGISTRATION_CLOSE_AFTER_MS), and young enough that the runtime would
+ * still hold its journal had it run. Nothing else is ever closable: not a
+ * settle, transfer or runtime step, not an observed registration.
+ */
+export function registrationClosable(entry: FaceJournalEntry, now: number) {
+  return (
+    entry.kind === "registration" &&
+    entry.phase === "assertion_issued" &&
+    !entry.closure &&
+    entry.issuedAt !== undefined &&
+    now - entry.issuedAt >= REGISTRATION_CLOSE_AFTER_MS &&
+    now - entry.issuedAt < RUNTIME_JOURNAL_RETENTION_MS
+  );
+}
+
+/** Oldest finished entry to make room with; a closed one only last. */
+function oldestFinished(entries: FaceJournalEntry[]) {
+  return entries
+    .filter((entry) => terminal(entry.phase))
+    .sort(
+      (left, right) =>
+        Number(Boolean(left.closure)) - Number(Boolean(right.closure)) ||
+        left.updatedAt - right.updatedAt,
+    )[0];
+}
+
 export function pruneJournal(entries: FaceJournalEntry[], now: number) {
   return entries.filter((entry) =>
-    terminal(entry.phase)
+    // A closed registration is kept as long as it would have been open.
+    terminal(entry.phase) && !entry.closure
       ? now - entry.updatedAt < DAY_MS
       : now - entry.updatedAt < 7 * DAY_MS,
   );
@@ -236,7 +317,12 @@ export type JournalTransition =
       slug: string;
       programmeId: string;
     }
-  | { kind: "settle"; operationId: string; status: RegistrationStatus };
+  | { kind: "settle"; operationId: string; status: RegistrationStatus }
+  | {
+      kind: "close";
+      operationId: string;
+      reason: JournalClosure["reason"];
+    };
 
 export type JournalTransitionError =
   | "operation_already_submitted"
@@ -290,9 +376,7 @@ export function applyJournalTransition(
     if (room.length >= JOURNAL_MAX_ENTRIES) {
       // A finished (cancelled or settled) entry makes room; anything whose
       // authority may still be outstanding is kept.
-      const finished = room
-        .filter((entry) => terminal(entry.phase))
-        .sort((left, right) => left.updatedAt - right.updatedAt)[0];
+      const finished = oldestFinished(room);
       if (!finished) return { ok: false, error: "journal_full" };
       room = room.filter((entry) => entry !== finished);
     }
@@ -311,9 +395,7 @@ export function applyJournalTransition(
         ? { ok: true, entries, entry: existing }
         : { ok: false, error: "operation_conflict" };
     }
-    const finished = entries
-      .filter((entry) => terminal(entry.phase))
-      .sort((left, right) => left.updatedAt - right.updatedAt)[0];
+    const finished = oldestFinished(entries);
     const room =
       entries.length < JOURNAL_MAX_ENTRIES
         ? entries
@@ -410,13 +492,27 @@ export function applyJournalTransition(
         updatedAt: now,
       });
     case "settle":
-      if (!authorityLeft(existing.phase)) {
+      // A closed registration never ran: nothing read later is its outcome.
+      if (!authorityLeft(existing.phase) || existing.closure) {
         return { ok: false, error: "operation_conflict" };
       }
       return replace({
         ...existing,
         phase: "settled",
         status: transition.status,
+        updatedAt: now,
+      });
+    case "close":
+      // Only on the runtime's own face_operation_not_found for exactly this
+      // operation (the caller's proof); the history stays, nothing is deleted.
+      if (!registrationClosable(existing, now)) {
+        return { ok: false, error: "operation_conflict" };
+      }
+      return replace({
+        ...existing,
+        phase: "settled",
+        status: "not_submitted",
+        closure: { reason: transition.reason, at: now },
         updatedAt: now,
       });
   }
@@ -437,6 +533,8 @@ export function journalOperationStatus(
     | undefined,
 ): RegistrationStatus {
   if (!authorityLeft(entry.phase)) return "not_submitted";
+  // Closed: provably never accepted, whatever the unit shows since.
+  if (entry.closure) return "not_submitted";
   if (entry.kind === "runtime") return "authorized";
   // G8: a transfer step is known only from the runtime's own verify/status.
   if (entry.kind === "transfer") {

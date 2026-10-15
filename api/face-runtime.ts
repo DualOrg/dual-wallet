@@ -21,6 +21,8 @@ import {
 export const MAX_RESPONSE_BYTES = 64 * 1024;
 const TIMEOUT_MS = 8_000;
 const RUNTIME_ENDPOINT = "/api/product-face/v1/operations";
+const REGISTRATION_STATUS_ENDPOINT =
+  "/api/product-face/v1/registrations/status";
 const PROPOSAL_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 
 export interface TrustedReadRequest {
@@ -136,6 +138,78 @@ export async function trustedRuntimeRead(
 
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/** The registrations/status body the face sends, hashed whole (r6). */
+export function registrationStatusRequestHash(operationId: string) {
+  return sha256Hash(canonicalJson({ operationId }));
+}
+
+export type RegistrationRuntimeStatus =
+  /**
+   * 404 face_operation_not_found for exactly this operation: the runtime
+   * holds no journal for it (it records one before any dispatch).
+   */
+  | { outcome: "not_found" }
+  /** The runtime's own journal for this operation answered this status. */
+  | { outcome: "answered"; status: string }
+  /** Anything else: unreachable, refused, unreadable. Proves nothing. */
+  | { outcome: "unknown" };
+
+/**
+ * The host's own read-only registration status for ONE operation, server to
+ * server: the same registrations/status read (and the same registration.status
+ * assertion) the face makes on Check status. Fixed endpoint, bounded response,
+ * timeout, no cookies and no redirects; it reconciles and never dispatches.
+ */
+export async function readRegistrationStatus(
+  binding: Pick<ProductFaceBinding, "origin" | "applicationId">,
+  operationId: string,
+  assertion: string,
+): Promise<RegistrationRuntimeStatus> {
+  let response: Awaited<ReturnType<typeof fetchBounded>>;
+  try {
+    response = await fetchBounded(
+      `${binding.origin}${REGISTRATION_STATUS_ENDPOINT}`,
+      MAX_RESPONSE_BYTES,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "x-tig-product-face-application": binding.applicationId,
+        },
+        body: JSON.stringify({ operationId, assertion }),
+      },
+      TIMEOUT_MS,
+    );
+  } catch {
+    return { outcome: "unknown" };
+  }
+  if (!response) return { outcome: "unknown" };
+  let body: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(response.body.toString("utf8"));
+    if (record(parsed)) body = parsed;
+  } catch {
+    return { outcome: "unknown" };
+  }
+  if (body.operationId !== operationId) return { outcome: "unknown" };
+  if (
+    response.status === 404 &&
+    body.status === "not_submitted" &&
+    body.reason === "face_operation_not_found"
+  ) {
+    return { outcome: "not_found" };
+  }
+  if (
+    (response.status === 200 || response.status === 202) &&
+    typeof body.status === "string" &&
+    /^[a-z][a-z0-9_]{0,63}$/.test(body.status)
+  ) {
+    return { outcome: "answered", status: body.status };
+  }
+  return { outcome: "unknown" };
 }
 
 export type SettleReserveResult =

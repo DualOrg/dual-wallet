@@ -3,6 +3,8 @@ import {
   journalOperationStatus,
   parseJournalEntry,
   pruneJournal,
+  REGISTRATION_CLOSE_AFTER_MS,
+  registrationClosable,
   type FaceJournalEntry,
 } from "@/app/_domain/product-face-journal";
 
@@ -201,5 +203,186 @@ describe("face operation journal", () => {
         updatedAt: 1,
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("closing a registration the runtime never accepted", () => {
+  const close = {
+    kind: "close",
+    operationId: base.operationId,
+    reason: "runtime_never_accepted",
+  } as const;
+  // Issued at 1_000 (run()); provable from issuedAt + 30 minutes.
+  const horizon = 1_000 + REGISTRATION_CLOSE_AFTER_MS;
+  const issued = () =>
+    run([
+      {
+        kind: "begin",
+        entry: { ...base, requestHash: `sha256:${"d".repeat(64)}` },
+      },
+      { kind: "confirm", operationId: base.operationId, objectId: OBJECT },
+      { kind: "issue", operationId: base.operationId, objectId: OBJECT },
+    ]);
+
+  it("closes only an issued registration, only once it can no longer be accepted", () => {
+    const entries = issued();
+    expect(REGISTRATION_CLOSE_AFTER_MS).toBe(30 * 60 * 1000);
+    expect(registrationClosable(entries[0], horizon - 1)).toBe(false);
+    expect(applyJournalTransition(entries, close, horizon - 1)).toEqual({
+      ok: false,
+      error: "operation_conflict",
+    });
+    // Before issue there is nothing to close (cancel is the path there).
+    const confirmed = run([
+      { kind: "begin", entry: base },
+      { kind: "confirm", operationId: base.operationId, objectId: OBJECT },
+    ]);
+    expect(applyJournalTransition(confirmed, close, horizon)).toEqual({
+      ok: false,
+      error: "operation_conflict",
+    });
+    // Never a settle, a transfer step, a runtime step or an observed one.
+    const settle = run([
+      {
+        kind: "begin",
+        entry: {
+          ...base,
+          kind: "settle",
+          operation: "update",
+          proposalId: "p-1",
+        },
+      },
+      { kind: "confirm", operationId: base.operationId, objectId: OBJECT },
+      { kind: "submit", operationId: base.operationId, objectId: OBJECT },
+    ]);
+    const runtimeStep = run([
+      {
+        kind: "begin",
+        entry: { ...base, kind: "runtime", operation: "case.open" },
+      },
+      { kind: "confirm", operationId: base.operationId, objectId: OBJECT },
+      { kind: "issue", operationId: base.operationId, objectId: OBJECT },
+    ]);
+    const observed = run([
+      {
+        kind: "observe",
+        operationId: base.operationId,
+        objectId: OBJECT,
+        slug: base.slug,
+        programmeId: base.programmeId,
+      },
+    ]);
+    for (const other of [settle, runtimeStep, observed]) {
+      expect(applyJournalTransition(other, close, horizon * 10)).toEqual({
+        ok: false,
+        error: "operation_conflict",
+      });
+    }
+    // Past the runtime's own journal retention its absence proves nothing.
+    expect(registrationClosable(entries[0], 1_000 + 30 * 24 * 3_600_000)).toBe(
+      false,
+    );
+  });
+
+  it("marks it closed with its reason and keeps its history", () => {
+    const [entry] = issued();
+    const closed = applyJournalTransition([entry], close, horizon);
+    expect(closed.ok).toBe(true);
+    if (!closed.ok) return;
+    expect(closed.entries).toHaveLength(1);
+    expect(closed.entry).toEqual({
+      ...entry,
+      phase: "settled",
+      status: "not_submitted",
+      closure: { reason: "runtime_never_accepted", at: horizon },
+      updatedAt: horizon,
+    });
+    // It never ran, so nothing read later is its outcome.
+    for (const evaluation of [
+      "registered",
+      "ownership_moved_state_pending",
+      "not_owned",
+      undefined,
+    ] as const) {
+      expect(journalOperationStatus(closed.entry, evaluation)).toBe(
+        "not_submitted",
+      );
+    }
+    for (const step of [
+      { kind: "settle", operationId: base.operationId, status: "registered" },
+      close,
+    ] as const) {
+      expect(applyJournalTransition(closed.entries, step, horizon + 1)).toEqual(
+        {
+          ok: false,
+          error: "operation_conflict",
+        },
+      );
+    }
+    for (const step of [
+      { kind: "issue", operationId: base.operationId, objectId: OBJECT },
+      { kind: "cancel", operationId: base.operationId },
+      { kind: "begin", entry: base },
+    ] as const) {
+      expect(applyJournalTransition(closed.entries, step, horizon + 1)).toEqual(
+        {
+          ok: false,
+          error: "operation_already_submitted",
+        },
+      );
+    }
+    // Stored and read back as it is; kept as long as an open entry would be.
+    expect(parseJournalEntry(JSON.parse(JSON.stringify(closed.entry)))).toEqual(
+      closed.entry,
+    );
+    expect(pruneJournal([closed.entry], horizon + 6 * 24 * 3_600_000)).toEqual([
+      closed.entry,
+    ]);
+    // A closure is only ever a not_submitted settled registration's.
+    for (const forged of [
+      { ...closed.entry, status: "registered" },
+      { ...closed.entry, phase: "assertion_issued" },
+      { ...closed.entry, kind: "runtime" },
+      { ...closed.entry, closure: { reason: "timeout", at: horizon } },
+      { ...closed.entry, closure: { reason: "runtime_never_accepted" } },
+    ]) {
+      expect(parseJournalEntry(forged)).toBeUndefined();
+    }
+  });
+
+  it("makes room with another finished entry before a closed one", () => {
+    const [entry] = issued();
+    const closed = applyJournalTransition([entry], close, horizon);
+    if (!closed.ok) throw new Error(closed.error);
+    let entries = closed.entries;
+    for (let index = 1; index < 6; index += 1) {
+      const operationId = `register-op-100${index}`;
+      const begun = applyJournalTransition(
+        entries,
+        { kind: "begin", entry: { ...base, operationId } },
+        horizon + index,
+      );
+      if (!begun.ok) throw new Error(begun.error);
+      const cancelled = applyJournalTransition(
+        begun.entries,
+        { kind: "cancel", operationId },
+        horizon + index,
+      );
+      if (!cancelled.ok) throw new Error(cancelled.error);
+      entries = cancelled.entries;
+    }
+    const next = applyJournalTransition(
+      entries,
+      { kind: "begin", entry: { ...base, operationId: "register-op-2000" } },
+      horizon + 10,
+    );
+    expect(next.ok).toBe(true);
+    if (!next.ok) return;
+    expect(next.entries.map((item) => item.operationId)).toContain(
+      base.operationId,
+    );
+    expect(next.entries.map((item) => item.operationId)).not.toContain(
+      "register-op-1001",
+    );
   });
 });

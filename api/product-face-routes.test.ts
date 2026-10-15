@@ -161,6 +161,70 @@ const status = (browser: Browser, operationId: string) =>
     operationId,
   });
 
+// The bound runtime's registrations/status, answering per operation id ("down":
+// unreachable). Records every call the host makes to it.
+type RuntimeAnswer = { status: number; body: Record<string, unknown> } | "down";
+function runtimeRegistrationStatus(answers: Record<string, RuntimeAnswer>) {
+  const calls: Array<{
+    url: string;
+    headers: Headers;
+    init: RequestInit;
+    body: Record<string, unknown>;
+  }> = [];
+  const original = global.fetch;
+  global.fetch = jest.fn(async (url: string, init: RequestInit) => {
+    const body = JSON.parse(String(init.body));
+    calls.push({ url, headers: new Headers(init.headers), init, body });
+    const answer = answers[body.operationId];
+    if (!answer || answer === "down") throw new TypeError("fetch failed");
+    return new Response(JSON.stringify(answer.body), { status: answer.status });
+  }) as unknown as typeof fetch;
+  return {
+    calls,
+    restore: () => {
+      global.fetch = original;
+    },
+  };
+}
+// What the Passport runtime answers for an operation it holds no journal for.
+const neverRecorded = (operationId: string): RuntimeAnswer => ({
+  status: 404,
+  body: {
+    ok: false,
+    status: "not_submitted",
+    reason: "face_operation_not_found",
+    operationId,
+    objectId: null,
+  },
+});
+const runtimeAnswered = (
+  operationId: string,
+  answer: string,
+  httpStatus = 200,
+): RuntimeAnswer => ({
+  status: httpStatus,
+  body: {
+    ok: answer === "registered",
+    status: answer,
+    operationId,
+    objectId: UNIT,
+  },
+});
+// REGISTRATION_CLOSE_AFTER_MS: provable 30 minutes after the assertion was issued.
+const CLOSE_AFTER_MS = 30 * 60 * 1000;
+
+async function issueRegistration(browser: Browser, operationId: string) {
+  await confirmRegistration(browser, operationId);
+  const minted = await mint(browser, {
+    operation: "registration.submit",
+    operation_id: operationId,
+    target: { object_id: UNIT },
+    request_hash: REQUEST_HASH,
+  });
+  expect(minted.status).toBe(200);
+  return minted;
+}
+
 async function confirmRegistration(browser: Browser, operationId: string) {
   getObjectByIdPublic.mockResolvedValue(smartObject(UNIT, "0xissuer"));
   expect(
@@ -536,23 +600,312 @@ describe("product face BFF", () => {
       status: "outcome_unknown",
       readback: { owner_is_you: false },
     });
-    // Owner equality with a pending transfer is NOT registered.
+    // Owner equality with a pending transfer is NOT registered; and the
+    // unit's state is this operation's only when the runtime journalled it.
     getObjectByIdPublic.mockResolvedValue(
       smartObject(UNIT, HOLDER, {
         state: "Transfer pending",
         lifecycle: { target_state: "Registered" },
       }),
     );
-    expect((await status(browser, operationId)).body).toMatchObject({
-      status: "ownership_moved_state_pending",
-      readback: { owner_is_you: true, state: "Transfer pending" },
+    const pending = runtimeRegistrationStatus({
+      [operationId]: runtimeAnswered(
+        operationId,
+        "ownership_moved_state_pending",
+      ),
     });
+    try {
+      expect((await status(browser, operationId)).body).toMatchObject({
+        status: "ownership_moved_state_pending",
+        readback: { owner_is_you: true, state: "Transfer pending" },
+      });
+    } finally {
+      pending.restore();
+    }
+    const unrecorded = runtimeRegistrationStatus({
+      [operationId]: neverRecorded(operationId),
+    });
+    try {
+      expect((await status(browser, operationId)).body).toMatchObject({
+        status: "outcome_unknown",
+        readback: { owner_is_you: true, state: "Transfer pending" },
+      });
+    } finally {
+      unrecorded.restore();
+    }
     getObjectByIdPublic.mockResolvedValue(
       smartObject(UNIT, HOLDER, { state: "Registered" }),
     );
-    expect((await status(browser, operationId)).body).toMatchObject({
-      status: "registered",
+    // The readback names the unit, not the operation: registered (and
+    // settled) only when the runtime says THIS operation registered.
+    const unreachable = runtimeRegistrationStatus({ [operationId]: "down" });
+    try {
+      expect((await status(browser, operationId)).body).toMatchObject({
+        status: "outcome_unknown",
+        phase: "assertion_issued",
+      });
+    } finally {
+      unreachable.restore();
+    }
+    const runtime = runtimeRegistrationStatus({
+      [operationId]: runtimeAnswered(operationId, "registered"),
     });
+    try {
+      expect((await status(browser, operationId)).body).toMatchObject({
+        status: "registered",
+      });
+      expect(runtime.calls).toHaveLength(1);
+      // Settled: answered from the journal, the runtime is not asked again.
+      expect((await status(browser, operationId)).body).toMatchObject({
+        status: "registered",
+        phase: "settled",
+      });
+      expect(runtime.calls).toHaveLength(1);
+    } finally {
+      runtime.restore();
+    }
+  });
+
+  it("closes a registration the runtime refused before recording it (401) only once it provably never ran, and keeps it", async () => {
+    // The hosted case: Dual names the account in EIP-55 mixed case; the
+    // runtime refused the face's POST /registrations with 401
+    // face_assertion_claims_invalid before it recorded anything.
+    const account = await getWallet();
+    getWallet.mockResolvedValue({
+      ...account,
+      account: { ...account.account, address: CHECKSUM_HOLDER },
+    });
+    const browser = new Browser();
+    const operationId = "reg-bae6ab93779af98103c0";
+    const issuedAt = Date.now();
+    const clock = jest.spyOn(Date, "now").mockReturnValue(issuedAt);
+    const runtime = runtimeRegistrationStatus({
+      [operationId]: neverRecorded(operationId),
+    });
+    try {
+      await issueRegistration(browser, operationId);
+      getObjectByIdPublic.mockResolvedValue(smartObject(UNIT, "0xissuer"));
+      // Check status before it is provable: unknown, and the runtime is not
+      // asked (nothing to attribute, nothing to close yet).
+      for (const at of [5 * 60 * 1000, CLOSE_AFTER_MS - 1000]) {
+        clock.mockReturnValue(issuedAt + at);
+        expect((await status(browser, operationId)).body).toMatchObject({
+          status: "outcome_unknown",
+          phase: "assertion_issued",
+        });
+      }
+      expect(runtime.calls).toHaveLength(0);
+      // Provable: one read-only status read for exactly this operation, and
+      // the runtime holds no journal for it, so it never ran and never can.
+      clock.mockReturnValue(issuedAt + CLOSE_AFTER_MS + 1000);
+      expect((await status(browser, operationId)).body).toMatchObject({
+        operation_id: operationId,
+        kind: "registration",
+        status: "not_submitted",
+        phase: "settled",
+      });
+      expect(runtime.calls).toHaveLength(1);
+      const [call] = runtime.calls;
+      expect(call.url).toBe(
+        "https://faces.example/api/product-face/v1/registrations/status",
+      );
+      expect(call.headers.get("x-tig-product-face-application")).toBe(
+        "tig.passport.morrow-home",
+      );
+      expect(call.headers.get("origin")).toBeNull();
+      expect(call.headers.get("cookie")).toBeNull();
+      expect(call.init.credentials).toBe("omit");
+      expect(Object.keys(call.body).sort()).toEqual([
+        "assertion",
+        "operationId",
+      ]);
+      const claims = JSON.parse(
+        Buffer.from(
+          String(call.body.assertion).split(".")[1],
+          "base64url",
+        ).toString("utf8"),
+      );
+      expect(claims).toMatchObject({
+        operation: "registration.status",
+        op_id: operationId,
+        target: { object_id: UNIT },
+        holder: CHECKSUM_HOLDER.toLowerCase(),
+        request_hash: `sha256:${createHash("sha256")
+          .update(JSON.stringify({ operationId }))
+          .digest("hex")}`,
+      });
+      // Kept, closed with its reason (the sealed journal holds the closure).
+      const listed = await browser.call(
+        operationsGET,
+        `/api/faces/${SLUG}/operations`,
+        slugParams,
+      );
+      expect(listed.body.operations).toEqual([
+        expect.objectContaining({
+          operation_id: operationId,
+          phase: "settled",
+          status: "not_submitted",
+        }),
+      ]);
+      // The unit later registered to this wallet by a NEW operation: the
+      // closed one still never ran, and the runtime is not asked again.
+      getObjectByIdPublic.mockResolvedValue(
+        smartObject(UNIT, CHECKSUM_HOLDER, { state: "Registered" }),
+      );
+      expect((await status(browser, operationId)).body).toMatchObject({
+        status: "not_submitted",
+        phase: "settled",
+      });
+      expect(runtime.calls).toHaveLength(1);
+      // Never minted for submission again; the face's own status read still is.
+      expect(
+        await mint(browser, {
+          operation: "registration.submit",
+          operation_id: operationId,
+          target: { object_id: UNIT },
+          request_hash: REQUEST_HASH,
+        }),
+      ).toMatchObject({
+        status: 409,
+        body: { code: "operation_already_submitted" },
+      });
+      expect(
+        (
+          await mint(browser, {
+            operation: "registration.status",
+            operation_id: operationId,
+            target: { object_id: UNIT },
+            request_hash: `sha256:${"e".repeat(64)}`,
+          })
+        ).status,
+      ).toBe(200);
+    } finally {
+      runtime.restore();
+      clock.mockRestore();
+    }
+  });
+
+  it("never attributes a later registration of the same unit to an earlier open operation", async () => {
+    const browser = new Browser();
+    const earlier = "register-op-0201";
+    const later = "register-op-0202";
+    const issuedAt = Date.now();
+    const clock = jest.spyOn(Date, "now").mockReturnValue(issuedAt);
+    const runtime = runtimeRegistrationStatus({
+      [earlier]: neverRecorded(earlier),
+      [later]: runtimeAnswered(later, "registered"),
+    });
+    try {
+      await issueRegistration(browser, earlier);
+      clock.mockReturnValue(issuedAt + 60 * 1000);
+      await issueRegistration(browser, later);
+      // The later operation moved the unit to this wallet, state pending:
+      // that is not the earlier operation's state either.
+      getObjectByIdPublic.mockResolvedValue(
+        smartObject(UNIT, HOLDER, { state: "Transfer pending" }),
+      );
+      expect((await status(browser, earlier)).body).toMatchObject({
+        status: "outcome_unknown",
+        phase: "assertion_issued",
+      });
+      // The later operation registered the unit to this wallet.
+      getObjectByIdPublic.mockResolvedValue(
+        smartObject(UNIT, HOLDER, { state: "Registered" }),
+      );
+      clock.mockReturnValue(issuedAt + 2 * 60 * 1000);
+      expect((await status(browser, later)).body).toMatchObject({
+        status: "registered",
+      });
+      // The earlier one is not that registration: unknown until provable.
+      expect((await status(browser, earlier)).body).toMatchObject({
+        status: "outcome_unknown",
+        phase: "assertion_issued",
+      });
+      clock.mockReturnValue(issuedAt + CLOSE_AFTER_MS + 1000);
+      expect((await status(browser, earlier)).body).toMatchObject({
+        status: "not_submitted",
+        phase: "settled",
+      });
+      expect((await status(browser, later)).body).toMatchObject({
+        status: "registered",
+        phase: "settled",
+      });
+      expect(runtime.calls.map((call) => call.body.operationId)).toEqual([
+        earlier,
+        later,
+        earlier,
+        earlier,
+      ]);
+    } finally {
+      runtime.restore();
+      clock.mockRestore();
+    }
+  });
+
+  it("closes nothing on any other runtime answer past the point it could run", async () => {
+    const issuedAt = Date.now();
+    const clock = jest.spyOn(Date, "now").mockReturnValue(issuedAt);
+    const id = (index: number) =>
+      `register-op-03${String(index).padStart(2, "0")}`;
+    const answers: RuntimeAnswer[] = [
+      "down",
+      {
+        status: 503,
+        body: {
+          status: "refused",
+          reason: "face_runtime_unprovisioned",
+          operationId: id(1),
+        },
+      },
+      // The runtime holds a journal for it: whatever it says, it was accepted.
+      runtimeAnswered(id(2), "outcome_unknown", 202),
+      runtimeAnswered(id(3), "refused", 200),
+      // Not found, but not the journal (another reason or another operation).
+      {
+        status: 404,
+        body: {
+          status: "not_submitted",
+          reason: "face_record_not_found",
+          operationId: id(4),
+        },
+      },
+      {
+        status: 404,
+        body: {
+          status: "not_submitted",
+          reason: "face_operation_not_found",
+          operationId: "register-op-9999",
+        },
+      },
+      {
+        status: 403,
+        body: {
+          status: "refused",
+          reason: "face_operation_not_yours",
+          operationId: id(6),
+        },
+      },
+    ];
+    const runtime = runtimeRegistrationStatus(
+      Object.fromEntries(answers.map((answer, index) => [id(index), answer])),
+    );
+    try {
+      for (let index = 0; index < answers.length; index += 1) {
+        const browser = new Browser();
+        clock.mockReturnValue(issuedAt);
+        await issueRegistration(browser, id(index));
+        getObjectByIdPublic.mockResolvedValue(smartObject(UNIT, "0xissuer"));
+        clock.mockReturnValue(issuedAt + CLOSE_AFTER_MS + 60 * 1000);
+        expect((await status(browser, id(index))).body).toMatchObject({
+          status: "outcome_unknown",
+          phase: "assertion_issued",
+        });
+      }
+      expect(runtime.calls).toHaveLength(answers.length);
+    } finally {
+      runtime.restore();
+      clock.mockRestore();
+    }
   });
 
   it("mints product-scoped reads only for the current server-side selection", async () => {

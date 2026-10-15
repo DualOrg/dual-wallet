@@ -739,6 +739,18 @@ async function runtime(request, response, url, manifest) {
     });
     if (typeof verified === "string")
       return send(response, 403, { status: "refused", reason: verified });
+    // As the Passport runtime: an operation it never recorded (it records
+    // one before any dispatch) has no journal to answer from.
+    if (!registrations.has(body.operationId)) {
+      return send(response, 404, {
+        ok: false,
+        status: "not_submitted",
+        reason: "face_operation_not_found",
+        operationId: body.operationId,
+        objectId: null,
+        ...ZERO,
+      });
+    }
     return send(
       response,
       200,

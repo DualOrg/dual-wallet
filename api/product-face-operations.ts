@@ -19,6 +19,8 @@ import {
 import {
   parseCaseQuote,
   parseSettleProposal,
+  readRegistrationStatus,
+  registrationStatusRequestHash,
   reserveSettle,
   runtimeRequestHash,
   transferRuntimeCall,
@@ -36,6 +38,7 @@ import {
   applyJournalTransition,
   authorityLeft,
   journalOperationStatus,
+  registrationClosable,
   type FaceJournalEntry,
   type JournalTransitionError,
   withDispatchWon,
@@ -1262,10 +1265,20 @@ function customMapHash(custom: unknown) {
 
 /**
  * Read-only reconciliation from the journal and the wallet's own canonical
- * readback. It never retries, re-mints or re-executes.
+ * readback. It never retries, re-mints a submission or re-executes.
+ *
+ * Dual's readback names the unit's state, not the operation that produced
+ * it. For a registration this launch issued, once the readback shows the unit
+ * moved to this wallet (or the operation could be closed), the host asks the
+ * runtime for that ONE operation (the face's own registrations/status read).
+ * The readback is the operation's only when the runtime holds its journal,
+ * and registered only when the runtime says it registered; otherwise it is
+ * unknown, and closed (not_submitted) when the runtime holds no journal past
+ * the point it could still be accepted (registrationClosable).
  */
 export async function reconcileOperation(
   context: FaceRequestContext,
+  request: NextRequest,
   operationId: string,
 ) {
   const entry = context.journal.entries.find(
@@ -1291,15 +1304,66 @@ export async function reconcileOperation(
       evaluation = facts.registration;
     }
   }
-  const status = journalOperationStatus(entry, evaluation);
+  let status = journalOperationStatus(entry, evaluation);
   let journal: FaceJournal | undefined;
+  const now = Date.now();
+  const closable = registrationClosable(entry, now);
+  if (
+    entry.kind === "registration" &&
+    entry.phase === "assertion_issued" &&
+    (status !== "outcome_unknown" || closable)
+  ) {
+    // The host's own server-to-server read: its assertion never reaches the
+    // face, so it is not kept against the launch's outstanding cap, and this
+    // read-only route writes the journal only when it settles or closes.
+    const minted = mint(context, request, context.journal, {
+      operation: "registration.status",
+      operationId,
+      target: { object_id: entry.objectId },
+      requestHash: registrationStatusRequestHash(operationId),
+    });
+    const runtime = minted.ok
+      ? await readRegistrationStatus(
+          context.binding,
+          operationId,
+          minted.assertion,
+        )
+      : ({ outcome: "unknown" } as const);
+    const confirmed =
+      runtime.outcome === "answered" &&
+      (runtime.status === "registered" ||
+        runtime.status === "already_registered");
+    if (runtime.outcome === "not_found" && closable) {
+      const closed = applyJournalTransition(
+        context.journal.entries,
+        { kind: "close", operationId, reason: "runtime_never_accepted" },
+        now,
+      );
+      if (closed.ok) {
+        journal = { ...context.journal, entries: closed.entries };
+        return {
+          ok: true as const,
+          entry: closed.entry,
+          status: journalOperationStatus(closed.entry, evaluation),
+          readback,
+          journal,
+        };
+      }
+    }
+    // The unit's state is this operation's only if the runtime journalled
+    // it, and registered only when the runtime says it registered.
+    if (runtime.outcome !== "answered") status = "outcome_unknown";
+    else if (status === "registered" && !confirmed) status = "outcome_unknown";
+  }
   if (status === "registered" && entry.phase !== "settled") {
     const settled = applyJournalTransition(
       context.journal.entries,
       { kind: "settle", operationId, status },
-      Date.now(),
+      now,
     );
-    if (settled.ok) journal = { ...context.journal, entries: settled.entries };
+    if (settled.ok) {
+      journal = { ...context.journal, entries: settled.entries };
+    }
   }
   return {
     ok: true as const,

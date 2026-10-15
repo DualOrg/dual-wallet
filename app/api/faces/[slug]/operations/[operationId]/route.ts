@@ -9,7 +9,9 @@ import { isOperationId } from "@/app/_domain/product-face";
 
 type Params = { params: Promise<{ slug: string; operationId: string }> };
 
-// Read-only reconciliation: journal + the wallet's own canonical readback.
+// Read-only reconciliation: journal + the wallet's own canonical readback,
+// and, for a registration this launch issued, the runtime's own status read
+// for that one operation (never a dispatch).
 export async function GET(request: NextRequest, { params }: Params) {
   const { slug, operationId } = await params;
   const context = await resolveFaceRequest(request, slug);
@@ -18,7 +20,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     return faceContextError(context, "invalid_request", 400);
   }
   try {
-    const result = await reconcileOperation(context, operationId);
+    const result = await reconcileOperation(context, request, operationId);
     if (!result.ok)
       return faceContextError(context, result.code, result.status);
     return faceResponse(
