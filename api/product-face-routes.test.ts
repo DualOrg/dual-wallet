@@ -1263,6 +1263,88 @@ describe("product face BFF", () => {
     }
   });
 
+  it("passes on the runtime's stale and release-changed refusals so the brand proposes again; other reasons stay dropped", async () => {
+    getObjectById.mockResolvedValue(
+      smartObject(UNIT, HOLDER, { state: "Transfer pending" }),
+    );
+    // The Studio face runtime's own refusal: its status, reason, next step
+    // and detail text, as registration.settle.propose answers it.
+    const refuse = (reason: string, detail: string) => {
+      global.fetch = jest.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ok: false,
+              status: "settle_proposal_unavailable",
+              code: "settle_proposal_unavailable",
+              reason,
+              nextStep: "brand_operator_proposal",
+              detail,
+              blindRetryAllowed: false,
+              secretReturned: false,
+            }),
+            { status: 409 },
+          ),
+      ) as unknown as typeof fetch;
+    };
+    const request = async () => {
+      const browser = new Browser();
+      const { body } = await select(browser, UNIT);
+      return browser.call(
+        proposalPOST,
+        `/api/faces/${SLUG}/settle-proposal`,
+        slugParams,
+        {
+          context_id: body.context_id,
+          operation_id: "register-op-0031",
+          object_id: UNIT,
+        },
+      );
+    };
+    const original = global.fetch;
+    try {
+      for (const [reason, detail] of [
+        [
+          "face_settle_proposal_stale",
+          "The brand's confirmation was prepared for an earlier version of this product's record, so the brand proposes it again from its operator home. Nothing was changed.",
+        ],
+        [
+          "face_settle_proposal_release_changed",
+          "The brand's confirmation was prepared for an earlier version of the app, so the brand proposes it again from its operator home. Nothing was changed.",
+        ],
+      ]) {
+        refuse(reason, detail);
+        const refused = await request();
+        expect(refused).toEqual({
+          status: 409,
+          // The reason only: never the runtime's detail text.
+          body: { code: "settle_proposal_unavailable", reason },
+        });
+      }
+      // Not on the allowlist: a real runtime reason the wallet has no copy
+      // for, a near miss and free text are not passed on.
+      for (const reason of [
+        "face_settle_proposal_expired",
+        "face_settle_proposal_stale_v2",
+        "Face_settle_proposal_stale",
+        "The brand proposes it again",
+      ]) {
+        refuse(reason, "Nothing was changed.");
+        const dropped = await request();
+        expect(dropped).toMatchObject({
+          status: 409,
+          body: { code: "settle_proposal_unavailable" },
+        });
+        expect(dropped.body).not.toHaveProperty("reason");
+        expect(JSON.stringify(dropped.body)).not.toContain(
+          "Nothing was changed",
+        );
+      }
+    } finally {
+      global.fetch = original;
+    }
+  });
+
   it("clears the session and journal on a terminal 401 and on logout", async () => {
     const browser = new Browser();
     await confirmRegistration(browser, "register-op-0040");

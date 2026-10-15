@@ -608,8 +608,13 @@ runtime. Another launch may ask, and the runtime's reservation refuses it.
 **No proposal (G6b).** The runtime originates the brand's proposal; when it
 has none it answers `settle_proposal_unavailable` with a reason
 (`issuer_preauthorisation_absent`, `issuer_preauthorisation_expired`,
-`issuer_auto_proposal_used`, and since r12 `issuer_settle_policy_absent`). The host shows that reason in its own notice
-and invents nothing; the face receives `settle_proposal_unavailable`.
+`issuer_auto_proposal_used`, and since r12 `issuer_settle_policy_absent`;
+`face_settle_proposal_stale` when the brand's open confirmation was prepared
+for an earlier revision of the product's record, and
+`face_settle_proposal_release_changed` when it was prepared under an earlier
+app release or template, so the brand proposes it again). The host shows that
+reason in its own notice and invents nothing; any other reason is dropped and
+the notice is not shown. The face receives `settle_proposal_unavailable`.
 
 Status stays `ownership_moved_state_pending` until the
 readback shows a settled state with an agreeing lifecycle target.

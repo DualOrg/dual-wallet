@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import messages from "@/messages/en.json";
 import {
+  isSettleProposalUnavailableReason,
   ProductFaceError,
+  settleProposalUnavailableReasons,
   type ProductFaceConfirmation,
   type ProgrammeProduct,
   type ProgrammeUnitFacts,
@@ -23,6 +26,7 @@ import {
   TEMPLATE_A,
   TEMPLATE_B,
 } from "@/test/product-face-fixtures";
+import { translations } from "@/test/intl-mock";
 
 // The wallet session that began an operation (account A) and another (B).
 const IDENTITY_A: ExecutorIdentity = {
@@ -1026,6 +1030,82 @@ describe("holder settle (G6)", () => {
     });
     expect(run.handlers.executeSettle).not.toHaveBeenCalled();
     expect(run.handlers.confirm).not.toHaveBeenCalled();
+  });
+
+  it("tells the customer the brand proposes again when its confirmation is stale or from an earlier release", async () => {
+    for (const reason of [
+      "face_settle_proposal_stale",
+      "face_settle_proposal_release_changed",
+    ]) {
+      const notice = jest.fn();
+      const run = await settleRuntime({
+        notice,
+        readSettleProposal: jest.fn(async () => {
+          throw new ProductFaceError(
+            "settle_proposal_unavailable",
+            409,
+            reason,
+          );
+        }),
+      });
+      await expect(
+        run.call("programme.product.settle.request", run.request),
+      ).rejects.toMatchObject({ code: "settle_proposal_unavailable" });
+      expect(notice).toHaveBeenCalledTimes(1);
+      expect(notice).toHaveBeenCalledWith({
+        kind: "settle_proposal_unavailable",
+        reason,
+      });
+      expect(
+        translations("products")(
+          `notices.settle_proposal_unavailable.${reason}`,
+          {
+            publisher: "Morrow Home",
+          },
+        ),
+      ).toMatch(
+        /^Morrow Home's confirmation .+ Their team needs to send a new one; nothing was changed\.$/,
+      );
+      expect(run.handlers.executeSettle).not.toHaveBeenCalled();
+      expect(run.handlers.confirm).not.toHaveBeenCalled();
+    }
+  });
+
+  it("shows no notice for a reason the wallet does not allow", async () => {
+    for (const reason of [
+      "face_settle_proposal_expired",
+      "face_settle_proposal_stale_v2",
+      "The brand proposes it again",
+      undefined,
+    ]) {
+      const notice = jest.fn();
+      const run = await settleRuntime({
+        notice,
+        readSettleProposal: jest.fn(async () => {
+          throw new ProductFaceError(
+            "settle_proposal_unavailable",
+            409,
+            reason,
+          );
+        }),
+      });
+      await expect(
+        run.call("programme.product.settle.request", run.request),
+      ).rejects.toMatchObject({ code: "settle_proposal_unavailable" });
+      expect(notice).not.toHaveBeenCalled();
+    }
+  });
+
+  it("has customer copy, naming the publisher, for every allowed reason and no other", () => {
+    const copy = messages.products.notices.settle_proposal_unavailable;
+    expect(Object.keys(copy).sort()).toEqual(
+      [...settleProposalUnavailableReasons].sort(),
+    );
+    for (const reason of settleProposalUnavailableReasons) {
+      expect(isSettleProposalUnavailableReason(reason)).toBe(true);
+      expect(copy[reason]).toContain("{publisher}");
+      expect(copy[reason]).toMatch(/nothing was changed\.$/);
+    }
   });
 
   it("ignores a face-supplied proposal", async () => {

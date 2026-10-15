@@ -1032,6 +1032,11 @@ export const settleProposalUnavailableReasons = [
   "issuer_auto_proposal_used",
   // contract r12: no explicit, signed settle policy for this unit.
   "issuer_settle_policy_absent",
+  // The brand's open confirmation no longer binds this unit as it is now: it
+  // was prepared for an earlier revision of the product's record, or under
+  // an earlier app release or template. The brand proposes it again.
+  "face_settle_proposal_stale",
+  "face_settle_proposal_release_changed",
 ] as const;
 export type SettleProposalUnavailableReason =
   (typeof settleProposalUnavailableReasons)[number];
