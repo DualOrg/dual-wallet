@@ -1594,6 +1594,7 @@ afterEach(() => {
 // ------------------------------------------------------------------ tests
 
 const FRESH_LAUNCH = `launch-${"f".repeat(28)}`;
+const RELOAD_LAUNCH = `launch-${"r".repeat(28)}`;
 
 describe("r13 successor: a fresh launch settles the ORIGINAL registration under a NEW settle id", () => {
   it("with NO journal and NO sealed history of the original registration (evicted, another device, signed in again)", async () => {
@@ -1789,6 +1790,118 @@ describe("r13 successor: a fresh launch settles the ORIGINAL registration under 
         request_hash: requestHash,
       }),
     ).rejects.toMatchObject({ code: "already_registered_to_you" });
+  });
+});
+
+describe("r13 successor: a reload after the fresh launch settled it", () => {
+  it("recovers the observed registration from that launch's sealed journal for read-only status: registered with its unit, the face's status read is authorised, nothing is written or resubmitted", async () => {
+    const browser = new Browser();
+    install(browser);
+    const host = await launch(browser, FRESH_LAUNCH);
+    await settleOnWallet(host, FRESH_LAUNCH);
+    // The successor launch recorded the original registration as observed only (never issued).
+    const observedCopy = browser
+      .journal(FRESH_LAUNCH)
+      ?.entries.find((entry) => entry.operationId === ORIGINAL);
+    expect(observedCopy).toMatchObject({
+      kind: "registration",
+      objectId: UNIT,
+    });
+    expect(observedCopy?.issuedAt).toBeUndefined();
+    const successorJournal = browser.cookies.get(
+      `dual_face_launch_${FRESH_LAUNCH}`,
+    );
+
+    // A reload: a new launch with an empty journal. The face restores its
+    // result route for the ORIGINAL registration and checks its status.
+    const reloaded = await launch(browser, RELOAD_LAUNCH);
+    expect(browser.journal(RELOAD_LAUNCH)?.entries).toEqual([]);
+    const runtimeBefore = world.runtime.calls.length;
+    const ebusBefore = world.dual.ebus.length;
+    const mintedBefore = minted().length;
+
+    // The host follows the observed registration read-only: registered, with its unit.
+    expect(
+      await reloaded.call("programme.operation.status", {
+        operation_id: ORIGINAL,
+      }),
+    ).toMatchObject({
+      operation_id: ORIGINAL,
+      status: "registered",
+      object_id: UNIT,
+    });
+    // The face's own registration.status read is authorised for exactly its
+    // request hash, and the runtime answers registered.
+    const { assertion } = await reloaded.call("programme.runtime.authorize", {
+      operation: "registration.status",
+      operation_id: ORIGINAL,
+      target: { object_id: UNIT },
+      request_hash: sha(canonicalJson({ operationId: ORIGINAL })),
+    });
+    expect(claimsOf(String(assertion))).toMatchObject({
+      operation: "registration.status",
+      op_id: ORIGINAL,
+    });
+    const status = await world.runtime.fromFace("/registrations/status", {
+      operationId: ORIGINAL,
+      assertion,
+    });
+    expect(status.payload).toMatchObject({ status: "registered" });
+    await expect(
+      reloaded.call("programme.runtime.authorize", {
+        operation: "registration.status",
+        operation_id: ORIGINAL,
+        target: { object_id: UNIT },
+        request_hash: sha("another request"),
+      }),
+    ).rejects.toBeDefined();
+    // The BFF refused that other request hash (the bridge reports it generically).
+    expect(exchangesTo(facesPath("/assertions")).at(-1)).toMatchObject({
+      status: 409,
+      answer: { code: "operation_conflict" },
+    });
+
+    // Read-only: the reload's journal stays empty, the successor's journal is
+    // unchanged, and nothing was executed, reserved or submitted.
+    expect(browser.journal(RELOAD_LAUNCH)?.entries).toEqual([]);
+    expect(browser.cookies.get(`dual_face_launch_${FRESH_LAUNCH}`)).toBe(
+      successorJournal,
+    );
+    expect(world.dual.ebus.length).toBe(ebusBefore);
+    expect(
+      world.runtime.calls
+        .slice(runtimeBefore)
+        .map((call) => call.operation ?? call.path),
+    ).not.toContain("registration.settle.reserve");
+    expect(minted().slice(mintedBefore)).toEqual([
+      ["registration.status", ORIGINAL],
+    ]);
+    // Never a new registration under the id from the reload.
+    await expect(
+      mintFaceAssertion(reloaded.face, {
+        operation: "registration.submit",
+        operation_id: ORIGINAL,
+        target: { object_id: UNIT },
+        request_hash: sha("any"),
+      }),
+    ).rejects.toMatchObject({ code: "unknown_operation" });
+    await expect(
+      writeFaceJournal(reloaded.face, {
+        transition: "begin",
+        kind: "registration",
+        operation: "registration.submit",
+        operation_id: ORIGINAL,
+        object_id: UNIT,
+        record_id: RECORD_ID,
+        request_hash: sha("any"),
+      }),
+    ).rejects.toMatchObject({ code: "already_registered_to_you" });
+    // Another operation id is still unknown to the host.
+    expect(
+      await reloaded.call("programme.operation.status", {
+        operation_id: "reg-someone-else-01",
+      }),
+    ).toMatchObject({ status: "outcome_unknown", object_id: null });
   });
 });
 

@@ -288,6 +288,24 @@ export function recoverableRegistration(entry: FaceJournalEntry) {
   );
 }
 
+/**
+ * A registration a launch never issued but recorded from the runtime's own
+ * settle proposal for its unit (contract r13: a fresh launch settled a
+ * registration issued elsewhere): observed, or settled since. Found in another
+ * launch journal of the same wallet, face and programme, it is followed only
+ * for read-only status of exactly its operation id (never begun, submitted,
+ * minted for submission or settled from there).
+ */
+export function observedRegistration(entry: FaceJournalEntry) {
+  return (
+    entry.kind === "registration" &&
+    entry.operation === "registration.submit" &&
+    entry.issuedAt === undefined &&
+    !entry.closure &&
+    (entry.phase === "observed" || entry.phase === "settled")
+  );
+}
+
 /** Oldest finished entry to make room with; a closed one only last. */
 function oldestFinished(entries: FaceJournalEntry[]) {
   return entries

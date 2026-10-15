@@ -39,6 +39,7 @@ import {
   applyJournalTransition,
   authorityLeft,
   journalOperationStatus,
+  observedRegistration,
   recoverableRegistration,
   registrationClosable,
   type FaceJournalEntry,
@@ -1293,8 +1294,11 @@ function customMapHash(custom: unknown) {
 
 /**
  * The one registration this wallet's other launch journals hold under exactly
- * this operation id whose launch issued its one assertion; nothing when no
- * launch issued it, or more than one did (it is never guessed which).
+ * this operation id whose launch issued its one assertion; nothing when more
+ * than one did (it is never guessed which). When no kept launch issued it (the
+ * issuing launch is gone), a launch that observed it from the runtime's settle
+ * proposal and settled it there (contract r13 successor) is followed instead,
+ * for read-only status only.
  *
  * Other launches may carry the same id without having issued it: one that
  * resumed this registration (Finish registration in a reload or another tab
@@ -1309,17 +1313,22 @@ function recoveredRegistration(
   operationId: string,
 ) {
   const history = readFaceHistory(request, context.scope, operationId);
+  const consistent = (entry: FaceJournalEntry) =>
+    history.every(
+      (other) =>
+        other === entry ||
+        (other.kind === "registration" &&
+          other.operation === entry.operation &&
+          other.objectId === entry.objectId),
+    );
   const issued = history.filter(recoverableRegistration);
-  if (issued.length !== 1) return undefined;
-  const [entry] = issued;
-  const consistent = history.every(
-    (other) =>
-      other === entry ||
-      (other.kind === "registration" &&
-        other.operation === entry.operation &&
-        other.objectId === entry.objectId),
-  );
-  return consistent ? entry : undefined;
+  if (issued.length > 1) return undefined;
+  if (issued.length === 1) return consistent(issued[0]) ? issued[0] : undefined;
+  // r13 successor: no kept launch issued it, but a launch recorded it from the
+  // runtime's own settle proposal for its unit and settled it there. Followed
+  // for read-only status only, exactly as an issued one is.
+  const observed = history.find(observedRegistration);
+  return observed && consistent(observed) ? observed : undefined;
 }
 
 /**
