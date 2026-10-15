@@ -430,10 +430,11 @@ the registration record ID and confirmed request hash, a hash of the host-read
 quote `{quote_version, amount, currency}`, timestamps, the launch's current
 selection and the expiry times of its outstanding assertions (at most six
 entries; finished ones make room). It never holds proposal or quote content,
-an assertion, signature, token or face text. It is cleared on logout and
-replaced after an account change. A cookie rather than Web Storage keeps it
-outside the iframe's and page scripts' reach and inside the existing session
-boundary.
+an assertion, signature, token or face text. It is cleared on sign-out and
+replaced after an account change; a session that ends otherwise (expiry, a
+closed browser) leaves it, sealed to that session, for its own 24 hours. A
+cookie rather than Web Storage keeps it outside the iframe's and page
+scripts' reach and inside the existing session boundary.
 
 **Registration history (exact operation, read-only).** A status read
 (`GET .../operations/[operationId]`) for an operation that is not in this

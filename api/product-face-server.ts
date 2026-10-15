@@ -3,7 +3,6 @@ import "server-only";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import {
-  clearFaceJournal,
   FACE_LAUNCH_HEADER,
   FACE_LAUNCH_ID,
   readFaceJournal,
@@ -82,7 +81,11 @@ export async function resolveFaceRequest(
   if (result.status === "expired") {
     const response = faceError("session_expired", 401);
     clearSessionCookie(response);
-    clearFaceJournal(response, request);
+    // The launch journals stay, as on every other route that sees the
+    // session end (sign-out alone clears them): sealed to that session they
+    // give no other session any authority, and they are this wallet's only
+    // evidence of what it issued, which the same wallet signed in again may
+    // reconcile read-only (readFaceHistory). Their own 24 hours still apply.
     // A pending face handover never outlives the session (contract r14).
     clearFaceHandover(response);
     clearFaceAcceptance(response);

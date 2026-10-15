@@ -1349,7 +1349,7 @@ describe("product face BFF", () => {
     }
   });
 
-  it("clears the session and journal on a terminal 401 and on logout", async () => {
+  it("clears the session and journal on logout; a terminal 401 clears the session and keeps the sealed journal", async () => {
     const browser = new Browser();
     await confirmRegistration(browser, "register-op-0040");
     const journalCookie = `dual_face_launch_${browser.launchId}`;
@@ -1365,16 +1365,31 @@ describe("product face BFF", () => {
     expect(browser.cookies.has("smarttoken_viewer")).toBe(false);
 
     const expired = new Browser();
+    const operationId = "register-op-0041";
+    await issueRegistration(expired, operationId);
+    const kept = `dual_face_launch_${expired.launchId}`;
+    const sealed = expired.cookies.get(kept);
+    expect(sealed).toBeTruthy();
+    const account = await getWallet();
     getWallet.mockRejectedValue(
       new ResponseError(new Response(null, { status: 401 })),
     );
-    const result = await expired.call(
-      operationsGET,
-      `/api/faces/${SLUG}/operations`,
-      slugParams,
-    );
+    // The face's own status read is what sees the session end.
+    const result = await status(expired, operationId);
     expect(result.status).toBe(401);
     expect(expired.cookies.has("smarttoken_viewer")).toBe(false);
+    // As /api/session does when it sees the session end: the launch journal
+    // stays as it was, sealed to the ended session (no session reads it as
+    // its own); only sign-out clears it.
+    expect(expired.cookies.get(kept)).toBe(sealed);
+    // So the same wallet, signed in again, still reaches that operation.
+    getWallet.mockResolvedValue(account);
+    const again = signInAgain(expired);
+    expect(again.cookies.has("smarttoken_viewer")).toBe(true);
+    expect(await status(again, operationId)).toMatchObject({
+      status: 200,
+      body: { operation_id: operationId, kind: "registration" },
+    });
   });
 });
 
