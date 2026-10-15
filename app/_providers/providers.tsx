@@ -2,10 +2,18 @@
 
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { HostPresentation } from "@/app/_domain/wallet-host";
+import { HostProvider } from "@/app/_providers/host-provider";
 import { SessionProvider } from "@/app/_providers/session-provider";
 import { ThemeProvider } from "@/app/_providers/theme-provider";
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({
+  children,
+  host = null,
+}: {
+  children: React.ReactNode;
+  host?: HostPresentation | null;
+}) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -17,9 +25,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <SessionProvider>{children}</SessionProvider>
-      </ThemeProvider>
+      <HostProvider host={host}>
+        <ThemeProvider>
+          <SessionProvider>{children}</SessionProvider>
+        </ThemeProvider>
+      </HostProvider>
     </QueryClientProvider>
   );
 }

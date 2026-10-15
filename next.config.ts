@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 import { productFaceFrameOrigins } from "./api/product-face-binding";
@@ -12,8 +13,19 @@ const productFaceOrigins = productFaceFrameOrigins(
   { production: process.env.NODE_ENV === "production" },
 );
 
+// A branded host's static pages render its identity at build time, so the
+// build records the sha256 of the WALLET_HOST_CONFIGURATION it rendered ("" for
+// the generic wallet). The server refuses to serve under any other
+// configuration (api/host-configuration.ts build_mismatch): a generic build
+// never serves a brand, and a brand build never serves another.
+const hostConfiguration = process.env.WALLET_HOST_CONFIGURATION;
+const hostBuildSha256 = hostConfiguration
+  ? createHash("sha256").update(hostConfiguration, "utf8").digest("hex")
+  : "";
+
 const nextConfig: NextConfig = {
   output: "standalone",
+  env: { WALLET_HOST_BUILD_CONFIGURATION_SHA256: hostBuildSha256 },
   poweredByHeader: false,
   images: {
     remotePatterns: [{ protocol: "https", hostname: "**" }],

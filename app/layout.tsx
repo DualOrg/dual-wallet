@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getTranslations } from "next-intl/server";
+import { hostMetadata, hostPresentation, hostStyle } from "@/api/wallet-host";
 import "@/app/globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
+  const host = hostMetadata();
+  if (host) return host;
   const t = await getTranslations("metadata");
   return {
     metadataBase: new URL(
@@ -31,16 +34,29 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const messages = await getMessages();
+  const host = hostPresentation();
+  const style = hostStyle();
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      {...(host ? { "data-wallet-host": host.brand.id } : {})}
+    >
       <head>
-        {/* Applies the stored or system theme before first paint so dark-theme
-            users never see a light flash. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem("viewer-theme");if(t!=="light"&&t!=="dark")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.classList.toggle("dark",t==="dark")}catch(e){}`,
-          }}
-        />
+        {style ? (
+          // A branded host renders its one validated palette and bundled
+          // family. hostTokenCss emits only re-checked #rrggbb values and
+          // engine-owned font stacks, so nothing configured is ever markup.
+          <style dangerouslySetInnerHTML={{ __html: style }} />
+        ) : (
+          /* Applies the stored or system theme before first paint so dark-theme
+            users never see a light flash. */
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `try{var t=localStorage.getItem("viewer-theme");if(t!=="light"&&t!=="dark")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.classList.toggle("dark",t==="dark")}catch(e){}`,
+            }}
+          />
+        )}
       </head>
       <body>
         <NextIntlClientProvider messages={messages}>

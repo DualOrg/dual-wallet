@@ -1,3 +1,4 @@
+import { hostPresentation } from "@/api/wallet-host";
 import { AuthShell } from "@/app/_components/auth/auth-shell";
 import { Providers } from "@/app/_providers/providers";
 
@@ -6,9 +7,10 @@ export default function UnauthorizedLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const host = hostPresentation();
   return (
-    <Providers>
-      <AuthShell>{children}</AuthShell>
+    <Providers host={host}>
+      <AuthShell host={host}>{children}</AuthShell>
     </Providers>
   );
 }

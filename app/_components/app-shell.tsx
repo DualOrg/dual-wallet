@@ -18,6 +18,7 @@ import { useTranslations } from "next-intl";
 import { Brand } from "@/app/_components/design-system/brand";
 import { UserProfileMenu } from "@/app/_components/user-profile-menu";
 import { safeReturnPath } from "@/app/_domain/navigation";
+import { useHostPresentation } from "@/app/_providers/host-provider";
 import { useSession } from "@/app/_providers/session-provider";
 import { useTheme } from "@/app/_providers/theme-provider";
 import { cn } from "@/app/_utils/cn";
@@ -57,6 +58,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { wallet, isLoading, isAuthenticated, logout } = useSession();
   const { theme, toggleTheme } = useTheme();
+  // A branded host renders one validated palette, so it offers no theme
+  // switch.
+  const host = useHostPresentation();
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const signingOut = useRef(false);
   const router = useRouter();
@@ -94,7 +98,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.refresh();
   };
 
-  const themeButton = (
+  const themeButton = host ? null : (
     <button className="nav-link" type="button" onClick={toggleTheme}>
       {theme === "dark" ? (
         <Sun size={19} aria-hidden />
@@ -117,7 +121,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {common("skipToContent")}
       </a>
       <aside className="sidebar">
-        <Brand />
+        <Brand host={host} />
         <nav className="sidebar-nav" aria-label={t("mainNavigation")}>
           <Nav />
         </nav>
@@ -129,7 +133,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
       <div className="main">
         <header className="mobile-topbar">
-          <Brand />
+          <Brand host={host} />
           <button
             ref={menuTrigger}
             className="icon-button"

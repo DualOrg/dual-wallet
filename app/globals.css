@@ -2100,6 +2100,42 @@ button {
   }
 }
 
+/* A branded wallet host (html[data-wallet-host], present only while a valid
+   host configuration is active) renders its own validated palette through the
+   semantic tokens. These engine rules replace the generic wallet's fixed
+   colours (the dark auth story and the primary button glow) with those tokens;
+   the generic wallet never matches them. */
+html[data-wallet-host] .auth-layout {
+  background: var(--surface-subtle);
+}
+html[data-wallet-host] .auth-story {
+  border-right: 1px solid var(--border);
+  color: var(--ink);
+}
+html[data-wallet-host] .auth-story::before {
+  background: var(--surface);
+}
+html[data-wallet-host] .auth-story::after {
+  border-color: color-mix(in srgb, var(--brand) 32%, transparent);
+  box-shadow: none;
+}
+html[data-wallet-host] .auth-shield,
+html[data-wallet-host] .auth-story .auth-kicker {
+  color: var(--brand-strong);
+}
+html[data-wallet-host] .auth-supporting {
+  color: var(--muted);
+}
+html[data-wallet-host] .auth-point {
+  border-color: var(--border);
+  color: var(--muted);
+  background: var(--surface-subtle);
+}
+html[data-wallet-host] .button-primary {
+  box-shadow: 0 8px 24px
+    color-mix(in srgb, var(--action-primary) 23%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
