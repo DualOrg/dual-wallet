@@ -58,6 +58,15 @@ describe("native transfer on a branded host", () => {
     expect(offered(host(false), ["transfer"])).toEqual([]);
   });
 
+  it("offers no other custody move either (drop, pickup, claim_ownership) while transfer is disabled", () => {
+    const custody = ["drop", "pickup", "claim_ownership"];
+    expect(offered(host(false), [...custody, "burn"])).toEqual(["Burn"]);
+    expect(offered(host(false), custody)).toEqual([]);
+    // Enabled, and in the generic wallet, they are offered as before.
+    expect(offered(host(true), custody)).toHaveLength(3);
+    expect(offered(null, custody)).toHaveLength(3);
+  });
+
   it("offers it when the host enables transfer", () => {
     expect(offered(host(true), ["transfer", "burn"])).toEqual([
       "Transfer",

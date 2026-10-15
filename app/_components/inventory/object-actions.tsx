@@ -12,6 +12,7 @@ import { ViewerError } from "@/app/_domain/errors";
 import { useExecuteInventoryAction } from "@/app/_hooks/use-inventory-action";
 import type { ExternalFaceActionRequest } from "@/app/_lib/external-face-bridge";
 import { useHostPresentation } from "@/app/_providers/host-provider";
+import { custodyActions } from "@/app/_domain/wallet-host";
 import {
   ActionInputError,
   actionFields,
@@ -61,15 +62,20 @@ export function ObjectActions({
 }) {
   const t = useTranslations("actions");
   const execution = useExecuteInventoryAction();
-  // A branded host without the transfer journey offers no native transfer
-  // either (the request proxy refuses one server-side as well).
+  // A branded host without the transfer journey offers no native transfer,
+  // nor any other custody move (drop, pickup, claim_ownership); the request
+  // proxy refuses them server-side as well, a delegating permit included.
   const host = useHostPresentation();
   const transferOffered = !host || host.journeys.transfer;
   const actions = useMemo(
     () =>
       Array.from(new Set(item.actions))
         .filter(isInventoryActionName)
-        .filter((name) => transferOffered || name !== "transfer"),
+        .filter(
+          (name) =>
+            transferOffered ||
+            !(custodyActions as readonly string[]).includes(name),
+        ),
     [item.actions, transferOffered],
   );
   const initialRequest =

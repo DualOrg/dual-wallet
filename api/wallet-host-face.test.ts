@@ -57,6 +57,7 @@ import { resolveFaceRequest } from "@/api/product-face-server";
 import { resetWalletHostCache } from "@/api/wallet-host";
 import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
 import { POST as backendPOST } from "@/app/api/backend/[...path]/route";
+import { proxy } from "@/proxy";
 import { POST as acceptOfferPOST } from "@/app/api/faces/[slug]/accept-offer/route";
 import { POST as assertionsPOST } from "@/app/api/faces/[slug]/assertions/route";
 import { GET as contextGET } from "@/app/api/faces/[slug]/context/route";
@@ -769,5 +770,84 @@ describe("prefixed paths without a host configuration", () => {
       status: 400,
       body: expect.objectContaining({ code: "invalid_request" }),
     });
+  });
+});
+
+// B2: the request proxy decides on a backend write's body, and the backend
+// route forwards that request's raw bytes to Dual. On a host without the
+// transfer journey a body it refuses never reaches the route or Dual; a body
+// it passes reaches Dual byte for byte, so what was checked is what is sent.
+describe("native custody through /api/backend: the proxy decides on exactly the bytes the route forwards", () => {
+  const T = `{"id":"${UNIT}","to":"0x1234567890abcdef1234567890abcdef12345678"}`;
+  async function send(browser: Browser, raw: string) {
+    const request = () =>
+      new NextRequest("http://localhost/api/backend/ebus/execute", {
+        method: "POST",
+        headers: {
+          host: "localhost",
+          origin: "http://localhost",
+          cookie: Array.from(browser.cookies, ([k, v]) => `${k}=${v}`).join(
+            "; ",
+          ),
+          "content-type": "application/json",
+        },
+        body: raw,
+      });
+    const gate = await proxy(request());
+    if (gate.headers.get("x-middleware-next") !== "1") {
+      return { gate: gate.status, code: (await gate.json()).code };
+    }
+    const routed = await backendPOST(request(), {
+      params: Promise.resolve({ path: ["ebus", "execute"] }),
+    });
+    return { gate: 200, routed: routed.status };
+  }
+  const forwarded = () =>
+    runtime.mock.calls.map(([url, init]) => [
+      String(url).replace(/^.*\/ebus\//, "/ebus/"),
+      Buffer.from((init as RequestInit).body as ArrayBuffer).toString("utf8"),
+    ]);
+  beforeEach(() => {
+    runtime.mockImplementation(
+      async () =>
+        new Response("{}", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+  });
+
+  it("a refused body reaches neither the route nor Dual; an allowed body reaches Dual byte for byte", async () => {
+    configure({ transfer: false });
+    const browser = new Browser();
+    for (const raw of [
+      `{"action":{"transfer":${T}},"action":{}}`,
+      `{"action":{"transfer":${T}},"action":{"update":{"id":"${UNIT}"}},"nonce":9}`,
+      `[{"action":{"transfer":${T}},"nonce":9}]`,
+      `{"\\u0061ction":{"\\u0074ransfer":${T}},"nonce":9}`,
+      `{"action":{"drop":{"id":"${UNIT}","latitude":1,"longitude":2}},"nonce":9}`,
+      `{"action":{"pickup":{"id":"${UNIT}"}},"nonce":9}`,
+      `{"action":{"claim_ownership":{"id":"${UNIT}"}},"nonce":9}`,
+      `{"action":{"permit":{"id":"${UNIT}","scope":"transfer","commitment":"c"}},"nonce":9}`,
+      `{"action":{"teleport":{"id":"${UNIT}"}},"nonce":9}`,
+    ]) {
+      expect(await send(browser, raw)).toEqual({
+        gate: 403,
+        code: "capability_not_granted",
+      });
+    }
+    expect(runtime).not.toHaveBeenCalled();
+    // Spacing and key order as the client sent them: forwarded unchanged.
+    const allowed = `{ "action" : {"update":{"id":"${UNIT}","data":{"custom":{"transfer":"not an action"}}}}, "nonce": 9 }`;
+    expect(await send(browser, allowed)).toEqual({ gate: 200, routed: 200 });
+    expect(forwarded()).toEqual([["/ebus/execute", allowed]]);
+  });
+
+  it("a host with transfer enabled forwards exactly what it is sent, unchanged", async () => {
+    configure({ transfer: true });
+    const browser = new Browser();
+    const raw = `{"action":{"transfer":${T}},"nonce":9}`;
+    expect(await send(browser, raw)).toEqual({ gate: 200, routed: 200 });
+    expect(forwarded()).toEqual([["/ebus/execute", raw]]);
   });
 });

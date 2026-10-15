@@ -17,6 +17,19 @@ export const hostJourneys = [
 export type HostJourney = (typeof hostJourneys)[number];
 export type HostJourneys = Record<HostJourney, boolean>;
 
+/**
+ * The Dual actions that move an object's custody: hand it over (transfer),
+ * leave it for anyone to take (drop) and take it (pickup), or claim it
+ * (claim_ownership). A host without the transfer journey offers none of them,
+ * natively or through a permit that delegates one.
+ */
+export const custodyActions = [
+  "transfer",
+  "drop",
+  "pickup",
+  "claim_ownership",
+] as const;
+
 export function isHostJourney(value: unknown): value is HostJourney {
   return (
     typeof value === "string" &&

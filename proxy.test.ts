@@ -672,6 +672,150 @@ describe("native transfer through the backend proxy", () => {
     await refused(write("/api/backend/ebus/prepare", "transfer"));
   });
 
+  // B2: the route forwards the raw bytes, so the proxy decides on exactly
+  // what every decoder reads. A body that could be read two ways (repeated
+  // member names in any spelling, at any depth), that is not one JSON object,
+  // or that is not valid UTF-8 is refused before the route runs.
+  const T = `{"id":"${UNIT}","to":"${TO}"}`;
+  const U = `{"id":"${UNIT}"}`;
+  const ambiguous = [
+    `{"action":{"transfer":${T}},"action":{}}`,
+    `{"action":{"transfer":${T}},"action":null}`,
+    `{"action":{"transfer":${T},"transfer":null}}`,
+    `{"action":{"transfer":${T}},"action":{"update":${U}}}`,
+    `[{"action":{"transfer":${T}}}]`,
+    `{"\\u0061ction":{"\\u0074ransfer":${T}}}`,
+    `{"action":{"update":${U}},"\\u0061ction":{"transfer":${T}}}`,
+    `{"action":{"update":${U}},"ACTION":{"transfer":${T}}}`,
+    `{"action":{"update":{"id":"${UNIT}","data":{"custom":{"note":1,"Note":2}}}}}`,
+    `{"action":{"claim_ownership":${U},"claimOwnership":null}}`,
+    `"transfer"`,
+    "null",
+    "1",
+    "[]",
+    `{"action":`,
+  ];
+
+  test("B2: a body that could be read two ways, or is not one JSON object, is refused before the route", async () => {
+    brand(false);
+    for (const raw of ambiguous) {
+      for (const path of [
+        "/api/backend/ebus/prepare",
+        "/api/backend/ebus/execute",
+      ]) {
+        await refused(write(path, raw));
+      }
+    }
+    // Bytes that are not valid UTF-8 are not text every decoder reads alike.
+    await refused(
+      proxy(
+        new NextRequest(`${MORROW_ORIGIN}/api/backend/ebus/execute`, {
+          method: "POST",
+          headers: {
+            host: new URL(MORROW_ORIGIN).host,
+            cookie: "smarttoken_viewer=sealed",
+            "content-type": "application/json",
+          },
+          body: new Uint8Array([
+            ...Buffer.from('{"action":{"update":{"id":"'),
+            0xff,
+            ...Buffer.from('"}}}'),
+          ]),
+        }),
+      ),
+    );
+  });
+
+  test("every custody move is refused on that host: drop, pickup, claim_ownership, a permit delegating one, and any action it cannot decide", async () => {
+    brand(false);
+    for (const action of [
+      { drop: { id: UNIT, latitude: 1, longitude: 2 } },
+      { pickup: { id: UNIT } },
+      { claim_ownership: { id: UNIT } },
+      { claimOwnership: { id: UNIT } },
+      { CLAIM_OWNERSHIP: { id: UNIT } },
+      { transfer: { id: UNIT, to: TO }, permit_secret: "s" },
+      { permit: { id: UNIT, scope: "transfer", commitment: "c" } },
+      { permit: { id: UNIT, scope: " TRANSFER ", commitment: "c" } },
+      { permit: { id: UNIT, scope: "pickup", commitment: "c" } },
+      { permit: { id: UNIT, scope: "claimOwnership", commitment: "c" } },
+      // A template alias as the scope: it cannot be decided here.
+      {
+        permit: {
+          id: UNIT,
+          scope: "transfer_product_passport",
+          commitment: "c",
+        },
+      },
+      { permit: { id: UNIT, commitment: "c" } },
+      { permit: { id: UNIT, scope: 7, commitment: "c" } },
+      // An alias alone names no kind; two kinds are ambiguous; a kind must be an object.
+      { alias: "transfer_product_passport" },
+      { update: { id: UNIT }, burn: { id: UNIT } },
+      { update: null },
+      { update: [UNIT] },
+      { teleport: { id: UNIT } },
+      {},
+    ]) {
+      await refused(write("/api/backend/ebus/prepare", { action }));
+      await refused(write("/api/backend/ebus/execute", { action, nonce: 9 }));
+    }
+    await refused(
+      write("/api/backend/ebus/execute", { action: "transfer", nonce: 9 }),
+    );
+  });
+
+  test("allowed actions on that host pass unchanged, nested lookalikes and escaped spellings included", async () => {
+    brand(false);
+    for (const body of [
+      // "transfer" as data, not as the action.
+      {
+        action: {
+          update: {
+            id: UNIT,
+            data: { custom: { transfer: { to: TO }, note: "transfer" } },
+          },
+        },
+      },
+      // The face's settle: an update addressed by the template's alias.
+      {
+        action: {
+          update: { id: UNIT, data: { custom: { state: "Verified" } } },
+          alias: "verify_authenticity",
+        },
+        nonce: 9,
+      },
+      { action: { redeem: { id: UNIT } } },
+      { action: { set_attributes: { id: UNIT, attributes: {} } } },
+      { action: { permit: { id: UNIT, scope: "redeem", commitment: "c" } } },
+      // An action-looking object below the top level is not an action.
+      { nonce: 9, auth: { type: "email", note: { action: { transfer: {} } } } },
+      `{"\\u0061ction":{"update":${U}}}`,
+    ]) {
+      await passed(write("/api/backend/ebus/prepare", body));
+    }
+  });
+
+  test("hosts with transfer enabled and the generic wallet are unchanged: nothing is read", () => {
+    for (const raw of [...ambiguous, `{"action":{"drop":${U}}}`]) {
+      brand(true);
+      expect(
+        answered(write("/api/backend/ebus/execute", raw)).headers.get(
+          "x-middleware-next",
+        ),
+      ).toBe("1");
+      clearHostEnvironment();
+      resetWalletHostCache();
+      expect(
+        answered(
+          write("/api/backend/ebus/execute", raw, {
+            origin: "http://localhost",
+          }),
+        ).headers.get("x-middleware-next"),
+      ).toBe("1");
+    }
+  });
+
   test("other backend requests on that host continue unchanged", async () => {
     brand(false);
     await passed(
