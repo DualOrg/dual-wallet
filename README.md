@@ -63,6 +63,14 @@ host mapping such as `wallet.customer.com` or a tenant-label mapping such as
 `customer` in `api/tenant.ts` as organizations are introduced. Exact hosts win
 over labels, and all unknown hosts and labels fall back to `*`.
 
+### Branded wallet hosts
+
+A deployment with `WALLET_HOST_CONFIGURATION` (and its pin
+`WALLET_HOST_CONFIGURATION_SHA256`) is a branded host: it resolves exactly its
+configured organisation on exactly its configured origin, renders the brand's
+validated identity, and serves only its enabled journeys. None of the mappings
+above apply to it. See [branded wallet hosts](./docs/branded-wallet-hosts.md).
+
 ## Local development
 
 ```bash

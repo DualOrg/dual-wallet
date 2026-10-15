@@ -10,5 +10,9 @@
   including the product application host (`dual-product-face-v1`, shared
   contract in [`contracts/dual-product-face-v1.json`](../contracts/dual-product-face-v1.json))
 - [Dedicated applications, authentication, and shared packages](./dedicated-applications.md)
+- [Branded wallet hosts](./branded-wallet-hosts.md): one engine, a separate
+  branded deployment per brand configured only by environment
+  (`dual-wallet-host-configuration-v1`), journey enforcement, entrance
+  isolation, fail-closed mode and readback
 - Specs:
   - [Wallet branding contract](./specs/2026-08-20-wallet-branding-design.md)
