@@ -2,7 +2,8 @@ import { render, screen, within } from "@testing-library/react";
 import { AppShell } from "@/app/_components/app-shell";
 import { AuthShell } from "@/app/_components/auth/auth-shell";
 import { Brand } from "@/app/_components/design-system/brand";
-import type { HostPresentation } from "@/app/_domain/wallet-host";
+import { HostHome } from "@/app/_components/host/host-home";
+import type { HostHomeView, HostPresentation } from "@/app/_domain/wallet-host";
 import { HostProvider } from "@/app/_providers/host-provider";
 
 jest.mock("next-intl", () => jest.requireActual("@/test/intl-mock").intlMock);
@@ -125,5 +126,115 @@ describe("AppShell identity", () => {
     expect(
       screen.getByRole("button", { name: "Change color theme" }),
     ).toBeTruthy();
+  });
+});
+
+const navigationOf = () =>
+  within(screen.getByRole("navigation", { name: "Main navigation" }))
+    .getAllByRole("link")
+    .map((link) => [link.textContent, link.getAttribute("href")]);
+
+describe("AppShell navigation", () => {
+  it("is the generic list without a host", () => {
+    shell(null);
+    expect(navigationOf()).toEqual([
+      ["Inventory", "/inventory"],
+      ["Products", "/products"],
+      ["Activity", "/activity"],
+      ["Settings", "/settings"],
+    ]);
+  });
+
+  it("is each host's own entries, in its order", () => {
+    const morrow = shell(MORROW);
+    expect(navigationOf()).toEqual([
+      ["Inventory", "/inventory"],
+      ["Products", "/products"],
+      ["Activity", "/activity"],
+      ["Settings", "/settings"],
+    ]);
+    morrow.unmount();
+    const tidewell = shell(TIDEWELL);
+    expect(navigationOf()).toEqual([
+      ["Products", "/products"],
+      ["Settings", "/settings"],
+    ]);
+    tidewell.unmount();
+    shell({ ...TIDEWELL, navigation: ["settings", "activity"] });
+    expect(navigationOf()).toEqual([
+      ["Settings", "/settings"],
+      ["Activity", "/activity"],
+    ]);
+  });
+
+  it("renders an empty configured navigation as no links", () => {
+    shell({ ...TIDEWELL, navigation: [] });
+    expect(
+      within(
+        screen.getByRole("navigation", { name: "Main navigation" }),
+      ).queryAllByRole("link"),
+    ).toEqual([]);
+  });
+});
+
+const morrowHome: HostHomeView = {
+  brand: { brand: MORROW.brand, logo: MORROW.logo },
+  headline: MORROW.home.headline,
+  introduction: MORROW.home.introduction,
+  primary: { journey: "registration", href: "/products/morrow-home/register" },
+  journeys: [
+    { journey: "myProducts", href: "/products/morrow-home/products" },
+    { journey: "transfer", href: "/products/morrow-home" },
+  ],
+  navigation: [
+    { entry: "inventory", href: "/inventory" },
+    { entry: "settings", href: "/settings" },
+  ],
+};
+const tidewellHome: HostHomeView = {
+  brand: { brand: TIDEWELL.brand, logo: TIDEWELL.logo },
+  headline: TIDEWELL.home.headline,
+  introduction: TIDEWELL.home.introduction,
+  primary: { journey: "myProducts", href: "/products/tidewell-care/products" },
+  journeys: [],
+  navigation: [{ entry: "products", href: "/products" }],
+};
+
+describe("HostHome", () => {
+  const links = () =>
+    screen
+      .getAllByRole("link")
+      .map((link) => [link.textContent, link.getAttribute("href")]);
+
+  it("renders each host's copy, primary journey and other journeys", () => {
+    const morrow = render(<HostHome home={morrowHome} signedIn={false} />);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+      MORROW.home.headline,
+    );
+    expect(screen.getByText(MORROW.home.introduction)).toBeTruthy();
+    expect(links()).toEqual([
+      ["Sign in", "/login"],
+      ["Create an account", "/register"],
+      ["Register a product", "/products/morrow-home/register"],
+      ["See my products", "/products/morrow-home/products"],
+      ["Pass on a product", "/products/morrow-home"],
+    ]);
+    expect(document.querySelector("img")?.getAttribute("src")).toBe(
+      MORROW.logo.src,
+    );
+    morrow.unmount();
+
+    render(<HostHome home={tidewellHome} signedIn />);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+      TIDEWELL.home.headline,
+    );
+    expect(links()).toEqual([
+      ["Products", "/products"],
+      ["See my products", "/products/tidewell-care/products"],
+    ]);
+    expect(document.querySelector("img")?.getAttribute("src")).toBe(
+      TIDEWELL.logo.src,
+    );
+    expect(screen.queryByText("Dual Wallet")).toBeNull();
   });
 });

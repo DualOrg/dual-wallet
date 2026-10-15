@@ -30,12 +30,14 @@ const links = [
   { href: "/settings", key: "settings", icon: Settings },
 ] as const;
 
-function Nav({ close }: { close?: () => void }) {
+type NavLink = (typeof links)[number];
+
+function Nav({ close, entries }: { close?: () => void; entries: NavLink[] }) {
   const pathname = usePathname();
   const t = useTranslations("nav");
   return (
     <>
-      {links.map(({ href, key, icon: Icon }) => {
+      {entries.map(({ href, key, icon: Icon }) => {
         const active = pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link
@@ -61,6 +63,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // A branded host renders one validated palette, so it offers no theme
   // switch.
   const host = useHostPresentation();
+  // A branded host shows exactly its configured entries, in its order.
+  const entries: NavLink[] = host
+    ? host.navigation.flatMap((key) => links.filter((link) => link.key === key))
+    : [...links];
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const signingOut = useRef(false);
   const router = useRouter();
@@ -123,7 +129,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="sidebar">
         <Brand host={host} />
         <nav className="sidebar-nav" aria-label={t("mainNavigation")}>
-          <Nav />
+          <Nav entries={entries} />
         </nav>
         <div className="sidebar-footer">
           {themeButton}
@@ -156,7 +162,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className="mobile-nav"
             aria-label={t("mainNavigation")}
           >
-            <Nav close={() => setMobileOpen(false)} />
+            <Nav entries={entries} close={() => setMobileOpen(false)} />
             {themeButton}
             {signOutButton}
           </nav>

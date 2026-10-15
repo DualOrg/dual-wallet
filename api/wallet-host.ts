@@ -2,12 +2,24 @@ import "server-only";
 
 import type { Metadata } from "next";
 import {
+  bindingBacksJourney,
   evaluateHostConfiguration,
   type HostConfigurationInput,
   type HostConfigurationState,
   type WalletHostConfiguration,
 } from "@/api/host-configuration";
-import { hostTokenCss, type HostPresentation } from "@/app/_domain/wallet-host";
+import { isHandoverEntryPath } from "@/app/_domain/navigation";
+import { taskPathFromPathname } from "@/app/_domain/product-face";
+import {
+  hostJourneys,
+  hostJourneyTasks,
+  hostNavigationHrefs,
+  hostTokenCss,
+  journeysOfTask,
+  type HostHomeView,
+  type HostJourney,
+  type HostPresentation,
+} from "@/app/_domain/wallet-host";
 
 /**
  * The branded wallet host this deployment serves, from its environment only:
@@ -130,6 +142,115 @@ export function hostMetadata(): Metadata | undefined {
     },
     twitter: { card: "summary", images: [logo] },
     robots: { index: false, follow: false },
+  };
+}
+
+// ------------------------------------------------------------ journeys
+
+/**
+ * Whether this deployment serves a journey: always for the generic wallet,
+ * never while the configuration is invalid, and as configured otherwise.
+ */
+export function hostJourneyEnabled(journey: HostJourney) {
+  const host = walletHost();
+  if (host.status === "absent") return true;
+  return host.status === "active" && host.configuration.journeys[journey];
+}
+
+/** Whether a face binding belongs to this host (all of them, generically). */
+export function hostFaceEnabled(slug: string) {
+  const host = walletHost();
+  if (host.status === "absent") return true;
+  return host.status === "active" && host.configuration.faces.includes(slug);
+}
+
+/** Where a request for a page a configured host does not serve is sent. */
+export const HOST_NOT_FOUND_PATH = "/_wallet-host/not-found";
+
+const FACE_PAGE = /^\/products\/([^/]+)(?:\/.*)?$/;
+
+/**
+ * Whether a configured host serves this page. The programme list is the My
+ * products journey's; a face page needs a face of this host and every journey
+ * its task path needs (a task outside the contract's routes is not served);
+ * the handover entry needs registration or transfer (its kind is in the
+ * fragment, so the BFF checks that). Every other path, and every path of the
+ * generic wallet, is unaffected.
+ */
+export function hostPageAllowed(pathname: string) {
+  const host = walletHost();
+  if (host.status !== "active") return true;
+  const { journeys } = host.configuration;
+  if (pathname === "/products" || pathname === "/products/") {
+    return journeys.myProducts;
+  }
+  const face = FACE_PAGE.exec(pathname);
+  if (!face) return true;
+  if (!host.configuration.faces.includes(face[1])) return false;
+  if (isHandoverEntryPath(pathname)) {
+    return journeys.registration || journeys.transfer;
+  }
+  const task = taskPathFromPathname(pathname, face[1]);
+  // Not a valid task path: the page itself sends it to the programme entry.
+  if (task === undefined) return true;
+  const needed = journeysOfTask(task);
+  return needed !== undefined && needed.every((journey) => journeys[journey]);
+}
+
+/** Where a signed-in visitor lands when nothing else was asked for. */
+export function hostLanding() {
+  return walletHost().status === "active" ? "/" : "/inventory";
+}
+
+/** A journey's entry: its task in the first of this host's faces backing it. */
+function journeyHref(
+  host: Extract<HostConfigurationState, { status: "active" }>,
+  journey: HostJourney,
+) {
+  const face = host.faces.find((binding) =>
+    bindingBacksJourney(binding, journey),
+  );
+  if (!face) return undefined;
+  const task = hostJourneyTasks[journey];
+  return task === "/"
+    ? `/products/${face.slug}`
+    : `/products/${face.slug}${task}`;
+}
+
+/** The configured home: copy, the primary journey and every other enabled one. */
+export function hostHome(): HostHomeView | undefined {
+  const host = walletHost();
+  if (host.status !== "active") return undefined;
+  const { configuration } = host;
+  const entries = hostJourneys
+    .filter((journey) => configuration.journeys[journey])
+    .map((journey) => ({ journey, href: journeyHref(host, journey) }))
+    .filter(
+      (entry): entry is { journey: HostJourney; href: string } =>
+        entry.href !== undefined,
+    );
+  const primary = entries.find(
+    (entry) => entry.journey === configuration.home.primaryJourney,
+  );
+  // Validation guarantees an enabled, backed primary journey.
+  if (!primary) return undefined;
+  return {
+    brand: {
+      brand: {
+        id: configuration.brand.id,
+        name: configuration.brand.name,
+        shortName: configuration.brand.shortName,
+      },
+      logo: { src: hostLogoSrc(configuration) },
+    },
+    headline: configuration.home.headline,
+    introduction: configuration.home.introduction,
+    primary,
+    journeys: entries.filter((entry) => entry !== primary),
+    navigation: configuration.navigation.map((entry) => ({
+      entry,
+      href: hostNavigationHrefs[entry],
+    })),
   };
 }
 

@@ -374,3 +374,13 @@ export interface HostPresentation {
   home: { headline: string; introduction: string };
   journeys: HostJourneys;
 }
+
+/** The configured home page: copy, the primary journey and the others. */
+export interface HostHomeView {
+  brand: Pick<HostPresentation, "brand" | "logo">;
+  headline: string;
+  introduction: string;
+  primary: { journey: HostJourney; href: string };
+  journeys: Array<{ journey: HostJourney; href: string }>;
+  navigation: Array<{ entry: HostNavigationEntry; href: string }>;
+}

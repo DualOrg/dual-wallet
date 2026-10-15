@@ -2136,6 +2136,72 @@ html[data-wallet-host] .button-primary {
     color-mix(in srgb, var(--action-primary) 23%, transparent);
 }
 
+/* A branded host's configured home (app/page.tsx). */
+.host-home {
+  min-height: 100svh;
+  background: var(--surface-subtle);
+}
+.host-home-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  padding: 18px clamp(16px, 5vw, 72px);
+}
+.host-home-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.host-home-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  border-radius: 13px;
+  color: var(--ink);
+  padding: 0 14px;
+  font-weight: 700;
+}
+.host-home-link:hover {
+  background: var(--surface-subtle);
+}
+.host-home-link:focus-visible {
+  outline: 3px solid var(--brand-strong);
+  outline-offset: 2px;
+}
+.host-home-main {
+  width: min(880px, 100%);
+  margin: 0 auto;
+  padding: clamp(40px, 8vw, 96px) clamp(16px, 5vw, 72px) 80px;
+}
+.host-home-headline {
+  margin: 0;
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+}
+.host-home-introduction {
+  max-width: 640px;
+  margin: 20px 0 0;
+  color: var(--muted);
+  font-size: clamp(1rem, 1.4vw, 1.2rem);
+  line-height: 1.6;
+}
+.host-home-primary {
+  margin: 34px 0 0;
+}
+.host-home-journeys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

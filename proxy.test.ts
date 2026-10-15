@@ -2,7 +2,19 @@
  * @jest-environment node
  */
 import { NextRequest } from "next/server";
+import { resetWalletHostCache } from "@/api/wallet-host";
 import { proxy } from "@/proxy";
+import { edit } from "@/test/product-face-fixtures";
+import {
+  applyHostEnvironment,
+  clearHostEnvironment,
+  hostEnvironment,
+  MORROW_ORIGIN,
+  morrowDocument,
+  tidewellDocument,
+  TIDEWELL_ORIGIN,
+  type HostDocument,
+} from "@/test/wallet-host-fixtures";
 
 const ORGANIZATION = "000000000000000000000001";
 const ORGANIZATION_COOKIE = "smarttoken_viewer_org";
@@ -245,5 +257,106 @@ describe("session key gate", () => {
       expect(response.status).toBe(200);
       expect(response.headers.get("x-middleware-next")).toBe("1");
     }
+  });
+});
+
+// A branded host: the same proxy, configured only by its environment.
+describe("branded host pages", () => {
+  const UNIT = "aaaaaaaaaaaaaaaaaaaaaaaa";
+  function host(document: HostDocument) {
+    resetWalletHostCache();
+    applyHostEnvironment(hostEnvironment(document));
+  }
+  function visitHost(origin: string, path: string, cookie?: string) {
+    const { host } = new URL(origin);
+    return proxy(
+      new NextRequest(`${origin}${path}`, {
+        headers: { host, ...(cookie ? { cookie } : {}) },
+      }),
+    );
+  }
+  const notFound = (origin: string) => `${origin}/_wallet-host/not-found`;
+  afterEach(() => {
+    clearHostEnvironment();
+    resetWalletHostCache();
+  });
+
+  test("a disabled journey's pages answer the not-found page, signed in or out", () => {
+    host(tidewellDocument());
+    for (const path of [
+      "/products/tidewell-care/service",
+      "/products/tidewell-care/accept",
+      `/products/tidewell-care/products/${UNIT}/transfer`,
+      "/products/tidewell-care/claims",
+      "/products/morrow-home/register",
+      "/products/morrow-home/handover",
+    ]) {
+      for (const cookie of [undefined, "smarttoken_viewer=sealed"]) {
+        const response = visitHost(TIDEWELL_ORIGIN, path, cookie);
+        expect([path, response.headers.get("x-middleware-rewrite")]).toEqual([
+          path,
+          notFound(TIDEWELL_ORIGIN),
+        ]);
+        expect(response.headers.get("location")).toBeNull();
+        expect(response.cookies.getAll()).toEqual([]);
+      }
+    }
+  });
+
+  test("an enabled journey's pages keep every existing guard", () => {
+    host(tidewellDocument());
+    const task = "/products/tidewell-care/register";
+    expect(visitHost(TIDEWELL_ORIGIN, task).headers.get("location")).toBe(
+      `${TIDEWELL_ORIGIN}/login?next=${encodeURIComponent(task)}`,
+    );
+    const signedIn = visitHost(
+      TIDEWELL_ORIGIN,
+      task,
+      "smarttoken_viewer=sealed",
+    );
+    expect(signedIn.headers.get("x-middleware-next")).toBe("1");
+    expect(
+      visitHost(TIDEWELL_ORIGIN, "/products/tidewell-care/handover").status,
+    ).toBe(200);
+  });
+
+  test("the programme list is the My products journey's page", () => {
+    const document = morrowDocument();
+    edit(document, "journeys.myProducts", false);
+    edit(document, "navigation", ["inventory", "settings"]);
+    host(document);
+    expect(
+      visitHost(
+        MORROW_ORIGIN,
+        "/products",
+        "smarttoken_viewer=sealed",
+      ).headers.get("x-middleware-rewrite"),
+    ).toBe(notFound(MORROW_ORIGIN));
+    expect(
+      visitHost(
+        MORROW_ORIGIN,
+        "/inventory",
+        "smarttoken_viewer=sealed",
+      ).headers.get("x-middleware-next"),
+    ).toBe("1");
+  });
+
+  test("a signed-in visitor lands on the host's home", () => {
+    host(morrowDocument());
+    expect(
+      visitHost(
+        MORROW_ORIGIN,
+        "/login",
+        "smarttoken_viewer=sealed",
+      ).headers.get("location"),
+    ).toBe(`${MORROW_ORIGIN}/`);
+    // An explicit return path still wins.
+    expect(
+      visitHost(
+        MORROW_ORIGIN,
+        `/login?next=${encodeURIComponent("/settings")}`,
+        "smarttoken_viewer=sealed",
+      ).headers.get("location"),
+    ).toBe(`${MORROW_ORIGIN}/settings`);
   });
 });

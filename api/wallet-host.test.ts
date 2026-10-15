@@ -3,8 +3,17 @@
  */
 import { createHash } from "node:crypto";
 import {
+  productFaceBinding,
+  productFaceEntries,
+} from "@/api/product-face-registry";
+import {
+  hostFaceEnabled,
+  hostHome,
+  hostJourneyEnabled,
+  hostLanding,
   hostLogo,
   hostMetadata,
+  hostPageAllowed,
   hostPresentation,
   hostStyle,
   resetWalletHostCache,
@@ -12,9 +21,11 @@ import {
 } from "@/api/wallet-host";
 import { GET as logoGET } from "@/app/api/host/logo/[sha256]/route";
 import { hostFontFamilies } from "@/app/_domain/wallet-host";
+import { edit } from "@/test/product-face-fixtures";
 import {
   applyHostEnvironment,
   clearHostEnvironment,
+  registryWithBothFaces,
   hostEnvironment,
   MORROW_LOGO_BASE64,
   MORROW_ORIGIN,
@@ -192,5 +203,160 @@ describe("two brand hosts from one build", () => {
   it("keeps the entrance origin as the metadata base", () => {
     applyHostEnvironment(hostEnvironment(morrowDocument()));
     expect(hostMetadata()?.metadataBase).toEqual(new URL(MORROW_ORIGIN));
+  });
+});
+
+const UNIT = "aaaaaaaaaaaaaaaaaaaaaaaa";
+
+describe("journeys, pages and faces", () => {
+  it("the generic wallet serves every journey, page and face", () => {
+    applyHostEnvironment({
+      PRODUCT_FACE_APPLICATIONS: registryWithBothFaces(),
+    });
+    for (const journey of [
+      "registration",
+      "myProducts",
+      "serviceProgress",
+      "quoteDecisions",
+      "transfer",
+    ] as const) {
+      expect(hostJourneyEnabled(journey)).toBe(true);
+    }
+    expect(hostFaceEnabled("tidewell-care")).toBe(true);
+    for (const path of [
+      "/products",
+      "/products/tidewell-care/register",
+      "/products/morrow-home/claims",
+      `/products/morrow-home/products/${UNIT}/transfer`,
+    ]) {
+      expect(hostPageAllowed(path)).toBe(true);
+    }
+    expect(hostLanding()).toBe("/inventory");
+    expect(hostHome()).toBeUndefined();
+    expect(productFaceEntries().map((entry) => entry.slug)).toEqual([
+      "morrow-home",
+      "tidewell-care",
+    ]);
+  });
+
+  it("a branded host serves only its faces and enabled journeys' pages", () => {
+    applyHostEnvironment(hostEnvironment(tidewellDocument()));
+    expect(hostJourneyEnabled("registration")).toBe(true);
+    expect(hostJourneyEnabled("transfer")).toBe(false);
+    expect(hostFaceEnabled("tidewell-care")).toBe(true);
+    expect(hostFaceEnabled("morrow-home")).toBe(false);
+    // The registry holds only this host's face.
+    expect(productFaceEntries().map((entry) => entry.slug)).toEqual([
+      "tidewell-care",
+    ]);
+    expect(productFaceBinding("morrow-home")).toBeUndefined();
+
+    const allowed = [
+      "/inventory",
+      "/settings",
+      "/products",
+      "/products/tidewell-care",
+      "/products/tidewell-care/",
+      "/products/tidewell-care/register",
+      "/products/tidewell-care/register/result/op-1",
+      "/products/tidewell-care/products",
+      `/products/tidewell-care/products/${UNIT}/care`,
+      "/products/tidewell-care/support",
+      "/products/tidewell-care/ended",
+      "/products/tidewell-care/handover",
+    ];
+    const refused = [
+      // another face, even one in the same registry
+      "/products/morrow-home",
+      "/products/morrow-home/register",
+      "/products/morrow-home/handover",
+      // disabled journeys
+      "/products/tidewell-care/service",
+      "/products/tidewell-care/service/case-1",
+      "/products/tidewell-care/accept",
+      `/products/tidewell-care/products/${UNIT}/transfer`,
+      // not a contract route
+      "/products/tidewell-care/claims",
+    ];
+    for (const path of allowed)
+      expect([path, hostPageAllowed(path)]).toEqual([path, true]);
+    for (const path of refused)
+      expect([path, hostPageAllowed(path)]).toEqual([path, false]);
+  });
+
+  it("a host without My products refuses the programme list", () => {
+    const document = tidewellDocument();
+    edit(document, "journeys.myProducts", false);
+    edit(document, "navigation", ["settings"]);
+    edit(document, "home.primaryJourney", "registration");
+    applyHostEnvironment(hostEnvironment(document));
+    expect(hostPageAllowed("/products")).toBe(false);
+    expect(hostPageAllowed("/products/tidewell-care/products")).toBe(false);
+    expect(hostPageAllowed("/products/tidewell-care/register")).toBe(true);
+  });
+
+  it("the handover entry needs registration or transfer", () => {
+    const document = tidewellDocument();
+    edit(document, "journeys.registration", false);
+    applyHostEnvironment(hostEnvironment(document));
+    expect(hostPageAllowed("/products/tidewell-care/handover")).toBe(false);
+    expect(hostPageAllowed("/products/tidewell-care/register")).toBe(false);
+  });
+
+  it("an invalid configuration serves no journey and no face", () => {
+    applyHostEnvironment({
+      ...hostEnvironment(morrowDocument()),
+      WALLET_HOST_CONFIGURATION_SHA256: "1".repeat(64),
+    });
+    expect(hostJourneyEnabled("registration")).toBe(false);
+    expect(hostFaceEnabled("morrow-home")).toBe(false);
+    expect(productFaceEntries()).toEqual([]);
+    expect(hostHome()).toBeUndefined();
+  });
+
+  it("each host's home links its own journeys and navigation", () => {
+    applyHostEnvironment(hostEnvironment(morrowDocument()));
+    expect(hostLanding()).toBe("/");
+    expect(hostHome()).toEqual({
+      brand: {
+        brand: { id: "morrow-home", name: "Morrow Home", shortName: "Morrow" },
+        logo: { src: `/api/host/logo/${sha256(MORROW_LOGO)}` },
+      },
+      headline: "Your Morrow Home tools, registered and cared for.",
+      introduction:
+        "Register a new tool, follow a service and pass it on when you sell it.",
+      primary: {
+        journey: "registration",
+        href: "/products/morrow-home/register",
+      },
+      journeys: [
+        { journey: "myProducts", href: "/products/morrow-home/products" },
+        { journey: "serviceProgress", href: "/products/morrow-home/service" },
+        { journey: "quoteDecisions", href: "/products/morrow-home/service" },
+        { journey: "transfer", href: "/products/morrow-home" },
+      ],
+      navigation: [
+        { entry: "inventory", href: "/inventory" },
+        { entry: "products", href: "/products" },
+        { entry: "activity", href: "/activity" },
+        { entry: "settings", href: "/settings" },
+      ],
+    });
+    resetWalletHostCache();
+    applyHostEnvironment(hostEnvironment(tidewellDocument()));
+    expect(hostHome()).toMatchObject({
+      headline: "Every Tidewell kettle you own, in one place.",
+      primary: {
+        journey: "myProducts",
+        href: "/products/tidewell-care/products",
+      },
+      journeys: [
+        { journey: "registration", href: "/products/tidewell-care/register" },
+      ],
+      navigation: [
+        { entry: "products", href: "/products" },
+        { entry: "settings", href: "/settings" },
+      ],
+    });
   });
 });

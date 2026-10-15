@@ -5,6 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { safeReturnPath } from "@/app/_domain/navigation";
 import { useErrorMessage } from "@/app/_hooks/use-error-message";
+import { useHostPresentation } from "@/app/_providers/host-provider";
 import { useSession } from "@/app/_providers/session-provider";
 import {
   AuthFlowError,
@@ -22,6 +23,8 @@ export function useAuthActions() {
   const session = useSession();
   const t = useTranslations("auth.errors");
   const errorMessage = useErrorMessage();
+  // A branded host's landing is its home; the generic wallet's, inventory.
+  const landing = useHostPresentation() ? "/" : "/inventory";
 
   const finish = async (result: AuthResult) => {
     await session.refresh(result.wallet.id);
@@ -35,7 +38,7 @@ export function useAuthActions() {
         ? next
           ? `/verify?next=${encodeURIComponent(next)}`
           : "/verify"
-        : (next ?? "/inventory"),
+        : (next ?? landing),
     );
     router.refresh();
   };

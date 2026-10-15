@@ -7,6 +7,11 @@ import {
 } from "@/api/session-key";
 import { ORGANIZATION_COOKIE_NAME, SESSION_COOKIE_NAME } from "@/api/settings";
 import { chosenOrganizationId } from "@/api/tenant";
+import {
+  HOST_NOT_FOUND_PATH,
+  hostLanding,
+  hostPageAllowed,
+} from "@/api/wallet-host";
 import { isProtectedPath, safeReturnPath } from "@/app/_domain/navigation";
 const AUTH_ENTRY = ["/login", "/register", "/forgot-password"];
 
@@ -62,6 +67,14 @@ export function proxy(request: NextRequest) {
   }
 
   const pathname = url.pathname;
+  // A branded host serves no page of a disabled journey or of a face that is
+  // not its own: the request is answered by the not-found page (404) before
+  // any guard, redirect or cookie.
+  if (!hostPageAllowed(pathname)) {
+    url.pathname = HOST_NOT_FOUND_PATH;
+    url.search = "";
+    return NextResponse.rewrite(url);
+  }
   // The path wins over the query. A mail link that names one organization in
   // each place is malformed, and the visible one is the honest answer.
   const chosen =
@@ -93,7 +106,7 @@ export function proxy(request: NextRequest) {
     // entry link goes to /inventory first, then back to /login once the session
     // fails its tenant check. Unsealing the session here would save the hop.
     const next = safeReturnPath(url.searchParams.get("next"));
-    const target = new URL(next ?? "/inventory", url);
+    const target = new URL(next ?? hostLanding(), url);
     url.pathname = target.pathname;
     url.search = target.search;
     response = NextResponse.redirect(url);

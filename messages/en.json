@@ -20,7 +20,8 @@
     "openMenu": "Open navigation",
     "closeMenu": "Close navigation",
     "loadingPage": "Loading page",
-    "goToInventory": "Go to inventory"
+    "goToInventory": "Go to inventory",
+    "goToHome": "Go to home"
   },
   "errors": {
     "authentication": "Your session has expired. Sign in again to continue.",
@@ -553,5 +554,22 @@
         "face_settle_proposal_release_changed": "{publisher}'s confirmation was prepared for an earlier version of their app. Their team needs to send a new one; nothing was changed."
       }
     }
+  },
+  "host": {
+    "homeNavigation": "Wallet",
+    "signIn": "Sign in",
+    "createAccount": "Create an account",
+    "journeysLabel": "What you can do here",
+    "journeys": {
+      "registration": "Register a product",
+      "myProducts": "See my products",
+      "serviceProgress": "Follow a service",
+      "quoteDecisions": "Review a quote",
+      "transfer": "Pass on a product"
+    },
+    "setupTitle": "This wallet is being set up",
+    "setupDescription": "It is not open yet. Nothing was signed in or changed. Please try again later.",
+    "misdirectedTitle": "This wallet is not available at this address",
+    "misdirectedDescription": "Open it from the address you were given. Nothing was signed in or changed."
   }
 }

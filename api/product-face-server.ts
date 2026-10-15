@@ -13,6 +13,7 @@ import {
 } from "@/api/face-journal";
 import { clearFaceAcceptance } from "@/api/face-acceptance";
 import { clearFaceHandover } from "@/api/face-handover";
+import { faceJourneyRefused } from "@/api/host-journey-guard";
 import type { ProductFaceBinding } from "@/api/product-face-binding";
 import { productFaceBinding } from "@/api/product-face-registry";
 import { mutationGuard } from "@/api/request";
@@ -24,6 +25,7 @@ import {
   writeSession,
   type SessionState,
 } from "@/api/server-session";
+import { walletHost } from "@/api/wallet-host";
 import { ResponseError } from "@/api/web-sdk/runtime";
 import { getObjectsApi } from "@/api/web-sdk-client";
 import {
@@ -68,6 +70,11 @@ export async function resolveFaceRequest(
   slug: string,
   { mutation = false }: { mutation?: boolean } = {},
 ): Promise<FaceRequestContext | NextResponse> {
+  // A branded host whose configuration is invalid serves no face at all.
+  if (walletHost().status === "invalid") {
+    return faceError("host_unavailable", 503);
+  }
+  // A branded host's registry holds only its own faces.
   const binding = productFaceBinding(slug);
   if (!binding) return faceError("unknown_application", 404);
   // Every journal and selection belongs to one launch (frame) of the face.
@@ -102,7 +109,7 @@ export async function resolveFaceRequest(
     slug: binding.slug,
     programmeId: binding.programmeId,
   };
-  return {
+  const context: FaceRequestContext = {
     binding,
     wallet: result.wallet,
     holder: result.wallet.account.address,
@@ -112,6 +119,12 @@ export async function resolveFaceRequest(
     journal: readFaceJournal(request, scope),
     request,
   };
+  // A branded host refuses a disabled journey's request here, before any
+  // route logic: nothing is journaled, read or minted for it.
+  if (await faceJourneyRefused(request, context.journal)) {
+    return faceContextError(context, "capability_not_granted", 403);
+  }
+  return context;
 }
 
 /** Private, uncached response that carries the renewed session and journal. */

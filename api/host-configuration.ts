@@ -238,7 +238,10 @@ function appOrigin(value: string | undefined) {
 }
 
 /** The binding capabilities each enabled journey needs from a host face. */
-function bindingBacks(binding: ProductFaceBinding, journey: HostJourney) {
+export function bindingBacksJourney(
+  binding: ProductFaceBinding,
+  journey: HostJourney,
+) {
   switch (journey) {
     case "registration":
     case "myProducts":
@@ -381,7 +384,7 @@ function validate(
   for (const journey of hostJourneys) {
     if (
       enabled[journey] &&
-      !bindings.some((binding) => bindingBacks(binding, journey))
+      !bindings.some((binding) => bindingBacksJourney(binding, journey))
     ) {
       return invalid("journey_unbacked");
     }
