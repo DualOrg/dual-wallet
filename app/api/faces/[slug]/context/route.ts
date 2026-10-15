@@ -23,7 +23,9 @@ type Params = { params: Promise<{ slug: string }> };
 // selected product.
 export async function GET(request: NextRequest, { params }: Params) {
   const { slug } = await params;
-  const context = await resolveFaceRequest(request, slug);
+  const context = await resolveFaceRequest(request, slug, {
+    route: "context",
+  });
   if (!("binding" in context)) return context;
   const artifact = await verifyFaceArtifact(context.binding);
   if (!artifact.ok) {

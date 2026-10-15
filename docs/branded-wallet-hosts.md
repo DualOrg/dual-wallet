@@ -201,12 +201,24 @@ selection and the journal list are shared by all of them.
   face's pages and any task outside the contract's routes with the not-found
   page (404) before any guard, redirect or cookie. The products and task pages
   repeat the check.
-- **BFF**: `api/host-journey-guard.ts` names the journey of each face request
-  from its route, or from the operation or journal entry it carries, and
-  `resolveFaceRequest` refuses a disabled one (403
-  `capability_not_granted`) before any route logic runs. Nothing is journaled,
-  read from a runtime or minted for it. The handover entry keeps no ticket of
-  a disabled journey and the context read hands none over.
+- **BFF**: `api/host-journey-guard.ts` classifies each face request by the
+  route that serves it, never by a path pattern: every face route except the
+  assertion and journal routes passes its own identity to
+  `resolveFaceRequest`, and those two are recognised only at their exact
+  canonical path for the slug they serve, then by the operation or journal
+  entry the request carries. A face's holder-signed step through
+  `/api/backend` (contract r18) is classified by its bound journal entry: a
+  settle step is registration's, a transfer step is transfer's.
+  `resolveFaceRequest` refuses, with 403 `capability_not_granted` and before
+  any route logic runs, every request of a disabled journey **and every
+  request it cannot classify** (an unnamed path, an operation or journal step
+  of no journey): it fails closed. Nothing is journaled, read from a runtime,
+  minted or executed for it. The handover entry keeps no ticket of a disabled
+  journey and the context read hands none over.
+- **Paths**: the request proxy answers an entry-link prefix in front of
+  `/api` (`/<organisation>/api/...`) with 404 on a branded host instead of
+  rewriting it, so no route handler is reached under a path other than its
+  own. The generic wallet keeps that rewrite unchanged.
 - **Registry**: a configured host's face registry holds only its own faces;
   any other binding is `unknown_application`.
 

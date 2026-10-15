@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import type { FaceJournal } from "@/api/face-journal";
 import { MAX_BFF_BODY_BYTES } from "@/api/settings";
 import { hostJourneyEnabled, walletHost } from "@/api/wallet-host";
+import { FACE_EXECUTION_OPERATION_HEADER } from "@/app/_domain/face-execution";
 import { isRuntimeOperation } from "@/app/_domain/product-face";
 import {
   journeyOfJournalEntry,
@@ -11,7 +12,37 @@ import {
   type HostJourney,
 } from "@/app/_domain/wallet-host";
 
-const FACE_ROUTE = /^\/api\/faces\/[^/]+(\/[^?#]*)?$/;
+/**
+ * The face BFF routes that name themselves to resolveFaceRequest. The
+ * identity comes from the route module that serves the request, never from
+ * the request path, so no rewrite or prefix can change it.
+ */
+export type FaceRoute =
+  | "context"
+  | "selection"
+  | "units"
+  | "settle-proposal"
+  | "transfer-proposal"
+  | "transfer-progress"
+  | "accept-offer"
+  /** A face's holder-signed step through /api/backend (contract r18). */
+  | "execution";
+
+type Classification =
+  | { kind: "shared" }
+  | { kind: "journey"; journey: HostJourney }
+  | { kind: "unclassified" };
+
+const SHARED: Classification = { kind: "shared" };
+const UNCLASSIFIED: Classification = { kind: "unclassified" };
+const journey = (value: HostJourney): Classification => ({
+  kind: "journey",
+  journey: value,
+});
+const ofEntry = (entry: { kind: string; operation?: string } | undefined) => {
+  const value = entry ? journeyOfJournalEntry(entry) : undefined;
+  return value ? journey(value) : UNCLASSIFIED;
+};
 
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -32,79 +63,121 @@ async function peekBody(request: NextRequest) {
 }
 
 /**
- * The journey one face BFF request serves, from its route and (for the
- * assertion and journal routes) its operation or journal entry. Undefined:
- * shared machinery (context, selection, the journal list) or a request its
- * route refuses as invalid anyway.
+ * The routes that name no identity (the assertion and journal routes) are
+ * recognised only at their exact canonical path for the slug they were
+ * resolved with. Anything else, an entry-link prefix or an encoded segment
+ * included, is not one of them.
  */
-export async function faceRequestJourney(
-  request: NextRequest,
-  journal: FaceJournal,
-): Promise<HostJourney | undefined> {
-  const route = FACE_ROUTE.exec(request.nextUrl.pathname)?.[1] ?? "";
-  const post = request.method === "POST";
-  if (route === "/settle-proposal" || route.startsWith("/units/")) {
-    return "registration";
-  }
-  if (
-    route === "/transfer-proposal" ||
-    route === "/transfer-progress" ||
-    route === "/accept-offer"
-  ) {
-    return "transfer";
-  }
-  if (route === "/assertions" && post) {
-    const body = await peekBody(request);
-    return isRuntimeOperation(body?.operation)
-      ? journeyOfOperation(body.operation)
-      : undefined;
-  }
-  if (route === "/operations" && post) {
-    const body = await peekBody(request);
-    if (!body) return undefined;
-    if (body.transition === "begin") {
-      if (body.kind === "runtime") {
-        return isRuntimeOperation(body.operation)
-          ? journeyOfOperation(body.operation)
-          : undefined;
-      }
-      return typeof body.kind === "string"
-        ? journeyOfJournalEntry({ kind: body.kind })
-        : undefined;
-    }
-    const entry = journal.entries.find(
-      (item) => item.operationId === body.operation_id,
-    );
-    return entry ? journeyOfJournalEntry(entry) : undefined;
-  }
-  if (route.startsWith("/operations/")) {
-    let operationId: string;
+function unnamedRoute(request: NextRequest, slug: string) {
+  const base = `/api/faces/${slug}`;
+  const path = request.nextUrl.pathname;
+  if (path === `${base}/assertions`) return { route: "assertions" as const };
+  if (path === `${base}/operations`) return { route: "operations" as const };
+  const prefix = `${base}/operations/`;
+  const rest = path.startsWith(prefix) ? path.slice(prefix.length) : "";
+  if (rest && !rest.includes("/")) {
     try {
-      operationId = decodeURIComponent(route.slice("/operations/".length));
+      return {
+        route: "operation-status" as const,
+        operationId: decodeURIComponent(rest),
+      };
     } catch {
-      // Not an operation id at all; the route's only other journey.
-      return "registration";
+      return undefined;
     }
-    const entry = journal.entries.find(
-      (item) => item.operationId === operationId,
-    );
-    // Not this launch's own: only ever a recovered registration.
-    return entry ? journeyOfJournalEntry(entry) : "registration";
   }
   return undefined;
 }
 
 /**
- * Whether a branded host refuses this face request because the journey it
- * serves is disabled. Called once, from resolveFaceRequest, before any route
- * logic runs: nothing is journaled, read from a runtime or minted for it.
- * The generic wallet enables every journey and never reads the request here.
+ * The journey one face BFF request serves: from the route that names itself,
+ * or, for the assertion and journal routes, from their canonical path and the
+ * operation or journal entry the request carries. Context, selection and the
+ * journal list are shared. Anything else is unclassified.
+ */
+export async function classifyFaceRequest(
+  request: NextRequest,
+  slug: string,
+  journal: FaceJournal,
+  route?: FaceRoute,
+): Promise<Classification> {
+  const find = (operationId: unknown) =>
+    journal.entries.find((item) => item.operationId === operationId);
+  switch (route) {
+    case "context":
+    case "selection":
+      return SHARED;
+    case "units":
+    case "settle-proposal":
+      return journey("registration");
+    case "transfer-proposal":
+    case "transfer-progress":
+    case "accept-offer":
+      return journey("transfer");
+    case "execution": {
+      // The bound journal entry's kind: a settle step is registration's, a
+      // transfer step transfer's. No such entry: not a face step at all.
+      const entry = find(request.headers.get(FACE_EXECUTION_OPERATION_HEADER));
+      return entry && (entry.kind === "settle" || entry.kind === "transfer")
+        ? ofEntry(entry)
+        : UNCLASSIFIED;
+    }
+    case undefined:
+      break;
+  }
+  const unnamed = unnamedRoute(request, slug);
+  if (!unnamed) return UNCLASSIFIED;
+  if (unnamed.route === "operation-status") {
+    if (request.method !== "GET") return UNCLASSIFIED;
+    const entry = find(unnamed.operationId);
+    // Not this launch's own: only ever a recovered registration.
+    return entry ? ofEntry(entry) : journey("registration");
+  }
+  if (unnamed.route === "operations" && request.method === "GET") {
+    return SHARED;
+  }
+  if (request.method !== "POST") return UNCLASSIFIED;
+  const body = await peekBody(request);
+  if (!body) return UNCLASSIFIED;
+  if (unnamed.route === "assertions") {
+    return isRuntimeOperation(body.operation)
+      ? journey(journeyOfOperation(body.operation))
+      : UNCLASSIFIED;
+  }
+  if (body.transition === "begin") {
+    if (body.kind === "runtime") {
+      return isRuntimeOperation(body.operation)
+        ? journey(journeyOfOperation(body.operation))
+        : UNCLASSIFIED;
+    }
+    return typeof body.kind === "string"
+      ? ofEntry({ kind: body.kind })
+      : UNCLASSIFIED;
+  }
+  return ofEntry(find(body.operation_id));
+}
+
+/**
+ * Whether a branded host refuses this face request: it fails closed, so a
+ * request whose route and journey cannot be classified is refused, and so is
+ * one whose journey is disabled. Called once, from resolveFaceRequest, before
+ * any route logic runs: nothing is journaled, read from a runtime, minted or
+ * executed for it. The generic wallet enables every journey and never reads
+ * the request here.
  */
 export async function faceJourneyRefused(
   request: NextRequest,
+  slug: string,
   journal: FaceJournal,
+  route?: FaceRoute,
 ) {
   if (walletHost().status !== "active") return false;
-  const journey = await faceRequestJourney(request, journal);
-  return journey !== undefined && !hostJourneyEnabled(journey);
+  const classification = await classifyFaceRequest(
+    request,
+    slug,
+    journal,
+    route,
+  );
+  if (classification.kind === "shared") return false;
+  if (classification.kind === "unclassified") return true;
+  return !hostJourneyEnabled(classification.journey);
 }

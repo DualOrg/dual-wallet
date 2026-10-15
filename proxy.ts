@@ -108,6 +108,20 @@ export function proxy(request: NextRequest) {
   }
   const url = request.nextUrl.clone();
   const first = ENTRY_PREFIX.exec(url.pathname);
+  // A branded host serves its API only at its own paths. An entry-link prefix
+  // in front of /api is not one: rewriting it would hand the route handler a
+  // path other than the one it serves (the generic wallet keeps its rewrite).
+  if (
+    host.status === "active" &&
+    first &&
+    chosenOrganizationId(first[1]) &&
+    /^\/api(?:\/|$)/.test(url.pathname.slice(first[0].length))
+  ) {
+    return NextResponse.json(
+      { code: "not_found", message: "Not found." },
+      { status: 404, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   const prefixed = organizationOf(first?.[1]);
   if (prefixed) {
     url.pathname = url.pathname.slice(first![0].length) || "/";

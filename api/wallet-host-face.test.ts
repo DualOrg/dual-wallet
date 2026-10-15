@@ -25,6 +25,11 @@ jest.mock("@/api/web-sdk-client", () => ({
   getWalletsApi: () => ({ getWallet, logout: jest.fn() }),
   getObjectsApi: () => ({ getObjectById, getObjectByIdPublic }),
 }));
+// The pinned artifact itself is verified in api/face-artifact.test.ts.
+jest.mock("@/api/face-artifact", () => ({
+  ...jest.requireActual("@/api/face-artifact"),
+  verifyFaceArtifact: async () => ({ ok: true }),
+}));
 const minted = jest.fn();
 jest.mock("@/api/face-assertion", () => {
   const actual = jest.requireActual("@/api/face-assertion");
@@ -37,12 +42,24 @@ jest.mock("@/api/face-assertion", () => {
   };
 });
 
-import { establishSession } from "@/api/server-session";
+import {
+  emptyFaceJournal,
+  writeFaceJournal,
+  type FaceJournal,
+} from "@/api/face-journal";
+import {
+  establishSessionState,
+  sessionIdHash,
+  type SessionState,
+} from "@/api/server-session";
 import { resetIssueGuard } from "@/api/product-face-operations";
+import { resolveFaceRequest } from "@/api/product-face-server";
 import { resetWalletHostCache } from "@/api/wallet-host";
 import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
+import { POST as backendPOST } from "@/app/api/backend/[...path]/route";
 import { POST as acceptOfferPOST } from "@/app/api/faces/[slug]/accept-offer/route";
 import { POST as assertionsPOST } from "@/app/api/faces/[slug]/assertions/route";
+import { GET as contextGET } from "@/app/api/faces/[slug]/context/route";
 import { POST as handoverPOST } from "@/app/api/faces/[slug]/handover/route";
 import {
   GET as operationsGET,
@@ -87,10 +104,11 @@ function configure(journeys: Partial<HostJourneys> = {}) {
 class Browser {
   cookies = new Map<string, string>();
   launchId = `launch-${"x".repeat(28)}`;
+  state: SessionState;
 
   constructor() {
     const response = NextResponse.json({});
-    establishSession(
+    this.state = establishSessionState(
       response,
       {
         accessToken: jwt({
@@ -105,6 +123,23 @@ class Browser {
         host: "localhost",
       },
       "email",
+    )!;
+    this.take(response);
+  }
+
+  /** Seals a launch journal for this session, as the BFF itself would. */
+  keepJournal(journal: FaceJournal) {
+    const response = NextResponse.json({});
+    writeFaceJournal(
+      response,
+      new NextRequest("http://localhost/api/faces/morrow-home/operations"),
+      {
+        owner: { sidHash: sessionIdHash(this.state)!, walletId: "wallet-1" },
+        launchId: this.launchId,
+        slug: SLUG,
+        programmeId: "morrow-home-arc",
+      },
+      journal,
     );
     this.take(response);
   }
@@ -125,6 +160,7 @@ class Browser {
     path: string,
     params: P,
     body?: unknown,
+    extra: Record<string, string> = {},
   ) {
     const request = new NextRequest(`http://localhost${path}`, {
       method: body === undefined ? "GET" : "POST",
@@ -134,6 +170,7 @@ class Browser {
         cookie: Array.from(this.cookies, ([k, v]) => `${k}=${v}`).join("; "),
         "x-dual-face-launch": this.launchId,
         ...(body === undefined ? {} : { "content-type": "application/json" }),
+        ...extra,
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -504,5 +541,233 @@ describe("without a host configuration", () => {
         )
       ).status,
     ).toBe(200);
+  });
+});
+
+// B1: a face request is classified by the route that serves it. An entry-link
+// prefix (/<organisation>/api/faces/...) used to reach the handlers with a
+// path the classifier did not recognise, which counted as "no journey".
+describe("the route a face request is served by, not its path", () => {
+  const PREFIX = `/${DEFAULT_ORGANIZATION_ID}`;
+  const prefixed = (route: string) => `${PREFIX}${face(route)}`;
+
+  it("refuses an entry-prefixed path of a disabled journey; nothing is minted or read", async () => {
+    configure({ registration: false, transfer: false });
+    const browser = new Browser();
+    expect(
+      await browser.call(
+        assertionsPOST,
+        prefixed("/assertions"),
+        slug,
+        offerRead,
+      ),
+    ).toEqual(REFUSED);
+    expect(
+      await browser.call(operationsPOST, prefixed("/operations"), slug, {
+        transition: "begin",
+        kind: "registration",
+        operation: "registration.submit",
+        operation_id: "register-op-0001",
+        object_id: UNIT,
+        record_id: "rec-0001",
+        request_hash: REQUEST_HASH,
+      }),
+    ).toEqual(REFUSED);
+    for (const [handler, route] of [
+      [transferProposalPOST, "/transfer-proposal"],
+      [acceptOfferPOST, "/accept-offer"],
+      [settlePOST, "/settle-proposal"],
+    ] as const) {
+      expect(
+        await browser.call(handler, prefixed(route), slug, {
+          context_id: "c".repeat(24),
+          operation_id: "register-op-0001",
+          object_id: UNIT,
+        }),
+      ).toEqual(REFUSED);
+    }
+    expect(minted).not.toHaveBeenCalled();
+    expect(getObjectByIdPublic).not.toHaveBeenCalled();
+    expect(getObjectById).not.toHaveBeenCalled();
+    expect(runtime).not.toHaveBeenCalled();
+  });
+
+  it("classifies the journal and assertion routes only at their own path", async () => {
+    configure();
+    const browser = new Browser();
+    // Every journey enabled: the prefixed path is still not one of them.
+    expect(
+      await browser.call(
+        assertionsPOST,
+        prefixed("/assertions"),
+        slug,
+        offerRead,
+      ),
+    ).toEqual(REFUSED);
+    expect(
+      await browser.call(
+        assertionsPOST,
+        face("/%61ssertions"),
+        slug,
+        offerRead,
+      ),
+    ).toEqual(REFUSED);
+    expect(
+      await browser.call(operationsGET, prefixed("/operations"), slug),
+    ).toEqual(REFUSED);
+    expect(minted).not.toHaveBeenCalled();
+    // The canonical paths are unchanged.
+    expect(
+      (await browser.call(assertionsPOST, face("/assertions"), slug, offerRead))
+        .status,
+    ).toBe(200);
+    expect(minted).toHaveBeenCalledTimes(1);
+    expect(
+      await browser.call(operationsGET, face("/operations"), slug),
+    ).toEqual({ status: 200, body: { operations: [] } });
+  });
+
+  it("refuses any face request it cannot classify on an active host", async () => {
+    configure();
+    const browser = new Browser();
+    // An operation the contract does not name.
+    expect(
+      await browser.call(assertionsPOST, face("/assertions"), slug, {
+        ...offerRead,
+        operation: "wallet.everything",
+      }),
+    ).toEqual(REFUSED);
+    // A journal step of no journey.
+    expect(
+      await browser.call(operationsPOST, face("/operations"), slug, {
+        transition: "confirm",
+        operation_id: "never-begun-001",
+      }),
+    ).toEqual(REFUSED);
+    // A caller that names no route, on a path that is not one.
+    const unnamed = await resolveFaceRequest(
+      new NextRequest(`http://localhost${face("/unknown")}`, {
+        headers: {
+          host: "localhost",
+          cookie: Array.from(browser.cookies, ([k, v]) => `${k}=${v}`).join(
+            "; ",
+          ),
+          "x-dual-face-launch": browser.launchId,
+        },
+      }),
+      SLUG,
+    );
+    expect(unnamed).toBeInstanceOf(NextResponse);
+    expect((unnamed as NextResponse).status).toBe(403);
+    expect(minted).not.toHaveBeenCalled();
+  });
+
+  it("refuses face execution through /api/backend for a disabled journey's step, before any upstream call", async () => {
+    const now = Date.now();
+    const step = (kind: "settle" | "transfer") => ({
+      operationId: `${kind}-step-0001`,
+      kind,
+      operation: kind === "settle" ? "update" : "transfer.request",
+      slug: SLUG,
+      programmeId: "morrow-home-arc",
+      objectId: UNIT,
+      phase: "submitted" as const,
+      dispatch: "won" as const,
+      proposalId: "proposal-0001",
+      ...(kind === "transfer" ? { offerId: `pto-${"a".repeat(24)}` } : {}),
+      createdAt: now,
+      updatedAt: now,
+    });
+    const execute = (browser: Browser, operationId: string) =>
+      browser.call(
+        backendPOST,
+        "/api/backend/ebus/prepare",
+        { path: ["ebus", "prepare"] },
+        { action: { update: { id: UNIT } } },
+        {
+          "x-dual-face-slug": SLUG,
+          "x-dual-face-operation": operationId,
+          "x-dual-face-wallet": "wallet-1",
+        },
+      );
+    for (const [kind, journey] of [
+      ["settle", "registration"],
+      ["transfer", "transfer"],
+    ] as const) {
+      configure({ [journey]: false });
+      const browser = new Browser();
+      browser.keepJournal({
+        ...emptyFaceJournal(),
+        entries: [step(kind)],
+      });
+      expect(await execute(browser, `${kind}-step-0001`)).toEqual(REFUSED);
+      expect(runtime).not.toHaveBeenCalled();
+
+      // Enabled, the same step passes the journey check and the execution
+      // binding, and is forwarded to Dual's prepare (unreachable here).
+      configure({ [journey]: true });
+      expect((await execute(browser, `${kind}-step-0001`)).status).toBe(502);
+      expect(runtime).toHaveBeenCalledTimes(1);
+      expect(String(runtime.mock.calls[0][0])).toMatch(/\/ebus\/prepare$/);
+      runtime.mockClear();
+    }
+  });
+});
+
+describe("the context read on a branded host", () => {
+  it("hands over no acceptance ticket while transfer is disabled, and keeps it", async () => {
+    configure();
+    const browser = new Browser();
+    const ticket = "t".repeat(43);
+    expect(
+      (
+        await browser.call(handoverPOST, face("/handover"), slug, {
+          ticket,
+          kind: "accept",
+        })
+      ).status,
+    ).toBe(200);
+    const read = () =>
+      browser.call(contextGET, `${face("/context")}?task=%2Faccept`, slug);
+
+    configure({ transfer: false });
+    const withheld = await read();
+    expect(withheld.status).toBe(200);
+    expect(withheld.body).not.toHaveProperty("acceptance");
+
+    // Not consumed: once transfer is served again, it is handed over once.
+    configure();
+    const handed = await read();
+    expect(handed.body.acceptance).toEqual({ ticket });
+    expect((await read()).body).not.toHaveProperty("acceptance");
+  });
+});
+
+describe("prefixed paths without a host configuration", () => {
+  it("reach the handlers exactly as before", async () => {
+    clearHostEnvironment();
+    process.env.PRODUCT_FACE_APPLICATIONS = registryWithBothFaces();
+    resetWalletHostCache();
+    const browser = new Browser();
+    // The generic wallet never classifies face requests: the prefixed path
+    // is served by its handler as it was at 89b5700.
+    const result = await browser.call(
+      assertionsPOST,
+      `/${DEFAULT_ORGANIZATION_ID}${face("/assertions")}`,
+      slug,
+      offerRead,
+    );
+    expect(result.status).toBe(200);
+    expect(minted).toHaveBeenCalledTimes(1);
+    // An operation the contract does not name is the route's own 400.
+    expect(
+      await browser.call(assertionsPOST, face("/assertions"), slug, {
+        ...offerRead,
+        operation: "wallet.everything",
+      }),
+    ).toEqual({
+      status: 400,
+      body: expect.objectContaining({ code: "invalid_request" }),
+    });
   });
 });

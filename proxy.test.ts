@@ -497,3 +497,70 @@ describe("branded host entrance and fail-closed mode", () => {
     }
   });
 });
+
+// B1: an entry-link prefix never reaches a branded host's API.
+describe("entry-prefixed API paths", () => {
+  afterEach(() => {
+    clearHostEnvironment();
+    resetWalletHostCache();
+  });
+  const API = [
+    "/api/faces/morrow-home/assertions",
+    "/api/faces/morrow-home/operations",
+    "/api/faces/morrow-home/transfer-proposal",
+    "/api/faces/morrow-home/accept-offer",
+    "/api/faces/morrow-home/settle-proposal",
+    "/api/session/login",
+    "/api/backend/ebus/prepare",
+    "/api",
+  ];
+
+  test("a branded host answers them 404, rewriting nothing", async () => {
+    resetWalletHostCache();
+    applyHostEnvironment(hostEnvironment(morrowDocument()));
+    const { host } = new URL(MORROW_ORIGIN);
+    for (const organization of [
+      "a1a1a1a1a1a1a1a1a1a1a1a1",
+      "A1A1A1A1A1A1A1A1A1A1A1A1",
+      ORGANIZATION,
+    ]) {
+      for (const path of API) {
+        const response = proxy(
+          new NextRequest(`${MORROW_ORIGIN}/${organization}${path}`, {
+            method: "POST",
+            headers: { host, cookie: "smarttoken_viewer=sealed" },
+          }),
+        );
+        expect([path, response.status]).toEqual([path, 404]);
+        expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+        expect(response.cookies.getAll()).toEqual([]);
+        expect(await response.json()).toEqual({
+          code: "not_found",
+          message: "Not found.",
+        });
+      }
+    }
+    // The canonical paths are untouched by this rule.
+    expect(
+      proxy(
+        new NextRequest(`${MORROW_ORIGIN}/api/faces/morrow-home/assertions`, {
+          method: "POST",
+          headers: { host },
+        }),
+      ).headers.get("x-middleware-next"),
+    ).toBe("1");
+  });
+
+  test("the generic wallet rewrites them exactly as it did at 89b5700", () => {
+    for (const path of API) {
+      const response = visit(`/${ORGANIZATION}${path}`);
+      expect([path, response.headers.get("x-middleware-rewrite")]).toEqual([
+        path,
+        `http://localhost${path}`,
+      ]);
+      expect(response.cookies.get(ORGANIZATION_COOKIE)?.value).toBe(
+        ORGANIZATION,
+      );
+    }
+  });
+});

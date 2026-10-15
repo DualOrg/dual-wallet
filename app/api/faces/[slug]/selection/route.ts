@@ -13,7 +13,10 @@ type Params = { params: Promise<{ slug: string }> };
 // one, so nothing is minted for a previous product's context afterwards.
 export async function POST(request: NextRequest, { params }: Params) {
   const { slug } = await params;
-  const context = await resolveFaceRequest(request, slug, { mutation: true });
+  const context = await resolveFaceRequest(request, slug, {
+    mutation: true,
+    route: "selection",
+  });
   if (!("binding" in context)) return context;
   const body = await readJsonRecord(request);
   if (!body) return faceContextError(context, "invalid_request", 400);

@@ -14,7 +14,9 @@ type Params = { params: Promise<{ slug: string; objectId: string }> };
 // PUBLIC projection: the unit is not yet held by this wallet.
 export async function GET(request: NextRequest, { params }: Params) {
   const { slug, objectId } = await params;
-  const context = await resolveFaceRequest(request, slug);
+  const context = await resolveFaceRequest(request, slug, {
+    route: "units",
+  });
   if (!("binding" in context)) return context;
   if (!isObjectId(objectId)) {
     return faceContextError(context, "invalid_request", 400);

@@ -13,7 +13,10 @@ type Params = { params: Promise<{ slug: string }> };
 // runtime read); the face never supplies one.
 export async function POST(request: NextRequest, { params }: Params) {
   const { slug } = await params;
-  const context = await resolveFaceRequest(request, slug, { mutation: true });
+  const context = await resolveFaceRequest(request, slug, {
+    mutation: true,
+    route: "settle-proposal",
+  });
   if (!("binding" in context)) return context;
   const body = await readJsonRecord(request);
   if (!body) return faceContextError(context, "invalid_request", 400);

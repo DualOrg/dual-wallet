@@ -72,7 +72,10 @@ export async function bindFaceExecution(
   }
   // The current session, its wallet and this launch's journal (the launch id
   // header is checked there); a logged-out or expired session is refused.
-  const context = await resolveFaceRequest(request, slug, { mutation: true });
+  const context = await resolveFaceRequest(request, slug, {
+    mutation: true,
+    route: "execution",
+  });
   if (context instanceof NextResponse) {
     return { bound: true, refused: context };
   }

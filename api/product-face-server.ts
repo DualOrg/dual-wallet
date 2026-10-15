@@ -13,7 +13,7 @@ import {
 } from "@/api/face-journal";
 import { clearFaceAcceptance } from "@/api/face-acceptance";
 import { clearFaceHandover } from "@/api/face-handover";
-import { faceJourneyRefused } from "@/api/host-journey-guard";
+import { faceJourneyRefused, type FaceRoute } from "@/api/host-journey-guard";
 import type { ProductFaceBinding } from "@/api/product-face-binding";
 import { productFaceBinding } from "@/api/product-face-registry";
 import { mutationGuard } from "@/api/request";
@@ -68,7 +68,18 @@ export function faceError(code: string, status: number) {
 export async function resolveFaceRequest(
   request: NextRequest,
   slug: string,
-  { mutation = false }: { mutation?: boolean } = {},
+  {
+    mutation = false,
+    route,
+  }: {
+    mutation?: boolean;
+    /**
+     * The calling route's own identity, for a branded host's journey check.
+     * The assertion and journal routes name none and are recognised only at
+     * their canonical path; anything unrecognised is refused there.
+     */
+    route?: FaceRoute;
+  } = {},
 ): Promise<FaceRequestContext | NextResponse> {
   // A branded host whose configuration is invalid serves no face at all.
   if (walletHost().status === "invalid") {
@@ -121,7 +132,7 @@ export async function resolveFaceRequest(
   };
   // A branded host refuses a disabled journey's request here, before any
   // route logic: nothing is journaled, read or minted for it.
-  if (await faceJourneyRefused(request, context.journal)) {
+  if (await faceJourneyRefused(request, binding.slug, context.journal, route)) {
     return faceContextError(context, "capability_not_granted", 403);
   }
   return context;
