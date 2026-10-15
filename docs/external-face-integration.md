@@ -442,14 +442,19 @@ launch's journal looks for exactly that operation id in the browser's other
 launch journals sealed for the same wallet ID (the session's, from
 `getWallet`), face and programme, in any session of that wallet: a reload,
 another tab, or a sign-in since. It uses the entry only when exactly one
-journal carries the id and it is a registration whose one
-`registration.submit` assertion its launch issued (open, registered or
-closed). It then reconciles that one operation exactly as its own launch
-would: the canonical readback, and the runtime's `registrations/status` for
-that operation under the current session (the runtime binds it to the
-holder), registered only when the runtime says so and closed
-(`runtime_never_accepted`) only on the same proof. The result is derived on
-every read and never kept: the entry does not join this launch's journal and
+journal holds the id as a registration whose one `registration.submit`
+assertion its launch issued (open, registered or closed). Other journals may
+carry the same id without having issued it (a launch that resumed it with
+Finish registration records it as observed, or one began it and never
+issued); they must name the same registration of the same unit. When two
+journals issued the id (two launches that both began it before either
+issued), or another entry under the id names another unit or is not a
+registration, nothing is recovered. It then reconciles that one operation
+exactly as its own launch would: the canonical readback, and the runtime's
+`registrations/status` for that operation under the current session (the
+runtime binds it to the holder), registered only when the runtime says so and
+closed (`runtime_never_accepted`) only on the same proof. The result is
+derived on every read and never kept: the entry does not join this launch's journal and
 the original journal is neither rewritten nor re-sealed. Another wallet, face
 or programme finds nothing; the history is never listed; no assertion is
 minted for the face, and no transition applies, for a recovered operation;

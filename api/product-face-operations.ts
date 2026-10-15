@@ -1278,9 +1278,15 @@ function customMapHash(custom: unknown) {
 
 /**
  * The one registration this wallet's other launch journals hold under exactly
- * this operation id, when a launch issued its one assertion; nothing when
- * there is none, it is not such a registration, or more than one entry
- * carries the id (it is never guessed which).
+ * this operation id whose launch issued its one assertion; nothing when no
+ * launch issued it, or more than one did (it is never guessed which).
+ *
+ * Other launches may carry the same id without having issued it: one that
+ * resumed this registration (Finish registration in a reload or another tab
+ * records it as observed, from the runtime's settle proposal), or one that
+ * began it and never issued. Those can only name this same registration of
+ * this same unit; any entry under the id that names another unit, or is not
+ * a registration, is a conflict, and nothing is recovered.
  */
 function recoveredRegistration(
   context: FaceRequestContext,
@@ -1288,9 +1294,17 @@ function recoveredRegistration(
   operationId: string,
 ) {
   const history = readFaceHistory(request, context.scope, operationId);
-  return history.length === 1 && recoverableRegistration(history[0])
-    ? history[0]
-    : undefined;
+  const issued = history.filter(recoverableRegistration);
+  if (issued.length !== 1) return undefined;
+  const [entry] = issued;
+  const consistent = history.every(
+    (other) =>
+      other === entry ||
+      (other.kind === "registration" &&
+        other.operation === entry.operation &&
+        other.objectId === entry.objectId),
+  );
+  return consistent ? entry : undefined;
 }
 
 /**

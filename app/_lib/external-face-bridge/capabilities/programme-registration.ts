@@ -158,9 +158,11 @@ export function registrationCapabilities(): ProductFaceCapability[] {
         try {
           result = await handlers.operationStatus(operationId);
         } catch (error) {
-          // Not in this launch's journal (another tab, a reload or a fresh
-          // sign-in): the host cannot tell, so it says so; the face then
-          // reconciles read-only with the runtime. Never a failure or success.
+          // Neither in this launch's journal nor the one registration this
+          // wallet's other launches issued under the id (the host reconciles
+          // that one read-only): the host cannot tell, so it says so; the face
+          // then reconciles read-only with the runtime. Never a failure or
+          // success.
           if (
             error instanceof ProductFaceError &&
             error.code === "unknown_operation"
