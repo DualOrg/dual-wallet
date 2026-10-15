@@ -7,6 +7,7 @@ import {
   type FaceHandoverKind,
 } from "@/api/face-handover";
 import { productFaceBinding } from "@/api/product-face-registry";
+import { hostJourneyEnabled, walletHost } from "@/api/wallet-host";
 import { readJsonRecord, validRequestOrigin } from "@/api/request";
 import {
   clearSessionCookie,
@@ -45,6 +46,9 @@ const refuse = (code: string, status: number) =>
  */
 export async function POST(request: NextRequest, { params }: Params) {
   const { slug } = await params;
+  if (walletHost().status === "invalid") {
+    return refuse("host_unavailable", 503);
+  }
   if (!validRequestOrigin(request)) return refuse("invalid_origin", 403);
   const binding = productFaceBinding(slug);
   if (!binding?.handover.enabled) return refuse("handover_unavailable", 404);
@@ -61,6 +65,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     return refuse("invalid_request", 400);
   }
   const kind: FaceHandoverKind = body.kind === "accept" ? "accept" : "handover";
+  // A branded host keeps no ticket for a journey it does not serve.
+  if (!hostJourneyEnabled(kind === "accept" ? "transfer" : "registration")) {
+    return refuse("handover_unavailable", 404);
+  }
   const response = NextResponse.json(
     { next: `/products/${binding.slug}${FACE_HANDOVER_TASKS[kind]}` },
     { headers: NO_STORE },

@@ -17,7 +17,10 @@ type Params = { params: Promise<{ slug: string }> };
 // minted only for exactly it. The face never supplies the product.
 export async function POST(request: NextRequest, { params }: Params) {
   const { slug } = await params;
-  const context = await resolveFaceRequest(request, slug, { mutation: true });
+  const context = await resolveFaceRequest(request, slug, {
+    mutation: true,
+    route: "accept-offer",
+  });
   if (!("binding" in context)) return context;
   const body = await readJsonRecord(request);
   if (!body) return faceContextError(context, "invalid_request", 400);

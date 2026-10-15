@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { ChevronRight, PackageCheck } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { productFaceEntries } from "@/api/product-face-registry";
+import { hostJourneyEnabled } from "@/api/wallet-host";
 import { EmptyState } from "@/app/_components/design-system/empty-state";
 import { PageHeader } from "@/app/_components/design-system/page-header";
 
@@ -10,6 +12,8 @@ import { PageHeader } from "@/app/_components/design-system/page-header";
 export const dynamic = "force-dynamic";
 
 export default async function ProductsPage() {
+  // A branded host without the My products journey has no programme list.
+  if (!hostJourneyEnabled("myProducts")) notFound();
   const t = await getTranslations("products");
   const entries = productFaceEntries();
   return (

@@ -2,7 +2,19 @@
  * @jest-environment node
  */
 import { NextRequest } from "next/server";
+import { resetWalletHostCache } from "@/api/wallet-host";
 import { proxy } from "@/proxy";
+import { edit } from "@/test/product-face-fixtures";
+import {
+  applyHostEnvironment,
+  clearHostEnvironment,
+  hostEnvironment,
+  MORROW_ORIGIN,
+  morrowDocument,
+  tidewellDocument,
+  TIDEWELL_ORIGIN,
+  type HostDocument,
+} from "@/test/wallet-host-fixtures";
 
 const ORGANIZATION = "000000000000000000000001";
 const ORGANIZATION_COOKIE = "smarttoken_viewer_org";
@@ -15,11 +27,20 @@ const PUBLIC = [
   "/otp",
 ];
 
+// The proxy answers synchronously except for a branded host's native-transfer
+// check, which reads the request body (tested with await below).
+function answered(response: ReturnType<typeof proxy>) {
+  if (response instanceof Promise) throw new Error("answered asynchronously");
+  return response;
+}
+
 function visit(path: string, cookie?: string) {
-  return proxy(
-    new NextRequest(`http://localhost${path}`, {
-      headers: cookie ? { cookie } : {},
-    }),
+  return answered(
+    proxy(
+      new NextRequest(`http://localhost${path}`, {
+        headers: cookie ? { cookie } : {},
+      }),
+    ),
   );
 }
 
@@ -244,6 +265,610 @@ describe("session key gate", () => {
       const response = visit(path);
       expect(response.status).toBe(200);
       expect(response.headers.get("x-middleware-next")).toBe("1");
+    }
+  });
+});
+
+// A branded host: the same proxy, configured only by its environment.
+describe("branded host pages", () => {
+  const UNIT = "aaaaaaaaaaaaaaaaaaaaaaaa";
+  function host(document: HostDocument) {
+    resetWalletHostCache();
+    applyHostEnvironment(hostEnvironment(document));
+  }
+  function visitHost(origin: string, path: string, cookie?: string) {
+    const { host } = new URL(origin);
+    return answered(
+      proxy(
+        new NextRequest(`${origin}${path}`, {
+          headers: { host, ...(cookie ? { cookie } : {}) },
+        }),
+      ),
+    );
+  }
+  const notFound = (origin: string) => `${origin}/_wallet-host/not-found`;
+  afterEach(() => {
+    clearHostEnvironment();
+    resetWalletHostCache();
+  });
+
+  test("a disabled journey's pages answer the not-found page, signed in or out", () => {
+    host(tidewellDocument());
+    for (const path of [
+      "/products/tidewell-care/service",
+      "/products/tidewell-care/accept",
+      `/products/tidewell-care/products/${UNIT}/transfer`,
+      "/products/tidewell-care/claims",
+      "/products/morrow-home/register",
+      "/products/morrow-home/handover",
+    ]) {
+      for (const cookie of [undefined, "smarttoken_viewer=sealed"]) {
+        const response = visitHost(TIDEWELL_ORIGIN, path, cookie);
+        expect([path, response.headers.get("x-middleware-rewrite")]).toEqual([
+          path,
+          notFound(TIDEWELL_ORIGIN),
+        ]);
+        expect(response.headers.get("location")).toBeNull();
+        expect(response.cookies.getAll()).toEqual([]);
+      }
+    }
+  });
+
+  test("an enabled journey's pages keep every existing guard", () => {
+    host(tidewellDocument());
+    const task = "/products/tidewell-care/register";
+    expect(visitHost(TIDEWELL_ORIGIN, task).headers.get("location")).toBe(
+      `${TIDEWELL_ORIGIN}/login?next=${encodeURIComponent(task)}`,
+    );
+    const signedIn = visitHost(
+      TIDEWELL_ORIGIN,
+      task,
+      "smarttoken_viewer=sealed",
+    );
+    expect(signedIn.headers.get("x-middleware-next")).toBe("1");
+    expect(
+      visitHost(TIDEWELL_ORIGIN, "/products/tidewell-care/handover").status,
+    ).toBe(200);
+  });
+
+  test("the programme list is the My products journey's page", () => {
+    const document = morrowDocument();
+    edit(document, "journeys.myProducts", false);
+    edit(document, "navigation", ["inventory", "settings"]);
+    host(document);
+    expect(
+      visitHost(
+        MORROW_ORIGIN,
+        "/products",
+        "smarttoken_viewer=sealed",
+      ).headers.get("x-middleware-rewrite"),
+    ).toBe(notFound(MORROW_ORIGIN));
+    expect(
+      visitHost(
+        MORROW_ORIGIN,
+        "/inventory",
+        "smarttoken_viewer=sealed",
+      ).headers.get("x-middleware-next"),
+    ).toBe("1");
+  });
+
+  test("a signed-in visitor lands on the host's home", () => {
+    host(morrowDocument());
+    expect(
+      visitHost(
+        MORROW_ORIGIN,
+        "/login",
+        "smarttoken_viewer=sealed",
+      ).headers.get("location"),
+    ).toBe(`${MORROW_ORIGIN}/`);
+    // An explicit return path still wins.
+    expect(
+      visitHost(
+        MORROW_ORIGIN,
+        `/login?next=${encodeURIComponent("/settings")}`,
+        "smarttoken_viewer=sealed",
+      ).headers.get("location"),
+    ).toBe(`${MORROW_ORIGIN}/settings`);
+  });
+});
+
+describe("branded host entrance and fail-closed mode", () => {
+  const PAGES = ["/", "/login", "/inventory", "/products/morrow-home"];
+  const BFF = [
+    "/api/session",
+    "/api/session/login",
+    "/api/backend/wallets/me",
+    "/api/faces/morrow-home/assertions",
+  ];
+  // The operator log line an invalid configuration writes is asserted in
+  // api/wallet-host.test.ts.
+  let consoleError: jest.SpyInstance;
+  beforeEach(() => {
+    consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+  function visitAt(origin: string, path: string, cookie?: string) {
+    const { host } = new URL(origin);
+    return answered(
+      proxy(
+        new NextRequest(`${origin}${path}`, {
+          headers: { host, ...(cookie ? { cookie } : {}) },
+        }),
+      ),
+    );
+  }
+  afterEach(() => {
+    consoleError.mockRestore();
+    clearHostEnvironment();
+    resetWalletHostCache();
+  });
+
+  for (const [label, environment] of [
+    [
+      "a pin mismatch",
+      () => ({
+        ...hostEnvironment(morrowDocument()),
+        WALLET_HOST_CONFIGURATION_SHA256: "5".repeat(64),
+      }),
+    ],
+    [
+      "an invalid document",
+      () => {
+        const document = morrowDocument();
+        edit(document, "identity.colours.ink", "#ffffff");
+        return hostEnvironment(document);
+      },
+    ],
+    [
+      "a build of another configuration",
+      () => ({
+        ...hostEnvironment(morrowDocument()),
+        WALLET_HOST_BUILD_CONFIGURATION_SHA256: "",
+      }),
+    ],
+    [
+      "a build of another face registry",
+      () => ({
+        ...hostEnvironment(morrowDocument()),
+        WALLET_HOST_BUILD_FACE_APPLICATIONS_SHA256: "8".repeat(64),
+      }),
+    ],
+  ] as const) {
+    test(`${label}: every page is a neutral 503 and every BFF route refuses`, async () => {
+      resetWalletHostCache();
+      applyHostEnvironment(environment());
+      for (const path of PAGES) {
+        const response = visitAt(
+          MORROW_ORIGIN,
+          path,
+          "smarttoken_viewer=sealed",
+        );
+        expect([path, response.status]).toEqual([path, 503]);
+        expect(response.headers.get("content-type")).toBe(
+          "text/html; charset=utf-8",
+        );
+        expect(response.headers.get("cache-control")).toBe("no-store");
+        const html = await response.text();
+        expect(html).toContain("This wallet is being set up");
+        // Neither the brand nor the generic wallet, nor any cookie.
+        expect(html).not.toMatch(/Morrow|Dual|favicon|og-viewer/);
+        expect(response.cookies.getAll()).toEqual([]);
+      }
+      for (const path of BFF) {
+        const response = visitAt(MORROW_ORIGIN, path);
+        expect([path, response.status]).toEqual([path, 503]);
+        expect(await response.json()).toEqual({
+          code: "host_unavailable",
+          message: "This wallet is being set up",
+        });
+      }
+    });
+  }
+
+  test("any address but the entrance is misdirected (421), never served", async () => {
+    resetWalletHostCache();
+    applyHostEnvironment(hostEnvironment(morrowDocument()));
+    for (const origin of [
+      TIDEWELL_ORIGIN,
+      "https://other.wallet.morrow.example",
+      "http://localhost",
+    ]) {
+      const page = visitAt(origin, "/login");
+      expect([origin, page.status]).toEqual([origin, 421]);
+      expect(await page.text()).toContain(
+        "This wallet is not available at this address",
+      );
+      const api = visitAt(origin, "/api/session/login");
+      expect(api.status).toBe(421);
+      expect(await api.json()).toMatchObject({ code: "host_misdirected" });
+    }
+    expect(visitAt(MORROW_ORIGIN, "/login").status).toBe(200);
+  });
+
+  test("only the entrance organisation's links are honoured", () => {
+    resetWalletHostCache();
+    applyHostEnvironment(hostEnvironment(morrowDocument()));
+    const own = "a1a1a1a1a1a1a1a1a1a1a1a1";
+    // The host's own organisation: stripped and remembered, as before.
+    const link = visitAt(MORROW_ORIGIN, `/${own}/verify?token=t`);
+    expect(link.headers.get("x-middleware-rewrite")).toBe(
+      `${MORROW_ORIGIN}/verify?token=t`,
+    );
+    expect(link.cookies.get(ORGANIZATION_COOKIE)?.value).toBe(own);
+    // Any other organisation (the default included) is not a prefix here:
+    // nothing is rewritten or remembered.
+    for (const other of [ORGANIZATION, "b2b2b2b2b2b2b2b2b2b2b2b2"]) {
+      const response = visitAt(MORROW_ORIGIN, `/${other}/login`);
+      expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+      expect(response.cookies.get(ORGANIZATION_COOKIE)).toBeUndefined();
+      const mail = visitAt(
+        MORROW_ORIGIN,
+        `/verify?organization_id=${other}&token=t`,
+      );
+      expect(mail.cookies.get(ORGANIZATION_COOKIE)).toBeUndefined();
+      expect(mail.headers.get("location")).toBeNull();
+      // A remembered cookie for another organisation is ignored.
+      expect(
+        visitAt(
+          MORROW_ORIGIN,
+          "/login",
+          `${ORGANIZATION_COOKIE}=${other}`,
+        ).headers.get("location"),
+      ).toBeNull();
+    }
+  });
+});
+
+// B1: an entry-link prefix never reaches a branded host's API.
+describe("entry-prefixed API paths", () => {
+  afterEach(() => {
+    clearHostEnvironment();
+    resetWalletHostCache();
+  });
+  const API = [
+    "/api/faces/morrow-home/assertions",
+    "/api/faces/morrow-home/operations",
+    "/api/faces/morrow-home/transfer-proposal",
+    "/api/faces/morrow-home/accept-offer",
+    "/api/faces/morrow-home/settle-proposal",
+    "/api/session/login",
+    "/api/backend/ebus/prepare",
+    "/api",
+  ];
+
+  test("a branded host answers them 404, rewriting nothing", async () => {
+    resetWalletHostCache();
+    applyHostEnvironment(hostEnvironment(morrowDocument()));
+    const { host } = new URL(MORROW_ORIGIN);
+    for (const organization of [
+      "a1a1a1a1a1a1a1a1a1a1a1a1",
+      "A1A1A1A1A1A1A1A1A1A1A1A1",
+      ORGANIZATION,
+    ]) {
+      for (const path of API) {
+        const response = answered(
+          proxy(
+            new NextRequest(`${MORROW_ORIGIN}/${organization}${path}`, {
+              method: "POST",
+              headers: { host, cookie: "smarttoken_viewer=sealed" },
+            }),
+          ),
+        );
+        expect([path, response.status]).toEqual([path, 404]);
+        expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+        expect(response.cookies.getAll()).toEqual([]);
+        expect(await response.json()).toEqual({
+          code: "not_found",
+          message: "Not found.",
+        });
+      }
+    }
+    // The canonical paths are untouched by this rule.
+    expect(
+      answered(
+        proxy(
+          new NextRequest(`${MORROW_ORIGIN}/api/faces/morrow-home/assertions`, {
+            method: "POST",
+            headers: { host },
+          }),
+        ),
+      ).headers.get("x-middleware-next"),
+    ).toBe("1");
+  });
+
+  test("the generic wallet rewrites them exactly as it did at 89b5700", () => {
+    for (const path of API) {
+      const response = visit(`/${ORGANIZATION}${path}`);
+      expect([path, response.headers.get("x-middleware-rewrite")]).toEqual([
+        path,
+        `http://localhost${path}`,
+      ]);
+      expect(response.cookies.get(ORGANIZATION_COOKIE)?.value).toBe(
+        ORGANIZATION,
+      );
+    }
+  });
+});
+
+// Root's decision: a branded host without the transfer journey offers no
+// native transfer. The request proxy refuses the wallet's own Dual `transfer`
+// action through /api/backend before the backend route runs.
+describe("native transfer through the backend proxy", () => {
+  const UNIT = "aaaaaaaaaaaaaaaaaaaaaaaa";
+  const TO = "0x1234567890abcdef1234567890abcdef12345678";
+  const transferBody = { action: { transfer: { id: UNIT, to: TO } } };
+  afterEach(() => {
+    clearHostEnvironment();
+    resetWalletHostCache();
+  });
+  function brand(transfer: boolean) {
+    const document = morrowDocument();
+    edit(document, "journeys.transfer", transfer);
+    resetWalletHostCache();
+    applyHostEnvironment(hostEnvironment(document));
+  }
+  function write(
+    path: string,
+    body: unknown,
+    { method = "POST", origin = MORROW_ORIGIN } = {},
+  ) {
+    const { host } = new URL(origin);
+    return proxy(
+      new NextRequest(`${origin}${path}`, {
+        method,
+        headers: {
+          host,
+          cookie: "smarttoken_viewer=sealed",
+          "content-type": "application/json",
+        },
+        body:
+          body === undefined
+            ? undefined
+            : typeof body === "string"
+              ? body
+              : JSON.stringify(body),
+      }),
+    );
+  }
+  const refused = async (response: ReturnType<typeof proxy>) => {
+    const answer = await response;
+    expect(answer.status).toBe(403);
+    expect(answer.headers.get("x-middleware-next")).toBeNull();
+    expect(await answer.json()).toEqual({
+      code: "capability_not_granted",
+      message: "Transfers are not available in this wallet.",
+    });
+  };
+  const passed = async (response: ReturnType<typeof proxy>) =>
+    expect((await response).headers.get("x-middleware-next")).toBe("1");
+
+  test("a host with transfer disabled refuses every native transfer before the route runs", async () => {
+    brand(false);
+    for (const path of [
+      "/api/backend/ebus/prepare",
+      "/api/backend/ebus/execute",
+    ]) {
+      await refused(write(path, transferBody));
+      await refused(
+        write(path, { ...transferBody, nonce: 7, auth: { type: "email" } }),
+      );
+    }
+    // Any spelling a case-folding decoder would still read as a transfer.
+    for (const body of [
+      { Action: { TRANSFER: { id: UNIT, to: TO } } },
+      { action: { tranſfer: { id: UNIT, to: TO } } },
+      { action: { update: { id: UNIT }, transfer: { id: UNIT, to: TO } } },
+    ]) {
+      await refused(write("/api/backend/ebus/prepare", body));
+    }
+    // Any spelling of the path routing would still serve as the backend.
+    for (const path of [
+      "/api/%62ackend/ebus/prepare",
+      "/api/backend/%65bus/execute",
+      "/api//backend/ebus/prepare",
+    ]) {
+      await refused(write(path, transferBody));
+    }
+    // A body it cannot read is refused (fails closed).
+    await refused(write("/api/backend/ebus/prepare", "transfer"));
+  });
+
+  // B2: the route forwards the raw bytes, so the proxy decides on exactly
+  // what every decoder reads. A body that could be read two ways (repeated
+  // member names in any spelling, at any depth), that is not one JSON object,
+  // or that is not valid UTF-8 is refused before the route runs.
+  const T = `{"id":"${UNIT}","to":"${TO}"}`;
+  const U = `{"id":"${UNIT}"}`;
+  const ambiguous = [
+    `{"action":{"transfer":${T}},"action":{}}`,
+    `{"action":{"transfer":${T}},"action":null}`,
+    `{"action":{"transfer":${T},"transfer":null}}`,
+    `{"action":{"transfer":${T}},"action":{"update":${U}}}`,
+    `[{"action":{"transfer":${T}}}]`,
+    `{"\\u0061ction":{"\\u0074ransfer":${T}}}`,
+    `{"action":{"update":${U}},"\\u0061ction":{"transfer":${T}}}`,
+    `{"action":{"update":${U}},"ACTION":{"transfer":${T}}}`,
+    `{"action":{"update":{"id":"${UNIT}","data":{"custom":{"note":1,"Note":2}}}}}`,
+    `{"action":{"claim_ownership":${U},"claimOwnership":null}}`,
+    `"transfer"`,
+    "null",
+    "1",
+    "[]",
+    `{"action":`,
+  ];
+
+  test("B2: a body that could be read two ways, or is not one JSON object, is refused before the route", async () => {
+    brand(false);
+    for (const raw of ambiguous) {
+      for (const path of [
+        "/api/backend/ebus/prepare",
+        "/api/backend/ebus/execute",
+      ]) {
+        await refused(write(path, raw));
+      }
+    }
+    // Bytes that are not valid UTF-8 are not text every decoder reads alike.
+    await refused(
+      proxy(
+        new NextRequest(`${MORROW_ORIGIN}/api/backend/ebus/execute`, {
+          method: "POST",
+          headers: {
+            host: new URL(MORROW_ORIGIN).host,
+            cookie: "smarttoken_viewer=sealed",
+            "content-type": "application/json",
+          },
+          body: new Uint8Array([
+            ...Buffer.from('{"action":{"update":{"id":"'),
+            0xff,
+            ...Buffer.from('"}}}'),
+          ]),
+        }),
+      ),
+    );
+  });
+
+  test("every custody move is refused on that host: drop, pickup, claim_ownership, a permit delegating one, and any action it cannot decide", async () => {
+    brand(false);
+    for (const action of [
+      { drop: { id: UNIT, latitude: 1, longitude: 2 } },
+      { pickup: { id: UNIT } },
+      { claim_ownership: { id: UNIT } },
+      { claimOwnership: { id: UNIT } },
+      { CLAIM_OWNERSHIP: { id: UNIT } },
+      { transfer: { id: UNIT, to: TO }, permit_secret: "s" },
+      { permit: { id: UNIT, scope: "transfer", commitment: "c" } },
+      { permit: { id: UNIT, scope: " TRANSFER ", commitment: "c" } },
+      { permit: { id: UNIT, scope: "pickup", commitment: "c" } },
+      { permit: { id: UNIT, scope: "claimOwnership", commitment: "c" } },
+      // A template alias as the scope: it cannot be decided here.
+      {
+        permit: {
+          id: UNIT,
+          scope: "transfer_product_passport",
+          commitment: "c",
+        },
+      },
+      { permit: { id: UNIT, commitment: "c" } },
+      { permit: { id: UNIT, scope: 7, commitment: "c" } },
+      // An alias alone names no kind; two kinds are ambiguous; a kind must be an object.
+      { alias: "transfer_product_passport" },
+      { update: { id: UNIT }, burn: { id: UNIT } },
+      { update: null },
+      { update: [UNIT] },
+      { teleport: { id: UNIT } },
+      {},
+    ]) {
+      await refused(write("/api/backend/ebus/prepare", { action }));
+      await refused(write("/api/backend/ebus/execute", { action, nonce: 9 }));
+    }
+    await refused(
+      write("/api/backend/ebus/execute", { action: "transfer", nonce: 9 }),
+    );
+  });
+
+  test("allowed actions on that host pass unchanged, nested lookalikes and escaped spellings included", async () => {
+    brand(false);
+    for (const body of [
+      // "transfer" as data, not as the action.
+      {
+        action: {
+          update: {
+            id: UNIT,
+            data: { custom: { transfer: { to: TO }, note: "transfer" } },
+          },
+        },
+      },
+      // The face's settle: an update addressed by the template's alias.
+      {
+        action: {
+          update: { id: UNIT, data: { custom: { state: "Verified" } } },
+          alias: "verify_authenticity",
+        },
+        nonce: 9,
+      },
+      { action: { redeem: { id: UNIT } } },
+      { action: { set_attributes: { id: UNIT, attributes: {} } } },
+      { action: { permit: { id: UNIT, scope: "redeem", commitment: "c" } } },
+      // An action-looking object below the top level is not an action.
+      { nonce: 9, auth: { type: "email", note: { action: { transfer: {} } } } },
+      `{"\\u0061ction":{"update":${U}}}`,
+    ]) {
+      await passed(write("/api/backend/ebus/prepare", body));
+    }
+  });
+
+  test("hosts with transfer enabled and the generic wallet are unchanged: nothing is read", () => {
+    for (const raw of [...ambiguous, `{"action":{"drop":${U}}}`]) {
+      brand(true);
+      expect(
+        answered(write("/api/backend/ebus/execute", raw)).headers.get(
+          "x-middleware-next",
+        ),
+      ).toBe("1");
+      clearHostEnvironment();
+      resetWalletHostCache();
+      expect(
+        answered(
+          write("/api/backend/ebus/execute", raw, {
+            origin: "http://localhost",
+          }),
+        ).headers.get("x-middleware-next"),
+      ).toBe("1");
+    }
+  });
+
+  test("other backend requests on that host continue unchanged", async () => {
+    brand(false);
+    await passed(
+      write("/api/backend/ebus/prepare", { action: { update: { id: UNIT } } }),
+    );
+    await passed(
+      write("/api/backend/ebus/execute", { action: { burn: { id: UNIT } } }),
+    );
+    await passed(
+      write(
+        "/api/backend/wallets/me",
+        { nickname: "transfer" },
+        { method: "PATCH" },
+      ),
+    );
+    await passed(
+      write("/api/backend/wallets/me", undefined, { method: "DELETE" }),
+    );
+    // A read answers synchronously, as before.
+    expect(
+      answered(
+        proxy(
+          new NextRequest(`${MORROW_ORIGIN}/api/backend/objects`, {
+            headers: { host: "wallet.morrow.example" },
+          }),
+        ),
+      ).headers.get("x-middleware-next"),
+    ).toBe("1");
+  });
+
+  test("a host with transfer enabled lets native transfer through", async () => {
+    brand(true);
+    for (const path of [
+      "/api/backend/ebus/prepare",
+      "/api/backend/ebus/execute",
+    ]) {
+      // Not even read: the answer is synchronous.
+      expect(
+        answered(write(path, transferBody)).headers.get("x-middleware-next"),
+      ).toBe("1");
+    }
+  });
+
+  test("the generic wallet lets it through unchanged", () => {
+    for (const path of [
+      "/api/backend/ebus/prepare",
+      "/api/backend/ebus/execute",
+    ]) {
+      const response = answered(
+        write(path, transferBody, { origin: "http://localhost" }),
+      );
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+      expect(response.cookies.getAll()).toEqual([]);
     }
   });
 });

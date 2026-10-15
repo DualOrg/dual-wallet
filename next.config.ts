@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 import { productFaceFrameOrigins } from "./api/product-face-binding";
@@ -12,8 +13,27 @@ const productFaceOrigins = productFaceFrameOrigins(
   { production: process.env.NODE_ENV === "production" },
 );
 
+// A branded host's static pages render its identity at build time, so the
+// build records the sha256 of the WALLET_HOST_CONFIGURATION it rendered ("" for
+// the generic wallet) and, for a brand, of the PRODUCT_FACE_APPLICATIONS it
+// validated that configuration against. The server refuses to serve under any
+// other configuration or registry (api/host-configuration.ts build_mismatch):
+// a generic build never serves a brand, and a brand build never serves
+// another. NEXT_PUBLIC_APP_URL needs no record: Next.js inlines it at build.
+const sha256 = (value: string) =>
+  createHash("sha256").update(value, "utf8").digest("hex");
+const hostConfiguration = process.env.WALLET_HOST_CONFIGURATION;
+const hostBuildSha256 = hostConfiguration ? sha256(hostConfiguration) : "";
+const hostBuildFaceApplicationsSha256 = hostConfiguration
+  ? sha256(process.env.PRODUCT_FACE_APPLICATIONS ?? "")
+  : "";
+
 const nextConfig: NextConfig = {
   output: "standalone",
+  env: {
+    WALLET_HOST_BUILD_CONFIGURATION_SHA256: hostBuildSha256,
+    WALLET_HOST_BUILD_FACE_APPLICATIONS_SHA256: hostBuildFaceApplicationsSha256,
+  },
   poweredByHeader: false,
   images: {
     remotePatterns: [{ protocol: "https", hostname: "**" }],

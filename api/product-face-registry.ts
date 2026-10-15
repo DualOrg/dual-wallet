@@ -4,6 +4,7 @@ import {
   parseProductFaceApplications,
   type ProductFaceBinding,
 } from "@/api/product-face-binding";
+import { walletHost } from "@/api/wallet-host";
 import {
   PRODUCT_FACE_CONTRACT,
   type ProductFaceApplication,
@@ -17,7 +18,9 @@ let cached: { raw: string | undefined; bindings: ProductFaceBinding[] } = {
 
 // G5: there is no backend face-application registry yet. The deployment's
 // server-only PRODUCT_FACE_APPLICATIONS is the registry; the browser never
-// chooses a binding, origin or path.
+// chooses a binding, origin or path. A branded host serves exactly the faces
+// its configuration names (none while that configuration is invalid); any
+// other binding is unknown here.
 export function productFaceBindings(): ProductFaceBinding[] {
   const raw = process.env.PRODUCT_FACE_APPLICATIONS;
   if (raw !== cached.raw) {
@@ -28,7 +31,12 @@ export function productFaceBindings(): ProductFaceBinding[] {
       }),
     };
   }
-  return cached.bindings;
+  const host = walletHost();
+  if (host.status === "absent") return cached.bindings;
+  if (host.status === "invalid") return [];
+  return cached.bindings.filter((binding) =>
+    host.configuration.faces.includes(binding.slug),
+  );
 }
 
 export function productFaceBinding(slug: string) {

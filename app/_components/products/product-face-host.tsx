@@ -18,6 +18,7 @@ import {
 } from "@/app/_domain/product-face";
 import { productFaceContextQueryOptions } from "@/app/_hooks/query-options";
 import { useProductFaceHost } from "@/app/_hooks/use-product-face-host";
+import { useHostPresentation } from "@/app/_providers/host-provider";
 import { useSession } from "@/app/_providers/session-provider";
 
 // No popups, downloads, top navigation or device permissions. The frame is
@@ -43,11 +44,14 @@ function IdentityBar({
   application?: ProductFaceApplication;
 }) {
   const t = useTranslations("products");
+  const host = useHostPresentation();
+  // A branded host without the My products journey has no programme list.
+  const back = host && !host.journeys.myProducts ? "/" : "/products";
   const [aboutOpen, setAboutOpen] = useState(false);
   const aboutId = useId();
   return (
     <header className="product-face-identity" aria-label={t("identityLabel")}>
-      <Link href="/products" className="product-face-back">
+      <Link href={back} className="product-face-back">
         <ArrowLeft size={18} aria-hidden />
         <span className="product-face-back-label">{t("back")}</span>
         <span className="product-face-back-short" aria-hidden>

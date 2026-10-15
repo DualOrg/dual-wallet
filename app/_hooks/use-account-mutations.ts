@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { safeReturnPath } from "@/app/_domain/navigation";
+import { useHostPresentation } from "@/app/_providers/host-provider";
 import { useSession } from "@/app/_providers/session-provider";
 import {
   requestPasswordReset,
@@ -14,6 +15,7 @@ import {
 export function useVerifyAccount() {
   const session = useSession();
   const router = useRouter();
+  const landing = useHostPresentation() ? "/" : "/inventory";
   return useMutation({
     mutationFn: verifyAccount,
     onSuccess: async () => {
@@ -25,7 +27,7 @@ export function useVerifyAccount() {
       );
       router.replace(
         wallet
-          ? (next ?? "/inventory")
+          ? (next ?? landing)
           : next
             ? `/login?next=${encodeURIComponent(next)}`
             : "/login",

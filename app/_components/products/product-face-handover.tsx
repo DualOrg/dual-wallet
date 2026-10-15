@@ -6,6 +6,7 @@ import { LoaderCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Alert } from "@/app/_components/design-system/alert";
 import { ProductFaceError } from "@/app/_domain/product-face";
+import { useHostPresentation } from "@/app/_providers/host-provider";
 import { submitFaceHandover } from "@/app/_services/product-face.client";
 
 const TICKET = /^[A-Za-z0-9_-]{32,256}$/;
@@ -35,6 +36,7 @@ export function ProductFaceHandover({
   leave?: (next: string) => void;
 }) {
   const t = useTranslations("products.handover");
+  const home = useHostPresentation() ? "/" : "/inventory";
   // Everything is decided after the fragment is stripped (on hydration), so
   // no outcome is shown while the ticket is still in the address bar.
   const [state, setState] = useState<HandoverState>("working");
@@ -99,7 +101,7 @@ export function ProductFaceHandover({
             )}
           </Alert>
           <p>
-            <Link href="/inventory">{t("home")}</Link>
+            <Link href={home}>{t("home")}</Link>
           </p>
         </>
       )}

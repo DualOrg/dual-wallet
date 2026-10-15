@@ -14,7 +14,10 @@ type Params = { params: Promise<{ slug: string }> };
 // supplies a step, a proposal or a recipient.
 export async function POST(request: NextRequest, { params }: Params) {
   const { slug } = await params;
-  const context = await resolveFaceRequest(request, slug, { mutation: true });
+  const context = await resolveFaceRequest(request, slug, {
+    mutation: true,
+    route: "transfer-proposal",
+  });
   if (!("binding" in context)) return context;
   const body = await readJsonRecord(request);
   if (!body) return faceContextError(context, "invalid_request", 400);

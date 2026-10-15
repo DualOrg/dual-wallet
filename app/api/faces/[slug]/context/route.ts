@@ -8,6 +8,7 @@ import {
 import { withSelection } from "@/api/face-journal";
 import { verifyFaceArtifact } from "@/api/face-artifact";
 import { toProductFaceApplication } from "@/api/product-face-registry";
+import { hostJourneyEnabled } from "@/api/wallet-host";
 import {
   faceContextError,
   faceResponse,
@@ -22,7 +23,9 @@ type Params = { params: Promise<{ slug: string }> };
 // selected product.
 export async function GET(request: NextRequest, { params }: Params) {
   const { slug } = await params;
-  const context = await resolveFaceRequest(request, slug);
+  const context = await resolveFaceRequest(request, slug, {
+    route: "context",
+  });
   if (!("binding" in context)) return context;
   const artifact = await verifyFaceArtifact(context.binding);
   if (!artifact.ok) {
@@ -39,9 +42,15 @@ export async function GET(request: NextRequest, { params }: Params) {
   // over; another account's is cleared here and nothing is handed over.
   // G8: the same for a transfer acceptance ticket on the accept task.
   const task = request.nextUrl.searchParams.get("task");
-  const taskKind =
+  const handoverKind =
     isTaskPath(task) && context.binding.handover.enabled
       ? faceHandoverKindOfTask(task)
+      : undefined;
+  // A branded host hands over no ticket for a journey it does not serve.
+  const taskKind =
+    handoverKind &&
+    hostJourneyEnabled(handoverKind === "accept" ? "transfer" : "registration")
+      ? handoverKind
       : undefined;
   const handover = readFaceHandover(
     request,

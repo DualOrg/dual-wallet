@@ -85,6 +85,9 @@ remains. Keep the guides synchronized with architectural changes.
     `contracts/dual-product-face-v1.json`.
 - `/` redirects to `/inventory` for an authenticated session and `/login`
   otherwise. Authentication pages redirect authenticated users to inventory.
+  A branded host (`docs/branded-wallet-hosts.md`) renders its configured home
+  at `/` instead, lands signed-in visitors there, and serves only its enabled
+  journeys' pages.
 - The wallet is an end-user surface. Do not copy console administration,
   organization management, operational dashboards, or role-management screens
   from `console-app`.
@@ -462,6 +465,13 @@ documents it links. Keep that guide synchronized with the code and tests.
   - `FACE_ASSERTION_SIGNING_KEY` and `FACE_ASSERTION_KEY_ID`: the Ed25519
     signer for one-time product-face assertions. Secret; absent or invalid
     fails closed with 503.
+  - `WALLET_HOST_CONFIGURATION` and `WALLET_HOST_CONFIGURATION_SHA256`: a
+    branded host's canonical configuration and its pin
+    (`docs/branded-wallet-hosts.md`). Not secret and also a build input.
+    Unset is the generic wallet, unchanged; present but invalid fails closed
+    (503 on every page and BFF route). A configured host resolves exactly its
+    entrance organisation and origin, never `DEFAULT_ORGANIZATION_ID` or the
+    host map.
 - Public build-time values only when browser code genuinely needs them:
   - `NEXT_PUBLIC_APP_URL`
   - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`

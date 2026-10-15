@@ -156,3 +156,78 @@ describe("without a default organization", () => {
     ).toBeUndefined();
   });
 });
+
+// A branded host: exactly its entrance organisation on exactly its entrance.
+describe("a branded host", () => {
+  const OTHER = "5f2b1c4e8a9d0b3c7e6f1a24";
+
+  async function brandedTenant(environment: Record<string, string>) {
+    jest.resetModules();
+    const fixtures = await import("@/test/wallet-host-fixtures");
+    fixtures.applyHostEnvironment({
+      ...fixtures.hostEnvironment(fixtures.morrowDocument()),
+      ...environment,
+    });
+    return { ...(await import("@/api/tenant")), fixtures };
+  }
+
+  function at(host: string, extra: Record<string, string> = {}) {
+    return new NextRequest(`https://${host}/api/session/login`, {
+      headers: { host, ...extra },
+    });
+  }
+
+  afterEach(async () => {
+    (await import("@/test/wallet-host-fixtures")).clearHostEnvironment();
+    jest.resetModules();
+  });
+
+  it("resolves the entrance organisation, never the default or a link's", async () => {
+    const { tenantFromRequest: resolve, fixtures } = await brandedTenant({});
+    const expected = {
+      organizationId: fixtures.MORROW_ORGANIZATION,
+      subdomain: "*",
+      host: "wallet.morrow.example",
+    };
+    expect(resolve(at("wallet.morrow.example"))).toEqual(expected);
+    expect(resolve(at("wallet.morrow.example:443"))).toEqual(expected);
+    expect(
+      resolve(
+        at("wallet.morrow.example", {
+          cookie: `smarttoken_viewer_org=${OTHER}`,
+        }),
+      ),
+    ).toEqual(expected);
+    expect(fixtures.MORROW_ORGANIZATION).not.toBe(DEFAULT_ORGANIZATION_ID);
+  });
+
+  it("resolves nothing on any other host", async () => {
+    const { tenantFromRequest: resolve } = await brandedTenant({});
+    for (const host of [
+      "localhost",
+      "wallet.tidewell.example",
+      "other.wallet.morrow.example",
+      "morrow.example",
+      "wallet.morrow.example:8443",
+      "wallet.morrow.example.evil.example",
+    ]) {
+      expect([host, resolve(at(host))]).toEqual([host, undefined]);
+    }
+    // The forwarded host is the one that counts, as for the generic wallet.
+    expect(
+      resolve(
+        at("wallet.morrow.example", {
+          "x-forwarded-host": "wallet.tidewell.example",
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("resolves nothing at all while the configuration is invalid", async () => {
+    const { tenantFromRequest: resolve } = await brandedTenant({
+      WALLET_HOST_CONFIGURATION_SHA256: "4".repeat(64),
+    });
+    expect(resolve(at("wallet.morrow.example"))).toBeUndefined();
+    expect(resolve(at("localhost"))).toBeUndefined();
+  });
+});
