@@ -194,6 +194,39 @@ describe("pin and document integrity", () => {
     expect(problemOf({ ...input, pin: "" })).toBe("pin_missing");
   });
 
+  it("refuses a face registry other than the one the build validated against", () => {
+    const input = inputFor(morrowDocument());
+    const built = sha256(input.faceApplications!);
+    expect(problemOf({ ...input, buildFaceApplicationsSha256: built })).toBe(
+      "active",
+    );
+    for (const faceApplications of [
+      JSON.stringify([morrowBinding()]),
+      undefined,
+      `${input.faceApplications} `,
+    ]) {
+      expect(
+        problemOf({
+          ...input,
+          faceApplications,
+          buildFaceApplicationsSha256: built,
+        }),
+      ).toBe("build_mismatch");
+    }
+    // Never consulted for the generic wallet.
+    expect(
+      evaluateHostConfiguration({
+        raw: undefined,
+        pin: undefined,
+        appUrl: undefined,
+        faceApplications: "[]",
+        production: true,
+        buildSha256: "",
+        buildFaceApplicationsSha256: "",
+      }),
+    ).toEqual({ status: "absent" });
+  });
+
   it("refuses a runtime configuration other than the one the build rendered", () => {
     const input = inputFor(morrowDocument());
     expect(problemOf({ ...input, buildSha256: "" })).toBe("build_mismatch");

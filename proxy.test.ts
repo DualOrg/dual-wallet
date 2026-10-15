@@ -412,6 +412,13 @@ describe("branded host entrance and fail-closed mode", () => {
         WALLET_HOST_BUILD_CONFIGURATION_SHA256: "",
       }),
     ],
+    [
+      "a build of another face registry",
+      () => ({
+        ...hostEnvironment(morrowDocument()),
+        WALLET_HOST_BUILD_FACE_APPLICATIONS_SHA256: "8".repeat(64),
+      }),
+    ],
   ] as const) {
     test(`${label}: every page is a neutral 503 and every BFF route refuses`, async () => {
       resetWalletHostCache();

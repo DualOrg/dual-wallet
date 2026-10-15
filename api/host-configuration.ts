@@ -116,6 +116,12 @@ export interface HostConfigurationInput {
    * ("" for none); undefined when no build recorded one (tests).
    */
   buildSha256?: string;
+  /**
+   * sha256 hex of the PRODUCT_FACE_APPLICATIONS the build validated a present
+   * configuration against (its faces and journeys); checked only while a
+   * configuration is present. Undefined when no build recorded one (tests).
+   */
+  buildFaceApplicationsSha256?: string;
 }
 
 const TOP_KEYS = [
@@ -496,6 +502,15 @@ export function evaluateHostConfiguration(
     return fail("too_large");
   }
   if (buildSha256 !== undefined && buildSha256 !== configurationSha256) {
+    return fail("build_mismatch");
+  }
+  // The faces and journeys a build rendered were checked against its own
+  // registry: a different registry at runtime is another host.
+  if (
+    input.buildFaceApplicationsSha256 !== undefined &&
+    input.buildFaceApplicationsSha256 !==
+      sha256Hex(input.faceApplications ?? "")
+  ) {
     return fail("build_mismatch");
   }
   if (!present(pin)) return fail("pin_missing");

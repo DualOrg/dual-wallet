@@ -43,6 +43,8 @@ function currentInput(): HostConfigurationInput {
     faceApplications: process.env.PRODUCT_FACE_APPLICATIONS,
     production: process.env.NODE_ENV === "production",
     buildSha256: process.env.WALLET_HOST_BUILD_CONFIGURATION_SHA256,
+    buildFaceApplicationsSha256:
+      process.env.WALLET_HOST_BUILD_FACE_APPLICATIONS_SHA256,
   };
 }
 
@@ -53,7 +55,8 @@ function sameInput(a: HostConfigurationInput, b: HostConfigurationInput) {
     a.appUrl === b.appUrl &&
     a.faceApplications === b.faceApplications &&
     a.production === b.production &&
-    a.buildSha256 === b.buildSha256
+    a.buildSha256 === b.buildSha256 &&
+    a.buildFaceApplicationsSha256 === b.buildFaceApplicationsSha256
   );
 }
 

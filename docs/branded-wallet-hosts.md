@@ -32,11 +32,17 @@ valid (see [Fail closed](#fail-closed)).
 
 Static pages render the host's identity at build time. `next.config.ts`
 records the sha256 of the `WALLET_HOST_CONFIGURATION` a build rendered as
-`WALLET_HOST_BUILD_CONFIGURATION_SHA256` (empty for the generic wallet), and
-the server refuses to serve under any other configuration: a generic build
-never serves a brand and a brand build never serves another brand or the
-generic wallet. On Vercel each brand host is its own project, built with its
-own environment from the engine commit, so this holds by construction. A
+`WALLET_HOST_BUILD_CONFIGURATION_SHA256` (empty for the generic wallet) and,
+for a brand, the sha256 of the `PRODUCT_FACE_APPLICATIONS` it validated that
+configuration's faces and journeys against as
+`WALLET_HOST_BUILD_FACE_APPLICATIONS_SHA256`. The server refuses to serve
+under any other configuration or registry (503, `build_mismatch`): a generic
+build never serves a brand and a brand build never serves another brand or
+the generic wallet. `NEXT_PUBLIC_APP_URL` needs no record, because Next.js
+inlines it into the build, server code included; the generic wallet's
+registry is not pinned and behaves as before. On Vercel each brand host is
+its own project, built with its own environment from the engine commit, so
+this holds by construction. A
 container image built without the configuration (the Cloud Run Makefile
 targets) cannot become a brand host by runtime environment alone; it answers
 503 until it is rebuilt with the configuration.
@@ -244,7 +250,7 @@ routes match the host's journeys.
 ## Fail closed
 
 When the configuration is present but invalid, pin-mismatched or not the one
-the build rendered:
+the build rendered (configuration or face registry):
 
 - every page is a neutral `503` "This wallet is being set up" (system colours
   and fonts; no brand, no generic wallet identity);
