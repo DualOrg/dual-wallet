@@ -851,3 +851,309 @@ describe("native custody through /api/backend: the proxy decides on exactly the 
     expect(forwarded()).toEqual([["/ebus/execute", raw]]);
   });
 });
+
+// The backend route decides on its own, on exactly the bytes it forwards; the
+// request proxy is NOT invoked here (it need not run for every spelling of
+// the path). A face-bound step is read unambiguously from those bytes on every
+// host, a transfer-disabled brand host refuses custody and ambiguous bodies,
+// and the generic executor without face headers is forwarded as before.
+describe("the backend route decides on exactly the bytes it forwards, without the proxy", () => {
+  const RECIPIENT = "0x1234567890abcdef1234567890abcdef12345678";
+  const T = `{"id":"${UNIT}","to":"${RECIPIENT}"}`;
+  const OTHER_UNIT = "b".repeat(24);
+  const utf8 = (text: string) => Buffer.from(text, "utf8");
+  /** Valid JSON text around one byte that is not UTF-8. */
+  const notUtf8 = (before: string, after: string) =>
+    Buffer.concat([utf8(before), Buffer.from([0xff]), utf8(after)]);
+
+  async function route(
+    browser: Browser,
+    path: string[],
+    raw: string | Buffer,
+    face: Record<string, string> = {},
+  ) {
+    const response = await backendPOST(
+      new NextRequest(`http://localhost/api/backend/${path.join("/")}`, {
+        method: "POST",
+        headers: {
+          host: "localhost",
+          origin: "http://localhost",
+          cookie: Array.from(browser.cookies, ([k, v]) => `${k}=${v}`).join(
+            "; ",
+          ),
+          "content-type": "application/json",
+          ...face,
+        },
+        body: typeof raw === "string" ? raw : new Uint8Array(raw),
+      }),
+      { params: Promise.resolve({ path }) },
+    );
+    const body = (await response.json().catch(() => null)) as {
+      code?: string;
+    } | null;
+    return { status: response.status, code: body?.code };
+  }
+  /** What reached Dual: each call's path and its exact bytes. */
+  const forwarded = () =>
+    runtime.mock.calls.map(([url, init]) => [
+      String(url).replace(/^.*\/ebus\//, "/ebus/"),
+      Buffer.from((init as RequestInit).body as ArrayBuffer),
+    ]);
+  function generic() {
+    clearHostEnvironment();
+    process.env.PRODUCT_FACE_APPLICATIONS = registryWithBothFaces();
+    resetWalletHostCache();
+  }
+  beforeEach(() => {
+    runtime.mockImplementation(
+      async () =>
+        new Response("{}", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+  });
+
+  // B2's custody and ambiguity bodies, as the route alone receives them.
+  const refusedOnTransferDisabledHost: Array<[string, string | Buffer]> = [
+    ["a transfer", `{"action":{"transfer":${T}},"nonce":9}`],
+    [
+      "a drop",
+      `{"action":{"drop":{"id":"${UNIT}","latitude":1,"longitude":2}},"nonce":9}`,
+    ],
+    ["a pickup", `{"action":{"pickup":{"id":"${UNIT}"}},"nonce":9}`],
+    [
+      "a claim_ownership",
+      `{"action":{"claim_ownership":{"id":"${UNIT}"}},"nonce":9}`,
+    ],
+    [
+      "a permit delegating transfer",
+      `{"action":{"permit":{"id":"${UNIT}","scope":"transfer","commitment":"c"}},"nonce":9}`,
+    ],
+    ["an unknown action", `{"action":{"teleport":{"id":"${UNIT}"}},"nonce":9}`],
+    [
+      "a duplicate action",
+      `{"action":{"transfer":${T}},"action":{"update":{"id":"${UNIT}"}},"nonce":9}`,
+    ],
+    [
+      "an escaped duplicate action",
+      `{"\\u0061ction":{"transfer":${T}},"action":{"update":{"id":"${UNIT}"}},"nonce":9}`,
+    ],
+    [
+      "a case-folded duplicate action",
+      `{"ACTION":{"transfer":${T}},"action":{"update":{"id":"${UNIT}"}},"nonce":9}`,
+    ],
+    [
+      "a nested duplicate (permit scope)",
+      `{"action":{"permit":{"id":"${UNIT}","scope":"transfer","scope":"update","commitment":"c"}},"nonce":9}`,
+    ],
+    ["a top-level array", `[{"action":{"transfer":${T}},"nonce":9}]`],
+    [
+      "invalid UTF-8",
+      notUtf8(`{"action":{"update":{"id":"${UNIT}"}},"memo":"`, `","nonce":9}`),
+    ],
+    ["a truncated body", `{"action":{"update":{"id":"${UNIT}"}},"nonce":9`],
+  ];
+
+  it.each(refusedOnTransferDisabledHost)(
+    "a transfer-disabled brand host refuses %s in the route, with no upstream call",
+    async (_label, raw) => {
+      configure({ transfer: false });
+      const browser = new Browser();
+      expect(await route(browser, ["ebus", "execute"], raw)).toEqual({
+        status: 403,
+        code: "capability_not_granted",
+      });
+      expect(await route(browser, ["ebus", "prepare"], raw)).toEqual({
+        status: 403,
+        code: "capability_not_granted",
+      });
+      expect(runtime).not.toHaveBeenCalled();
+      expect(getWallet).not.toHaveBeenCalled();
+    },
+  );
+
+  it("a transfer-disabled brand host forwards an allowed body byte for byte, spacing and all", async () => {
+    configure({ transfer: false });
+    const browser = new Browser();
+    const allowed = `{ "action" : {"update":{"id":"${UNIT}","data":{"custom":{"transfer":"not an action"}}}}, "nonce": 9 }`;
+    expect(await route(browser, ["ebus", "execute"], allowed)).toEqual({
+      status: 200,
+      code: undefined,
+    });
+    expect(forwarded()).toEqual([["/ebus/execute", utf8(allowed)]]);
+  });
+
+  it.each([
+    ["the generic wallet", generic],
+    ["a transfer-enabled brand host", () => configure({ transfer: true })],
+  ])(
+    "%s forwards a request without face headers byte for byte, ambiguous or not",
+    async (_label, setUp) => {
+      setUp();
+      const browser = new Browser();
+      const bodies = [
+        `{"action":{"transfer":${T}},"action":{"update":{"id":"${UNIT}"}},"nonce":9}`,
+        `{"\\u0061ction":{"transfer":${T}},"action":{"update":{"id":"${UNIT}"}},"nonce":9}`,
+        `[{"action":{"transfer":${T}},"nonce":9}]`,
+        notUtf8(`{"action":{"transfer":${T}},"memo":"`, `","nonce":9}`),
+      ];
+      for (const raw of bodies) {
+        expect(await route(browser, ["ebus", "execute"], raw)).toEqual({
+          status: 200,
+          code: undefined,
+        });
+      }
+      expect(forwarded()).toEqual(
+        bodies.map((raw) => ["/ebus/execute", Buffer.from(raw)]),
+      );
+    },
+  );
+
+  describe.each([
+    ["the generic wallet", generic],
+    ["a transfer-enabled brand host", () => configure()],
+  ])("a face-bound step on %s", (_host, setUp) => {
+    const now = Date.now();
+    const steps = {
+      settle: {
+        entry: {
+          operationId: "settle-step-0001",
+          kind: "settle" as const,
+          operation: "update",
+        },
+        action: `{"update":{"id":"${UNIT}","data":{"custom":{"state":"Registered"}}}}`,
+        nested: `{"update":{"id":"${OTHER_UNIT}","id":"${UNIT}"}}`,
+        folded: `{"update":{"ID":"${OTHER_UNIT}","id":"${UNIT}"}}`,
+      },
+      transfer: {
+        entry: {
+          operationId: "transfer-step-0001",
+          kind: "transfer" as const,
+          operation: "transfer.transfer",
+          offerId: `pto-${"a".repeat(24)}`,
+        },
+        action: `{"transfer":${T}}`,
+        nested: `{"transfer":{"id":"${OTHER_UNIT}","id":"${UNIT}","to":"${RECIPIENT}"}}`,
+        folded: `{"transfer":{"ID":"${OTHER_UNIT}","id":"${UNIT}","to":"${RECIPIENT}"}}`,
+      },
+    };
+    function bound(kind: keyof typeof steps) {
+      setUp();
+      const browser = new Browser();
+      browser.keepJournal({
+        ...emptyFaceJournal(),
+        entries: [
+          {
+            ...steps[kind].entry,
+            slug: SLUG,
+            programmeId: "morrow-home-arc",
+            objectId: UNIT,
+            phase: "submitted",
+            dispatch: "won",
+            proposalId: "proposal-0001",
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+      });
+      const face = {
+        "x-dual-face-launch": browser.launchId,
+        "x-dual-face-slug": SLUG,
+        "x-dual-face-operation": steps[kind].entry.operationId,
+        "x-dual-face-wallet": "wallet-1",
+      };
+      return { browser, face, step: steps[kind] };
+    }
+    const BURN = `{"burn":{"id":"${UNIT}"}}`;
+    const ambiguous = (step: (typeof steps)[keyof typeof steps]) =>
+      [
+        [
+          "a duplicate action",
+          `{"action":${BURN},"action":${step.action},"nonce":3}`,
+        ],
+        [
+          "an escaped duplicate action",
+          `{"\\u0061ction":${BURN},"action":${step.action},"nonce":3}`,
+        ],
+        [
+          "a case-folded duplicate action",
+          `{"ACTION":${BURN},"action":${step.action},"nonce":3}`,
+        ],
+        ["a nested duplicate", `{"action":${step.nested},"nonce":3}`],
+        [
+          "a case-folded nested duplicate",
+          `{"action":${step.folded},"nonce":3}`,
+        ],
+        ["a top-level array", `[{"action":${step.action},"nonce":3}]`],
+        ["null", "null"],
+        ["a number", "3"],
+        ["a string", `"{\\"action\\":${step.action.replaceAll('"', '\\"')}}"`],
+        [
+          "invalid UTF-8",
+          notUtf8(`{"action":${step.action},"memo":"`, `","nonce":3}`),
+        ],
+        ["a truncated body", `{"action":${step.action},"nonce":3`],
+        ["no body", ""],
+      ] as Array<[string, string | Buffer]>;
+
+    it.each(["settle", "transfer"] as const)(
+      "%s: every ambiguous body is refused before the session, the journal or Dual is read",
+      async (kind) => {
+        const { browser, face, step } = bound(kind);
+        for (const [label, raw] of ambiguous(step)) {
+          for (const path of [
+            ["ebus", "prepare"],
+            ["ebus", "execute"],
+          ]) {
+            expect([label, await route(browser, path, raw, face)]).toEqual([
+              label,
+              { status: 400, code: "face_execution_mismatch" },
+            ]);
+          }
+        }
+        expect(runtime).not.toHaveBeenCalled();
+        expect(getWallet).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(["settle", "transfer"] as const)(
+      "%s: an unambiguous body is still held to the exact action, before Dual",
+      async (kind) => {
+        const { browser, face, step } = bound(kind);
+        for (const raw of [
+          // Mixed: the step's action and another one beside it.
+          `{"action":{${step.action.slice(1, -1)},"Burn":{"id":"${UNIT}"}},"nonce":3}`,
+          // Only a case-folded spelling of the action.
+          `{"Action":${step.action},"nonce":3}`,
+          `{"action":${BURN},"nonce":3}`,
+        ]) {
+          expect(await route(browser, ["ebus", "execute"], raw, face)).toEqual({
+            status: 400,
+            code: "face_execution_mismatch",
+          });
+        }
+        expect(runtime).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(["settle", "transfer"] as const)(
+      "%s: the legitimate step is prepared and executed, forwarded byte for byte",
+      async (kind) => {
+        const { browser, face, step } = bound(kind);
+        const prepare = `{ "action" : ${step.action} }`;
+        const execute = `{"action":${step.action},"nonce":3,"auth":{"type":"webauthn","challenge":"AQID","credentialId":"c"}}`;
+        expect(
+          await route(browser, ["ebus", "prepare"], prepare, face),
+        ).toEqual({ status: 200, code: undefined });
+        expect(
+          await route(browser, ["ebus", "execute"], execute, face),
+        ).toEqual({ status: 200, code: undefined });
+        expect(forwarded()).toEqual([
+          ["/ebus/prepare", utf8(prepare)],
+          ["/ebus/execute", utf8(execute)],
+        ]);
+      },
+    );
+  });
+});

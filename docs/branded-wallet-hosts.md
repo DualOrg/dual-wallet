@@ -235,6 +235,7 @@ selection and the journal list are shared by all of them.
   accept and at any spelling of the path routing would serve as
   `/api/backend`, before the backend route runs: nothing is prepared,
   executed or sent to Dual. A body it cannot read as JSON is refused too.
+  The backend route repeats this decision on exactly the bytes it forwards.
   Other actions, and every request on a host with transfer enabled or on the
   generic wallet, are unchanged.
 

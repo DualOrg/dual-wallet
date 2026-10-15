@@ -3,6 +3,7 @@ import "server-only";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { isFaceSlug } from "@/api/face-journal";
+import { unambiguousObject } from "@/api/strict-json-body";
 import {
   faceContextError,
   faceError,
@@ -39,7 +40,10 @@ export type FaceExecutionDecision =
  *   wrote it and reads as empty under any other, holds that operation as a
  *   settle or transfer step that is submitted, whose own reservation was won
  *   (dispatch:"won") and that has no recorded action yet;
- * - the body is exactly that step's action on that step's unit.
+ * - the body is exactly that step's action on that step's unit, read from
+ *   the very bytes the route forwards as one unambiguous JSON object (valid
+ *   UTF-8, no member name repeated at any depth however it is spelled); any
+ *   other body is refused before the session is even resolved.
  *
  * Anything else is refused before any upstream request; the journal entry is
  * not touched, so its original correlation stays submitted and its status
@@ -70,6 +74,11 @@ export async function bindFaceExecution(
   if (!isFaceSlug(slug) || !isOperationId(operationId) || !walletId) {
     return refuse("face_execution_invalid", 400);
   }
+  // The body every decoder reads the same way, or nothing: a duplicate,
+  // escaped or case-folded member, invalid UTF-8 or anything but one object
+  // could check as one action here and reach Dual as another.
+  const parsed = unambiguousObject(body ?? new ArrayBuffer(0));
+  if (!parsed) return refuse("face_execution_mismatch", 400);
   // The current session, its wallet and this launch's journal (the launch id
   // header is checked there); a logged-out or expired session is refused.
   const context = await resolveFaceRequest(request, slug, {
@@ -100,12 +109,6 @@ export async function bindFaceExecution(
     entry.actionId !== undefined
   ) {
     return refuseIn("face_execution_not_pending", 409);
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(new TextDecoder().decode(body ?? new ArrayBuffer(0)));
-  } catch {
-    return refuseIn("face_execution_mismatch", 400);
   }
   if (!faceExecutionBodyMatches(parsed, entry)) {
     return refuseIn("face_execution_mismatch", 400);

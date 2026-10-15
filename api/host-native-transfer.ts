@@ -2,15 +2,24 @@ import "server-only";
 
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import type { HostConfigurationState } from "@/api/host-configuration";
 import { MAX_BFF_BODY_BYTES } from "@/api/settings";
+import {
+  foldMemberName as fold,
+  unambiguousObject,
+} from "@/api/strict-json-body";
 import { custodyActions } from "@/app/_domain/wallet-host";
+
+export { repeatsMemberName, unambiguousObject } from "@/api/strict-json-body";
 
 /**
  * A branded host without the transfer journey offers no native transfer
  * either (Root's decision): no Dual action that moves custody (transfer, drop,
  * pickup, claim_ownership, or a permit delegating one) passes the
- * /api/backend proxy. It is refused here, in the request proxy, before the
- * backend route runs, so nothing is prepared, executed or sent to Dual.
+ * /api/backend proxy. It is refused in the request proxy, before the backend
+ * route runs, and again in the backend route itself on the bytes it forwards
+ * (whether or not the proxy ran for that spelling of the path), so nothing is
+ * prepared, executed or sent to Dual.
  *
  * The route forwards the request's raw bytes, so the body is checked exactly
  * as every decoder will read it: valid UTF-8, one top-level JSON object, and
@@ -19,6 +28,11 @@ import { custodyActions } from "@/app/_domain/wallet-host";
  * ways, or that is not a single object, is refused before anything is sent.
  * The generic wallet and hosts with transfer enabled never reach this.
  */
+
+/** Whether this host withholds native transfer: active, transfer journey off. */
+export function withholdsNativeTransfer(host: HostConfigurationState) {
+  return host.status === "active" && !host.configuration.journeys.transfer;
+}
 
 /** The path as routing sees it: percent-decoded, repeated slashes folded. */
 export function routedPath(raw: string) {
@@ -44,73 +58,6 @@ export function isBackendWrite(request: NextRequest) {
 
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-// Member names are compared the way a case-insensitive JSON decoder could
-// match them (Go's encoding/json folds case: "ſ" is S, the Kelvin sign K),
-// and without underscores (claim_ownership, claimOwnership), so no spelling
-// of a name slips past or stands in for another.
-const fold = (name: string) =>
-  name.toLowerCase().toUpperCase().replace(/_/g, "");
-
-/**
- * Whether valid JSON text repeats a member name (folded) in any one object,
- * at any depth. Keys are compared decoded, so an escaped spelling is the same
- * name. Only meaningful for text JSON.parse accepts.
- */
-export function repeatsMemberName(text: string) {
-  const frames: Array<{ names: Set<string>; expectName: boolean } | null> = [];
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    if (char === '"') {
-      let end = index + 1;
-      while (end < text.length && text[end] !== '"') {
-        end += text[end] === "\\" ? 2 : 1;
-      }
-      const frame = frames[frames.length - 1];
-      if (frame?.expectName) {
-        let name: unknown;
-        try {
-          name = JSON.parse(text.slice(index, end + 1));
-        } catch {
-          return true;
-        }
-        const folded = fold(String(name));
-        if (frame.names.has(folded)) return true;
-        frame.names.add(folded);
-        frame.expectName = false;
-      }
-      index = end;
-    } else if (char === "{") {
-      frames.push({ names: new Set(), expectName: true });
-    } else if (char === "[") {
-      frames.push(null);
-    } else if (char === "}" || char === "]") {
-      frames.pop();
-    } else if (char === ",") {
-      const frame = frames[frames.length - 1];
-      if (frame) frame.expectName = true;
-    }
-  }
-  return false;
-}
-
-/** The one JSON object these bytes are, read unambiguously; else undefined. */
-export function unambiguousObject(bytes: ArrayBuffer) {
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return undefined;
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-  if (!record(parsed) || repeatsMemberName(text)) return undefined;
-  return parsed;
 }
 
 const CUSTODY = new Set<string>(custodyActions.map(fold));
@@ -177,11 +124,20 @@ const refusal = () =>
   );
 
 /**
- * The refusal for a backend write on a host without the transfer journey that
- * could move custody, or whose body is not one unambiguous JSON object (fails
- * closed: no wallet request sends anything else to the backend proxy);
- * undefined when the request may continue unchanged.
+ * The refusal for a backend write body on a host without the transfer
+ * journey that could move custody, or that is not one unambiguous JSON object
+ * (fails closed: no wallet request sends anything else to the backend proxy);
+ * undefined when the bytes may be forwarded unchanged. Decided on exactly the
+ * bytes the backend route forwards.
  */
+export function transferBodyRefusal(bytes: ArrayBuffer) {
+  if (!bytes.byteLength) return undefined;
+  if (bytes.byteLength > MAX_BFF_BODY_BYTES) return refusal();
+  const body = unambiguousObject(bytes);
+  return !body || movesCustody(body) ? refusal() : undefined;
+}
+
+/** The request proxy's decision on a backend write (see transferBodyRefusal). */
 export async function nativeTransferRefusal(request: NextRequest) {
   let bytes: ArrayBuffer;
   try {
@@ -189,8 +145,5 @@ export async function nativeTransferRefusal(request: NextRequest) {
   } catch {
     return refusal();
   }
-  if (!bytes.byteLength) return undefined;
-  if (bytes.byteLength > MAX_BFF_BODY_BYTES) return refusal();
-  const body = unambiguousObject(bytes);
-  return !body || movesCustody(body) ? refusal() : undefined;
+  return transferBodyRefusal(bytes);
 }

@@ -17,6 +17,7 @@ import {
   isBackendWrite,
   nativeTransferRefusal,
   routedPath,
+  withholdsNativeTransfer,
 } from "@/api/host-native-transfer";
 import { chosenOrganizationId } from "@/api/tenant";
 import {
@@ -96,11 +97,7 @@ export function proxy(
   }
   // A branded host without the transfer journey refuses the wallet's native
   // transfer through the backend proxy, before the route runs.
-  if (
-    host.status === "active" &&
-    !host.configuration.journeys.transfer &&
-    isBackendWrite(request)
-  ) {
+  if (withholdsNativeTransfer(host) && isBackendWrite(request)) {
     return nativeTransferRefusal(request).then(
       (refused) => refused ?? routed(request, host),
     );

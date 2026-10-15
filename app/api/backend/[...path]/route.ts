@@ -1,6 +1,10 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { bindFaceExecution } from "@/api/face-execution-binding";
+import {
+  transferBodyRefusal,
+  withholdsNativeTransfer,
+} from "@/api/host-native-transfer";
 import { validateProxyPath } from "@/api/proxy-policy";
 import { validRequestOrigin } from "@/api/request";
 import {
@@ -11,6 +15,7 @@ import {
   writeSession,
 } from "@/api/server-session";
 import { MAX_BFF_BODY_BYTES } from "@/api/settings";
+import { walletHost } from "@/api/wallet-host";
 
 async function proxy(
   request: NextRequest,
@@ -52,6 +57,13 @@ async function proxy(
         { message: "Request body too large." },
         { status: 413 },
       );
+    }
+    // A branded host without the transfer journey decides here too, on
+    // exactly the bytes forwarded below, whether or not the request proxy
+    // ran for this spelling of the path.
+    if (withholdsNativeTransfer(walletHost())) {
+      const refused = transferBodyRefusal(body);
+      if (refused) return refused;
     }
   }
 
