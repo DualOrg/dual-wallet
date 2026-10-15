@@ -13,6 +13,11 @@ import {
   hostNoticeHtml,
   type HostNoticeKind,
 } from "@/api/host-notice";
+import {
+  isBackendWrite,
+  nativeTransferRefusal,
+  routedPath,
+} from "@/api/host-native-transfer";
 import { chosenOrganizationId } from "@/api/tenant";
 import {
   HOST_NOT_FOUND_PATH,
@@ -78,7 +83,9 @@ function hostNotice(request: NextRequest, kind: HostNoticeKind) {
   });
 }
 
-export function proxy(request: NextRequest) {
+export function proxy(
+  request: NextRequest,
+): NextResponse | Promise<NextResponse> {
   const host = walletHost();
   if (host.status === "invalid") return hostNotice(request, "setup");
   if (
@@ -87,6 +94,24 @@ export function proxy(request: NextRequest) {
   ) {
     return hostNotice(request, "misdirected");
   }
+  // A branded host without the transfer journey refuses the wallet's native
+  // transfer through the backend proxy, before the route runs.
+  if (
+    host.status === "active" &&
+    !host.configuration.journeys.transfer &&
+    isBackendWrite(request)
+  ) {
+    return nativeTransferRefusal(request).then(
+      (refused) => refused ?? routed(request, host),
+    );
+  }
+  return routed(request, host);
+}
+
+function routed(
+  request: NextRequest,
+  host: ReturnType<typeof walletHost>,
+): NextResponse {
   // A branded host names exactly one organisation: an entry link, mail link
   // or remembered cookie naming any other is not one here.
   const entranceOrganization =
@@ -115,7 +140,7 @@ export function proxy(request: NextRequest) {
     host.status === "active" &&
     first &&
     chosenOrganizationId(first[1]) &&
-    /^\/api(?:\/|$)/.test(url.pathname.slice(first[0].length))
+    /^\/api(?:\/|$)/i.test(routedPath(url.pathname.slice(first[0].length)))
   ) {
     return NextResponse.json(
       { code: "not_found", message: "Not found." },

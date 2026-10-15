@@ -227,6 +227,16 @@ selection and the journal list are shared by all of them.
   own. The generic wallet keeps that rewrite unchanged.
 - **Registry**: a configured host's face registry holds only its own faces;
   any other binding is `unknown_application`.
+- **Native transfer**: a host without the transfer journey offers no native
+  transfer either. The object actions offer no Transfer control (nor run a
+  face-requested one), and the request proxy refuses (403
+  `capability_not_granted`) every write to the backend proxy whose body names
+  Dual's `transfer` action, in any spelling a case-folding JSON decoder would
+  accept and at any spelling of the path routing would serve as
+  `/api/backend`, before the backend route runs: nothing is prepared,
+  executed or sent to Dual. A body it cannot read as JSON is refused too.
+  Other actions, and every request on a host with transfer enabled or on the
+  generic wallet, are unchanged.
 
 A face may still show its own screens for a disabled journey inside its
 frame; every operation behind them is refused. Studio publishes faces whose

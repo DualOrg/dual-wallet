@@ -27,11 +27,20 @@ const PUBLIC = [
   "/otp",
 ];
 
+// The proxy answers synchronously except for a branded host's native-transfer
+// check, which reads the request body (tested with await below).
+function answered(response: ReturnType<typeof proxy>) {
+  if (response instanceof Promise) throw new Error("answered asynchronously");
+  return response;
+}
+
 function visit(path: string, cookie?: string) {
-  return proxy(
-    new NextRequest(`http://localhost${path}`, {
-      headers: cookie ? { cookie } : {},
-    }),
+  return answered(
+    proxy(
+      new NextRequest(`http://localhost${path}`, {
+        headers: cookie ? { cookie } : {},
+      }),
+    ),
   );
 }
 
@@ -269,10 +278,12 @@ describe("branded host pages", () => {
   }
   function visitHost(origin: string, path: string, cookie?: string) {
     const { host } = new URL(origin);
-    return proxy(
-      new NextRequest(`${origin}${path}`, {
-        headers: { host, ...(cookie ? { cookie } : {}) },
-      }),
+    return answered(
+      proxy(
+        new NextRequest(`${origin}${path}`, {
+          headers: { host, ...(cookie ? { cookie } : {}) },
+        }),
+      ),
     );
   }
   const notFound = (origin: string) => `${origin}/_wallet-host/not-found`;
@@ -377,10 +388,12 @@ describe("branded host entrance and fail-closed mode", () => {
   });
   function visitAt(origin: string, path: string, cookie?: string) {
     const { host } = new URL(origin);
-    return proxy(
-      new NextRequest(`${origin}${path}`, {
-        headers: { host, ...(cookie ? { cookie } : {}) },
-      }),
+    return answered(
+      proxy(
+        new NextRequest(`${origin}${path}`, {
+          headers: { host, ...(cookie ? { cookie } : {}) },
+        }),
+      ),
     );
   }
   afterEach(() => {
@@ -532,11 +545,13 @@ describe("entry-prefixed API paths", () => {
       ORGANIZATION,
     ]) {
       for (const path of API) {
-        const response = proxy(
-          new NextRequest(`${MORROW_ORIGIN}/${organization}${path}`, {
-            method: "POST",
-            headers: { host, cookie: "smarttoken_viewer=sealed" },
-          }),
+        const response = answered(
+          proxy(
+            new NextRequest(`${MORROW_ORIGIN}/${organization}${path}`, {
+              method: "POST",
+              headers: { host, cookie: "smarttoken_viewer=sealed" },
+            }),
+          ),
         );
         expect([path, response.status]).toEqual([path, 404]);
         expect(response.headers.get("x-middleware-rewrite")).toBeNull();
@@ -549,11 +564,13 @@ describe("entry-prefixed API paths", () => {
     }
     // The canonical paths are untouched by this rule.
     expect(
-      proxy(
-        new NextRequest(`${MORROW_ORIGIN}/api/faces/morrow-home/assertions`, {
-          method: "POST",
-          headers: { host },
-        }),
+      answered(
+        proxy(
+          new NextRequest(`${MORROW_ORIGIN}/api/faces/morrow-home/assertions`, {
+            method: "POST",
+            headers: { host },
+          }),
+        ),
       ).headers.get("x-middleware-next"),
     ).toBe("1");
   });
@@ -568,6 +585,146 @@ describe("entry-prefixed API paths", () => {
       expect(response.cookies.get(ORGANIZATION_COOKIE)?.value).toBe(
         ORGANIZATION,
       );
+    }
+  });
+});
+
+// Root's decision: a branded host without the transfer journey offers no
+// native transfer. The request proxy refuses the wallet's own Dual `transfer`
+// action through /api/backend before the backend route runs.
+describe("native transfer through the backend proxy", () => {
+  const UNIT = "aaaaaaaaaaaaaaaaaaaaaaaa";
+  const TO = "0x1234567890abcdef1234567890abcdef12345678";
+  const transferBody = { action: { transfer: { id: UNIT, to: TO } } };
+  afterEach(() => {
+    clearHostEnvironment();
+    resetWalletHostCache();
+  });
+  function brand(transfer: boolean) {
+    const document = morrowDocument();
+    edit(document, "journeys.transfer", transfer);
+    resetWalletHostCache();
+    applyHostEnvironment(hostEnvironment(document));
+  }
+  function write(
+    path: string,
+    body: unknown,
+    { method = "POST", origin = MORROW_ORIGIN } = {},
+  ) {
+    const { host } = new URL(origin);
+    return proxy(
+      new NextRequest(`${origin}${path}`, {
+        method,
+        headers: {
+          host,
+          cookie: "smarttoken_viewer=sealed",
+          "content-type": "application/json",
+        },
+        body:
+          body === undefined
+            ? undefined
+            : typeof body === "string"
+              ? body
+              : JSON.stringify(body),
+      }),
+    );
+  }
+  const refused = async (response: ReturnType<typeof proxy>) => {
+    const answer = await response;
+    expect(answer.status).toBe(403);
+    expect(answer.headers.get("x-middleware-next")).toBeNull();
+    expect(await answer.json()).toEqual({
+      code: "capability_not_granted",
+      message: "Transfers are not available in this wallet.",
+    });
+  };
+  const passed = async (response: ReturnType<typeof proxy>) =>
+    expect((await response).headers.get("x-middleware-next")).toBe("1");
+
+  test("a host with transfer disabled refuses every native transfer before the route runs", async () => {
+    brand(false);
+    for (const path of [
+      "/api/backend/ebus/prepare",
+      "/api/backend/ebus/execute",
+    ]) {
+      await refused(write(path, transferBody));
+      await refused(
+        write(path, { ...transferBody, nonce: 7, auth: { type: "email" } }),
+      );
+    }
+    // Any spelling a case-folding decoder would still read as a transfer.
+    for (const body of [
+      { Action: { TRANSFER: { id: UNIT, to: TO } } },
+      { action: { tranſfer: { id: UNIT, to: TO } } },
+      { action: { update: { id: UNIT }, transfer: { id: UNIT, to: TO } } },
+    ]) {
+      await refused(write("/api/backend/ebus/prepare", body));
+    }
+    // Any spelling of the path routing would still serve as the backend.
+    for (const path of [
+      "/api/%62ackend/ebus/prepare",
+      "/api/backend/%65bus/execute",
+      "/api//backend/ebus/prepare",
+    ]) {
+      await refused(write(path, transferBody));
+    }
+    // A body it cannot read is refused (fails closed).
+    await refused(write("/api/backend/ebus/prepare", "transfer"));
+  });
+
+  test("other backend requests on that host continue unchanged", async () => {
+    brand(false);
+    await passed(
+      write("/api/backend/ebus/prepare", { action: { update: { id: UNIT } } }),
+    );
+    await passed(
+      write("/api/backend/ebus/execute", { action: { burn: { id: UNIT } } }),
+    );
+    await passed(
+      write(
+        "/api/backend/wallets/me",
+        { nickname: "transfer" },
+        { method: "PATCH" },
+      ),
+    );
+    await passed(
+      write("/api/backend/wallets/me", undefined, { method: "DELETE" }),
+    );
+    // A read answers synchronously, as before.
+    expect(
+      answered(
+        proxy(
+          new NextRequest(`${MORROW_ORIGIN}/api/backend/objects`, {
+            headers: { host: "wallet.morrow.example" },
+          }),
+        ),
+      ).headers.get("x-middleware-next"),
+    ).toBe("1");
+  });
+
+  test("a host with transfer enabled lets native transfer through", async () => {
+    brand(true);
+    for (const path of [
+      "/api/backend/ebus/prepare",
+      "/api/backend/ebus/execute",
+    ]) {
+      // Not even read: the answer is synchronous.
+      expect(
+        answered(write(path, transferBody)).headers.get("x-middleware-next"),
+      ).toBe("1");
+    }
+  });
+
+  test("the generic wallet lets it through unchanged", () => {
+    for (const path of [
+      "/api/backend/ebus/prepare",
+      "/api/backend/ebus/execute",
+    ]) {
+      const response = answered(
+        write(path, transferBody, { origin: "http://localhost" }),
+      );
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+      expect(response.cookies.getAll()).toEqual([]);
     }
   });
 });

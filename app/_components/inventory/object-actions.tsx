@@ -11,6 +11,7 @@ import { shortId } from "@/app/_domain/inventory";
 import { ViewerError } from "@/app/_domain/errors";
 import { useExecuteInventoryAction } from "@/app/_hooks/use-inventory-action";
 import type { ExternalFaceActionRequest } from "@/app/_lib/external-face-bridge";
+import { useHostPresentation } from "@/app/_providers/host-provider";
 import {
   ActionInputError,
   actionFields,
@@ -60,9 +61,16 @@ export function ObjectActions({
 }) {
   const t = useTranslations("actions");
   const execution = useExecuteInventoryAction();
+  // A branded host without the transfer journey offers no native transfer
+  // either (the request proxy refuses one server-side as well).
+  const host = useHostPresentation();
+  const transferOffered = !host || host.journeys.transfer;
   const actions = useMemo(
-    () => Array.from(new Set(item.actions)).filter(isInventoryActionName),
-    [item.actions],
+    () =>
+      Array.from(new Set(item.actions))
+        .filter(isInventoryActionName)
+        .filter((name) => transferOffered || name !== "transfer"),
+    [item.actions, transferOffered],
   );
   const initialRequest =
     requestedAction && actions.includes(requestedAction.name)
