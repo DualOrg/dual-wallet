@@ -42,8 +42,10 @@ export type FaceExecutionDecision =
  *   (dispatch:"won") and that has no recorded action yet;
  * - the body is exactly that step's action on that step's unit, read from
  *   the very bytes the route forwards as one unambiguous JSON object (valid
- *   UTF-8, no member name repeated at any depth however it is spelled); any
- *   other body is refused before the session is even resolved.
+ *   UTF-8, no member name repeated at any depth however it is spelled, save
+ *   that a designated free-form map such as `action.update.data.custom`
+ *   compares its own keys exactly, as the map they are); any other body is
+ *   refused before the session is even resolved.
  *
  * Anything else is refused before any upstream request; the journal entry is
  * not touched, so its original correlation stays submitted and its status
@@ -76,7 +78,10 @@ export async function bindFaceExecution(
   }
   // The body every decoder reads the same way, or nothing: a duplicate,
   // escaped or case-folded member, invalid UTF-8 or anything but one object
-  // could check as one action here and reach Dual as another.
+  // could check as one action here and reach Dual as another. Distinct keys
+  // of a designated free-form map (EXACT_KEY_MAPS) are not such a member.
+  // Refused here, nothing has been dispatched: no upstream request, and the
+  // journal entry and its reservation are untouched.
   const parsed = unambiguousObject(body ?? new ArrayBuffer(0));
   if (!parsed) return refuse("face_execution_mismatch", 400);
   // The current session, its wallet and this launch's journal (the launch id

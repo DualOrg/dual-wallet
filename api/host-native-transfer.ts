@@ -24,7 +24,9 @@ export { repeatsMemberName, unambiguousObject } from "@/api/strict-json-body";
  * The route forwards the request's raw bytes, so the body is checked exactly
  * as every decoder will read it: valid UTF-8, one top-level JSON object, and
  * no member name repeated at any depth, however it is spelled (escaped,
- * case-folded, with or without underscores). A body that could be read two
+ * case-folded, with or without underscores; a designated free-form map's own
+ * keys, such as `action.update.data.custom`, are compared exactly, see
+ * api/strict-json-body.ts). A body that could be read two
  * ways, or that is not a single object, is refused before anything is sent.
  * The generic wallet and hosts with transfer enabled never reach this.
  */

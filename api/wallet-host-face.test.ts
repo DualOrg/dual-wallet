@@ -1157,3 +1157,343 @@ describe("the backend route decides on exactly the bytes it forwards, without th
     );
   });
 });
+
+// Root's live blocker: an owner's transfer.request (an `update` of the unit's
+// COMPLETE custom map) was refused face_execution_mismatch at ebus/prepare
+// because the custom map holds both `serialNumber` and `serial_number`, two
+// distinct keys of one free-form map that the guard folded into one name.
+// This drives the actual path: the wallet's builder, the SDK's own
+// serialization, the request proxy, then the backend route's guard, and
+// checks what reached Dual byte for byte. A designated free-form map compares
+// its own keys exactly; everything else is still folded, and an exact
+// duplicate is refused anywhere.
+describe("a face transfer.request's complete custom map reaches Dual exactly (Root blocker)", () => {
+  const OFFER = `pto-${"a".repeat(24)}`;
+  // Redacted but complete: every value shape a unit's custom map carries,
+  // with both spellings of the serial number as the distinct keys they are.
+  const CUSTOM = {
+    serialNumber: "SN-REDACTED-0001",
+    serial_number: "SN-REDACTED-0001",
+    product_title: "Redacted product",
+    productTitle: "Redacted product",
+    state: "Registered",
+    lifecycle: { target: null, since: "2026-10-01T00:00:00Z" },
+    dual_asset: { asset_label: "REDACTED", tags: ["a", "b"], count: 2 },
+    activation_hash: `sha256:${"e".repeat(64)}`,
+    warranty_months: 24,
+    verified: true,
+    notes: null,
+    owner_label: "Redacted owner é ✓",
+  };
+  const utf8 = (text: string) => Buffer.from(text, "utf8");
+
+  function bound(setUp: () => void) {
+    setUp();
+    const browser = new Browser();
+    const now = Date.now();
+    browser.keepJournal({
+      ...emptyFaceJournal(),
+      entries: [
+        {
+          operationId: "transfer-request-0001",
+          kind: "transfer",
+          operation: "transfer.request",
+          offerId: OFFER,
+          slug: SLUG,
+          programmeId: "morrow-home-arc",
+          objectId: UNIT,
+          phase: "submitted",
+          dispatch: "won",
+          proposalId: "proposal-0001",
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+    });
+    const face = {
+      "x-dual-face-launch": browser.launchId,
+      "x-dual-face-slug": SLUG,
+      "x-dual-face-operation": "transfer-request-0001",
+      "x-dual-face-wallet": "wallet-1",
+    };
+    return { browser, face };
+  }
+
+  /** The browser's request through the request proxy, then the route. */
+  async function wallet(browser: Browser, url: string, init: RequestInit) {
+    const request = () =>
+      new NextRequest(url, {
+        method: init.method,
+        headers: {
+          ...(init.headers as Record<string, string>),
+          host: "localhost",
+          origin: "http://localhost",
+          cookie: Array.from(browser.cookies, ([k, v]) => `${k}=${v}`).join(
+            "; ",
+          ),
+        },
+        body: init.body as BodyInit,
+      });
+    const gate = await proxy(request());
+    if (gate.headers.get("x-middleware-next") !== "1") return gate;
+    const path = new URL(url).pathname
+      .replace(/^\/api\/backend\//, "")
+      .split("/");
+    return backendPOST(request(), { params: Promise.resolve({ path }) });
+  }
+
+  async function route(
+    browser: Browser,
+    path: string[],
+    raw: string,
+    headers: Record<string, string>,
+  ) {
+    const response = await wallet(
+      browser,
+      `http://localhost/api/backend/${path.join("/")}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: raw,
+      },
+    );
+    const body = (await response.json().catch(() => null)) as {
+      code?: string;
+    } | null;
+    return {
+      status: response.status,
+      code: body?.code,
+      cookie: response.headers.get("set-cookie"),
+    };
+  }
+
+  const forwarded = () =>
+    runtime.mock.calls.map(([url, init]) => [
+      String(url).replace(/^.*\/ebus\//, "/ebus/"),
+      Buffer.from((init as RequestInit).body as ArrayBuffer),
+    ]);
+  beforeEach(() => {
+    runtime.mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ nonce: 3, challenge: "AQID" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+  });
+
+  function generic() {
+    clearHostEnvironment();
+    process.env.PRODUCT_FACE_APPLICATIONS = registryWithBothFaces();
+    resetWalletHostCache();
+  }
+
+  it.each([
+    ["the generic wallet", generic],
+    ["a transfer-enabled brand host", () => configure()],
+  ])(
+    "%s: builder -> SDK -> proxy -> route forwards the colliding custom map byte for byte",
+    async (_host, setUp) => {
+      const { browser, face } = bound(setUp);
+      const { transferExecutorInput } =
+        await import("@/app/_domain/product-face-transfer");
+      const { bridgeActionInput, buildInventoryAction } =
+        await import("@/app/_services/inventory-actions");
+      const { EbusApi } = await import("@/api/web-sdk/apis");
+      const { Configuration } = await import("@/api/web-sdk/runtime");
+      // The builder, exactly as executeTransferAction runs it.
+      const form = transferExecutorInput({
+        action: "update",
+        input: { data: { custom: CUSTOM } },
+      })!;
+      const action = buildInventoryAction(
+        "update",
+        UNIT,
+        bridgeActionInput("update", form),
+      );
+      // The SDK's own serialization, sent with the face binding.
+      const sent: string[] = [];
+      const api = new EbusApi(
+        new Configuration({
+          basePath: "http://localhost/api/backend",
+          fetchApi: async (url, init) => {
+            sent.push(String(init?.body));
+            return wallet(browser, String(url), init ?? {});
+          },
+        }),
+      );
+      const prepared = await api.prepareAction(
+        { prepareExecuteRequest: { action } },
+        async ({ init }) => ({
+          headers: { ...(init.headers as Record<string, string>), ...face },
+        }),
+      );
+      expect(prepared.nonce).toBe(3);
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toContain('"serialNumber":"SN-REDACTED-0001"');
+      expect(sent[0]).toContain('"serial_number":"SN-REDACTED-0001"');
+      // Exactly the SDK's bytes reached Dual: nothing stripped, renamed,
+      // reordered or re-serialised.
+      expect(forwarded()).toEqual([["/ebus/prepare", utf8(sent[0])]]);
+      const custom = JSON.parse(sent[0]).action.update.data.custom;
+      expect(custom).toEqual(CUSTOM);
+      expect(Object.keys(custom)).toEqual(Object.keys(CUSTOM));
+      // The same map is executed too.
+      const execute = `{"action":${JSON.stringify(JSON.parse(sent[0]).action)},"nonce":3}`;
+      expect(
+        await route(browser, ["ebus", "execute"], execute, face),
+      ).toMatchObject({ status: 200 });
+      expect(forwarded()[1]).toEqual(["/ebus/execute", utf8(execute)]);
+    },
+  );
+
+  const update = (inner: string) =>
+    `{"action":{"update":{"id":"${UNIT}",${inner}}}}`;
+  const refused: Array<[string, string]> = [
+    // Exact duplicates stay refused anywhere, inside the custom map too.
+    [
+      "an exact duplicate key in custom",
+      update(`"data":{"custom":{"serialNumber":"A","serialNumber":"B"}}`),
+    ],
+    [
+      "an escaped exact duplicate in custom (serial\\u004eumber)",
+      update(`"data":{"custom":{"serialNumber":"A","serial\\u004eumber":"B"}}`),
+    ],
+    [
+      "an escaped exact duplicate in custom (\\u0073erialNumber)",
+      update(`"data":{"custom":{"\\u0073erialNumber":"A","serialNumber":"B"}}`),
+    ],
+    [
+      "two lone surrogates Go reads as one key",
+      update(`"data":{"custom":{"\\ud800":"A","\\udc00":"B"}}`),
+    ],
+    [
+      "a duplicate __proto__ in custom",
+      update(`"data":{"custom":{"__proto__":{"a":1},"__proto__":{"a":2}}}`),
+    ],
+    [
+      "a duplicate constructor in custom",
+      update(`"data":{"custom":{"constructor":1,"constructor":2}}`),
+    ],
+    // Folded aliases in typed envelope and action fields stay refused.
+    [
+      "a folded alias of the unit id",
+      `{"action":{"update":{"ID":"${"b".repeat(24)}","id":"${UNIT}","data":{"custom":${JSON.stringify(CUSTOM)}}}}}`,
+    ],
+    [
+      "a folded alias of data",
+      update(`"Data":{"custom":{}},"data":{"custom":{"serialNumber":"A"}}`),
+    ],
+    [
+      "a folded alias of custom",
+      update(`"data":{"Custom":{"a":1},"custom":{"serialNumber":"A"}}`),
+    ],
+    [
+      "a folded alias of update",
+      `{"action":{"Update":{"id":"${"b".repeat(24)}"},"update":{"id":"${UNIT}"}}}`,
+    ],
+    [
+      "a folded alias of action",
+      `{"Action":{"burn":{"id":"${UNIT}"}},"action":{"update":{"id":"${UNIT}"}}}`,
+    ],
+    // Deep nesting: only custom's OWN keys are exact.
+    [
+      "a folded collision nested inside custom",
+      update(
+        `"data":{"custom":{"dual_asset":{"serialNumber":"A","serial_number":"B"}}}`,
+      ),
+    ],
+    [
+      "an exact duplicate deep inside custom",
+      update(`"data":{"custom":{"a":{"b":{"c":{"d":{"e":1,"e":2}}}}}}`),
+    ],
+    // A non-object custom: its objects are not the designated map.
+    [
+      "a custom array of colliding objects",
+      update(`"data":{"custom":[{"serialNumber":"A","serial_number":"B"}]}`),
+    ],
+    // The same map at a position that is not designated stays folded.
+    [
+      "custom directly under update",
+      update(`"custom":{"serialNumber":"A","serial_number":"B"}`),
+    ],
+    [
+      "metadata beside custom",
+      update(`"data":{"metadata":{"serialNumber":"A","serial_number":"B"}}`),
+    ],
+    [
+      "data as an array of custom",
+      update(`"data":[{"custom":{"serialNumber":"A","serial_number":"B"}}]`),
+    ],
+    [
+      "a folded spelling of the designated path",
+      update(`"Data":{"custom":{"serialNumber":"A","serial_number":"B"}}`),
+    ],
+    [
+      "a top-level custom",
+      `{"action":{"update":{"id":"${UNIT}"}},"custom":{"serialNumber":"A","serial_number":"B"}}`,
+    ],
+  ];
+
+  it.each([
+    ["ebus", "prepare"],
+    ["ebus", "execute"],
+  ])(
+    "%s/%s: each ambiguous body is refused, typed and undispatched",
+    async (...path) => {
+      const { browser, face } = bound(generic);
+      for (const [label, raw] of refused) {
+        expect(JSON.parse(raw)).toBeTruthy();
+        // Refused before any upstream request, with the binding's own typed
+        // reason, no session renewal and nothing written to the journal.
+        expect([label, await route(browser, path, raw, face)]).toEqual([
+          label,
+          { status: 400, code: "face_execution_mismatch", cookie: null },
+        ]);
+      }
+      expect(runtime).not.toHaveBeenCalled();
+      expect(getWallet).not.toHaveBeenCalled();
+    },
+  );
+
+  it("distinct prototype-named and differently cased keys in custom are forwarded unchanged", async () => {
+    const { browser, face } = bound(generic);
+    const raw = update(
+      `"data":{"custom":{"__proto__":{"x":1},"constructor":"c","Constructor":"C","serialNumber":"A","serial_number":"B","SERIALNUMBER":"C","deep":{"a":{"b":{"c":{"d":{"e":[1,{"f":2}]}}}}}}}`,
+    );
+    expect(await route(browser, ["ebus", "prepare"], raw, face)).toMatchObject({
+      status: 200,
+    });
+    expect(forwarded()).toEqual([["/ebus/prepare", utf8(raw)]]);
+  });
+
+  it("the parser alone: designated keys exact, every other position folded", async () => {
+    const { unambiguousObject, repeatsMemberName } =
+      await import("@/api/strict-json-body");
+    const bytes = (text: string) => new Uint8Array(utf8(text)).buffer;
+    const pair = `{"serialNumber":1,"serial_number":2}`;
+    expect(
+      unambiguousObject(
+        bytes(`{"action":{"update":{"data":{"custom":${pair}}}}}`),
+      ),
+    ).toBeDefined();
+    for (const position of [
+      `{"action":{"mint":{"data":{"custom":${pair}}}}}`,
+      `{"action":{"update":{"data":{"custom":{"x":${pair}}}}}}`,
+      `{"action":{"update":{"data":{"custom":[${pair}]}}}}`,
+      `{"action":[{"update":{"data":{"custom":${pair}}}}]}`,
+      `{"x":{"action":{"update":{"data":{"custom":${pair}}}}}}`,
+      `{"action":{"update":{"data":${pair}}}}`,
+      `{"action":${pair}}`,
+      pair,
+    ]) {
+      expect([position, repeatsMemberName(position)]).toEqual([position, true]);
+    }
+    // A sibling object after the designated map is folded again.
+    expect(
+      repeatsMemberName(
+        `{"action":{"update":{"data":{"custom":{"a":1},"z":${pair}}}}}`,
+      ),
+    ).toBe(true);
+  });
+});

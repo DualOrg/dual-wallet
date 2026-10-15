@@ -687,7 +687,12 @@ describe("native transfer through the backend proxy", () => {
     `{"\\u0061ction":{"\\u0074ransfer":${T}}}`,
     `{"action":{"update":${U}},"\\u0061ction":{"transfer":${T}}}`,
     `{"action":{"update":${U}},"ACTION":{"transfer":${T}}}`,
-    `{"action":{"update":{"id":"${UNIT}","data":{"custom":{"note":1,"Note":2}}}}}`,
+    // Inside the free-form custom map: an exact duplicate (however escaped),
+    // and a folded pair in an object nested inside it, stay ambiguous.
+    `{"action":{"update":{"id":"${UNIT}","data":{"custom":{"note":1,"note":2}}}}}`,
+    `{"action":{"update":{"id":"${UNIT}","data":{"custom":{"note":1,"\\u006eote":2}}}}}`,
+    `{"action":{"update":{"id":"${UNIT}","data":{"custom":{"x":{"note":1,"Note":2}}}}}}`,
+    `{"action":{"update":{"id":"${UNIT}","data":{"Custom":{},"custom":{}}}}}`,
     `{"action":{"claim_ownership":${U},"claimOwnership":null}}`,
     `"transfer"`,
     "null",
@@ -706,6 +711,14 @@ describe("native transfer through the backend proxy", () => {
         await refused(write(path, raw));
       }
     }
+    // The custom map's own keys are distinct map keys, compared exactly:
+    // serialNumber and serial_number are two keys, not one name twice.
+    await passed(
+      write(
+        "/api/backend/ebus/prepare",
+        `{"action":{"update":{"id":"${UNIT}","data":{"custom":{"note":1,"Note":2,"serialNumber":"s","serial_number":"s"}}}}}`,
+      ),
+    );
     // Bytes that are not valid UTF-8 are not text every decoder reads alike.
     await refused(
       proxy(
