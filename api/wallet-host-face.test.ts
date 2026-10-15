@@ -280,6 +280,13 @@ describe("disabled journeys in the face BFF", () => {
         operationId: "register-op-0001",
       }),
     ).toEqual(REFUSED);
+    // A malformed operation id is refused the same way, never an error.
+    expect(
+      await browser.call(statusGET, face("/operations/%E0%A4%A"), {
+        slug: SLUG,
+        operationId: "%E0%A4%A",
+      }),
+    ).toEqual(REFUSED);
     expect(getObjectByIdPublic).not.toHaveBeenCalled();
     expect(minted).not.toHaveBeenCalled();
     expect(runtime).not.toHaveBeenCalled();

@@ -78,7 +78,13 @@ export async function faceRequestJourney(
     return entry ? journeyOfJournalEntry(entry) : undefined;
   }
   if (route.startsWith("/operations/")) {
-    const operationId = decodeURIComponent(route.slice("/operations/".length));
+    let operationId: string;
+    try {
+      operationId = decodeURIComponent(route.slice("/operations/".length));
+    } catch {
+      // Not an operation id at all; the route's only other journey.
+      return "registration";
+    }
     const entry = journal.entries.find(
       (item) => item.operationId === operationId,
     );
