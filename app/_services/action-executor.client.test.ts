@@ -27,11 +27,14 @@ describe("executeInventoryAction", () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it("uses the standard authenticated HTTP path for email sessions", async () => {
+  it("sends an email session's current action number from prepare, unsigned (custodial)", async () => {
     const executeAction = jest
       .fn()
       .mockResolvedValue({ actionId: "action-1", steps: [] });
-    const prepareAction = jest.fn();
+    // The wallet has already acted: its current action number is 9, not 0.
+    const prepareAction = jest
+      .fn()
+      .mockResolvedValue({ nonce: 9, challenge: "AQIDBA" });
     mockedApi.mockReturnValue({
       executeAction,
       prepareAction,
@@ -39,11 +42,51 @@ describe("executeInventoryAction", () => {
 
     await executeInventoryAction(action, "email");
 
-    expect(prepareAction).not.toHaveBeenCalled();
-    expect(executeAction).toHaveBeenCalledWith({
-      executeRequest: { action, nonce: 0 },
+    expect(prepareAction).toHaveBeenCalledWith({
+      prepareExecuteRequest: { action },
     });
+    expect(executeAction).toHaveBeenCalledWith({
+      executeRequest: { action, nonce: 9 },
+    });
+    expect(executeAction.mock.calls[0][0].executeRequest).not.toHaveProperty(
+      "auth",
+    );
   });
+
+  it("never retries a refused email execute (one prepare, one execute)", async () => {
+    const executeAction = jest
+      .fn()
+      .mockRejectedValue(new Error("invalid nonce: expected 10, got 9"));
+    const prepareAction = jest
+      .fn()
+      .mockResolvedValue({ nonce: 9, challenge: "AQIDBA" });
+    mockedApi.mockReturnValue({
+      executeAction,
+      prepareAction,
+    } as unknown as ReturnType<typeof getEbusApi>);
+
+    await expect(executeInventoryAction(action, "email")).rejects.toThrow(
+      "invalid nonce: expected 10, got 9",
+    );
+    expect(prepareAction).toHaveBeenCalledTimes(1);
+    expect(executeAction).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([undefined, -1, 1.5, Number.NaN, "9"])(
+    "sends nothing when prepare returns an unusable action number (%p)",
+    async (nonce) => {
+      const executeAction = jest.fn();
+      const prepareAction = jest
+        .fn()
+        .mockResolvedValue({ nonce, challenge: "AQIDBA" });
+      mockedApi.mockReturnValue({
+        executeAction,
+        prepareAction,
+      } as unknown as ReturnType<typeof getEbusApi>);
+      await expect(executeInventoryAction(action, "email")).rejects.toThrow();
+      expect(executeAction).not.toHaveBeenCalled();
+    },
+  );
 
   it("prepares and signs the exact action challenge for passkey sessions", async () => {
     const executeAction = jest
@@ -266,9 +309,49 @@ describe("executeInventoryAction", () => {
       expect(executeAction).not.toHaveBeenCalled();
     });
 
+    it("an email step binds prepare and execute, and sends the prepared number", async () => {
+      const { executeAction, prepareAction } = ebus();
+      const step = face();
+      await executeInventoryAction(action, "email", undefined, step);
+      expect(prepareAction).toHaveBeenCalledTimes(1);
+      expect(executeAction).toHaveBeenCalledWith(
+        { executeRequest: { action, nonce: 7 } },
+        expect.any(Function),
+      );
+      for (const call of [
+        prepareAction.mock.calls[0],
+        executeAction.mock.calls[0],
+      ]) {
+        const override = call[1] as (context: {
+          init: { headers: Record<string, string> };
+        }) => Promise<{ headers: Record<string, string> }>;
+        await expect(
+          override({ init: { headers: {} } }),
+        ).resolves.toMatchObject({
+          headers: { "x-dual-face-operation": binding.operationId },
+        });
+      }
+      // Before preparing and after preparing (immediately before executing).
+      expect(step.assertLive).toHaveBeenCalledTimes(2);
+    });
+
+    it("an email step whose session ends while preparing is never executed", async () => {
+      const { executeAction, prepareAction } = ebus();
+      const step = face();
+      prepareAction.mockImplementation(async () => {
+        step.end();
+        return { nonce: 7, challenge: "AQIDBA" };
+      });
+      await expect(
+        executeInventoryAction(action, "email", undefined, step),
+      ).rejects.toBeInstanceOf(SessionEnded);
+      expect(executeAction).not.toHaveBeenCalled();
+    });
+
     it("the generic executor sends no face binding", async () => {
-      const { executeAction } = ebus();
+      const { executeAction, prepareAction } = ebus();
       await executeInventoryAction(action, "email");
+      expect(prepareAction.mock.calls[0]).toHaveLength(1);
       expect(executeAction.mock.calls[0]).toHaveLength(1);
     });
   });

@@ -30,14 +30,16 @@ async function executionError(error: unknown) {
 }
 
 /**
- * Runs one action through the wallet's executor: email execute, or passkey /
- * EOA prepare + sign + execute. With `face`, the identity is re-checked
- * before preparing, after preparing, after signing and immediately before
- * executing, so an account change, logout or teardown at any of those async
- * boundaries stops the step before anything else is sent; and every request
- * carries the face binding, which the proxy enforces server-side against the
- * session current at THAT request. Without `face` (the generic executor),
- * nothing changes.
+ * Runs one action through the wallet's executor: prepare (the wallet's
+ * current action number) + execute for email sessions, which Dual signs on
+ * the custodial account's behalf; prepare + sign + execute for passkey and
+ * EOA sessions. Nothing is retried: a refused execute is reported as it is.
+ * With `face`, the identity is re-checked before preparing, after preparing,
+ * after signing and immediately before executing, so an account change,
+ * logout or teardown at any of those async boundaries stops the step before
+ * anything else is sent; and every request carries the face binding, which
+ * the proxy enforces server-side against the session current at THAT
+ * request. Without `face` (the generic executor), no binding is sent.
  */
 export async function executeInventoryAction(
   action: ActionsRequest,
@@ -74,14 +76,21 @@ export async function executeInventoryAction(
     }
   };
   try {
-    if (authenticationMethod === "email") {
-      live();
-      return await execute({ action, nonce: 0 });
-    }
-
     live();
+    // Every account sends the wallet's CURRENT action number (POST
+    // ebus/prepare, which changes and reserves nothing); a stale one is
+    // refused by Dual. Preparing first is also what lets a face step's
+    // identity be re-checked between reading the number and executing.
     const prepared = await prepare({ action });
     live();
+    if (!Number.isSafeInteger(prepared.nonce) || prepared.nonce < 0) {
+      throw new Error("The wallet's action number could not be read.");
+    }
+
+    if (authenticationMethod === "email") {
+      // Custodial: Dual signs on the account's behalf, so no signature.
+      return await execute({ action, nonce: prepared.nonce });
+    }
 
     if (authenticationMethod === "passkey") {
       const assertion = await signActionWithPasskey(prepared.challenge);

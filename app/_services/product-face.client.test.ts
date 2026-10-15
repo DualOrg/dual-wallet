@@ -55,7 +55,7 @@ function api() {
 describe("holder settle execution", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it("executes the exact proposal through the email path", async () => {
+  it("executes the exact proposal through the email path with the wallet's current action number", async () => {
     const { executeAction, prepareAction } = api();
     await expect(
       executeSettleAction({
@@ -66,11 +66,16 @@ describe("holder settle execution", () => {
         face,
       }),
     ).resolves.toEqual({ actionId: "action-settle-1" });
-    expect(prepareAction).not.toHaveBeenCalled();
-    expect(executeAction).toHaveBeenCalledWith(
-      { executeRequest: { action: expectedAction, nonce: 0 } },
+    // The same exact body is prepared (bound) and then executed, unsigned.
+    expect(prepareAction).toHaveBeenCalledWith(
+      { prepareExecuteRequest: { action: expectedAction } },
       bound,
     );
+    expect(executeAction).toHaveBeenCalledWith(
+      { executeRequest: { action: expectedAction, nonce: 4 } },
+      bound,
+    );
+    expect(executeAction).toHaveBeenCalledTimes(1);
   });
 
   it("prepares and signs as the holder for passkey sessions", async () => {
@@ -136,7 +141,7 @@ describe("holder settle execution", () => {
       face,
     });
     expect(executeAction).toHaveBeenCalledWith(
-      { executeRequest: { action: expectedAction, nonce: 0 } },
+      { executeRequest: { action: expectedAction, nonce: 4 } },
       bound,
     );
     await expect(
