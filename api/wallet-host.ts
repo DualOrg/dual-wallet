@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { Metadata } from "next";
+import packageJson from "@/package.json";
 import {
   bindingBacksJourney,
   evaluateHostConfiguration,
@@ -11,6 +12,7 @@ import {
 import { isHandoverEntryPath } from "@/app/_domain/navigation";
 import { taskPathFromPathname } from "@/app/_domain/product-face";
 import {
+  HOST_CONFIGURATION_SCHEMA,
   hostJourneys,
   hostJourneyTasks,
   hostNavigationHrefs,
@@ -251,6 +253,64 @@ export function hostHome(): HostHomeView | undefined {
       entry,
       href: hostNavigationHrefs[entry],
     })),
+  };
+}
+
+// ------------------------------------------------------------ entrance
+
+/** The host a request names: the first forwarded host, else its Host. */
+export function requestHostOf(headers: Headers, fallback = "") {
+  return (headers.get("x-forwarded-host") || headers.get("host") || fallback)
+    .split(",", 1)[0]
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Whether a request host is exactly the configured entrance (its default
+ * port optional). No other host, subdomain or wildcard maps to a branded
+ * host; the generic wallet keeps its own host resolution (api/tenant.ts).
+ */
+export function isEntranceHost(rawHost: string) {
+  const configuration = activeHostConfiguration();
+  if (!configuration) return false;
+  const entrance = new URL(configuration.entrance.origin);
+  const defaultPort = entrance.protocol === "https:" ? ":443" : ":80";
+  const host = rawHost.split(",", 1)[0].trim().toLowerCase();
+  const bare = host.endsWith(defaultPort)
+    ? host.slice(0, -defaultPort.length)
+    : host;
+  return bare === entrance.host;
+}
+
+// ------------------------------------------------------------ readback
+
+const COMMIT = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
+
+/**
+ * GET /api/host/configuration: what this deployment serves, for Studio and
+ * Root to compare with the approved configuration and engine release. Public
+ * and secret-free: identifiers, hashes and booleans only.
+ */
+export function hostReadback() {
+  const host = walletHost();
+  const configuration = host.status === "active" ? host.configuration : null;
+  const commit = process.env.VERCEL_GIT_COMMIT_SHA;
+  return {
+    schema: HOST_CONFIGURATION_SCHEMA,
+    brandId: configuration?.brand.id ?? null,
+    organizationId: configuration?.entrance.organizationId ?? null,
+    origin: configuration?.entrance.origin ?? null,
+    configurationSha256:
+      host.status === "absent" ? null : host.configurationSha256,
+    configVersion: configuration?.release.configVersion ?? null,
+    engine: {
+      version: packageJson.version,
+      commit: commit && COMMIT.test(commit) ? commit : null,
+    },
+    journeys: configuration ? { ...configuration.journeys } : null,
+    faces: configuration ? [...configuration.faces] : null,
+    status: host.status,
   };
 }
 

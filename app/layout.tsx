@@ -1,10 +1,23 @@
 import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getTranslations } from "next-intl/server";
-import { hostMetadata, hostPresentation, hostStyle } from "@/api/wallet-host";
+import { hostNoticeCopy } from "@/api/host-notice";
+import {
+  hostMetadata,
+  hostPresentation,
+  hostStyle,
+  walletHost,
+} from "@/api/wallet-host";
+import { HostNoticeDocument } from "@/app/_components/host/host-notice";
 import "@/app/globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
+  if (walletHost().status === "invalid") {
+    return {
+      title: hostNoticeCopy("setup").title,
+      robots: { index: false, follow: false },
+    };
+  }
   const host = hostMetadata();
   if (host) return host;
   const t = await getTranslations("metadata");
@@ -33,6 +46,11 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // A branded host whose configuration is invalid never renders the generic
+  // wallet or a brand (the request proxy answers 503 before this).
+  if (walletHost().status === "invalid") {
+    return <HostNoticeDocument kind="setup" />;
+  }
   const messages = await getMessages();
   const host = hostPresentation();
   const style = hostStyle();

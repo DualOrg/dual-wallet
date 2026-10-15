@@ -360,3 +360,140 @@ describe("branded host pages", () => {
     ).toBe(`${MORROW_ORIGIN}/settings`);
   });
 });
+
+describe("branded host entrance and fail-closed mode", () => {
+  const PAGES = ["/", "/login", "/inventory", "/products/morrow-home"];
+  const BFF = [
+    "/api/session",
+    "/api/session/login",
+    "/api/backend/wallets/me",
+    "/api/faces/morrow-home/assertions",
+  ];
+  // The operator log line an invalid configuration writes is asserted in
+  // api/wallet-host.test.ts.
+  let consoleError: jest.SpyInstance;
+  beforeEach(() => {
+    consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+  function visitAt(origin: string, path: string, cookie?: string) {
+    const { host } = new URL(origin);
+    return proxy(
+      new NextRequest(`${origin}${path}`, {
+        headers: { host, ...(cookie ? { cookie } : {}) },
+      }),
+    );
+  }
+  afterEach(() => {
+    consoleError.mockRestore();
+    clearHostEnvironment();
+    resetWalletHostCache();
+  });
+
+  for (const [label, environment] of [
+    [
+      "a pin mismatch",
+      () => ({
+        ...hostEnvironment(morrowDocument()),
+        WALLET_HOST_CONFIGURATION_SHA256: "5".repeat(64),
+      }),
+    ],
+    [
+      "an invalid document",
+      () => {
+        const document = morrowDocument();
+        edit(document, "identity.colours.ink", "#ffffff");
+        return hostEnvironment(document);
+      },
+    ],
+    [
+      "a build of another configuration",
+      () => ({
+        ...hostEnvironment(morrowDocument()),
+        WALLET_HOST_BUILD_CONFIGURATION_SHA256: "",
+      }),
+    ],
+  ] as const) {
+    test(`${label}: every page is a neutral 503 and every BFF route refuses`, async () => {
+      resetWalletHostCache();
+      applyHostEnvironment(environment());
+      for (const path of PAGES) {
+        const response = visitAt(
+          MORROW_ORIGIN,
+          path,
+          "smarttoken_viewer=sealed",
+        );
+        expect([path, response.status]).toEqual([path, 503]);
+        expect(response.headers.get("content-type")).toBe(
+          "text/html; charset=utf-8",
+        );
+        expect(response.headers.get("cache-control")).toBe("no-store");
+        const html = await response.text();
+        expect(html).toContain("This wallet is being set up");
+        // Neither the brand nor the generic wallet, nor any cookie.
+        expect(html).not.toMatch(/Morrow|Dual|favicon|og-viewer/);
+        expect(response.cookies.getAll()).toEqual([]);
+      }
+      for (const path of BFF) {
+        const response = visitAt(MORROW_ORIGIN, path);
+        expect([path, response.status]).toEqual([path, 503]);
+        expect(await response.json()).toEqual({
+          code: "host_unavailable",
+          message: "This wallet is being set up",
+        });
+      }
+    });
+  }
+
+  test("any address but the entrance is misdirected (421), never served", async () => {
+    resetWalletHostCache();
+    applyHostEnvironment(hostEnvironment(morrowDocument()));
+    for (const origin of [
+      TIDEWELL_ORIGIN,
+      "https://other.wallet.morrow.example",
+      "http://localhost",
+    ]) {
+      const page = visitAt(origin, "/login");
+      expect([origin, page.status]).toEqual([origin, 421]);
+      expect(await page.text()).toContain(
+        "This wallet is not available at this address",
+      );
+      const api = visitAt(origin, "/api/session/login");
+      expect(api.status).toBe(421);
+      expect(await api.json()).toMatchObject({ code: "host_misdirected" });
+    }
+    expect(visitAt(MORROW_ORIGIN, "/login").status).toBe(200);
+  });
+
+  test("only the entrance organisation's links are honoured", () => {
+    resetWalletHostCache();
+    applyHostEnvironment(hostEnvironment(morrowDocument()));
+    const own = "a1a1a1a1a1a1a1a1a1a1a1a1";
+    // The host's own organisation: stripped and remembered, as before.
+    const link = visitAt(MORROW_ORIGIN, `/${own}/verify?token=t`);
+    expect(link.headers.get("x-middleware-rewrite")).toBe(
+      `${MORROW_ORIGIN}/verify?token=t`,
+    );
+    expect(link.cookies.get(ORGANIZATION_COOKIE)?.value).toBe(own);
+    // Any other organisation (the default included) is not a prefix here:
+    // nothing is rewritten or remembered.
+    for (const other of [ORGANIZATION, "b2b2b2b2b2b2b2b2b2b2b2b2"]) {
+      const response = visitAt(MORROW_ORIGIN, `/${other}/login`);
+      expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+      expect(response.cookies.get(ORGANIZATION_COOKIE)).toBeUndefined();
+      const mail = visitAt(
+        MORROW_ORIGIN,
+        `/verify?organization_id=${other}&token=t`,
+      );
+      expect(mail.cookies.get(ORGANIZATION_COOKIE)).toBeUndefined();
+      expect(mail.headers.get("location")).toBeNull();
+      // A remembered cookie for another organisation is ignored.
+      expect(
+        visitAt(
+          MORROW_ORIGIN,
+          "/login",
+          `${ORGANIZATION_COOKIE}=${other}`,
+        ).headers.get("location"),
+      ).toBeNull();
+    }
+  });
+});

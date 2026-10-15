@@ -6,11 +6,21 @@ import {
   sessionKeyFromEnv,
 } from "@/api/session-key";
 import { ORGANIZATION_COOKIE_NAME, SESSION_COOKIE_NAME } from "@/api/settings";
+import {
+  HOST_NOTICE_CODE,
+  HOST_NOTICE_STATUS,
+  hostNoticeCopy,
+  hostNoticeHtml,
+  type HostNoticeKind,
+} from "@/api/host-notice";
 import { chosenOrganizationId } from "@/api/tenant";
 import {
   HOST_NOT_FOUND_PATH,
   hostLanding,
   hostPageAllowed,
+  isEntranceHost,
+  requestHostOf,
+  walletHost,
 } from "@/api/wallet-host";
 import { isProtectedPath, safeReturnPath } from "@/app/_domain/navigation";
 const AUTH_ENTRY = ["/login", "/register", "/forgot-password"];
@@ -51,7 +61,44 @@ function isAuthEntry(pathname: string, query: URLSearchParams) {
 // closed here, before any handler runs.
 const SESSION_API = /^\/api\/(?:session|backend|faces)(?:\/|$)/;
 
+// A branded host that cannot serve as itself answers every page and BFF route
+// here with a neutral notice: never the generic wallet, never a brand.
+function hostNotice(request: NextRequest, kind: HostNoticeKind) {
+  const status = HOST_NOTICE_STATUS[kind];
+  const headers = { "Cache-Control": "no-store" };
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.json(
+      { code: HOST_NOTICE_CODE[kind], message: hostNoticeCopy(kind).title },
+      { status, headers },
+    );
+  }
+  return new NextResponse(hostNoticeHtml(kind), {
+    status,
+    headers: { ...headers, "Content-Type": "text/html; charset=utf-8" },
+  });
+}
+
 export function proxy(request: NextRequest) {
+  const host = walletHost();
+  if (host.status === "invalid") return hostNotice(request, "setup");
+  if (
+    host.status === "active" &&
+    !isEntranceHost(requestHostOf(request.headers, request.nextUrl.host))
+  ) {
+    return hostNotice(request, "misdirected");
+  }
+  // A branded host names exactly one organisation: an entry link, mail link
+  // or remembered cookie naming any other is not one here.
+  const entranceOrganization =
+    host.status === "active"
+      ? host.configuration.entrance.organizationId
+      : undefined;
+  const organizationOf = (value?: string) => {
+    const organizationId = chosenOrganizationId(value);
+    return entranceOrganization && organizationId !== entranceOrganization
+      ? undefined
+      : organizationId;
+  };
   if (SESSION_API.test(request.nextUrl.pathname)) {
     if (sessionKeyFromEnv()) return NextResponse.next();
     return NextResponse.json(
@@ -61,7 +108,7 @@ export function proxy(request: NextRequest) {
   }
   const url = request.nextUrl.clone();
   const first = ENTRY_PREFIX.exec(url.pathname);
-  const prefixed = chosenOrganizationId(first?.[1]);
+  const prefixed = organizationOf(first?.[1]);
   if (prefixed) {
     url.pathname = url.pathname.slice(first![0].length) || "/";
   }
@@ -80,11 +127,9 @@ export function proxy(request: NextRequest) {
   const chosen =
     prefixed ??
     (MAIL_ENTRY.includes(pathname)
-      ? chosenOrganizationId(
-          url.searchParams.get("organization_id") ?? undefined,
-        )
+      ? organizationOf(url.searchParams.get("organization_id") ?? undefined)
       : undefined);
-  const current = chosenOrganizationId(
+  const current = organizationOf(
     request.cookies.get(ORGANIZATION_COOKIE_NAME)?.value,
   );
   const organizationId = chosen ?? current;

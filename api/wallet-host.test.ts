@@ -2,6 +2,10 @@
  * @jest-environment node
  */
 import { createHash } from "node:crypto";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { hostNoticeHtml } from "@/api/host-notice";
+import { HostNoticeDocument } from "@/app/_components/host/host-notice";
 import {
   productFaceBinding,
   productFaceEntries,
@@ -19,13 +23,18 @@ import {
   resetWalletHostCache,
   walletHost,
 } from "@/api/wallet-host";
+import { GET as readbackGET } from "@/app/api/host/configuration/route";
 import { GET as logoGET } from "@/app/api/host/logo/[sha256]/route";
+import { GET as displayGET } from "@/app/api/public/objects/[objectId]/display/[variant]/route";
+import packageJson from "@/package.json";
 import { hostFontFamilies } from "@/app/_domain/wallet-host";
 import { edit } from "@/test/product-face-fixtures";
 import {
   applyHostEnvironment,
   clearHostEnvironment,
+  MORROW_ORGANIZATION,
   registryWithBothFaces,
+  sealHost,
   hostEnvironment,
   MORROW_LOGO_BASE64,
   MORROW_ORIGIN,
@@ -358,5 +367,155 @@ describe("journeys, pages and faces", () => {
         { entry: "settings", href: "/settings" },
       ],
     });
+  });
+});
+
+describe("GET /api/host/configuration", () => {
+  const COMMIT = "0123456789abcdef0123456789abcdef01234567";
+  const readback = async () => {
+    const response = readbackGET();
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    return response.json();
+  };
+
+  it("reads back an active host exactly, with the engine identity", async () => {
+    applyHostEnvironment(
+      hostEnvironment(morrowDocument(), { VERCEL_GIT_COMMIT_SHA: COMMIT }),
+    );
+    expect(await readback()).toEqual({
+      schema: "dual-wallet-host-configuration-v1",
+      brandId: "morrow-home",
+      organizationId: MORROW_ORGANIZATION,
+      origin: MORROW_ORIGIN,
+      configurationSha256: sealHost(morrowDocument()).pin,
+      configVersion: "1.0.0",
+      engine: { version: packageJson.version, commit: COMMIT },
+      journeys: {
+        registration: true,
+        myProducts: true,
+        serviceProgress: true,
+        quoteDecisions: true,
+        transfer: true,
+      },
+      faces: ["morrow-home"],
+      status: "active",
+    });
+  });
+
+  it("reads back each brand host built from the same engine", async () => {
+    applyHostEnvironment(
+      hostEnvironment(tidewellDocument(), { VERCEL_GIT_COMMIT_SHA: COMMIT }),
+    );
+    const tidewell = await readback();
+    expect(tidewell).toMatchObject({
+      brandId: "tidewell",
+      organizationId: "b2b2b2b2b2b2b2b2b2b2b2b2",
+      origin: "https://wallet.tidewell.example",
+      configurationSha256: sealHost(tidewellDocument()).pin,
+      configVersion: "2.1.0",
+      engine: { version: packageJson.version, commit: COMMIT },
+      faces: ["tidewell-care"],
+      status: "active",
+    });
+  });
+
+  it("reads back an invalid configuration by status and hash only", async () => {
+    const environment = hostEnvironment(morrowDocument(), {
+      VERCEL_GIT_COMMIT_SHA: "not-a-commit",
+    });
+    applyHostEnvironment({
+      ...environment,
+      WALLET_HOST_CONFIGURATION_SHA256: "2".repeat(64),
+    });
+    expect(await readback()).toEqual({
+      schema: "dual-wallet-host-configuration-v1",
+      brandId: null,
+      organizationId: null,
+      origin: null,
+      configurationSha256: sealHost(morrowDocument()).pin,
+      configVersion: null,
+      engine: { version: packageJson.version, commit: null },
+      journeys: null,
+      faces: null,
+      status: "invalid",
+    });
+  });
+
+  it("reads back the generic wallet as absent", async () => {
+    applyHostEnvironment({});
+    expect(await readback()).toEqual({
+      schema: "dual-wallet-host-configuration-v1",
+      brandId: null,
+      organizationId: null,
+      origin: null,
+      configurationSha256: null,
+      configVersion: null,
+      engine: { version: packageJson.version, commit: null },
+      journeys: null,
+      faces: null,
+      status: "absent",
+    });
+  });
+
+  it("never reads back a secret, a logo or a colour", async () => {
+    applyHostEnvironment({
+      ...hostEnvironment(morrowDocument(), { VERCEL_GIT_COMMIT_SHA: COMMIT }),
+    });
+    // jest.setup.js provides an ephemeral session key.
+    expect(process.env.SESSION_SECRET).toBeTruthy();
+    const body = JSON.stringify(await readback());
+    expect(body).not.toContain(process.env.SESSION_SECRET!);
+    expect(body).not.toContain(MORROW_LOGO_BASE64);
+    expect(body).not.toContain("#2f7d5b");
+  });
+});
+
+describe("the public display proxy", () => {
+  const display = () =>
+    displayGET(
+      new Request("https://wallet.example/api/public/objects/x/display/card"),
+      {
+        params: Promise.resolve({ objectId: UNIT, variant: "card" }),
+      },
+    );
+
+  it("refuses while the configuration is invalid", async () => {
+    applyHostEnvironment({
+      ...hostEnvironment(morrowDocument()),
+      WALLET_HOST_CONFIGURATION_SHA256: "3".repeat(64),
+    });
+    const response = await display();
+    expect(response.status).toBe(503);
+  });
+
+  it("is unchanged for the generic wallet", async () => {
+    const original = global.fetch;
+    global.fetch = jest.fn(
+      async () => new Response(null, { status: 404 }),
+    ) as unknown as typeof fetch;
+    try {
+      expect((await display()).status).toBe(404);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      global.fetch = original;
+    }
+  });
+});
+
+describe("the neutral notices", () => {
+  it("name neither a brand nor the generic wallet, in the proxy or the layout", () => {
+    for (const html of [
+      hostNoticeHtml("setup"),
+      renderToStaticMarkup(
+        createElement(HostNoticeDocument, { kind: "setup" }),
+      ),
+    ]) {
+      expect(html).toContain("This wallet is being set up");
+      expect(html).toContain("data-wallet-host-notice");
+      expect(html).not.toMatch(/Dual|Morrow|Tidewell|favicon|<script|<link/);
+    }
+    expect(hostNoticeHtml("misdirected")).toContain(
+      "This wallet is not available at this address",
+    );
   });
 });

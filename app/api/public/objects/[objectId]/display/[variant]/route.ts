@@ -3,6 +3,7 @@ import {
   publicDisplayUpstreamPath,
 } from "@/api/public-display";
 import { upstreamUrl } from "@/api/server-session";
+import { walletHost } from "@/api/wallet-host";
 
 const ALLOWED_MEDIA_TYPES = new Set(["text/html", "image/svg+xml"]);
 
@@ -12,6 +13,13 @@ export async function GET(
     params: Promise<{ objectId: string; variant: string }>;
   },
 ) {
+  // A branded host whose configuration is invalid serves nothing.
+  if (walletHost().status === "invalid") {
+    return new Response(null, {
+      status: 503,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
   const { objectId, variant } = await context.params;
   const path = publicDisplayUpstreamPath(objectId, variant);
   if (!path) return new Response(null, { status: 404 });
