@@ -416,8 +416,11 @@ the launch ID), host-only, `HttpOnly`, `SameSite=Strict` cookie per launch
 (`__Host-dual_face_launch_<launchId>` in production, a 24-hour lifetime),
 bound to the session ID hash, the wallet ID, the face and the launch; any
 other session, wallet, face or launch reads it as empty, and two tabs never
-overwrite each other. At most four launch cookies are kept per browser; the
-oldest, and any unreadable one, are dropped on the next write.
+overwrite each other. At most four launch cookies are kept per browser: this
+session's, and an earlier session's of the same wallet while it still holds a
+registration whose assertion was issued (kept as it was, never re-sealed);
+the oldest, any unreadable one, another wallet's and an earlier session's
+without such a registration are dropped on the next write.
 
 It holds IDs, hashes and phases only: operation ID, kind (`registration`,
 `runtime`, `settle`), operation or action name, object, case, phase
@@ -431,6 +434,26 @@ an assertion, signature, token or face text. It is cleared on logout and
 replaced after an account change. A cookie rather than Web Storage keeps it
 outside the iframe's and page scripts' reach and inside the existing session
 boundary.
+
+**Registration history (exact operation, read-only).** A status read
+(`GET .../operations/[operationId]`) for an operation that is not in this
+launch's journal looks for exactly that operation id in the browser's other
+launch journals sealed for the same wallet ID (the session's, from
+`getWallet`), face and programme, in any session of that wallet: a reload,
+another tab, or a sign-in since. It uses the entry only when exactly one
+journal carries the id and it is a registration whose one
+`registration.submit` assertion its launch issued (open, registered or
+closed). It then reconciles that one operation exactly as its own launch
+would: the canonical readback, and the runtime's `registrations/status` for
+that operation under the current session (the runtime binds it to the
+holder), registered only when the runtime says so and closed
+(`runtime_never_accepted`) only on the same proof. The result is derived on
+every read and never kept: the entry does not join this launch's journal and
+the original journal is neither rewritten nor re-sealed. Another wallet, face
+or programme finds nothing; the history is never listed; no assertion is
+minted for the face, and no transition applies, for a recovered operation;
+and no launch begins a new operation under the id of such a registration
+(`operation_already_submitted`).
 
 **What decides, and what does not.** The journal and the BFF's in-process
 double-submit damper are not idempotency and decide nothing across tabs,

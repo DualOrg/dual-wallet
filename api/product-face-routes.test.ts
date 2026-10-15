@@ -21,7 +21,11 @@ jest.mock("@/api/web-sdk-client", () => ({
   getObjectsApi: () => ({ getObjectById, getObjectByIdPublic }),
 }));
 
-import { establishSession } from "@/api/server-session";
+import {
+  establishSession,
+  sealForPurpose,
+  unsealForPurpose,
+} from "@/api/server-session";
 import { resetIssueGuard } from "@/api/product-face-operations";
 import { resetFaceArtifactCache } from "@/api/face-artifact";
 import { GET as contextGET } from "@/app/api/faces/[slug]/context/route";
@@ -1371,5 +1375,370 @@ describe("product face BFF", () => {
     );
     expect(result.status).toBe(401);
     expect(expired.cookies.has("smarttoken_viewer")).toBe(false);
+  });
+});
+
+/**
+ * The same browser signed in again: a new session (a new session id) and the
+ * face host remounted with a fresh launch id. The launch journal cookies the
+ * browser held stay in the jar, as a browser keeps them.
+ */
+function signInAgain(browser: Browser, launchId = `launch-${"y".repeat(28)}`) {
+  const next = new Browser();
+  for (const [name, value] of browser.cookies) {
+    if (name.startsWith("dual_face_launch_")) next.cookies.set(name, value);
+  }
+  next.launchId = launchId;
+  return next;
+}
+
+/** The same session, the face host remounted with a fresh launch id. */
+function reload(browser: Browser, launchId: string) {
+  const next = new Browser();
+  next.cookies = new Map(browser.cookies);
+  next.launchId = launchId;
+  return next;
+}
+
+function claimsOf(assertion: unknown) {
+  return JSON.parse(
+    Buffer.from(String(assertion).split(".")[1], "base64url").toString("utf8"),
+  ) as Record<string, unknown>;
+}
+
+describe("registration history after a fresh sign-in (exact operation, read-only)", () => {
+  it("the same wallet signed in again reaches the exact definitive status of a registration an earlier session issued, from that session's sealed evidence", async () => {
+    const operationId = "register-op-0501";
+    const issuedAt = Date.now();
+    const clock = jest.spyOn(Date, "now").mockReturnValue(issuedAt);
+    const runtime = runtimeRegistrationStatus({
+      [operationId]: neverRecorded(operationId),
+    });
+    try {
+      const earlier = new Browser();
+      const issued = await issueRegistration(earlier, operationId);
+      const evidenceName = `dual_face_launch_${earlier.launchId}`;
+      const evidence = earlier.cookies.get(evidenceName)!;
+      expect(evidence).toBeTruthy();
+      getObjectByIdPublic.mockResolvedValue(smartObject(UNIT, "0xissuer"));
+
+      // A reload in that same session (a fresh launch) finds it too.
+      const reloaded = reload(earlier, `launch-${"r".repeat(28)}`);
+      clock.mockReturnValue(issuedAt + 60 * 1000);
+      expect(await status(reloaded, operationId)).toMatchObject({
+        status: 200,
+        body: { operation_id: operationId, status: "outcome_unknown" },
+      });
+
+      const again = signInAgain(earlier);
+      // Before it is provable: the operation is known, its outcome is not
+      // (and the runtime is not asked: nothing to attribute or close yet).
+      clock.mockReturnValue(issuedAt + 5 * 60 * 1000);
+      expect(await status(again, operationId)).toEqual({
+        status: 200,
+        body: {
+          operation_id: operationId,
+          kind: "registration",
+          phase: "assertion_issued",
+          status: "outcome_unknown",
+          object_id: UNIT,
+          readback: { owner_is_you: false, state: "Registered" },
+        },
+      });
+      expect(runtime.calls).toHaveLength(0);
+
+      // Provable: the same one read-only status read for exactly this
+      // operation, by the wallet's own current session, and the runtime holds
+      // no journal for it: it never ran and never can.
+      clock.mockReturnValue(issuedAt + CLOSE_AFTER_MS + 1000);
+      expect(await status(again, operationId)).toMatchObject({
+        status: 200,
+        body: {
+          operation_id: operationId,
+          kind: "registration",
+          phase: "settled",
+          status: "not_submitted",
+          object_id: UNIT,
+        },
+      });
+      expect(runtime.calls).toHaveLength(1);
+      const read = claimsOf(runtime.calls[0].body.assertion);
+      const original = claimsOf(issued.body.assertion);
+      expect(read).toMatchObject({
+        operation: "registration.status",
+        op_id: operationId,
+        target: { object_id: UNIT },
+        sub: original.sub,
+        holder: original.holder,
+      });
+      // Under the new session, never the ended one's.
+      expect(read.sid_hash).not.toBe(original.sid_hash);
+
+      // The earlier session's sealed evidence is kept exactly as it was:
+      // neither deleted nor re-sealed under the new session.
+      expect(again.cookies.get(evidenceName)).toBe(evidence);
+      // Derived again on every read, the same answer; nothing kept for it.
+      expect((await status(again, operationId)).body).toMatchObject({
+        status: "not_submitted",
+        phase: "settled",
+      });
+      expect(runtime.calls).toHaveLength(2);
+      expect(again.cookies.get(evidenceName)).toBe(evidence);
+
+      // Ordinary writes of the new session keep it too.
+      getObjectById.mockResolvedValue(smartObject(OTHER, HOLDER));
+      expect((await select(again, OTHER)).status).toBe(200);
+      expect(again.cookies.has(`dual_face_launch_${again.launchId}`)).toBe(
+        true,
+      );
+      expect(again.cookies.get(evidenceName)).toBe(evidence);
+      expect((await status(again, operationId)).body).toMatchObject({
+        status: "not_submitted",
+      });
+      // The new launch's own journal never holds it.
+      const listed = await again.call(
+        operationsGET,
+        `/api/faces/${SLUG}/operations`,
+        slugParams,
+      );
+      expect(listed.body.operations).toEqual([]);
+    } finally {
+      runtime.restore();
+      clock.mockRestore();
+    }
+  });
+
+  it("gives another account signed in on the same browser nothing, and that account's first write drops it", async () => {
+    const operationId = "register-op-0502";
+    const issuedAt = Date.now();
+    const clock = jest.spyOn(Date, "now").mockReturnValue(issuedAt);
+    const runtime = runtimeRegistrationStatus({
+      [operationId]: neverRecorded(operationId),
+    });
+    try {
+      const earlier = new Browser();
+      await issueRegistration(earlier, operationId);
+      const evidenceName = `dual_face_launch_${earlier.launchId}`;
+      const account = await getWallet();
+      getWallet.mockResolvedValue({
+        ...account,
+        id: "wallet-2",
+        account: {
+          ...account.account,
+          address: "0x00000000000000000000000000000000000000b2",
+        },
+      });
+      const other = signInAgain(earlier);
+      clock.mockReturnValue(issuedAt + CLOSE_AFTER_MS + 1000);
+      expect(await status(other, operationId)).toMatchObject({
+        status: 404,
+        body: { code: "unknown_operation" },
+      });
+      expect(
+        await mint(other, {
+          operation: "registration.status",
+          operation_id: operationId,
+          target: { object_id: UNIT },
+          request_hash: `sha256:${"e".repeat(64)}`,
+        }),
+      ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+      expect(runtime.calls).toHaveLength(0);
+      // Its own first journal write drops the other wallet's journal.
+      await confirmRegistration(other, "register-op-0503");
+      expect(other.cookies.has(evidenceName)).toBe(false);
+    } finally {
+      runtime.restore();
+      clock.mockRestore();
+    }
+  });
+
+  it("never credits a later registration of the same unit, by the new session, to the earlier session's operation", async () => {
+    const earlierId = "register-op-0511";
+    const laterId = "register-op-0512";
+    const issuedAt = Date.now();
+    const clock = jest.spyOn(Date, "now").mockReturnValue(issuedAt);
+    const runtime = runtimeRegistrationStatus({
+      [earlierId]: neverRecorded(earlierId),
+      [laterId]: runtimeAnswered(laterId, "registered"),
+    });
+    try {
+      const earlier = new Browser();
+      await issueRegistration(earlier, earlierId);
+      const evidenceName = `dual_face_launch_${earlier.launchId}`;
+      const evidence = earlier.cookies.get(evidenceName)!;
+      const again = signInAgain(earlier);
+      clock.mockReturnValue(issuedAt + 60 * 1000);
+      await issueRegistration(again, laterId);
+      // The new session's own journal writes keep the earlier evidence.
+      expect(again.cookies.get(evidenceName)).toBe(evidence);
+      // The later operation registered the unit to this wallet.
+      getObjectByIdPublic.mockResolvedValue(
+        smartObject(UNIT, HOLDER, { state: "Registered" }),
+      );
+      clock.mockReturnValue(issuedAt + 2 * 60 * 1000);
+      expect((await status(again, earlierId)).body).toMatchObject({
+        operation_id: earlierId,
+        status: "outcome_unknown",
+        phase: "assertion_issued",
+      });
+      expect((await status(again, laterId)).body).toMatchObject({
+        operation_id: laterId,
+        status: "registered",
+      });
+      clock.mockReturnValue(issuedAt + CLOSE_AFTER_MS + 1000);
+      expect((await status(again, earlierId)).body).toMatchObject({
+        operation_id: earlierId,
+        status: "not_submitted",
+        phase: "settled",
+      });
+      expect((await status(again, laterId)).body).toMatchObject({
+        status: "registered",
+        phase: "settled",
+      });
+      // Each read names exactly its own operation.
+      expect(runtime.calls.map((call) => call.body.operationId)).toEqual([
+        earlierId,
+        laterId,
+        earlierId,
+      ]);
+      expect(again.cookies.get(evidenceName)).toBe(evidence);
+    } finally {
+      runtime.restore();
+      clock.mockRestore();
+    }
+  });
+
+  it("lets a recovered operation authorise nothing: no assertion, no new begin under its id, no transition", async () => {
+    const operationId = "register-op-0521";
+    const issuedAt = Date.now();
+    const clock = jest.spyOn(Date, "now").mockReturnValue(issuedAt);
+    const runtime = runtimeRegistrationStatus({
+      [operationId]: neverRecorded(operationId),
+    });
+    try {
+      const earlier = new Browser();
+      await issueRegistration(earlier, operationId);
+      const evidenceName = `dual_face_launch_${earlier.launchId}`;
+      const evidence = earlier.cookies.get(evidenceName)!;
+      const again = signInAgain(earlier);
+      clock.mockReturnValue(issuedAt + CLOSE_AFTER_MS + 1000);
+      expect((await status(again, operationId)).body).toMatchObject({
+        status: "not_submitted",
+      });
+      const calls = runtime.calls.length;
+      for (const operation of ["registration.submit", "registration.status"]) {
+        expect(
+          await mint(again, {
+            operation,
+            operation_id: operationId,
+            target: { object_id: UNIT },
+            request_hash: REQUEST_HASH,
+          }),
+        ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+      }
+      // Never begun again under its id, so never confirmed, minted or
+      // submitted anew, whatever the face asks.
+      getObjectByIdPublic.mockResolvedValue(smartObject(UNIT, "0xissuer"));
+      expect(
+        await operations(again, {
+          transition: "begin",
+          kind: "registration",
+          operation: "registration.submit",
+          operation_id: operationId,
+          object_id: UNIT,
+          record_id: "rec-0001",
+          request_hash: REQUEST_HASH,
+        }),
+      ).toMatchObject({
+        status: 409,
+        body: { code: "operation_already_submitted" },
+      });
+      for (const transition of ["confirm", "submit"]) {
+        expect(
+          await operations(again, { transition, operation_id: operationId }),
+        ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+      }
+      expect(
+        await operations(again, {
+          transition: "cancel",
+          operation_id: operationId,
+        }),
+      ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+      // Read-only: the refusals asked the runtime nothing more.
+      expect(runtime.calls).toHaveLength(calls);
+      const listed = await again.call(
+        operationsGET,
+        `/api/faces/${SLUG}/operations`,
+        slugParams,
+      );
+      expect(listed.body.operations).toEqual([]);
+      expect(again.cookies.get(evidenceName)).toBe(evidence);
+      // A different operation id still begins as before.
+      expect(
+        (
+          await operations(again, {
+            transition: "begin",
+            kind: "registration",
+            operation: "registration.submit",
+            operation_id: "register-op-0522",
+            object_id: UNIT,
+            record_id: "rec-0001",
+            request_hash: REQUEST_HASH,
+          })
+        ).status,
+      ).toBe(200);
+    } finally {
+      runtime.restore();
+      clock.mockRestore();
+    }
+  });
+
+  it("recovers nothing for a registration that never left the wallet, or an id two journals carry", async () => {
+    const issuedAt = Date.now();
+    const clock = jest.spyOn(Date, "now").mockReturnValue(issuedAt);
+    const runtime = runtimeRegistrationStatus({});
+    try {
+      const earlier = new Browser();
+      // Confirmed, never minted: no assertion left the wallet.
+      const confirmedOnly = "register-op-0531";
+      await confirmRegistration(earlier, confirmedOnly);
+      const twice = "register-op-0532";
+      await issueRegistration(earlier, twice);
+      const again = signInAgain(earlier);
+      // A second journal of this wallet carrying the same id (sealed with
+      // the server key, as an earlier release could have left it): which of
+      // the two it is is never guessed.
+      const opened = unsealForPurpose(
+        `dual-face-journal-v2:${earlier.launchId}`,
+        earlier.cookies.get(`dual_face_launch_${earlier.launchId}`)!,
+      ) as Record<string, unknown>;
+      const copy = `launch-${"c".repeat(28)}`;
+      again.cookies.set(
+        `dual_face_launch_${copy}`,
+        sealForPurpose(`dual-face-journal-v2:${copy}`, {
+          ...opened,
+          launch: copy,
+        }),
+      );
+      clock.mockReturnValue(issuedAt + CLOSE_AFTER_MS + 1000);
+      for (const operationId of [confirmedOnly, twice]) {
+        expect(await status(again, operationId)).toMatchObject({
+          status: 404,
+          body: { code: "unknown_operation" },
+        });
+      }
+      expect(runtime.calls).toHaveLength(0);
+      // Without the copy, the issued one is recovered; the confirmed one
+      // still is not.
+      again.cookies.delete(`dual_face_launch_${copy}`);
+      expect((await status(again, twice)).body).toMatchObject({
+        operation_id: twice,
+        status: "outcome_unknown",
+      });
+      expect((await status(again, confirmedOnly)).status).toBe(404);
+    } finally {
+      runtime.restore();
+      clock.mockRestore();
+    }
   });
 });

@@ -3,6 +3,7 @@ import {
   journalOperationStatus,
   parseJournalEntry,
   pruneJournal,
+  recoverableRegistration,
   REGISTRATION_CLOSE_AFTER_MS,
   registrationClosable,
   type FaceJournalEntry,
@@ -384,5 +385,68 @@ describe("closing a registration the runtime never accepted", () => {
     expect(next.entries.map((item) => item.operationId)).not.toContain(
       "register-op-1001",
     );
+  });
+});
+
+describe("which registration another launch of the wallet may reconcile", () => {
+  const steps = {
+    begin: { kind: "begin", entry: base },
+    confirm: {
+      kind: "confirm",
+      operationId: base.operationId,
+      objectId: OBJECT,
+    },
+    issue: { kind: "issue", operationId: base.operationId, objectId: OBJECT },
+    cancel: { kind: "cancel", operationId: base.operationId },
+  } as const;
+
+  it("is only a registration whose one assertion its launch issued (open, registered or closed)", () => {
+    const issued = run([steps.begin, steps.confirm, steps.issue]);
+    expect(recoverableRegistration(issued[0])).toBe(true);
+    const registered = applyJournalTransition(
+      issued,
+      { kind: "settle", operationId: base.operationId, status: "registered" },
+      2_000,
+    );
+    if (!registered.ok) throw new Error(registered.error);
+    expect(recoverableRegistration(registered.entry)).toBe(true);
+    const closed = applyJournalTransition(
+      issued,
+      {
+        kind: "close",
+        operationId: base.operationId,
+        reason: "runtime_never_accepted",
+      },
+      1_000 + REGISTRATION_CLOSE_AFTER_MS,
+    );
+    if (!closed.ok) throw new Error(closed.error);
+    expect(recoverableRegistration(closed.entry)).toBe(true);
+  });
+
+  it("is never one that did not leave the wallet, one it observed, or another kind", () => {
+    for (const entries of [
+      run([steps.begin]),
+      run([steps.begin, steps.confirm]),
+      run([steps.begin, steps.cancel]),
+      run([
+        {
+          kind: "observe",
+          operationId: base.operationId,
+          objectId: OBJECT,
+          slug: base.slug,
+          programmeId: base.programmeId,
+        },
+      ]),
+      run([
+        {
+          kind: "begin",
+          entry: { ...base, kind: "runtime", operation: "case.open" },
+        },
+        steps.confirm,
+        steps.issue,
+      ]),
+    ]) {
+      expect(recoverableRegistration(entries[0])).toBe(false);
+    }
   });
 });

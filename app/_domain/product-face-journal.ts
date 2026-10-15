@@ -271,6 +271,23 @@ export function registrationClosable(entry: FaceJournalEntry, now: number) {
   );
 }
 
+/**
+ * A registration whose one registration.submit assertion its launch issued
+ * (open, or settled since: registered or closed). Only such an entry, found
+ * in another launch journal of the same wallet, face and programme, is
+ * reconciled read-only for exactly its operation id; and no launch begins a
+ * new operation under its id. Not a confirming, confirmed or cancelled one
+ * (no assertion left, and a live launch may still issue it), and not an
+ * observed one (that launch never issued it).
+ */
+export function recoverableRegistration(entry: FaceJournalEntry) {
+  return (
+    entry.kind === "registration" &&
+    entry.issuedAt !== undefined &&
+    (entry.phase === "assertion_issued" || entry.phase === "settled")
+  );
+}
+
 /** Oldest finished entry to make room with; a closed one only last. */
 function oldestFinished(entries: FaceJournalEntry[]) {
   return entries

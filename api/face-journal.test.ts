@@ -5,8 +5,10 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   faceJournalCookieName,
   MAX_FACE_LAUNCHES,
+  readFaceHistory,
   readFaceJournal,
   writeFaceJournal,
+  type FaceJournalOwner,
   type FaceJournalScope,
 } from "@/api/face-journal";
 import { sealForPurpose } from "@/api/server-session";
@@ -181,5 +183,159 @@ describe("face operation journal cookie (per launch)", () => {
         faceJournalCookieName("launch-garbagegarbagegarbagegarbage"),
       ].sort(),
     );
+  });
+});
+
+describe("registration history (another launch of the same wallet)", () => {
+  const earlierSession = { sidHash: "sid-1", walletId: "wallet-1" };
+  const laterSession = { sidHash: "sid-2", walletId: "wallet-1" };
+  const launchC = "launch-cccccccccccccccccccccccccccc";
+  const scoped = (
+    who: FaceJournalOwner,
+    launchId: string,
+    slug = "morrow-home",
+    programmeId = "morrow-home-arc",
+  ): FaceJournalScope => ({ owner: who, launchId, slug, programmeId });
+
+  function sealedFor(
+    who: FaceJournalOwner,
+    launchId: string,
+    entries = [entry],
+    now = Date.now(),
+  ) {
+    const response = NextResponse.json({});
+    writeFaceJournal(
+      response,
+      emptyRequest(),
+      scoped(who, launchId),
+      { entries, selections: [], mints: [] },
+      now,
+    );
+    return response.cookies.get(faceJournalCookieName(launchId))!;
+  }
+
+  it("finds exactly the named operation in this wallet's earlier session, read-only", () => {
+    const earlier = sealedFor(earlierSession, launchA);
+    const request = requestWith({ [earlier.name]: earlier.value });
+    // The later session's own journal for that launch would be empty.
+    expect(
+      readFaceJournal(request, scoped(laterSession, launchA)).entries,
+    ).toEqual([]);
+    expect(
+      readFaceHistory(
+        request,
+        scoped(laterSession, launchB),
+        entry.operationId,
+      ),
+    ).toEqual([entry]);
+    // Only that operation, never a listing.
+    expect(
+      readFaceHistory(
+        request,
+        scoped(laterSession, launchB),
+        "register-op-0002",
+      ),
+    ).toEqual([]);
+  });
+
+  it("gives nothing to another wallet, face or programme, to the launch itself, or to a renamed, tampered or foreign value", () => {
+    const earlier = sealedFor(earlierSession, launchA);
+    const request = requestWith({ [earlier.name]: earlier.value });
+    for (const other of [
+      scoped({ ...laterSession, walletId: "wallet-2" }, launchB),
+      scoped(laterSession, launchB, "tidewell"),
+      scoped(laterSession, launchB, "morrow-home", "morrow-home-other"),
+      // That launch's own cookie is its journal, not history.
+      scoped(laterSession, launchA),
+    ]) {
+      expect(readFaceHistory(request, other, entry.operationId)).toEqual([]);
+    }
+    const tampered = `${earlier.value.slice(0, -2)}${earlier.value.endsWith("A") ? "B" : "A"}`;
+    for (const cookies of [
+      // A's sealed value under launch C's name does not open as C.
+      { [faceJournalCookieName(launchC)]: earlier.value },
+      { [earlier.name]: tampered },
+      {
+        [earlier.name]: sealForPurpose("dual-other", {
+          v: 2,
+          sid: earlierSession.sidHash,
+          wallet: earlierSession.walletId,
+          launch: launchA,
+          slug: "morrow-home",
+          programme: "morrow-home-arc",
+          entries: [entry],
+        }),
+      },
+    ]) {
+      expect(
+        readFaceHistory(
+          requestWith(cookies),
+          scoped(laterSession, launchB),
+          entry.operationId,
+        ),
+      ).toEqual([]);
+    }
+  });
+
+  it("keeps this wallet's earlier registration history through the next session's writes, as it was; drops another wallet's and history-less ones", () => {
+    const history = sealedFor(earlierSession, launchA, [entry], 1_000);
+    const empty = sealedFor(earlierSession, launchB, [], 1_001);
+    const foreign = sealedFor(
+      { sidHash: "sid-1", walletId: "wallet-2" },
+      launchC,
+      [entry],
+      1_002,
+    );
+    const response = NextResponse.json({});
+    writeFaceJournal(
+      response,
+      requestWith({
+        [history.name]: history.value,
+        [empty.name]: empty.value,
+        [foreign.name]: foreign.value,
+      }),
+      scoped(laterSession, "launch-newnewnewnewnewnewnewnewnewnew"),
+      { entries: [], selections: [], mints: [] },
+      2_000,
+    );
+    // Kept: not set at all (neither deleted nor re-sealed).
+    expect(response.cookies.get(history.name)).toBeUndefined();
+    expect(
+      response.cookies
+        .getAll()
+        .filter((cookie) => cookie.value === "")
+        .map((cookie) => cookie.name)
+        .sort(),
+    ).toEqual([empty.name, foreign.name].sort());
+  });
+
+  it(`still keeps at most ${MAX_FACE_LAUNCHES} launches, the oldest history dropped first`, () => {
+    const cookies: Record<string, string> = {};
+    const names: string[] = [];
+    for (let index = 0; index < MAX_FACE_LAUNCHES; index += 1) {
+      const launchId = `launch-${String(index).repeat(28).slice(0, 28)}`;
+      const cookie = sealedFor(
+        earlierSession,
+        launchId,
+        [entry],
+        1_000 + index,
+      );
+      cookies[cookie.name] = cookie.value;
+      names.push(cookie.name);
+    }
+    const response = NextResponse.json({});
+    writeFaceJournal(
+      response,
+      requestWith(cookies),
+      scoped(laterSession, "launch-newnewnewnewnewnewnewnewnewnew"),
+      { entries: [], selections: [], mints: [] },
+      9_999,
+    );
+    expect(
+      response.cookies
+        .getAll()
+        .filter((cookie) => cookie.value === "")
+        .map((cookie) => cookie.name),
+    ).toEqual([names[0]]);
   });
 });

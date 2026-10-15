@@ -5,6 +5,7 @@ import { sealForPurpose, unsealForPurpose } from "@/api/server-session";
 import {
   parseJournalEntry,
   pruneJournal,
+  recoverableRegistration,
   type FaceJournalEntry,
 } from "@/app/_domain/product-face-journal";
 import { isObjectId } from "@/app/_domain/product-face";
@@ -135,10 +136,39 @@ function unsealLaunch(
 }
 
 /**
+ * Another launch's cookie, opened with its own launch id (the additional
+ * data names it): a v2 journal sealed for exactly that launch, or undefined.
+ */
+function openLaunch(launchId: string, value: string) {
+  if (!FACE_LAUNCH_ID.test(launchId)) return undefined;
+  const opened = unsealLaunch(launchId, value);
+  return opened?.v === 2 && opened.launch === launchId ? opened : undefined;
+}
+
+/** A sealed journal's entries, re-validated for its own face and programme. */
+function sealedEntries(
+  sealed: Partial<SealedJournal>,
+  slug: string,
+  programmeId: string,
+  now: number,
+) {
+  if (!Array.isArray(sealed.entries)) return [];
+  return pruneJournal(
+    sealed.entries
+      .map((entry) =>
+        parseJournalEntry({ ...(entry as object), slug, programmeId }),
+      )
+      .filter((entry): entry is FaceJournalEntry => entry !== undefined),
+    now,
+  );
+}
+
+/**
  * Reads the journal of this launch, bound to this session, wallet and face.
  * A journal sealed for another session, wallet, face or launch — after
  * logout, expiry or an account change — reads as empty and is replaced on the
- * next write.
+ * next write. (Only readFaceHistory looks at another launch's journal, for
+ * one registration of the same wallet, read-only.)
  */
 export function readFaceJournal(
   request: NextRequest,
@@ -163,18 +193,7 @@ export function readFaceJournal(
   }
   const selection = parseSelection(sealed.selection, scope.slug);
   return {
-    entries: pruneJournal(
-      sealed.entries
-        .map((entry) =>
-          parseJournalEntry({
-            ...(entry as object),
-            slug: scope.slug,
-            programmeId: scope.programmeId,
-          }),
-        )
-        .filter((entry): entry is FaceJournalEntry => entry !== undefined),
-      now,
-    ),
+    entries: sealedEntries(sealed, scope.slug, scope.programmeId, now),
     selections: selection ? [selection] : [],
     mints: Array.isArray(sealed.mints)
       ? sealed.mints.filter(
@@ -183,6 +202,53 @@ export function readFaceJournal(
         )
       : [],
   };
+}
+
+/**
+ * Registration history, read-only and for exactly one operation: the entries
+ * for `operationId` in this browser's OTHER launch journals that were sealed
+ * for this same wallet, face and programme, by any session of that wallet
+ * (a reload, another tab, or a sign-in since). The seal is authenticated
+ * (AES-256-GCM, the launch id as additional data), so the wallet id in it is
+ * the one the server wrote; another wallet's journals give nothing.
+ *
+ * This never rebinds: nothing found here joins this launch's journal, is
+ * re-sealed or rewritten. The caller may only reconcile it read-only; it is
+ * never a basis to mint, submit, settle or dispatch.
+ */
+export function readFaceHistory(
+  request: NextRequest,
+  scope: FaceJournalScope,
+  operationId: string,
+  now = Date.now(),
+): FaceJournalEntry[] {
+  return launchCookies(request)
+    .filter(([launchId]) => launchId !== scope.launchId)
+    .flatMap(([launchId, value]) => {
+      const sealed = openLaunch(launchId, value);
+      if (
+        !sealed ||
+        sealed.wallet !== scope.owner.walletId ||
+        sealed.slug !== scope.slug ||
+        sealed.programme !== scope.programmeId
+      ) {
+        return [];
+      }
+      return sealedEntries(sealed, scope.slug, scope.programmeId, now).filter(
+        (entry) => entry.operationId === operationId,
+      );
+    });
+}
+
+/** Whether a sealed journal still holds a recoverable registration. */
+function holdsRegistrationHistory(sealed: Partial<SealedJournal>, now: number) {
+  return (
+    typeof sealed.slug === "string" &&
+    typeof sealed.programme === "string" &&
+    sealedEntries(sealed, sealed.slug, sealed.programme, now).some(
+      recoverableRegistration,
+    )
+  );
 }
 
 function cookieOptions(maxAge?: number) {
@@ -246,22 +312,22 @@ export function writeFaceJournal(
     sealForPurpose(sealPurpose(scope.launchId), sealed),
     cookieOptions(LAUNCH_TTL_SECONDS),
   );
-  // Keep at most MAX_FACE_LAUNCHES launches of this session; anything else
-  // (unreadable, another session's, or the oldest) is dropped.
+  // Keep at most MAX_FACE_LAUNCHES launches: this session's, and this
+  // wallet's earlier sessions' that still hold a registration whose one
+  // assertion was issued (their sealed evidence, kept as it is, never
+  // re-sealed). Anything else (unreadable, another wallet's, an earlier
+  // session's without such history, or the oldest) is dropped.
   const others = launchCookies(request)
     .filter(([launchId]) => launchId !== scope.launchId)
     .map(([launchId, value]) => {
-      const opened = FACE_LAUNCH_ID.test(launchId)
-        ? unsealLaunch(launchId, value)
-        : undefined;
-      const mine =
-        opened?.v === 2 &&
-        opened.sid === scope.owner.sidHash &&
-        opened.wallet === scope.owner.walletId &&
-        opened.launch === launchId;
+      const opened = openLaunch(launchId, value);
+      const kept =
+        opened?.wallet === scope.owner.walletId &&
+        (opened.sid === scope.owner.sidHash ||
+          holdsRegistrationHistory(opened, now));
       return {
         launchId,
-        at: mine && typeof opened.at === "number" ? opened.at : -1,
+        at: kept && typeof opened.at === "number" ? opened.at : -1,
       };
     })
     .sort((left, right) => right.at - left.at);

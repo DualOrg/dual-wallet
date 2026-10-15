@@ -13,6 +13,7 @@ import {
 import {
   currentSelection,
   MAX_OUTSTANDING_ASSERTIONS,
+  readFaceHistory,
   withSelection,
   type FaceJournal,
 } from "@/api/face-journal";
@@ -38,6 +39,7 @@ import {
   applyJournalTransition,
   authorityLeft,
   journalOperationStatus,
+  recoverableRegistration,
   registrationClosable,
   type FaceJournalEntry,
   type JournalTransitionError,
@@ -812,6 +814,17 @@ export async function transitionOperation(
   // begin
   if (!isObjectId(body.object_id)) return fail("invalid_request", 400);
   const objectId = body.object_id;
+  // An operation id a launch of this wallet already issued a registration
+  // under is never begun again here: its outcome is only ever reconciled
+  // read-only, and nothing new is confirmed, minted or submitted under it.
+  if (
+    !existing &&
+    readFaceHistory(request, context.scope, operationId, now).some(
+      recoverableRegistration,
+    )
+  ) {
+    return fail("operation_already_submitted", 409);
+  }
   const base = {
     operationId,
     slug: context.binding.slug,
@@ -1264,6 +1277,23 @@ function customMapHash(custom: unknown) {
 // ------------------------------------------------------------------ status
 
 /**
+ * The one registration this wallet's other launch journals hold under exactly
+ * this operation id, when a launch issued its one assertion; nothing when
+ * there is none, it is not such a registration, or more than one entry
+ * carries the id (it is never guessed which).
+ */
+function recoveredRegistration(
+  context: FaceRequestContext,
+  request: NextRequest,
+  operationId: string,
+) {
+  const history = readFaceHistory(request, context.scope, operationId);
+  return history.length === 1 && recoverableRegistration(history[0])
+    ? history[0]
+    : undefined;
+}
+
+/**
  * Read-only reconciliation from the journal and the wallet's own canonical
  * readback. It never retries, re-mints a submission or re-executes.
  *
@@ -1281,11 +1311,18 @@ export async function reconcileOperation(
   request: NextRequest,
   operationId: string,
 ) {
-  const entry = context.journal.entries.find(
+  const own = context.journal.entries.find(
     (item) =>
       item.operationId === operationId && item.slug === context.binding.slug,
   );
+  // Not this launch's: exactly this operation from this wallet's own sealed
+  // history (a reload, another tab, a sign-in since), when it is the one
+  // registration a launch issued under that id. Derived read-only each time:
+  // never added to this journal, re-sealed or rewritten, and nothing is
+  // minted, submitted or settled for it here.
+  const entry = own ?? recoveredRegistration(context, request, operationId);
   if (!entry) return fail("unknown_operation", 404);
+  const recovered = !own;
   let readback: { ownerIsYou: boolean; state: string | null } | undefined;
   let evaluation:
     ReturnType<typeof publicUnitFacts>["registration"] | undefined;
@@ -1335,12 +1372,16 @@ export async function reconcileOperation(
         runtime.status === "already_registered");
     if (runtime.outcome === "not_found" && closable) {
       const closed = applyJournalTransition(
-        context.journal.entries,
+        recovered ? [entry] : context.journal.entries,
         { kind: "close", operationId, reason: "runtime_never_accepted" },
         now,
       );
       if (closed.ok) {
-        journal = { ...context.journal, entries: closed.entries };
+        // A recovered operation's closure is the same proof, reported and
+        // not kept: its own sealed evidence stays exactly as it was.
+        journal = recovered
+          ? undefined
+          : { ...context.journal, entries: closed.entries };
         return {
           ok: true as const,
           entry: closed.entry,
@@ -1355,7 +1396,7 @@ export async function reconcileOperation(
     if (runtime.outcome !== "answered") status = "outcome_unknown";
     else if (status === "registered" && !confirmed) status = "outcome_unknown";
   }
-  if (status === "registered" && entry.phase !== "settled") {
+  if (status === "registered" && entry.phase !== "settled" && !recovered) {
     const settled = applyJournalTransition(
       context.journal.entries,
       { kind: "settle", operationId, status },
