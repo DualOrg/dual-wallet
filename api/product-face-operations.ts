@@ -443,14 +443,29 @@ export async function authorizeAssertion(
 
   if (operation === "registration.status") {
     if (body.context_id !== undefined) return fail("invalid_request", 400);
+    // Not this launch's: exactly the one registration this wallet's own sealed
+    // history issued under this id (reconcileOperation's rule), so the face's
+    // read-only runtime status read follows the host's recovered status. Only
+    // this read: its exact request hash, its own unit; never added to this
+    // journal, re-sealed, submitted or settled.
+    const recovered = entry
+      ? undefined
+      : recoveredRegistration(context, request, operationId);
+    const statusEntry = entry ?? recovered;
     if (
-      !entry ||
-      entry.kind !== "registration" ||
-      entry.slug !== context.binding.slug ||
-      entry.objectId !== objectId ||
-      !authorityLeft(entry.phase)
+      !statusEntry ||
+      statusEntry.kind !== "registration" ||
+      statusEntry.slug !== context.binding.slug ||
+      statusEntry.objectId !== objectId ||
+      !authorityLeft(statusEntry.phase)
     ) {
       return fail("unknown_operation", 404);
+    }
+    if (
+      recovered &&
+      requestHash !== registrationStatusRequestHash(operationId)
+    ) {
+      return fail("operation_conflict", 409);
     }
   } else {
     // Product-scoped: the server-side selection must still be this product.

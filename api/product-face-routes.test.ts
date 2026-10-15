@@ -38,6 +38,10 @@ import { GET as statusGET } from "@/app/api/faces/[slug]/operations/[operationId
 import { POST as assertionsPOST } from "@/app/api/faces/[slug]/assertions/route";
 import { POST as proposalPOST } from "@/app/api/faces/[slug]/settle-proposal/route";
 import { POST as logoutPOST } from "@/app/api/session/logout/route";
+import {
+  mintFaceAssertion,
+  readFaceOperationStatus,
+} from "@/app/_services/product-face.client";
 import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
 
 const UNIT = "aaaaaaaaaaaaaaaaaaaaaaaa";
@@ -1623,7 +1627,7 @@ describe("registration history after a fresh sign-in (exact operation, read-only
     }
   });
 
-  it("lets a recovered operation authorise nothing: no assertion, no new begin under its id, no transition", async () => {
+  it("lets a recovered operation authorise nothing but its own read-only status read: no submit, no new begin under its id, no transition", async () => {
     const operationId = "register-op-0521";
     const issuedAt = Date.now();
     const clock = jest.spyOn(Date, "now").mockReturnValue(issuedAt);
@@ -1641,16 +1645,23 @@ describe("registration history after a fresh sign-in (exact operation, read-only
         status: "not_submitted",
       });
       const calls = runtime.calls.length;
-      for (const operation of ["registration.submit", "registration.status"]) {
-        expect(
-          await mint(again, {
-            operation,
-            operation_id: operationId,
-            target: { object_id: UNIT },
-            request_hash: REQUEST_HASH,
-          }),
-        ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
-      }
+      expect(
+        await mint(again, {
+          operation: "registration.submit",
+          operation_id: operationId,
+          target: { object_id: UNIT },
+          request_hash: REQUEST_HASH,
+        }),
+      ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+      // The read-only status read takes only its own exact request hash.
+      expect(
+        await mint(again, {
+          operation: "registration.status",
+          operation_id: operationId,
+          target: { object_id: UNIT },
+          request_hash: REQUEST_HASH,
+        }),
+      ).toMatchObject({ status: 409, body: { code: "operation_conflict" } });
       // Never begun again under its id, so never confirmed, minted or
       // submitted anew, whatever the face asks.
       getObjectByIdPublic.mockResolvedValue(smartObject(UNIT, "0xissuer"));
@@ -1912,5 +1923,238 @@ describe("registration history after a fresh sign-in (exact operation, read-only
       runtime.restore();
       clock.mockRestore();
     }
+  });
+});
+
+// The face's own status sequence for a recovered registration, through the
+// wallet's real host client (what the bridge's programme.operation.status and
+// programme.runtime.authorize capabilities call): the host's recovered status,
+// then a read-only registration.status assertion for exactly that operation and
+// unit, with the request hash the face computes (sha256 of canonical
+// {operationId}). Nothing else is authorised, recorded or re-sealed.
+describe("the face's status read after a recovered registration (host client sequence)", () => {
+  const faceStatusHash = (operationId: string) =>
+    `sha256:${createHash("sha256").update(JSON.stringify({ operationId })).digest("hex")}`;
+
+  // Routes the host client's relative /api/faces requests to the real route
+  // handlers with this browser's cookies and launch; anything else (the
+  // runtime) goes to the runtime double already installed.
+  function hostClient(browser: Browser) {
+    const runtimeFetch = global.fetch;
+    global.fetch = jest.fn(async (input: string, init: RequestInit = {}) => {
+      const url = String(input);
+      if (!url.startsWith(`/api/faces/${SLUG}`))
+        return runtimeFetch(input, init);
+      const body =
+        init.body === undefined ? undefined : JSON.parse(String(init.body));
+      const path = url.slice(`/api/faces/${SLUG}`.length);
+      const statusPath = /^\/operations\/([^/]+)$/.exec(path);
+      const handler = statusPath
+        ? statusGET
+        : path === "/assertions"
+          ? assertionsPOST
+          : undefined;
+      if (!handler) throw new Error(`unexpected face path ${path}`);
+      const params = statusPath
+        ? { slug: SLUG, operationId: decodeURIComponent(statusPath[1]) }
+        : slugParams;
+      const response = browser.take(
+        await (
+          handler as (
+            request: NextRequest,
+            context: { params: Promise<unknown> },
+          ) => Promise<Response>
+        )(browser.request(url, body), { params: Promise.resolve(params) }),
+      );
+      return response;
+    }) as unknown as typeof fetch;
+    return () => {
+      global.fetch = runtimeFetch;
+    };
+  }
+
+  async function recoveredFixture(operationId: string, { signIn = true } = {}) {
+    const issuedAt = Date.now();
+    const clock = jest.spyOn(Date, "now").mockReturnValue(issuedAt);
+    const runtime = runtimeRegistrationStatus({
+      [operationId]: runtimeAnswered(
+        operationId,
+        "ownership_moved_state_pending",
+      ),
+    });
+    const earlier = new Browser();
+    await issueRegistration(earlier, operationId);
+    const evidenceName = `dual_face_launch_${earlier.launchId}`;
+    const evidence = earlier.cookies.get(evidenceName)!;
+    // Root's observation: the unit moved to this wallet; Dual still says Transfer pending.
+    getObjectByIdPublic.mockResolvedValue(
+      smartObject(UNIT, HOLDER, { state: "Transfer pending" }),
+    );
+    clock.mockReturnValue(issuedAt + 60 * 1000);
+    const again = signIn
+      ? signInAgain(earlier)
+      : reload(earlier, `launch-${"z".repeat(28)}`);
+    return { clock, runtime, again, evidenceName, evidence };
+  }
+
+  for (const [label, signIn] of [
+    ["a reload", false],
+    ["a fresh sign-in", true],
+  ] as const) {
+    it(`after ${label}: the recovered host status (200) is followed by the face's read-only status assertion (200), never 404`, async () => {
+      const operationId = signIn ? "register-op-0561" : "register-op-0562";
+      const { clock, runtime, again, evidenceName, evidence } =
+        await recoveredFixture(operationId, { signIn });
+      const restore = hostClient(again);
+      try {
+        const face = { slug: SLUG, launchId: again.launchId };
+        // 1. programme.operation.status
+        const host = await readFaceOperationStatus(face, operationId);
+        expect(host).toMatchObject({
+          objectId: UNIT,
+          readback: { ownerIsYou: true, state: "Transfer pending" },
+        });
+        // 2. programme.runtime.authorize registration.status, exactly as the bridge passes it.
+        const assertion = await mintFaceAssertion(face, {
+          operation: "registration.status",
+          operation_id: operationId,
+          target: { object_id: UNIT },
+          request_hash: faceStatusHash(operationId),
+        });
+        expect(claimsOf(assertion)).toMatchObject({
+          holder: HOLDER,
+          sub: "wallet-1",
+          operation: "registration.status",
+          op_id: operationId,
+          target: { object_id: UNIT },
+          request_hash: faceStatusHash(operationId),
+        });
+        // Read-only: the recovered registration never joins this launch's journal,
+        // and its original sealed evidence is byte-identical.
+        const listed = await again.call(
+          operationsGET,
+          `/api/faces/${SLUG}/operations`,
+          slugParams,
+        );
+        expect(
+          listed.body.operations.map(
+            (item: { operation_id: string }) => item.operation_id,
+          ),
+        ).not.toContain(operationId);
+        expect(again.cookies.get(evidenceName)).toBe(evidence);
+        // Still no business authority: no submit, no begin under its id, no settle step.
+        await expect(
+          mintFaceAssertion(face, {
+            operation: "registration.submit",
+            operation_id: operationId,
+            target: { object_id: UNIT },
+            request_hash: REQUEST_HASH,
+          }),
+        ).rejects.toMatchObject({ code: "unknown_operation" });
+        expect(
+          await operations(again, {
+            transition: "begin",
+            kind: "registration",
+            operation: "registration.submit",
+            operation_id: operationId,
+            object_id: UNIT,
+            record_id: "rec-0001",
+            request_hash: REQUEST_HASH,
+          }),
+        ).toMatchObject({
+          status: 409,
+          body: { code: "operation_already_submitted" },
+        });
+        const settle = await mint(again, {
+          operation: "registration.settle.verify",
+          operation_id: operationId,
+          target: { object_id: UNIT },
+          request_hash: faceStatusHash(operationId),
+        });
+        expect(settle.status).not.toBe(200);
+        expect(settle.body.assertion).toBeUndefined();
+        expect(again.cookies.get(evidenceName)).toBe(evidence);
+      } finally {
+        restore();
+        runtime.restore();
+        clock.mockRestore();
+      }
+    });
+  }
+
+  it("fails closed: another unit, another request hash, another account, an ambiguous history, or an operation that never left the wallet", async () => {
+    const operationId = "register-op-0563";
+    const { clock, runtime, again } = await recoveredFixture(operationId);
+    try {
+      const statusRead = (
+        browser: Browser,
+        overrides: Record<string, unknown> = {},
+      ) =>
+        mint(browser, {
+          operation: "registration.status",
+          operation_id: operationId,
+          target: { object_id: UNIT },
+          request_hash: faceStatusHash(operationId),
+          ...overrides,
+        });
+      expect(
+        await statusRead(again, { target: { object_id: OTHER } }),
+      ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+      expect(
+        await statusRead(again, { request_hash: REQUEST_HASH }),
+      ).toMatchObject({ status: 409, body: { code: "operation_conflict" } });
+      expect(
+        await statusRead(again, { operation_id: "register-op-0569" }),
+      ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+      expect((await statusRead(again)).status).toBe(200);
+      // Another account signed in on the same browser: nothing, even with the exact hash.
+      const account = await getWallet();
+      getWallet.mockResolvedValue({
+        ...account,
+        id: "wallet-2",
+        account: {
+          ...account.account,
+          address: "0x00000000000000000000000000000000000000b2",
+        },
+      });
+      const other = signInAgain(again, `launch-${"w".repeat(28)}`);
+      expect(await statusRead(other)).toMatchObject({
+        status: 404,
+        body: { code: "unknown_operation" },
+      });
+      getWallet.mockResolvedValue(account);
+      // An ambiguous history (a second launch also issued this id): nothing is recovered, so nothing is authorised.
+      const second = reload(again, `launch-${"v".repeat(28)}`);
+      const forgedTwin = new Browser();
+      forgedTwin.launchId = `launch-${"u".repeat(28)}`;
+      await issueRegistration(forgedTwin, operationId);
+      for (const [name, value] of forgedTwin.cookies)
+        if (name.startsWith("dual_face_launch_"))
+          second.cookies.set(name, value);
+      expect(await statusRead(second)).toMatchObject({
+        status: 404,
+        body: { code: "unknown_operation" },
+      });
+      // The status read never asked the runtime: minting is the host's only part.
+      expect(runtime.calls).toHaveLength(0);
+    } finally {
+      runtime.restore();
+      clock.mockRestore();
+    }
+  });
+
+  it("an operation only confirmed (never issued) in an earlier launch authorises no status read", async () => {
+    const operationId = "register-op-0564";
+    const earlier = new Browser();
+    await confirmRegistration(earlier, operationId);
+    const again = signInAgain(earlier);
+    expect(
+      await mint(again, {
+        operation: "registration.status",
+        operation_id: operationId,
+        target: { object_id: UNIT },
+        request_hash: faceStatusHash(operationId),
+      }),
+    ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
   });
 });
