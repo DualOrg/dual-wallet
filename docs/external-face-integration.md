@@ -416,16 +416,29 @@ the launch ID), host-only, `HttpOnly`, `SameSite=Strict` cookie per launch
 (`__Host-dual_face_launch_<launchId>` in production, a 24-hour lifetime),
 bound to the session ID hash, the wallet ID, the face and the launch; any
 other session, wallet, face or launch reads it as empty, and two tabs never
-overwrite each other. At most four launch cookies are kept per browser: this
-session's, and an earlier session's of the same wallet while it still holds a
-registration whose assertion was issued or a transfer step that was sent
-(`submitted`) and is not settled. Such a cookie is kept as it was: a later
-write never names it, so it is neither re-sealed nor given a new expiry, and
-its own 24 hours still apply (a transfer progress read of that step writes the
-reading launch's journal and keeps the record it reads). Within the four,
-launches holding such evidence are dropped last; the oldest, any unreadable
-one, another wallet's and an earlier session's without such history are
-dropped on the next write.
+overwrite each other. A launch cookie may hold unresolved evidence that
+authority left the wallet: (a) a registration whose assertion was issued and
+is not settled, (b) a transfer step that was sent (`submitted`) and is not
+settled, or (c) a runtime write (`kind: "runtime"`, `assertion_issued`: a
+Warranty & Service write, a transfer offer or its cancellation), whose
+outcome the wallet does not learn. At most four launch cookies are kept per
+browser: this session's, and an earlier session's of the same wallet while it
+still holds such evidence (or a registration whose assertion was issued and
+that has settled since). Such a cookie is kept as it was: a later write never
+names it, so it is neither re-sealed nor given a new expiry (a transfer
+progress read of that step writes the reading launch's journal and keeps the
+record it reads). Within the four, a launch of this wallet holding evidence
+(a), (b) or (c) is never dropped: a request that would have to drop one to
+stay within four (normally a new launch while four such launches are kept)
+is refused `launch_capacity` (409) before anything is read, minted, journaled
+or sent, and the host shows a plain-language error instead of opening the
+frame. The journal write itself also never drops such a cookie, as defence in
+depth. Other launches go first, the oldest within a rank; any unreadable one,
+another wallet's and an earlier session's without such history are dropped on
+the next write. Each cookie still expires 24 hours after its own last write:
+this is a bounded lifetime, not durable preservation. After that, recovering
+the outcome needs the runtime's own record
+(`docs/proposals/runtime-write-status-r20.md`).
 
 A launch journal holds at most six entries (`JOURNAL_MAX_ENTRIES`). Only a
 `cancelled` or `settled` entry makes room; an entry whose authority left the

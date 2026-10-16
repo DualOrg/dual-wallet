@@ -462,6 +462,7 @@
       "artifact_unavailable": "This product application is unavailable right now. Try again shortly.",
       "unknown_application": "This product programme is not available in this wallet.",
       "session_expired": "Your session has expired. Sign in again to continue.",
+      "launch_capacity": "This browser is already keeping track of as many unfinished requests from the application as it can, so it cannot open another window of it. Go back to a window of the application that is already open, or try again later.",
       "generic": "This product application could not be opened. Try again shortly."
     },
     "ended": {

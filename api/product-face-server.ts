@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import {
   FACE_LAUNCH_HEADER,
   FACE_LAUNCH_ID,
+  launchWouldDropUnresolved,
   readFaceJournal,
   writeFaceJournal,
   type FaceJournal,
@@ -130,6 +131,13 @@ export async function resolveFaceRequest(
     journal: readFaceJournal(request, scope),
     request,
   };
+  // Never drop a launch cookie holding unresolved evidence of this wallet:
+  // a request whose journal write would have to (normally a new launch with
+  // the budget full of such launches) is refused here, before the journey
+  // gate and any route logic: nothing is read, minted, journaled or sent.
+  if (launchWouldDropUnresolved(request, scope)) {
+    return faceContextError(context, "launch_capacity", 409);
+  }
   // A branded host refuses a disabled journey's request here, before any
   // route logic: nothing is journaled, read or minted for it.
   if (await faceJourneyRefused(request, binding.slug, context.journal, route)) {

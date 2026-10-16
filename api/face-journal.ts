@@ -269,57 +269,137 @@ function historyEntries(
     });
 }
 
-/** Whether a sealed journal still holds a recoverable registration. */
-function holdsRegistrationHistory(sealed: Partial<SealedJournal>, now: number) {
+/**
+ * Unresolved evidence that authority left the wallet and the wallet does not
+ * know the outcome: (a) a registration whose one assertion was issued and is
+ * not settled (recoverableRegistration), (b) a transfer step that was sent
+ * and is not settled (sentTransferStep), or (c) a runtime write (Warranty &
+ * Service writes, a transfer offer or its cancellation) whose assertion was
+ * issued, whose outcome the wallet never learns. The launch cookie holding
+ * it is the wallet's only record of it.
+ */
+function unresolvedEvidence(entry: FaceJournalEntry) {
   return (
-    typeof sealed.slug === "string" &&
-    typeof sealed.programme === "string" &&
-    sealedEntries(sealed, sealed.slug, sealed.programme, now).some(
-      recoverableRegistration,
-    )
+    (recoverableRegistration(entry) && entry.phase !== "settled") ||
+    sentTransferStep(entry) ||
+    (entry.kind === "runtime" && entry.phase === "assertion_issued")
   );
 }
 
+const UNRESOLVED_RANK = 2;
+
+/** A sealed journal's entries, re-validated for the face it was sealed for. */
+function ownEntries(sealed: Partial<SealedJournal>, now: number) {
+  return typeof sealed.slug === "string" && typeof sealed.programme === "string"
+    ? sealedEntries(sealed, sealed.slug, sealed.programme, now)
+    : [];
+}
+
 /**
- * Whether a sealed journal still holds a transfer step that left the wallet
- * and is not settled (sentTransferStep), re-validated for the face and
- * programme it was sealed for: after a sign-in since, it is the only record
- * that step is read back from (readFaceTransferHistory, readFaceHistory).
+ * Whether an earlier session's sealed journal is still worth keeping for the
+ * same wallet: it holds a registration whose one assertion was issued (open,
+ * or settled since: a result page still reads it back), or any unresolved
+ * evidence (unresolvedEvidence). After a sign-in since, it is the only record
+ * such an operation is read back from (readFaceHistory,
+ * readFaceTransferHistory).
  */
-function holdsTransferHistory(sealed: Partial<SealedJournal>, now: number) {
-  return (
-    typeof sealed.slug === "string" &&
-    typeof sealed.programme === "string" &&
-    sealedEntries(sealed, sealed.slug, sealed.programme, now).some(
-      sentTransferStep,
-    )
+function holdsUnresolvedHistory(sealed: Partial<SealedJournal>, now: number) {
+  return ownEntries(sealed, now).some(
+    (entry) => recoverableRegistration(entry) || unresolvedEvidence(entry),
   );
 }
 
 /**
  * How much a kept launch's sealed journal is worth keeping, within the same
  * MAX_FACE_LAUNCHES budget: unresolved evidence that authority left the
- * wallet first (2: a registration's one assertion, or a sent transfer step
- * not settled), then any other unfinished work (1), then an empty or
- * finished launch (0). Every face-host mount persists a new, usually empty,
- * launch; recency alone would let those evict the evidence a result page or
- * a transfer progress read is still reading.
+ * wallet first (2: unresolvedEvidence), then any other unfinished work (1),
+ * then an empty or finished launch (0). Every face-host mount persists a new,
+ * usually empty, launch; recency alone would let those evict the evidence a
+ * result page or a progress read is still reading. Rank 2 is never dropped
+ * (launchWouldDropUnresolved).
  */
 function retentionRank(sealed: Partial<SealedJournal>, now: number) {
-  if (typeof sealed.slug !== "string" || typeof sealed.programme !== "string")
-    return 0;
-  const entries = sealedEntries(sealed, sealed.slug, sealed.programme, now);
-  const unfinished = (entry: FaceJournalEntry) =>
-    entry.phase !== "settled" && entry.phase !== "cancelled";
-  if (
-    entries.some(
-      (entry) =>
-        (recoverableRegistration(entry) && unfinished(entry)) ||
-        sentTransferStep(entry),
-    )
+  const entries = ownEntries(sealed, now);
+  if (entries.some(unresolvedEvidence)) return UNRESOLVED_RANK;
+  return entries.some(
+    (entry) => entry.phase !== "settled" && entry.phase !== "cancelled",
   )
-    return 2;
-  return entries.some(unfinished) ? 1 : 0;
+    ? 1
+    : 0;
+}
+
+interface LaunchRetention {
+  launchId: string;
+  /** Last write (ms); -1 when not kept (unreadable, another wallet's, ...). */
+  at: number;
+  rank: number;
+  order: number;
+}
+
+/**
+ * The other launches in the request, ordered most worth keeping first, as
+ * writeFaceJournal keeps them: this session's, and this wallet's earlier
+ * sessions' that still hold unresolved history (holdsUnresolvedHistory).
+ * Anything else (unreadable, another wallet's, an earlier session's without
+ * such history) is marked not kept (at -1). Within the budget the least worth
+ * keeping goes first (retentionRank), the oldest within a rank.
+ * Two launches last written in the same millisecond are ordered by the
+ * request: a browser sends its cookies oldest-created first (RFC 6265 5.4;
+ * an update keeps its place), so the later one is the newer.
+ */
+function otherLaunches(
+  request: NextRequest,
+  scope: FaceJournalScope,
+  now: number,
+): LaunchRetention[] {
+  return launchCookies(request)
+    .filter(([launchId]) => launchId !== scope.launchId)
+    .map(([launchId, value], order) => {
+      const opened = openLaunch(launchId, value);
+      const kept =
+        opened?.wallet === scope.owner.walletId &&
+        (opened.sid === scope.owner.sidHash ||
+          holdsUnresolvedHistory(opened, now));
+      return {
+        launchId,
+        at: kept && typeof opened.at === "number" ? opened.at : -1,
+        rank: kept ? retentionRank(opened, now) : -1,
+        order,
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.rank - left.rank ||
+        right.at - left.at ||
+        right.order - left.order,
+    );
+}
+
+/** Whether the budget would drop this launch (not counting unresolved ones). */
+const overBudget = (other: LaunchRetention, index: number) =>
+  other.at < 0 || index >= MAX_FACE_LAUNCHES - 1;
+
+/** This wallet's launch holding unresolved evidence: never dropped. */
+const holdsUnresolved = (other: LaunchRetention) =>
+  other.at >= 0 && other.rank === UNRESOLVED_RANK;
+
+/**
+ * Whether writing this launch's journal would need to drop another launch of
+ * this wallet that holds unresolved evidence (unresolvedEvidence) to stay
+ * within MAX_FACE_LAUNCHES. It reproduces writeFaceJournal's keep, sort and
+ * drop decision for this request. The face routes refuse such a request
+ * (launch_capacity) before any work: nothing is read, minted, journaled or
+ * sent. An existing launch's own cookie is not among the others, so normally
+ * only a new launch is refused. Pure: it reads the request only.
+ */
+export function launchWouldDropUnresolved(
+  request: NextRequest,
+  scope: FaceJournalScope,
+  now = Date.now(),
+) {
+  return otherLaunches(request, scope, now).some(
+    (other, index) => overBudget(other, index) && holdsUnresolved(other),
+  );
 }
 
 function cookieOptions(maxAge?: number) {
@@ -383,43 +463,16 @@ export function writeFaceJournal(
     sealForPurpose(sealPurpose(scope.launchId), sealed),
     cookieOptions(LAUNCH_TTL_SECONDS),
   );
-  // Keep at most MAX_FACE_LAUNCHES launches: this session's, and this
-  // wallet's earlier sessions' that still hold a registration whose one
-  // assertion was issued or a transfer step that was sent and is not settled
-  // (their sealed evidence: a progress read of such a step writes this
-  // launch's journal, and must not drop the record it is reading). A kept
-  // cookie is never named in this response: not re-sealed, rewritten or
-  // given a new expiry; its own 24 hours still apply. Anything else
-  // (unreadable, another wallet's, an earlier session's without such
-  // history) is dropped; within the budget the least worth keeping goes
-  // first (retentionRank), the oldest within a rank.
-  // Two launches last written in the same millisecond are ordered by the
-  // request: a browser sends its cookies oldest-created first (RFC 6265
-  // 5.4; an update keeps its place), so the later one is the newer.
-  const others = launchCookies(request)
-    .filter(([launchId]) => launchId !== scope.launchId)
-    .map(([launchId, value], order) => {
-      const opened = openLaunch(launchId, value);
-      const kept =
-        opened?.wallet === scope.owner.walletId &&
-        (opened.sid === scope.owner.sidHash ||
-          holdsRegistrationHistory(opened, now) ||
-          holdsTransferHistory(opened, now));
-      return {
-        launchId,
-        at: kept && typeof opened.at === "number" ? opened.at : -1,
-        rank: kept ? retentionRank(opened, now) : -1,
-        order,
-      };
-    })
-    .sort(
-      (left, right) =>
-        right.rank - left.rank ||
-        right.at - left.at ||
-        right.order - left.order,
-    );
-  others.forEach((other, index) => {
-    if (other.at < 0 || index >= MAX_FACE_LAUNCHES - 1) {
+  // Keep at most MAX_FACE_LAUNCHES launches (otherLaunches decides which are
+  // kept and in what order). A kept cookie is never named in this response:
+  // not re-sealed, rewritten or given a new expiry; its own 24 hours still
+  // apply. A launch of this wallet holding unresolved evidence is never
+  // dropped, even over budget: the face routes refuse a request that would
+  // need that before any work (launchWouldDropUnresolved, launch_capacity),
+  // so skipping it here is defence in depth and not reached in practice.
+  // Unreadable and other wallets' cookies are still dropped.
+  otherLaunches(request, scope, now).forEach((other, index) => {
+    if (overBudget(other, index) && !holdsUnresolved(other)) {
       response.cookies.set(
         `${FACE_JOURNAL_COOKIE_PREFIX}${other.launchId}`,
         "",
