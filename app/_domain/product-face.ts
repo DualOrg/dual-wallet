@@ -505,6 +505,12 @@ export const runtimeOperationNames = [
   // the host's read of one runtime write's recorded outcome by its original
   // operation id. Host-only; an unsupporting runtime leaves the entry held.
   "write.status",
+  // PROPOSED r20, not deployed: the host's durable discovery of this actor's
+  // unacknowledged operations at a runtime, and its idempotent record that
+  // one proved outcome was delivered. Host-only; an unsupporting runtime
+  // makes the recovery check incomplete and nothing is acknowledged.
+  "recovery.list",
+  "recovery.ack",
 ] as const;
 export type RuntimeOperation = (typeof runtimeOperationNames)[number];
 
@@ -580,6 +586,8 @@ export const hostOnlyRuntimeOperations = [
   "transfer.status",
   "transfer.acceptance.read",
   "write.status",
+  "recovery.list",
+  "recovery.ack",
 ] as const satisfies readonly RuntimeOperation[];
 
 /**

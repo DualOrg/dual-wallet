@@ -285,6 +285,11 @@ const operationJourneys: Record<RuntimeOperation, HostJourney> = {
   // from a face request; the host reads it only for an entry whose own
   // journey the request was already admitted for.
   "write.status": "serviceProgress",
+  // Host-only (proposed r20): the host's own recovery listing and
+  // acknowledgement, never minted for a face and never classified from a
+  // face request. Each recovered item is gated by its OWN kind's journey.
+  "recovery.list": "myProducts",
+  "recovery.ack": "myProducts",
 };
 
 export function journeyOfOperation(operation: RuntimeOperation): HostJourney {

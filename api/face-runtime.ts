@@ -12,6 +12,7 @@ import {
   isOperationId,
   isQuoteVersion,
   isRequestHash,
+  isRuntimeWriteOperation,
   type CaseQuote,
   type SettleProposal,
   type TrustedRuntimeRead,
@@ -212,64 +213,54 @@ export async function readRegistrationStatus(
   return { outcome: "unknown" };
 }
 
-/** The request one write.status read sends, so its hash is the runtime's. */
-export function writeStatusRequest(
-  operationId: string,
-  target: { object_id: string; case_id?: string },
-) {
-  return {
-    operation: "write.status" as const,
-    operationId,
-    target: {
-      object_id: target.object_id,
-      ...(target.case_id ? { case_id: target.case_id } : {}),
-    },
-    input: {},
-  };
+/** A face artifact identity as a runtime records and echoes it (r20). */
+export interface RuntimeArtifact {
+  version: string;
+  artifactHash: string;
 }
 
-/** The runtime's durable record of one write, exactly as it answered it. */
-export interface RecordedWrite {
+/**
+ * PROPOSED r20 §0 "Echoed binding", present on every r20 answer. The readers
+ * below check each field's FORM only; the caller compares every value with
+ * its journal entry, session, host origin, routed runtime, programme and the
+ * face artifact it serves. Nothing is taken on trust from the endpoint.
+ */
+export interface RuntimeEcho {
   operationId: string;
-  operation: string;
-  objectId: string;
-  caseId: string | null;
-  requestHash: string;
   holder: string;
   wallet: string;
   issuer: string;
   applicationId: string;
   programme: string;
-  /** The face artifact the original write's assertion carried. */
-  recordedArtifact: { version: string; artifactHash: string };
-  /** The face artifact this status read's assertion carried. */
-  assertingArtifact: { version: string; artifactHash: string };
-  receipt:
-    | { kind: "case_event"; caseId: string; eventId: string }
-    | { kind: "transfer_offer"; offerId: string; state: string };
+  assertingArtifact: RuntimeArtifact;
 }
-
-export type WriteStatusResult =
-  /**
-   * 200 write_applied under contract r20: the runtime's own readback of its
-   * canonical store shows the original write's effect, with zero unresolved
-   * outcomes, and every field is well formed.
-   */
-  | { outcome: "applied"; record: RecordedWrite }
-  /**
-   * Anything else: not found, refused, unknown, another caller, a runtime
-   * without r20, an incompatible artifact, malformed, oversized, unreachable
-   * or timed out. Proves nothing; the entry stays held, nothing is re-sent.
-   */
-  | { outcome: "held" };
 
 const PLAIN = /^[a-z][a-z0-9_]{0,63}$/;
 const SEMVER_TEXT = /^\d+\.\d+\.\d+$/;
 const ARTIFACT_HASH = /^sha256:[0-9a-f]{64}$/;
 const RECEIPT_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 const OFFER = /^pto-[0-9a-f]{24}$/;
+const MAX_RECOVERY_ITEMS = 50;
+const MAX_CURSOR_LENGTH = 512;
 
-function artifactOf(value: unknown) {
+const text = (value: unknown, max = 256): value is string =>
+  typeof value === "string" && value.length > 0 && value.length <= max;
+
+const plainCode = (value: unknown): value is string =>
+  typeof value === "string" && PLAIN.test(value);
+
+const timestamp = (value: unknown): value is string =>
+  typeof value === "string" && !Number.isNaN(Date.parse(value));
+
+function sameJson(left: unknown, right: unknown) {
+  try {
+    return canonicalJson(left) === canonicalJson(right);
+  } catch {
+    return false;
+  }
+}
+
+function artifactOf(value: unknown): RuntimeArtifact | undefined {
   return record(value) &&
     typeof value.version === "string" &&
     SEMVER_TEXT.test(value.version) &&
@@ -278,6 +269,192 @@ function artifactOf(value: unknown) {
     ? { version: value.version, artifactHash: value.artifactHash }
     : undefined;
 }
+
+function echoOf(body: Record<string, unknown>): RuntimeEcho | undefined {
+  const assertingArtifact = artifactOf(body.asserting_artifact);
+  if (
+    !isOperationId(body.operation_id) ||
+    !text(body.holder) ||
+    !text(body.wallet) ||
+    !text(body.issuer) ||
+    !text(body.application_id) ||
+    !text(body.programme) ||
+    !assertingArtifact
+  ) {
+    return undefined;
+  }
+  return {
+    operationId: body.operation_id,
+    holder: body.holder,
+    wallet: body.wallet,
+    issuer: body.issuer,
+    applicationId: body.application_id,
+    programme: body.programme,
+    assertingArtifact,
+  };
+}
+
+/**
+ * r20 accounting of a read-only answer: exactly zero business, provider and
+ * Dual effects, no secret, and the runtime's own bookkeeping of one consumed
+ * assertion and the expected acknowledgement rows. Missing, null or "0"
+ * proves nothing.
+ */
+function accountedReadOnly(
+  body: Record<string, unknown>,
+  acknowledgementsRecorded: 0 | 1,
+) {
+  return (
+    body.writesExecuted === 0 &&
+    body.dualWritesExecuted === 0 &&
+    body.providerWritesExecuted === 0 &&
+    body.unknownWriteOutcomes === 0 &&
+    body.secretReturned === false &&
+    record(body.bookkeeping) &&
+    body.bookkeeping.assertionsConsumed === 1 &&
+    body.bookkeeping.acknowledgementsRecorded === acknowledgementsRecorded
+  );
+}
+
+/** The host's own r20 read: fixed endpoint, bounded, timed out, no cookies. */
+async function postRuntimeOperation(
+  runtime: Pick<ProductFaceBinding, "origin" | "applicationId">,
+  request: {
+    operation: string;
+    operationId: string;
+    target: AssertionTarget;
+    input: Record<string, unknown>;
+  },
+  assertion: string,
+) {
+  try {
+    return await fetchBounded(
+      `${runtime.origin}${RUNTIME_ENDPOINT}`,
+      MAX_RESPONSE_BYTES,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "x-tig-product-face-application": runtime.applicationId,
+        },
+        body: JSON.stringify({ ...request, assertion }),
+      },
+      TIMEOUT_MS,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+function jsonRecord(body: Buffer): Record<string, unknown> | undefined {
+  try {
+    const parsed: unknown = JSON.parse(body.toString("utf8"));
+    return record(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** r20 outcome_hash: sha256 of the canonical JSON of an outcome_proof. */
+export function outcomeHashOf(proof: Record<string, unknown>) {
+  return sha256Hash(canonicalJson(proof));
+}
+
+export type RecoveryItemKind =
+  "registration" | "settle" | "transfer" | "runtime";
+
+const recoveryItemKinds = [
+  "registration",
+  "settle",
+  "transfer",
+  "runtime",
+] as const satisfies readonly RecoveryItemKind[];
+
+/**
+ * PROPOSED r20 §0: the outcome_proof a committed answer carries, as the
+ * additive field of transfer.verify, transfer.status, registration.status and
+ * registration.settle.status, and as write.status's own. Only a record whose
+ * canonical hash is the answer's outcome_hash and whose kind, operation id
+ * and status are the expected ones; anything else is pre-r20 for that
+ * operation and proves nothing more than today.
+ */
+export function verifiedOutcomeProof(
+  body: Record<string, unknown>,
+  expected: { kind: RecoveryItemKind; operationId: string; status: string },
+): { proof: Record<string, unknown>; hash: string } | undefined {
+  const proof = body.outcome_proof;
+  if (
+    !record(proof) ||
+    !isRequestHash(body.outcome_hash) ||
+    proof.kind !== expected.kind ||
+    proof.operation_id !== expected.operationId ||
+    proof.status !== expected.status
+  ) {
+    return undefined;
+  }
+  let hash: string;
+  try {
+    hash = outcomeHashOf(proof);
+  } catch {
+    return undefined;
+  }
+  return hash === body.outcome_hash ? { proof, hash } : undefined;
+}
+
+/** The request one write.status read sends, so its hash is the runtime's. */
+export function writeStatusRequest(
+  operationId: string,
+  target: { object_id: string; case_id?: string },
+  originalOperation: string,
+) {
+  return {
+    operation: "write.status" as const,
+    operationId,
+    target: {
+      object_id: target.object_id,
+      ...(target.case_id ? { case_id: target.case_id } : {}),
+    },
+    input: { original_operation: originalOperation },
+  };
+}
+
+/** The runtime's durable record of one write, exactly as it answered it. */
+export interface RecordedWrite extends RuntimeEcho {
+  operation: string;
+  objectId: string;
+  caseId: string | null;
+  requestHash: string;
+  /** The face artifact the original write's assertion carried. */
+  recordedArtifact: RuntimeArtifact;
+  receipt:
+    | { kind: "case_event"; caseId: string; eventId: string }
+    | { kind: "transfer_offer"; offerId: string; state: string };
+  /**
+   * backed:false only (every runtime write today is server-only). "absent"
+   * (the target object was deleted since) is returned and the caller HOLDS
+   * it: it is not the required readback, and it is a decision for Root.
+   */
+  dual: { targetReadback: "verified" | "absent" };
+  outcomeProof: Record<string, unknown>;
+  outcomeHash: string;
+  acknowledged: boolean;
+}
+
+export type WriteStatusResult =
+  /**
+   * 200 write_applied under contract r20: the runtime's own readback of its
+   * canonical store shows the original write's effect, with zero unresolved
+   * outcomes, a proof hashing to the answer's outcome_hash, and every field
+   * well formed.
+   */
+  | { outcome: "applied"; record: RecordedWrite }
+  /**
+   * Anything else: not found, refused, unknown, another caller, a runtime
+   * without r20, an incompatible artifact, malformed, oversized, unreachable
+   * or timed out. Proves nothing; the entry stays held, nothing is re-sent.
+   */
+  | { outcome: "held" };
 
 function receiptOf(value: unknown): RecordedWrite["receipt"] | undefined {
   if (!record(value)) return undefined;
@@ -309,15 +486,66 @@ function receiptOf(value: unknown): RecordedWrite["receipt"] | undefined {
   return undefined;
 }
 
+/** A recorded case id, none (null), or malformed (undefined). */
+function optionalCaseId(value: unknown): string | null | undefined {
+  if (value === undefined) return null;
+  return isCaseId(value) ? value : undefined;
+}
+
+// r20 §0: the runtime kind's outcome_proof has exactly these fields.
+const RUNTIME_PROOF_FIELDS = [
+  "case_id",
+  "kind",
+  "object_id",
+  "operation",
+  "operation_id",
+  "receipt",
+  "status",
+].join(",");
+
+/**
+ * The write_applied proof, bound to the answer it came in: exactly the
+ * runtime kind's fields, each equal to the answer's own, and the receipt
+ * deep-equal to the answer's receipt.
+ */
+function runtimeOutcomeOf(
+  body: Record<string, unknown>,
+  recorded: {
+    operationId: string;
+    operation: string;
+    objectId: string;
+    caseId: string | null;
+  },
+) {
+  const verified = verifiedOutcomeProof(body, {
+    kind: "runtime",
+    operationId: recorded.operationId,
+    status: "write_applied",
+  });
+  if (!verified) return undefined;
+  const { proof } = verified;
+  if (
+    Object.keys(proof).sort().join(",") !== RUNTIME_PROOF_FIELDS ||
+    proof.operation !== recorded.operation ||
+    proof.object_id !== recorded.objectId ||
+    proof.case_id !== recorded.caseId ||
+    !sameJson(proof.receipt, body.receipt)
+  ) {
+    return undefined;
+  }
+  return verified;
+}
+
 /**
  * PROPOSED r20 (docs/proposals/runtime-write-status-r20.md), NOT deployed by
  * any runtime: the host's own read of ONE runtime write's verified outcome, by
  * its original operation id, from the runtime that served that write. Fixed
  * endpoint, bounded response, timeout, no cookies and no redirects; it reads
  * and never dispatches. Only an exact r20 write_applied answer with a
- * verified readback, zero unresolved outcomes, a receipt and the runtime's
- * artifact-compatibility proof is returned; the caller still compares every
- * binding with its journal entry, session, host and face binding.
+ * verified readback, zero unresolved outcomes, a receipt, the runtime's
+ * artifact-compatibility proof and a matching outcome_hash is returned; the
+ * caller still compares every binding with its journal entry, session, host
+ * and face binding, and holds dual.targetReadback "absent".
  */
 export async function readWriteStatus(
   runtime: Pick<ProductFaceBinding, "origin" | "applicationId">,
@@ -325,90 +553,332 @@ export async function readWriteStatus(
   assertion: string,
 ): Promise<WriteStatusResult> {
   const held = { outcome: "held" } as const;
-  let response: Awaited<ReturnType<typeof fetchBounded>>;
-  try {
-    response = await fetchBounded(
-      `${runtime.origin}${RUNTIME_ENDPOINT}`,
-      MAX_RESPONSE_BYTES,
-      {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "x-tig-product-face-application": runtime.applicationId,
-        },
-        body: JSON.stringify({ ...request, assertion }),
-      },
-      TIMEOUT_MS,
-    );
-  } catch {
-    return held;
-  }
+  const response = await postRuntimeOperation(runtime, request, assertion);
   if (!response || response.status !== 200) return held;
-  let body: unknown;
-  try {
-    body = JSON.parse(response.body.toString("utf8"));
-  } catch {
-    return held;
-  }
+  const body = jsonRecord(response.body);
+  if (!body) return held;
+  const echo = echoOf(body);
   if (
-    !record(body) ||
     body.ok !== true ||
     body.status !== "write_applied" ||
     body.contract !== "r20" ||
     body.readback !== "verified" ||
     body.artifact_compatible !== true ||
-    // A read-only answer: exactly zero writes of any kind, and nothing left
-    // unresolved. Missing, null or any other value proves nothing.
-    body.writesExecuted !== 0 ||
-    body.dualWritesExecuted !== 0 ||
-    body.unknownWriteOutcomes !== 0 ||
-    body.secretReturned !== false ||
-    !record(body.target)
+    !accountedReadOnly(body, 0) ||
+    !echo ||
+    !record(body.target) ||
+    !record(body.dual)
   ) {
     return held;
   }
-  const target = body.target;
-  const text = (value: unknown, max = 256): value is string =>
-    typeof value === "string" && value.length > 0 && value.length <= max;
+  const { target, dual } = body;
+  const caseId = optionalCaseId(target.case_id);
   const recordedArtifact = artifactOf(body.recorded_artifact);
-  const assertingArtifact = artifactOf(body.asserting_artifact);
   const receipt = receiptOf(body.receipt);
   if (
-    !isOperationId(body.operation_id) ||
     !text(body.operation, 64) ||
     !isObjectId(target.object_id) ||
-    (target.case_id !== undefined && !isCaseId(target.case_id)) ||
+    caseId === undefined ||
     !isRequestHash(body.request_hash) ||
-    !text(body.holder) ||
-    !text(body.wallet) ||
-    !text(body.issuer) ||
-    !text(body.application_id) ||
-    !text(body.programme) ||
     !recordedArtifact ||
-    !assertingArtifact ||
-    !receipt
+    !receipt ||
+    // A server-only effect, with the required FRESH Dual readback of the
+    // original target. "absent" is reported, never accepted as that proof.
+    dual.backed !== false ||
+    dual.intended_dual_writes !== 0 ||
+    !plainCode(dual.reason) ||
+    (dual.target_readback !== "verified" &&
+      dual.target_readback !== "absent") ||
+    typeof body.acknowledged !== "boolean"
   ) {
     return held;
   }
+  const outcome = runtimeOutcomeOf(body, {
+    operationId: echo.operationId,
+    operation: body.operation,
+    objectId: target.object_id,
+    caseId,
+  });
+  if (!outcome) return held;
   return {
     outcome: "applied",
     record: {
-      operationId: body.operation_id,
+      ...echo,
       operation: body.operation,
       objectId: target.object_id,
-      caseId: (target.case_id as string | undefined) ?? null,
+      caseId,
       requestHash: body.request_hash,
-      holder: body.holder,
-      wallet: body.wallet,
-      issuer: body.issuer,
-      applicationId: body.application_id,
-      programme: body.programme,
       recordedArtifact,
-      assertingArtifact,
       receipt,
+      dual: { targetReadback: dual.target_readback },
+      outcomeProof: outcome.proof,
+      outcomeHash: outcome.hash,
+      acknowledged: body.acknowledged,
     },
   };
+}
+
+/** The request one recovery.list page read sends (a fresh listing op_id). */
+export function recoveryListRequest(operationId: string, cursor?: string) {
+  return {
+    operation: "recovery.list" as const,
+    operationId,
+    target: {},
+    input: cursor ? { cursor } : {},
+  };
+}
+
+export interface RecoveryItem {
+  kind: RecoveryItemKind;
+  operationId: string;
+  operation: string;
+  objectId: string;
+  caseId: string | null;
+  offerId: string | null;
+  proposalId: string | null;
+  step: "request" | "transfer" | null;
+  actionId: string | null;
+  state: "unresolved" | "completed" | "refused";
+  recordedAt: string;
+  recordedArtifact: RuntimeArtifact;
+  artifactCompatible: boolean;
+}
+
+/** One page of one scan; `complete` is the runtime's word for THIS page. */
+export interface RecoveryPage extends RuntimeEcho {
+  scanId: string;
+  asOf: string;
+  items: RecoveryItem[];
+  next: string | null;
+  complete: boolean;
+}
+
+export type RecoveryListResult =
+  | { outcome: "listed"; page: RecoveryPage }
+  /** An older runtime (400 face_request_invalid, or a 200 without r20). */
+  | { outcome: "unsupported" }
+  /**
+   * Anything else: unreachable, timed out, 5xx, a cursor refusal, malformed
+   * or oversized. The whole recovery check is incomplete; nothing is
+   * acknowledged.
+   */
+  | { outcome: "unavailable" };
+
+const recoveryItemStates = ["unresolved", "completed", "refused"] as const;
+const recoverySteps = ["request", "transfer"] as const;
+
+const isRecoveryItemKind = (value: unknown): value is RecoveryItemKind =>
+  typeof value === "string" &&
+  (recoveryItemKinds as readonly string[]).includes(value);
+const isRecoveryItemState = (value: unknown): value is RecoveryItem["state"] =>
+  typeof value === "string" &&
+  (recoveryItemStates as readonly string[]).includes(value);
+const isRecoveryStep = (value: unknown): value is "request" | "transfer" =>
+  typeof value === "string" &&
+  (recoverySteps as readonly string[]).includes(value);
+const isTokenId = (value: unknown): value is string =>
+  typeof value === "string" && PROPOSAL_ID.test(value);
+const isOfferId = (value: unknown): value is string =>
+  typeof value === "string" && OFFER.test(value);
+
+function nullOr<T>(
+  value: unknown,
+  check: (value: unknown) => value is T,
+): value is T | null {
+  return value === null || check(value);
+}
+
+/** One listed item: well formed, and carrying exactly its kind's fields. */
+function recoveryItemOf(value: unknown): RecoveryItem | undefined {
+  if (!record(value)) return undefined;
+  const recordedArtifact = artifactOf(value.recorded_artifact);
+  if (
+    !isRecoveryItemKind(value.kind) ||
+    !isOperationId(value.operation_id) ||
+    !text(value.operation, 64) ||
+    !isObjectId(value.object_id) ||
+    !nullOr(value.case_id, isCaseId) ||
+    !nullOr(value.offer_id, isOfferId) ||
+    !nullOr(value.proposal_id, isTokenId) ||
+    !nullOr(value.action_id, isTokenId) ||
+    !nullOr(value.step, isRecoveryStep) ||
+    !isRecoveryItemState(value.state) ||
+    !timestamp(value.recorded_at) ||
+    !recordedArtifact ||
+    typeof value.artifact_compatible !== "boolean"
+  ) {
+    return undefined;
+  }
+  const item: RecoveryItem = {
+    kind: value.kind,
+    operationId: value.operation_id,
+    operation: value.operation,
+    objectId: value.object_id,
+    caseId: value.case_id,
+    offerId: value.offer_id,
+    proposalId: value.proposal_id,
+    step: value.step,
+    actionId: value.action_id,
+    state: value.state,
+    recordedAt: value.recorded_at,
+    recordedArtifact,
+    artifactCompatible: value.artifact_compatible,
+  };
+  const ownsCase = item.caseId !== null;
+  const ownsOffer = item.offerId !== null;
+  const ownsProposal = item.proposalId !== null;
+  const ownsStep = item.step !== null;
+  switch (item.kind) {
+    case "registration":
+      return item.operation === "registration.submit" &&
+        !ownsCase &&
+        !ownsOffer &&
+        !ownsProposal &&
+        !ownsStep
+        ? item
+        : undefined;
+    case "settle":
+      return item.operation === "registration.settle" &&
+        ownsProposal &&
+        !ownsCase &&
+        !ownsOffer &&
+        !ownsStep
+        ? item
+        : undefined;
+    case "transfer":
+      return ((item.operation === "transfer.request" &&
+        item.step === "request") ||
+        (item.operation === "transfer.transfer" && item.step === "transfer")) &&
+        ownsOffer &&
+        !ownsCase
+        ? item
+        : undefined;
+    case "runtime":
+      return isRuntimeWriteOperation(item.operation) &&
+        !ownsOffer &&
+        !ownsProposal &&
+        !ownsStep
+        ? item
+        : undefined;
+  }
+}
+
+/**
+ * PROPOSED r20 (docs/proposals/runtime-write-status-r20.md), NOT deployed by
+ * any runtime: one page of the host's own durable discovery of this actor's
+ * unacknowledged operations at one runtime. Fixed endpoint, bounded response,
+ * timeout, no cookies and no redirects; it lists and never dispatches. Item
+ * outcomes are not in the listing: the caller resolves each through its
+ * kind's resolver and validates the echoed binding, the scan and duplicate
+ * ids itself.
+ */
+export async function readRecoveryList(
+  runtime: Pick<ProductFaceBinding, "origin" | "applicationId">,
+  request: ReturnType<typeof recoveryListRequest>,
+  assertion: string,
+): Promise<RecoveryListResult> {
+  const unavailable = { outcome: "unavailable" } as const;
+  const unsupported = { outcome: "unsupported" } as const;
+  const response = await postRuntimeOperation(runtime, request, assertion);
+  if (!response) return unavailable;
+  const body = jsonRecord(response.body);
+  if (response.status === 400 && body?.status === "face_request_invalid") {
+    return unsupported;
+  }
+  if (response.status !== 200 || !body) return unavailable;
+  if (body.contract !== "r20") return unsupported;
+  const echo = echoOf(body);
+  if (
+    body.ok !== true ||
+    body.status !== "recovery_listed" ||
+    !echo ||
+    !text(body.scan_id) ||
+    !timestamp(body.as_of) ||
+    !nullOr(body.next, (value): value is string =>
+      text(value, MAX_CURSOR_LENGTH),
+    ) ||
+    typeof body.complete !== "boolean" ||
+    !accountedReadOnly(body, 0) ||
+    !Array.isArray(body.items) ||
+    body.items.length > MAX_RECOVERY_ITEMS
+  ) {
+    return unavailable;
+  }
+  const items: RecoveryItem[] = [];
+  for (const entry of body.items) {
+    const item = recoveryItemOf(entry);
+    // One malformed item makes the page unreadable, never a shorter page.
+    if (!item) return unavailable;
+    items.push(item);
+  }
+  return {
+    outcome: "listed",
+    page: {
+      ...echo,
+      scanId: body.scan_id,
+      asOf: body.as_of,
+      items,
+      next: body.next,
+      complete: body.complete,
+    },
+  };
+}
+
+/** The request one recovery.ack sends: the ORIGINAL id, target and operation. */
+export function recoveryAckRequest(
+  operationId: string,
+  target: { object_id: string; case_id?: string },
+  originalOperation: string,
+  outcomeHash: string,
+) {
+  return {
+    operation: "recovery.ack" as const,
+    operationId,
+    target: {
+      object_id: target.object_id,
+      ...(target.case_id ? { case_id: target.case_id } : {}),
+    },
+    input: { original_operation: originalOperation, outcome_hash: outcomeHash },
+  };
+}
+
+export type RecoveryAckResult =
+  /** The runtime recorded (first) or had already recorded this delivery. */
+  | { outcome: "acknowledged"; first: boolean; echo: RuntimeEcho }
+  /** Anything else; the item stays listed and is acknowledged on no later basis. */
+  | { outcome: "held" };
+
+/**
+ * PROPOSED r20 (docs/proposals/runtime-write-status-r20.md), NOT deployed by
+ * any runtime: the host's idempotent record at one runtime that it delivered
+ * one proved outcome to its actor, bound to that outcome's hash. Fixed
+ * endpoint, bounded response, timeout, no cookies and no redirects; it never
+ * touches the business record. The caller validates the echoed binding.
+ */
+export async function acknowledgeRecovery(
+  runtime: Pick<ProductFaceBinding, "origin" | "applicationId">,
+  request: ReturnType<typeof recoveryAckRequest>,
+  assertion: string,
+): Promise<RecoveryAckResult> {
+  const held = { outcome: "held" } as const;
+  const response = await postRuntimeOperation(runtime, request, assertion);
+  if (!response || response.status !== 200) return held;
+  const body = jsonRecord(response.body);
+  if (!body) return held;
+  const echo = echoOf(body);
+  if (
+    body.ok !== true ||
+    body.status !== "recovery_acknowledged" ||
+    body.contract !== "r20" ||
+    !echo ||
+    // The runtime acknowledged exactly the outcome this host proved.
+    body.outcome_hash !== request.input.outcome_hash ||
+    typeof body.first !== "boolean" ||
+    !accountedReadOnly(body, body.first ? 1 : 0)
+  ) {
+    return held;
+  }
+  return { outcome: "acknowledged", first: body.first, echo };
 }
 
 export type SettleReserveResult =
