@@ -427,15 +427,25 @@ still holds such evidence (or a registration whose assertion was issued and
 that has settled since). Such a cookie is kept as it was: a later write never
 names it, so it is neither re-sealed nor given a new expiry (a transfer
 progress read of that step writes the reading launch's journal and keeps the
-record it reads). Within the four, a launch of this wallet holding evidence
-(a), (b) or (c) is never dropped: a request that would have to drop one to
-stay within four (normally a new launch while four such launches are kept)
+record it reads). Within the four, a launch of this wallet holding signed
+evidence, (a) or (b), is never dropped: a request that would have to drop one
+to stay within four (normally a new launch while four such launches are kept)
 is refused `launch_capacity` (409) before anything is read, minted, journaled
 or sent, and the host shows a plain-language error instead of opening the
 frame. The journal write itself also never drops such a cookie, as defence in
-depth. Other launches go first, the oldest within a rank; any unreadable one,
-another wallet's and an earlier session's without such history are dropped on
-the next write. Each cookie still expires 24 hours after its own last write:
+depth. A launch holding only (c), issued runtime writes, is kept ahead of
+every finished, unfinished or empty launch but may be dropped to stay within
+four. Rationale, recorded for Root's compatibility decision as a deviation
+from "no unknown eviction" on runtimes without durable discovery: the cookie
+is not the wallet's only record of a runtime write (the face sent it and the
+runtime holds it), its outcome is only ever learned from the runtime
+(`write.status`, `recovery.list`), never from this cookie, and keeping such
+launches undroppable would refuse every face for up to 24 hours after four
+of them, which "Restart the application" makes easy to reach. The policy is
+one rank check (`api/face-journal.ts`, `holdsUnresolved`) and reverts in one
+line if Root decides otherwise. Other launches go first, the oldest within a
+rank; any unreadable one, another wallet's and an earlier session's without
+such history are dropped on the next write. Each cookie still expires 24 hours after its own last write:
 this is a bounded lifetime, not durable preservation. After that, recovering
 the outcome needs the runtime's own record
 (`docs/proposals/runtime-write-status-r20.md`).
