@@ -57,6 +57,14 @@ export type ProductFaceHostNotice =
       /** A transfer step this wallet already sent, read back by the host. */
       kind: "transfer_step";
       reason: "transferred" | "outcome_unknown";
+    }
+  | {
+      /**
+       * This launch's journal has no room left for another step: only a new
+       * launch (a fresh journal) can continue. Nothing was sent for it.
+       */
+      kind: "launch_full";
+      reason: "journal_full";
     };
 
 export interface OperationStatusResponse {

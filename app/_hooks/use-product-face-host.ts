@@ -204,6 +204,16 @@ export function useProductFaceHost({
           if (error instanceof ProductFaceError && error.status === 401) {
             void sessionRef.current.refresh();
           }
+          // The launch journal is full of steps whose authority already left
+          // (kept, never evicted): the face cannot proceed in this launch, so
+          // the host offers a new one. The face still hears the refusal.
+          if (
+            error instanceof ProductFaceError &&
+            error.code === "journal_full" &&
+            liveHost()
+          ) {
+            setNotice({ kind: "launch_full", reason: "journal_full" });
+          }
           throw error;
         }
       };

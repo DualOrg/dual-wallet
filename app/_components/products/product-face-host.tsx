@@ -98,12 +98,15 @@ function ProductFaceFrame({
   application,
   frameUrl,
   onEnded,
+  onRelaunch,
 }: {
   slug: string;
   launchId: string;
   application: ProductFaceApplication;
   frameUrl: string;
   onEnded: (reason: SessionEndReason) => void;
+  /** A new launch of this face: a fresh frame and its own journal. */
+  onRelaunch: () => void;
 }) {
   const t = useTranslations("products");
   const { wallet } = useSession();
@@ -127,6 +130,9 @@ function ProductFaceFrame({
               publisher: application.publisher,
             })}
           </Alert>
+          {notice.kind === "launch_full" ? (
+            <Button onClick={onRelaunch}>{t("notices.relaunch")}</Button>
+          ) : null}
           <Button variant="secondary" onClick={dismissNotice}>
             {t("notices.dismiss")}
           </Button>
@@ -220,6 +226,13 @@ export function ProductFaceHost({ slug }: { slug: string }) {
             launchId={phase.launchId}
             application={context.data.application}
             frameUrl={context.data.frameUrl}
+            onRelaunch={() =>
+              setPhase((current) => ({
+                status: "open",
+                instance: current.instance + 1,
+                launchId: newFaceLaunchId(),
+              }))
+            }
             onEnded={(reason) =>
               setPhase((current) => ({
                 status: "ended",

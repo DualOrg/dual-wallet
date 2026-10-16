@@ -427,6 +427,21 @@ launches holding such evidence are dropped last; the oldest, any unreadable
 one, another wallet's and an earlier session's without such history are
 dropped on the next write.
 
+A launch journal holds at most six entries (`JOURNAL_MAX_ENTRIES`). Only a
+`cancelled` or `settled` entry makes room; an entry whose authority left the
+wallet and that never settles here (a Warranty & Service write or a transfer
+offer, `kind: "runtime"`, stays `assertion_issued`) is kept. When nothing can
+make room, a `begin` is refused `journal_full` (409) before anything is
+confirmed or minted. The face hears `temporarily_unavailable`; the host, in
+its own UI and only while that launch is live, shows a notice offering
+**Restart the application**: the same face launched again with a new launch ID
+and an empty journal, under the same wallet session. Nothing is re-sent for the
+earlier launch: its journal stays sealed under the cookie rules above, and the
+new launch's start-up reconciliation reads its registration and transfer steps
+back as for any relaunch. A full Passport registration, a Warranty & Service
+case with its writes and quote decisions, and a transfer therefore take more
+than one launch.
+
 It holds IDs, hashes and phases only: operation ID, kind (`registration`,
 `runtime`, `settle`), operation or action name, object, case, phase
 (`confirming`, `confirmed`, `assertion_issued`, `submitted`, `settled`,

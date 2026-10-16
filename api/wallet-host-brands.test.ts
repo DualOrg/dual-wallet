@@ -1957,9 +1957,39 @@ describe("two complete branded apps on one engine", () => {
       // Transfer: the offer, the recipient's acceptance on the same host, the
       // request step and the custody step, each read by the wallet itself,
       // reserved and executed once.
-      // The face is launched again for it (one launch journals a bounded
-      // number of operations), with the same session.
+      // This launch's journal now holds its bound (JOURNAL_MAX_ENTRIES): one
+      // settled step and five Warranty & Service writes whose authority left
+      // the wallet, which are kept and never make room. One more step can
+      // begin (the settled one makes room); the next is refused journal_full
+      // before anything is minted, and the host offers "Restart the
+      // application": the face launched again, with the same session, under
+      // a journal of its own. That is how the transfer continues here.
       advance();
+      expect(
+        (await holder.list()).body.operations.map(
+          (item: { kind: string; phase: string }) => [item.kind, item.phase],
+        ),
+      ).toEqual([
+        ["settle", "settled"],
+        ...Array(5).fill(["runtime", "assertion_issued"]),
+      ]);
+      const room = (operationId: string) =>
+        holder.operations({
+          transition: "begin",
+          kind: "runtime",
+          operation: "case.open",
+          object_id: unit.id,
+          case_id: first,
+          operation_id: operationId,
+          context_id: contextId,
+        });
+      expect((await room(`case-write-${brand.tag}-0004`)).status).toBe(200);
+      const mintsBeforeFull = minted.mock.calls.length;
+      expect(await room(`case-write-${brand.tag}-0005`)).toMatchObject({
+        status: 409,
+        body: { code: "journal_full" },
+      });
+      expect(minted.mock.calls.length).toBe(mintsBeforeFull);
       const seller = holder.relaunch(launchOf(brand, "seller"));
       const saleContext = await seller.select(unit.id);
       const recipient = new Browser(

@@ -553,6 +553,10 @@
         "face_settle_proposal_stale": "{publisher}'s confirmation was prepared for an earlier version of this product's record. Their team needs to send a new one; nothing was changed.",
         "face_settle_proposal_release_changed": "{publisher}'s confirmation was prepared for an earlier version of their app. Their team needs to send a new one; nothing was changed."
       },
+      "relaunch": "Restart the application",
+      "launch_full": {
+        "journal_full": "The {publisher} application has as many requests open as it can keep track of, so it cannot start another. Nothing was sent for this one. Restart the application to carry on: requests already sent are kept and checked again, never sent twice."
+      },
       "transfer_step": {
         "transferred": "Your transfer is complete: the product now belongs to the recipient's wallet. Its private details and service requests are no longer shown to you.",
         "outcome_unknown": "Your wallet already sent a transfer step for a product you offered. It is still being confirmed and will not be sent again. Check back later."

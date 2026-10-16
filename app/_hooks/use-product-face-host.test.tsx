@@ -1,7 +1,10 @@
 import { act, renderHook } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import type { SessionEndReason } from "@/app/_domain/product-face";
+import {
+  ProductFaceError,
+  type SessionEndReason,
+} from "@/app/_domain/product-face";
 import type { ProductFaceHandlers } from "@/app/_lib/external-face-bridge";
 import { application, HOLDER } from "@/test/product-face-fixtures";
 
@@ -58,6 +61,7 @@ const listRetainedTransferSteps = jest.fn(async (): Promise<unknown[]> => []);
 const readTransferProgress = jest.fn();
 const listFaceOperations = jest.fn(async (): Promise<unknown[]> => []);
 const readFaceOperationStatus = jest.fn();
+const writeFaceJournal = jest.fn();
 jest.mock("@/app/_services/product-face.client", () => ({
   executeSettleAction: (...args: unknown[]) =>
     executeSettleAction(...(args as [])),
@@ -72,6 +76,7 @@ jest.mock("@/app/_services/product-face.client", () => ({
     listRetainedTransferSteps(...(args as [])),
   readTransferProgress: (...args: unknown[]) =>
     readTransferProgress(...(args as [])),
+  writeFaceJournal: (...args: unknown[]) => writeFaceJournal(...(args as [])),
 }));
 
 let captured: ProductFaceHandlers | undefined;
@@ -676,5 +681,81 @@ describe("a journalled registration's late status never reaches a launch that is
       ["register-op-0001", "registered"],
       ["register-op-0002", "registered"],
     ]);
+  });
+});
+
+// A launch journal holds JOURNAL_MAX_ENTRIES; steps whose authority left the
+// wallet are kept, never evicted. When none can make room, this launch can
+// begin nothing more: the face hears the refusal, and the host offers a new
+// launch (its own journal) in its own UI.
+describe("a launch whose journal has no room left", () => {
+  const begin = {
+    transition: "begin",
+    kind: "runtime",
+    operation: "case.open",
+    operation_id: "case-0123456789abcdef",
+    object_id: "aaaaaaaaaaaaaaaaaaaaaaaa",
+  } as unknown as Parameters<ProductFaceHandlers["journal"]>[0];
+
+  beforeEach(() => {
+    captured = undefined;
+    fakeHost.session.ended = null;
+    writeFaceJournal.mockReset();
+    session = {
+      wallet: accountA,
+      authenticationMethod: "email",
+      isAuthenticated: true,
+      isLoading: false,
+      refresh: jest.fn(),
+      logout: jest.fn(),
+      onSessionEnd: () => () => undefined,
+    };
+  });
+
+  it("refuses the face's begin and offers a new launch", async () => {
+    writeFaceJournal.mockRejectedValue(
+      new ProductFaceError("journal_full", 409),
+    );
+    const { hook, handlers } = launch();
+    await act(async () => {
+      await expect(handlers.journal(begin)).rejects.toMatchObject({
+        code: "journal_full",
+      });
+    });
+    expect(hook.result.current.notice).toEqual({
+      kind: "launch_full",
+      reason: "journal_full",
+    });
+    expect(session.refresh).not.toHaveBeenCalled();
+  });
+
+  it("offers nothing for any other refusal", async () => {
+    writeFaceJournal.mockRejectedValue(
+      new ProductFaceError("operation_conflict", 409),
+    );
+    const { hook, handlers } = launch();
+    await act(async () => {
+      await expect(handlers.journal(begin)).rejects.toMatchObject({
+        code: "operation_conflict",
+      });
+    });
+    expect(hook.result.current.notice).toBeNull();
+  });
+
+  it("offers nothing once the launch is no longer live", async () => {
+    let refuse: (error: unknown) => void = () => undefined;
+    writeFaceJournal.mockReturnValue(
+      new Promise((_, reject) => {
+        refuse = reject;
+      }),
+    );
+    const { hook, handlers } = launch();
+    const pending = handlers.journal(begin);
+    fakeHost.session.ended = "logout";
+    await act(async () => {
+      refuse(new ProductFaceError("journal_full", 409));
+      await expect(pending).rejects.toMatchObject({ code: "journal_full" });
+    });
+    expect(hook.result.current.notice).toBeNull();
   });
 });
