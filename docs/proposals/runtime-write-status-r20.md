@@ -374,7 +374,8 @@ list.
       "intended_params_hash": "sha256:<hex>",
       "observed_params_hash": "sha256:<hex>",
       "params_match": true,
-      "observed_status": "<Dual's own status word for the executed action>",
+      "execution": "succeeded",
+      "observed_status_raw": "<Dual's own status value for the action, preserved verbatim>",
       "affected_objects": ["<24 hex>", "..."],
       "bound_to": {
         "operation_id": "<op_id>",
@@ -407,9 +408,20 @@ list.
   the status and the affected objects). `params_match: true` means the two
   are equal; a domain content hash (a custom map, a record body) is never
   relabelled as either.
-- `observed_status` and `affected_objects` come from that fresh log read;
-  `affected_objects` lists the objects the action affected and contains
-  `object_id`.
+- `execution` is the runtime's strict resolver's NORMALIZED verdict on the
+  action's executed status as the fresh public Dual action log reports it:
+  exactly `"succeeded"` when the log shows the action terminally and
+  successfully executed, `"pending"` while it is not terminal, `"failed"`
+  when it terminally failed or was refused, `"unknown"` when the log gives
+  no decidable status. The mapping from Dual's raw status values to these
+  four is the runtime's reviewed resolver's and is not restated here; the
+  raw value is preserved verbatim in `observed_status_raw` for audit and is
+  never interpreted by the wallet. Only `execution: "succeeded"` can be part
+  of a `write_applied` answer: a proof with matching params but `pending`,
+  `failed` or `unknown` execution leaves the record `409
+write_outcome_unknown` (reason `effects_unproved`), never applied.
+- `affected_objects` comes from that fresh log read; it lists the objects
+  the action affected and contains `object_id`.
 - `bound_to` names this very operation and request and the effect's index;
   `verified_at` is this read's time (the wallet accepts ten minutes of
   skew). Each proof is verified afresh at every read through the runtime's
@@ -427,26 +439,29 @@ in list order, so `outcome_hash` (and therefore `recovery.ack`) binds the
 ENTIRE effect list; an answer whose `outcome_proof.dual.effects` does not
 equal the projection of `proofs` is malformed.
 
-### Compatibility with approved r20
+### Compatibility with approved r20: exactly one representation
 
-- `intended_dual_writes: 1`: a runtime MAY keep answering the approved r20
-  singular `proof` (its field names unchanged) with `outcome_proof.dual =
-{action_id, object_id, observed_payload_hash}`; or it may answer the r20.1
-  `proofs` list of one. The wallet accepts either for one effect. If both are
-  present they must describe the same action, else malformed.
-- `intended_dual_writes >= 2`: only `proofs`. The singular `proof` alone is
-  malformed for such a record, and the record stays held.
+- `intended_dual_writes: 1`: a runtime answers EITHER the approved r20
+  singular `proof` (its field names unchanged, with `outcome_proof.dual =
+{action_id, object_id, observed_payload_hash}`) OR the r20.1 `proofs` list
+  of one (with `outcome_proof.dual = {effects: [...]}`), never both. An
+  answer carrying both `proof` and `proofs` is malformed and held, whatever
+  they say; agreement between the two is not checked, because the two forms
+  are not compared.
+- `intended_dual_writes >= 2`: only `proofs`. A singular `proof` on such a
+  record, alone or beside the list, is malformed and the record stays held.
 - `backed: false` is unchanged.
 
 ### Wallet validation under r20.1 (what frees a slot or proves a recovered item)
 
-Every §1 gate as approved, and for `backed: true`: `proofs.length ===
-intended_dual_writes >= 1` (or the compatible singular form when the count
-is `1`); indices `0..n-1` in order with `bound_to.effect_index` equal;
+Every §1 gate as approved, and for `backed: true`: exactly one
+representation present (`proofs`, or the singular `proof` only when the
+count is `1`); `proofs.length === intended_dual_writes >= 1`; indices `0..n-1` in order with `bound_to.effect_index` equal;
 unique, well-formed `action_id`s; per proof: `resolver ===
 "dual_action_log"`, a plain-code `action`, a well-formed `object_id` and
 non-empty `signer`, `intended_params_hash === observed_params_hash` (both
-`sha256:` hashes), `params_match === true`, a plain-code `observed_status`,
+`sha256:` hashes), `params_match === true`, `execution === "succeeded"`
+exactly (`observed_status_raw` present as a string but never interpreted),
 `affected_objects` a non-empty array of object ids containing `object_id`,
 `bound_to.operation_id` and `bound_to.request_hash` equal to the answer's,
 `verified_at` within ten minutes; and `outcome_proof.dual.effects` equal to
