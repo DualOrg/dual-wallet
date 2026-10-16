@@ -464,7 +464,12 @@ class BrandRuntime {
         brand.cases[0],
         {
           status: "prepared",
-          quote: { quote_version: 2, provider, amount: "149.90", currency: "EUR" },
+          quote: {
+            quote_version: 2,
+            provider,
+            amount: "149.90",
+            currency: "EUR",
+          },
           decision: null,
           evidence: 0,
           information: 0,
@@ -474,7 +479,12 @@ class BrandRuntime {
         brand.cases[1],
         {
           status: "open",
-          quote: { quote_version: 1, provider, amount: "39.00", currency: "EUR" },
+          quote: {
+            quote_version: 1,
+            provider,
+            amount: "39.00",
+            currency: "EUR",
+          },
           decision: null,
           evidence: 0,
           information: 0,
@@ -618,7 +628,13 @@ class BrandRuntime {
             String(claims.holder),
           )
         : this.warrantyCase(operation, target, String(claims.holder));
-    this.calls.push({ by, kind, operation, operationId, status: answer.status });
+    this.calls.push({
+      by,
+      kind,
+      operation,
+      operationId,
+      status: answer.status,
+    });
     return answer;
   }
 
@@ -1026,22 +1042,27 @@ function newWorld() {
   const dual = new FakeDual(BRANDS);
   world = {
     dual,
-    runtimes: new Map(BRANDS.map((brand) => [brand, new BrandRuntime(brand, dual)])),
+    runtimes: new Map(
+      BRANDS.map((brand) => [brand, new BrandRuntime(brand, dual)]),
+    ),
   };
-  global.fetch = jest.fn(async (input: string | URL, init: RequestInit = {}) => {
-    const url = String(input);
-    const { origin } = new URL(url);
-    if (origin === "https://api.dual.network") return world.dual.fetch(url, init);
-    for (const runtime of world.runtimes.values()) {
-      if (origin === runtime.brand.faceOrigin) {
-        return runtime.fetch("passport", url, init);
+  global.fetch = jest.fn(
+    async (input: string | URL, init: RequestInit = {}) => {
+      const url = String(input);
+      const { origin } = new URL(url);
+      if (origin === "https://api.dual.network")
+        return world.dual.fetch(url, init);
+      for (const runtime of world.runtimes.values()) {
+        if (origin === runtime.brand.faceOrigin) {
+          return runtime.fetch("passport", url, init);
+        }
+        if (origin === runtime.brand.warranty.origin) {
+          return runtime.fetch("warranty", url, init);
+        }
       }
-      if (origin === runtime.brand.warranty.origin) {
-        return runtime.fetch("warranty", url, init);
-      }
-    }
-    throw new TypeError(`fetch failed: ${url}`);
-  }) as unknown as typeof fetch;
+      throw new TypeError(`fetch failed: ${url}`);
+    },
+  ) as unknown as typeof fetch;
 }
 
 /**
@@ -1090,9 +1111,7 @@ async function expectOwnHost(brand: Brand) {
     faces: [brand.slug],
     status: "active",
   });
-  expect(productFaceEntries().map((entry) => entry.slug)).toEqual([
-    brand.slug,
-  ]);
+  expect(productFaceEntries().map((entry) => entry.slug)).toEqual([brand.slug]);
 }
 
 // ---------------------------------------------------------------- browser
@@ -1137,7 +1156,11 @@ class Browser {
           }),
           refreshToken: jwt({ exp: Math.floor(clock / 1000) + 7200 }),
         } as unknown as LoginOut,
-        { organizationId: brand.organizationId, subdomain: "*", host: brand.host },
+        {
+          organizationId: brand.organizationId,
+          subdomain: "*",
+          host: brand.host,
+        },
         "email",
       ),
     ).toBe(true);
@@ -1405,9 +1428,15 @@ async function issueRegistration(holder: Browser) {
       record_id: brand.unit.recordId,
       request_hash: hashOf("registration.submit", operationId, target, input),
     }),
-  ).toMatchObject({ status: 200, body: { operation: { phase: "confirming" } } });
+  ).toMatchObject({
+    status: 200,
+    body: { operation: { phase: "confirming" } },
+  });
   expect(
-    await holder.operations({ transition: "confirm", operation_id: operationId }),
+    await holder.operations({
+      transition: "confirm",
+      operation_id: operationId,
+    }),
   ).toMatchObject({ status: 200, body: { operation: { phase: "confirmed" } } });
   const submitted = await faceCall(holder, "passport", {
     operation: "registration.submit",
@@ -1629,7 +1658,11 @@ interface Evidence {
  * it is served there, nothing is minted there, and the other brand's
  * runtimes refuse its assertions.
  */
-async function nothingCrossesTo(other: Brand, from: Browser, evidence: Evidence) {
+async function nothingCrossesTo(
+  other: Brand,
+  from: Browser,
+  evidence: Evidence,
+) {
   const { brand } = from;
   const mints = minted.mock.calls.length;
   const calls = runtimeOf(other).calls.length;
@@ -1730,9 +1763,9 @@ beforeEach(() => {
   resetIssueGuard();
   minted.mockReset();
   newWorld();
-  getWallet.mockReset().mockImplementation(async (token?: string) =>
-    world.dual.wallet(token),
-  );
+  getWallet
+    .mockReset()
+    .mockImplementation(async (token?: string) => world.dual.wallet(token));
   getObjectById
     .mockReset()
     .mockImplementation(async (_token: string | undefined, objectId: string) =>
@@ -1740,7 +1773,9 @@ beforeEach(() => {
     );
   getObjectByIdPublic
     .mockReset()
-    .mockImplementation(async (objectId: string) => world.dual.object(objectId));
+    .mockImplementation(async (objectId: string) =>
+      world.dual.object(objectId),
+    );
 });
 afterEach(() => {
   now.mockRestore();
@@ -1765,7 +1800,11 @@ describe("two complete branded apps on one engine", () => {
       const product = { object_id: unit.id };
       deploy(brand);
       await expectOwnHost(brand);
-      const holder = new Browser(brand, brand.holder, launchOf(brand, "holder"));
+      const holder = new Browser(
+        brand,
+        brand.holder,
+        launchOf(brand, "holder"),
+      );
       const evidence: Evidence = { operations: [], assertions: [] };
 
       // Passport registration: issued, submitted by the face, settled on the
@@ -2047,7 +2086,11 @@ function nextRelease(brand: Brand) {
     "home.introduction",
     "Register, service and pass on what you own, all in one place.",
   );
-  edit(document, "navigation", [...(document.navigation as string[])].reverse());
+  edit(
+    document,
+    "navigation",
+    [...(document.navigation as string[])].reverse(),
+  );
   edit(document, "identity.colours.brand", "#2a6f50");
   return document;
 }
@@ -2068,14 +2111,20 @@ const runtimeCalls = (brand: Brand, operation: string) =>
   runtimeOf(brand).calls.filter((call) => call.operation === operation).length;
 
 describe("one engine, a host's configuration updated and rolled back", () => {
-  it.each(BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>)(
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
     "%s: what was sealed under N continues under N+1 and again under N; nothing is re-signed or re-sent",
     async (_label, brand) => {
       const consoleError = jest
         .spyOn(console, "error")
         .mockImplementation(() => {});
       const release = deploy(brand);
-      const holder = new Browser(brand, brand.holder, launchOf(brand, "holder"));
+      const holder = new Browser(
+        brand,
+        brand.holder,
+        launchOf(brand, "holder"),
+      );
       const { registration, settleOperation, settle } =
         await settlePending(holder);
       const sealed = new Map(holder.cookies);
@@ -2090,8 +2139,8 @@ describe("one engine, a host's configuration updated and rolled back", () => {
       });
       expect(await readback()).toMatchObject({
         status: "invalid",
-        configurationSha256: hostEnvironment(next)
-          .WALLET_HOST_CONFIGURATION_SHA256,
+        configurationSha256:
+          hostEnvironment(next).WALLET_HOST_CONFIGURATION_SHA256,
       });
       expect(consoleError).toHaveBeenCalledWith(
         expect.stringContaining("(build_mismatch)"),
@@ -2238,11 +2287,17 @@ describe("one engine, a host's configuration updated and rolled back", () => {
     },
   );
 
-  it.each(BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>)(
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
     "%s: another organisation, origin or face programme never serves what was sealed under N",
     async (_label, brand) => {
       deploy(brand);
-      const holder = new Browser(brand, brand.holder, launchOf(brand, "holder"));
+      const holder = new Browser(
+        brand,
+        brand.holder,
+        launchOf(brand, "holder"),
+      );
       const { registration, settleOperation, settle } =
         await settlePending(holder);
       const sealed = new Map(holder.cookies);
@@ -2270,7 +2325,11 @@ describe("one engine, a host's configuration updated and rolled back", () => {
           "session" | "journal",
         ]
       > = [
-        ["another organisation", { document: organisation, at: brand }, "session"],
+        [
+          "another organisation",
+          { document: organisation, at: brand },
+          "session",
+        ],
         [
           "another origin",
           { document: moved, at: { origin, host: new URL(origin).host } },
@@ -2300,33 +2359,46 @@ describe("one engine, a host's configuration updated and rolled back", () => {
           ),
         ];
         if (refusal === "session") {
-          expect(answers.map(({ status, body }) => [label, status, body.code]))
-            .toEqual([
-              [label, 401, "session_expired"],
-              [label, 401, "session_expired"],
-              [label, 401, "session_expired"],
-            ]);
+          expect(
+            answers.map(({ status, body }) => [label, status, body.code]),
+          ).toEqual([
+            [label, 401, "session_expired"],
+            [label, 401, "session_expired"],
+            [label, 401, "session_expired"],
+          ]);
         } else {
-          expect(answers.map(({ status, body }) => [label, status, body]))
-            .toEqual([
-              [label, 200, { operations: [], retained: [] }],
-              [label, 404, expect.objectContaining({ code: "unknown_operation" })],
-              [
-                label,
-                409,
-                expect.objectContaining({ code: "face_execution_unbound" }),
-              ],
-            ]);
+          expect(
+            answers.map(({ status, body }) => [label, status, body]),
+          ).toEqual([
+            [label, 200, { operations: [], retained: [] }],
+            [
+              label,
+              404,
+              expect.objectContaining({ code: "unknown_operation" }),
+            ],
+            // The journal is sealed per programme, so N's settle is not
+            // this programme's: a branded host's journey gate finds no
+            // step to classify and refuses it before the execution
+            // binding (or anything upstream) is reached.
+            [
+              label,
+              403,
+              expect.objectContaining({ code: "capability_not_granted" }),
+            ],
+          ]);
+        }
+        if (label === "another origin") {
+          // While the entrance is moved, the address N served is no longer
+          // an entrance (421), never the moved host's.
+          const misdirected = await proxy(
+            new NextRequest(
+              `${brand.origin}/api/faces/${brand.slug}/operations`,
+              { headers: { host: brand.host } },
+            ),
+          );
+          expect([label, misdirected.status]).toEqual([label, 421]);
         }
       }
-      // The address N served is no longer an entrance (421), never the
-      // moved host's.
-      const misdirected = await proxy(
-        new NextRequest(`${brand.origin}/api/faces/${brand.slug}/operations`, {
-          headers: { host: brand.host },
-        }),
-      );
-      expect(misdirected.status).toBe(421);
       // Nothing was minted, read from a runtime or sent to Dual for them.
       expect(minted.mock.calls.length).toBe(mints);
       expect(runtimeOf(brand).calls.length).toBe(calls);

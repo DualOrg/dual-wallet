@@ -1359,8 +1359,9 @@ export async function reconcileOperation(
   // registration a launch issued under that id. Derived read-only each time:
   // never added to this journal, re-sealed or rewritten, and nothing is
   // minted, submitted or settled for it here.
-  const entry = own ?? recoveredRegistration(context, request, operationId);
-  if (!entry) return fail("unknown_operation", 404);
+  const found = own ?? recoveredRegistration(context, request, operationId);
+  if (!found) return fail("unknown_operation", 404);
+  let entry = found;
   const recovered = !own;
   let readback: { ownerIsYou: boolean; state: string | null } | undefined;
   let evaluation:
@@ -1442,6 +1443,8 @@ export async function reconcileOperation(
       now,
     );
     if (settled.ok) {
+      // Answer with the phase this response seals, as the close does.
+      entry = settled.entry;
       journal = { ...context.journal, entries: settled.entries };
     }
   }
