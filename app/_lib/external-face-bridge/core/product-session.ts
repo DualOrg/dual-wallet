@@ -87,6 +87,15 @@ export type ProductFaceHostNotice =
       moreToCheck: boolean;
       /** Items of a journey this host disables: neither shown nor acknowledged. */
       withheld: number;
+      /** Per runtime asked: its records checked, or why not (host-owned words). */
+      checks: Array<{
+        runtime: "product" | "service";
+        status: "checked" | "incomplete" | "unavailable" | "unsupported";
+        reason: string | null;
+        unreadable: number;
+      }>;
+      /** Items the BFF could read only by identity: shown as not checked. */
+      unreadable: number;
       items: Array<{
         operationId: string;
         kind: "registration" | "settle" | "transfer" | "runtime";

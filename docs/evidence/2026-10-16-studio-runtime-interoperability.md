@@ -293,6 +293,81 @@ behaviour for that case).
 3. Studio's consumer interop test pins `bc3a7b8` by default; the delivered
    candidate is `d2f7416` (it passes with that pin set explicitly).
 
+## Hosted observation (Root, 2026-10-16): assessment and the wallet's response
+
+Root reports the wallet `d2f7416` live on the pre-production host with Studio
+`4a43c157` (a direct child of `4b20253`; the diff between them touches no
+recovery, runtime or cases module, so the served recovery code is the one
+run 2 exercised) and that the recipient's ordinary journey passes while the
+host consistently shows "Not every earlier request could be checked this
+time. Nothing was sent again." No write was invoked.
+
+That line is the host's `recoveryIncomplete` notice. The wallet shows it in
+exactly one case: some runtime it asked did not yield a scan that was both
+listed and complete. Read against the Studio code the host serves, the
+possible causes are, in the order they are likely:
+
+1. The runtime's own word. `recoveryList` marks every page `complete: false`
+   when the actor's index holds an entry it cannot order (no valid
+   `recorded_at` or `operation_id`) or when the index root is corrupt
+   (`src/product-face-runtime.mjs` 2688, `src/product-face-cases.mjs` 635,
+   `index.unorderable > 0 || index.corrupt`). Studio's own test states the
+   consequence: "a malformed index entry cannot be listed: the scan is never
+   complete" (`test/product-face-write-outcome-recovery.test.mjs` 691). Such
+   an entry is retained without expiry, so the notice would persist on every
+   launch until the index is repaired. This matches "correctly held legacy
+   outcomes" and is Studio's to resolve.
+2. An index entry that is orderable but otherwise invalid is listed with
+   `operation`, `object_id` and `recorded_artifact` set to `null`
+   (`src/product-face-recovery.mjs` 246 and 296). The wallet at `d2f7416`
+   read such a page as unreadable as a whole, so that runtime counted as
+   `unavailable` and the check as incomplete, and none of that runtime's
+   readable items were shown. The pinned §2 item shape has no null
+   `object_id`; this is a Studio wire deviation the wallet now tolerates by
+   identity (below), while the check stays incomplete for that reason.
+3. The linked Warranty runtime unreachable from the wallet's server, or
+   refusing (`503 recovery_unavailable`, `face_linked_cases_unprovisioned`),
+   while the Passport runtime lists: `supported` true, `complete` false.
+4. A page failing the wallet's own validation (echo, snapshot, order, cursor
+   cycle) or more than twenty pages.
+
+The hosted environment is Root's; nothing here was observed directly. The
+wallet source change committed with this record makes the cause visible
+without access to the environment:
+
+- The listing response and the host notice now name each runtime asked
+  (`product`, `service`) with `checked`, `incomplete`, `unavailable` or
+  `unsupported` and the cause (`runtime_incomplete`, `page_invalid`,
+  `pages_exceeded`, `read_failed`, `item_unreadable`, `unreachable`,
+  `invalid`, `unsigned`). Root can read them in the notice itself or in the
+  `checks` field of `GET /api/faces/<slug>/recovery` for the signed-in
+  recipient.
+- An item the wallet can read only by its identity is kept as `unreadable`
+  (counted in the notice: "could not be read by this wallet and were not
+  checked"), the runtime's readable items are still listed and resolved, and
+  that runtime's check is incomplete for the reason `item_unreadable`;
+  nothing is acknowledged from an incomplete check, as before.
+- An incomplete check without a continuation offers **Check again**.
+
+What this does not change: an index the runtime itself calls incomplete, or
+cannot read, keeps the check incomplete and acknowledgements withheld; the
+original unknowns stay exactly as the runtime holds them, and nothing is
+re-sent. Verified locally with the branded fixture (an orderable-but-invalid
+listed item shaped as the Studio runtime shapes it, the runtime's own
+incomplete word, and the complete re-check), not against the actual runtime
+with a corrupted index, which needs store access the harness does not
+expose.
+
+**Essential Studio dependency for Root:** if the hosted `checks` read
+`service` or `product` as `incomplete` with `runtime_incomplete`, or
+`item_unreadable`, the cause is retained index entries that the runtime
+cannot order or cannot shape to the contract. Studio decides whether to
+repair the hosted index (re-shape or quarantine those entries) or to accept a
+permanently incomplete, non-acknowledging check for that actor; the wallet
+cannot and must not make that choice. If they read `unavailable` with
+`unreachable`, the wallet's server cannot reach the linked Warranty runtime's
+origin or the runtime refuses the host-only listing: a deployment matter.
+
 ## Re-running
 
 In the Studio checkout at the recorded commit (`a2b04b9` for run 1,

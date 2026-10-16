@@ -47,6 +47,17 @@ export async function GET(request: NextRequest, { params }: Params) {
         ticket: item.ticket,
       })),
       discovered: listing.discovered,
+      checks: listing.checks.map((check) => ({
+        runtime: check.runtime,
+        status: check.status,
+        reason: check.reason,
+        unreadable: check.unreadable,
+      })),
+      unreadable: listing.unreadable.map((item) => ({
+        operation_id: item.operationId,
+        kind: item.kind,
+        state: item.state,
+      })),
     });
   } catch {
     return faceContextError(context, "upstream_unavailable", 502);

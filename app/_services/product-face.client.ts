@@ -343,6 +343,14 @@ export interface FaceRecoveryItem {
   ticket: string | null;
 }
 
+/** What the BFF tells of one runtime it asked (host-owned words). */
+export interface FaceRecoveryCheck {
+  runtime: "product" | "service";
+  status: "checked" | "incomplete" | "unavailable" | "unsupported";
+  reason: string | null;
+  unreadable: number;
+}
+
 export interface FaceRecovery {
   /** false: no runtime of this face answers the proposed contract r20. */
   supported: boolean;
@@ -361,6 +369,10 @@ export interface FaceRecovery {
    * listing named; the host hands them straight back (confirmFaceDiscovery).
    */
   discovered?: string[];
+  /** One entry per runtime asked: checked, or why not. */
+  checks?: FaceRecoveryCheck[];
+  /** Items listed by identity only, shown as not checked (a count). */
+  unreadable?: number;
 }
 
 /**
@@ -382,6 +394,8 @@ export async function listFaceRecovery(
     continuation?: unknown;
     items: unknown;
     discovered?: unknown;
+    checks?: unknown;
+    unreadable?: unknown;
   }>(
     face,
     continuation
@@ -404,7 +418,12 @@ export async function listFaceRecovery(
       !(
         Array.isArray(result.discovered) &&
         result.discovered.every((ticket) => typeof ticket === "string")
-      ))
+      )) ||
+    (result.checks !== undefined &&
+      !(
+        Array.isArray(result.checks) && result.checks.every(isFaceRecoveryCheck)
+      )) ||
+    (result.unreadable !== undefined && !Array.isArray(result.unreadable))
   ) {
     throw new ProductFaceError("temporarily_unavailable");
   }
@@ -418,7 +437,33 @@ export async function listFaceRecovery(
     ...(Array.isArray(result.discovered) && result.discovered.length > 0
       ? { discovered: result.discovered as string[] }
       : {}),
+    ...(Array.isArray(result.checks)
+      ? { checks: result.checks as FaceRecoveryCheck[] }
+      : {}),
+    ...(Array.isArray(result.unreadable)
+      ? { unreadable: result.unreadable.length }
+      : {}),
   };
+}
+
+const recoveryCheckRuntimes: readonly string[] = ["product", "service"];
+const recoveryCheckStatuses: readonly string[] = [
+  "checked",
+  "incomplete",
+  "unavailable",
+  "unsupported",
+];
+function isFaceRecoveryCheck(value: unknown): value is FaceRecoveryCheck {
+  if (!value || typeof value !== "object") return false;
+  const check = value as Record<string, unknown>;
+  return (
+    typeof check.runtime === "string" &&
+    recoveryCheckRuntimes.includes(check.runtime) &&
+    typeof check.status === "string" &&
+    recoveryCheckStatuses.includes(check.status) &&
+    (check.reason === null || typeof check.reason === "string") &&
+    typeof check.unreadable === "number"
+  );
 }
 
 /**

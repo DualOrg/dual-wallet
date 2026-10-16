@@ -674,6 +674,13 @@ class BrandRuntime {
   recoveryPageSize = 50;
   /** r20 fixture: force an incomplete scan (a store could not be read). */
   incompleteScan = false;
+  /**
+   * FIXTURE: one listed item shaped as the actual Studio runtime shapes an
+   * index entry it retains although malformed (src/product-face-recovery.mjs
+   * readRecoveryIndex / recoveryItemOf at 4b20253): the identity fields are
+   * kept, operation, object_id and recorded_artifact are null.
+   */
+  malformedListedItem: { kind: RuntimeKind; operationId: string } | undefined;
   /** r20 fixture: inject one scan violation the wallet must catch. */
   recoveryViolation:
     | "repeat_id"
@@ -1698,6 +1705,23 @@ class BrandRuntime {
           }),
         );
       }
+    }
+    if (this.malformedListedItem?.kind === kind) {
+      items.push({
+        kind: "runtime",
+        operation_id: this.malformedListedItem.operationId,
+        operation: null,
+        object_id: null,
+        case_id: null,
+        offer_id: null,
+        proposal_id: null,
+        step: null,
+        action_id: null,
+        state: "unresolved",
+        recorded_at: new Date(Date.now() - 60_000).toISOString(),
+        recorded_artifact: null,
+        artifact_compatible: false,
+      });
     }
     items.sort((left, right) => {
       const byTime =
@@ -5659,6 +5683,92 @@ describe("recovery: an incomplete scan acknowledges nothing (PROPOSED r20 fixtur
       expect(
         recoveredItems(listed.body).every((item) => item.ticket === null),
       ).toBe(true);
+    },
+  );
+
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s: an item the wallet can read only by identity (a record the runtime retains however malformed) makes that runtime's check incomplete for that reason; the readable items are still listed, nothing carries a ticket, and every check names its runtime and cause",
+    async (_label, brand) => {
+      const { holder, runtime } = await seededHeldWorld(brand);
+      seedCompleted(runtime, warrantyActor(brand), 2);
+      runtime.malformedListedItem = {
+        kind: "warranty",
+        operationId: "case-legacy-0001",
+      };
+      const listed = await holder.recovery();
+      expect(listed.body).toMatchObject({
+        supported: true,
+        complete: false,
+        unreadable: [
+          {
+            operation_id: "case-legacy-0001",
+            kind: "runtime",
+            state: "unresolved",
+          },
+        ],
+        checks: [
+          {
+            runtime: "product",
+            status: "checked",
+            reason: null,
+            unreadable: 0,
+          },
+          {
+            runtime: "service",
+            status: "incomplete",
+            reason: "item_unreadable",
+            unreadable: 1,
+          },
+        ],
+      });
+      expect(recoveredItems(listed.body).length).toBeGreaterThan(0);
+      expect(
+        recoveredItems(listed.body).every((item) => item.ticket === null),
+      ).toBe(true);
+      expect(
+        recoveredItems(listed.body).some(
+          (item) => item.operation_id === "case-legacy-0001",
+        ),
+      ).toBe(false);
+      // The runtime's own word that a store could not be read to its end is
+      // named as such.
+      runtime.malformedListedItem = undefined;
+      runtime.incompleteScan = true;
+      const incomplete = await holder.recovery();
+      expect(incomplete.body.checks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            runtime: "service",
+            status: "incomplete",
+            reason: "runtime_incomplete",
+            unreadable: 0,
+          }),
+        ]),
+      );
+      runtime.incompleteScan = false;
+      // Checked again: both runtimes complete, nothing unreadable.
+      const complete = await holder.recovery();
+      expect(complete.body).toMatchObject({
+        supported: true,
+        complete: true,
+        unreadable: [],
+        checks: [
+          {
+            runtime: "product",
+            status: "checked",
+            reason: null,
+            unreadable: 0,
+          },
+          {
+            runtime: "service",
+            status: "checked",
+            reason: null,
+            unreadable: 0,
+          },
+        ],
+      });
     },
   );
 

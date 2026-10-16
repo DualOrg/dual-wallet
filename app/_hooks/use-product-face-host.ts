@@ -28,6 +28,7 @@ import { useSession } from "@/app/_providers/session-provider";
 import {
   acknowledgeFaceRecovery,
   confirmFaceDiscovery,
+  type FaceRecoveryCheck,
   executeSettleAction,
   executeTransferAction,
   listFaceOperations,
@@ -71,6 +72,10 @@ interface RecoveryCollection {
   /** The sealed key to continue from, when items remain beyond the pages. */
   continuation: string | null;
   withheld: number;
+  /** Per runtime asked (the latest page's word): checked, or why not. */
+  checks: FaceRecoveryCheck[];
+  /** Items the BFF could read by identity only (the latest page's count). */
+  unreadable: number;
   items: FaceRecovery["items"];
 }
 
@@ -91,6 +96,8 @@ async function collectRecovery(
   let scanComplete = true;
   let readFailed = false;
   let withheld = 0;
+  let checks: FaceRecoveryCheck[] = [];
+  let unreadable = 0;
   let continuation = from;
   let pages = 0;
   do {
@@ -101,6 +108,8 @@ async function collectRecovery(
         readFailed: true,
         continuation,
         withheld,
+        checks,
+        unreadable,
         items: [...merged.values()],
       };
     }
@@ -124,11 +133,16 @@ async function collectRecovery(
         readFailed: false,
         continuation: null,
         withheld: 0,
+        checks: page.checks ?? [],
+        unreadable: 0,
         items: [],
       };
     }
     pages += 1;
     if (pages === 1) withheld = page.withheld;
+    // Every page carries the whole check's word on each runtime.
+    checks = page.checks ?? [];
+    unreadable = page.unreadable ?? 0;
     for (const item of page.items) merged.set(item.operation_id, item);
     // Proposed r20: the tickets for this launch's held writes the complete
     // listing named go straight back, so the BFF marks them against the
@@ -147,6 +161,8 @@ async function collectRecovery(
     readFailed,
     continuation,
     withheld,
+    checks,
+    unreadable,
     items: [...merged.values()],
   };
 }
@@ -244,6 +260,8 @@ export function useProductFaceHost({
         readFailed: boolean;
         continuation: string | null;
         withheld: number;
+        checks: FaceRecoveryCheck[];
+        unreadable: number;
       }
     | undefined
   >(undefined);
@@ -322,6 +340,8 @@ export function useProductFaceHost({
       complete,
       moreToCheck,
       withheld: current.withheld,
+      checks: current.checks,
+      unreadable: current.unreadable,
       items: [...current.items.values()].map((item) => ({
         operationId: item.operation_id,
         kind: item.kind,
@@ -574,6 +594,8 @@ export function useProductFaceHost({
                   readFailed: recovery.readFailed,
                   continuation: recovery.continuation,
                   withheld: recovery.withheld,
+                  checks: recovery.checks,
+                  unreadable: recovery.unreadable,
                 };
                 showRecovery();
               },
@@ -629,6 +651,24 @@ export function useProductFaceHost({
    * same listing, deterministically, merged into what is shown. Only this
    * live launch's own state; a check with nothing left to continue is a no-op.
    */
+  type RecoveryCurrent = NonNullable<typeof recoveryState.current>;
+  const mergeRecovery = (
+    current: RecoveryCurrent,
+    more: RecoveryCollection,
+    restarted: boolean,
+  ) => {
+    for (const item of more.items) current.items.set(item.operation_id, item);
+    current.scanComplete = restarted
+      ? more.scanComplete
+      : current.scanComplete && more.scanComplete;
+    current.readFailed = more.readFailed;
+    current.continuation = more.continuation;
+    if (restarted) current.withheld = more.withheld;
+    current.checks = more.checks;
+    current.unreadable = more.unreadable;
+    showRecovery();
+  };
+
   const continueRecovery = () => {
     const current = recoveryState.current;
     if (
@@ -640,16 +680,8 @@ export function useProductFaceHost({
     }
     const live = () =>
       recoveryState.current === current && host.current?.session.ended === null;
-    const merge = (more: RecoveryCollection, restarted: boolean) => {
-      for (const item of more.items) current.items.set(item.operation_id, item);
-      current.scanComplete = restarted
-        ? more.scanComplete
-        : current.scanComplete && more.scanComplete;
-      current.readFailed = more.readFailed;
-      current.continuation = more.continuation;
-      if (restarted) current.withheld = more.withheld;
-      showRecovery();
-    };
+    const merge = (more: RecoveryCollection, restarted: boolean) =>
+      mergeRecovery(current, more, restarted);
     void collectRecovery(current.face, live, current.continuation)
       .then(
         (more) => {
@@ -677,6 +709,29 @@ export function useProductFaceHost({
       .catch(() => undefined);
   };
 
+  // An incomplete check (a runtime unreachable, a page the BFF could not
+  // verify, a store the runtime could not read) is re-run from the start on
+  // the person's request, while the launch is live. What it proved before is
+  // kept; nothing is re-sent.
+  const checkRecoveryAgain = () => {
+    const current = recoveryState.current;
+    if (!current || host.current?.session.ended !== null) return;
+    const live = () =>
+      recoveryState.current === current && host.current?.session.ended === null;
+    void collectRecovery(current.face, live)
+      .then(
+        (again) => {
+          if (live() && again.supported) mergeRecovery(current, again, true);
+        },
+        () => {
+          if (!live()) return;
+          current.readFailed = true;
+          showRecovery();
+        },
+      )
+      .catch(() => undefined);
+  };
+
   return {
     state,
     confirmation: confirmation.status === "open" ? confirmation.request : null,
@@ -688,5 +743,6 @@ export function useProductFaceHost({
       setNotice(null);
     },
     continueRecovery,
+    checkRecoveryAgain,
   };
 }

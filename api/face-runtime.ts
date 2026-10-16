@@ -939,11 +939,24 @@ export interface RecoveryItem {
   artifactCompatible: boolean;
 }
 
+/**
+ * A listed item this wallet cannot read in full (a record the runtime
+ * retains however malformed, contract §2), kept by its identity alone so it
+ * is shown as not checked and never resolved or acknowledged.
+ */
+export interface UnreadableItem {
+  operationId: string;
+  kind: RecoveryItemKind;
+  state: RecoveryItem["state"];
+  recordedAt: string;
+}
+
 /** One page of one scan; `complete` is the runtime's word for THIS page. */
 export interface RecoveryPage extends RuntimeEcho {
   scanId: string;
   asOf: string;
   items: RecoveryItem[];
+  unreadable: UnreadableItem[];
   next: string | null;
   complete: boolean;
 }
@@ -953,11 +966,11 @@ export type RecoveryListResult =
   /** An older runtime (400 face_request_invalid, or a 200 without r20). */
   | { outcome: "unsupported" }
   /**
-   * Anything else: unreachable, timed out, 5xx, a cursor refusal, malformed
-   * or oversized. The whole recovery check is incomplete; nothing is
-   * acknowledged.
+   * Anything else: unreachable or timed out (`unreachable`), or a 5xx, a
+   * cursor refusal, a malformed or oversized answer (`invalid`). The whole
+   * recovery check is incomplete; nothing is acknowledged.
    */
-  | { outcome: "unavailable" };
+  | { outcome: "unavailable"; reason: "unreachable" | "invalid" };
 
 const recoveryItemStates = ["unresolved", "completed", "refused"] as const;
 const recoverySteps = ["request", "transfer"] as const;
@@ -981,6 +994,25 @@ function nullOr<T>(
   check: (value: unknown) => value is T,
 ): value is T | null {
   return value === null || check(value);
+}
+
+/** A listed item's identity alone: id, kind, state and recorded time. */
+function unreadableItemOf(value: unknown): UnreadableItem | undefined {
+  if (
+    !record(value) ||
+    !isOperationId(value.operation_id) ||
+    !isRecoveryItemKind(value.kind) ||
+    !isRecoveryItemState(value.state) ||
+    !timestamp(value.recorded_at)
+  ) {
+    return undefined;
+  }
+  return {
+    operationId: value.operation_id,
+    kind: value.kind,
+    state: value.state,
+    recordedAt: value.recorded_at,
+  };
 }
 
 /** One listed item: well formed, and carrying exactly its kind's fields. */
@@ -1072,15 +1104,16 @@ export async function readRecoveryList(
   request: ReturnType<typeof recoveryListRequest>,
   assertion: string,
 ): Promise<RecoveryListResult> {
-  const unavailable = { outcome: "unavailable" } as const;
+  const unavailable = (reason: "unreachable" | "invalid") =>
+    ({ outcome: "unavailable", reason }) as const;
   const unsupported = { outcome: "unsupported" } as const;
   const response = await postRuntimeOperation(runtime, request, assertion);
-  if (!response) return unavailable;
+  if (!response) return unavailable("unreachable");
   const body = jsonRecord(response.body);
   if (response.status === 400 && body?.status === "face_request_invalid") {
     return unsupported;
   }
-  if (response.status !== 200 || !body) return unavailable;
+  if (response.status !== 200 || !body) return unavailable("invalid");
   if (body.contract !== "r20") return unsupported;
   const echo = echoOf(body);
   if (
@@ -1097,14 +1130,23 @@ export async function readRecoveryList(
     !Array.isArray(body.items) ||
     body.items.length > MAX_RECOVERY_ITEMS
   ) {
-    return unavailable;
+    return unavailable("invalid");
   }
   const items: RecoveryItem[] = [];
+  const unreadable: UnreadableItem[] = [];
   for (const entry of body.items) {
     const item = recoveryItemOf(entry);
-    // One malformed item makes the page unreadable, never a shorter page.
-    if (!item) return unavailable;
-    items.push(item);
+    if (item) {
+      items.push(item);
+      continue;
+    }
+    // An item the runtime lists but this wallet cannot read in full (a
+    // record retained however malformed) is kept by its identity, so the
+    // caller shows it as not checked and resolves nothing for it. An item
+    // without even an identity makes the page unreadable, never shorter.
+    const stub = unreadableItemOf(entry);
+    if (!stub) return unavailable("invalid");
+    unreadable.push(stub);
   }
   return {
     outcome: "listed",
@@ -1113,6 +1155,7 @@ export async function readRecoveryList(
       scanId: body.scan_id,
       asOf: body.as_of,
       items,
+      unreadable,
       next: body.next,
       complete: body.complete,
     },

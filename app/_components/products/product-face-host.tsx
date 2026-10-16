@@ -44,6 +44,21 @@ type RecoveryItem = Extract<
  * registration, the brand's confirmation of one, a transfer step, a service
  * request); every other outcome reads the same whatever was sent.
  */
+/** The BFF's reasons the host has words for; anything else is not shown. */
+const recoveryReasons = [
+  "runtime_incomplete",
+  "page_invalid",
+  "pages_exceeded",
+  "read_failed",
+  "item_unreadable",
+  "unreachable",
+  "invalid",
+  "unsigned",
+] as const;
+function recoveryReasonOf(reason: string | null) {
+  return recoveryReasons.find((known) => known === reason);
+}
+
 function recoveryLineKey(item: RecoveryItem) {
   switch (item.outcome) {
     case "registered":
@@ -146,6 +161,7 @@ function ProductFaceFrame({
     notice,
     dismissNotice,
     continueRecovery,
+    checkRecoveryAgain,
   } = useProductFaceHost({ slug, launchId, application, frameUrl, onEnded });
 
   if (state.status === "ended") return null;
@@ -166,6 +182,31 @@ function ProductFaceFrame({
                     })}
                   </p>
                 ))}
+                {notice.checks.map((check) => (
+                  <p key={check.runtime}>
+                    {t(
+                      `notices.recoveryCheck.${check.runtime}.${check.status}`,
+                      {
+                        publisher: application.publisher,
+                      },
+                    )}
+                    {recoveryReasonOf(check.reason) ? (
+                      <>
+                        {" "}
+                        {t(
+                          `notices.recoveryReason.${recoveryReasonOf(check.reason)!}`,
+                        )}
+                      </>
+                    ) : null}
+                  </p>
+                ))}
+                {notice.unreadable > 0 ? (
+                  <p>
+                    {t("notices.recoveryUnreadable", {
+                      count: notice.unreadable,
+                    })}
+                  </p>
+                ) : null}
                 {notice.complete ? null : (
                   <p>{t("notices.recoveryIncomplete")}</p>
                 )}
@@ -186,6 +227,13 @@ function ProductFaceFrame({
           {notice.kind === "recovery" && notice.moreToCheck ? (
             <Button onClick={continueRecovery}>
               {t("notices.recoveryContinue")}
+            </Button>
+          ) : null}
+          {notice.kind === "recovery" &&
+          !notice.complete &&
+          !notice.moreToCheck ? (
+            <Button onClick={checkRecoveryAgain}>
+              {t("notices.recoveryCheckAgain")}
             </Button>
           ) : null}
           <Button variant="secondary" onClick={dismissNotice}>

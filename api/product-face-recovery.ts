@@ -19,6 +19,7 @@ import {
   writeStatusRequest,
   type RecoveryItem,
   type RuntimeEcho,
+  type UnreadableItem,
 } from "@/api/face-runtime";
 import {
   fail,
@@ -106,6 +107,10 @@ export interface RecoveryListing {
    * the mark is applied against the journal as it is then.
    */
   discovered: string[];
+  /** One entry per runtime asked: what was checked and, if not, why. */
+  checks: RuntimeCheck[];
+  /** Items listed by their identity only: shown as not checked, never resolved. */
+  unreadable: UnreadableItem[];
 }
 
 /** One runtime the host lists from, and how mint routes an assertion to it. */
@@ -175,18 +180,37 @@ function committedAnswerEcho(body: Record<string, unknown>) {
   return echoOf(body);
 }
 
+/** Why one runtime's scan is not a complete check (host-owned words). */
+export type ScanIncompleteReason =
+  /** The runtime itself declared a page incomplete (a store it could not read to its end). */
+  | "runtime_incomplete"
+  /** A page failed this wallet's validation: echo, snapshot, order, cursor cycle. */
+  | "page_invalid"
+  /** More pages than the host follows in one check. */
+  | "pages_exceeded"
+  /** A page after the first could not be minted or read. */
+  | "read_failed"
+  /** The runtime listed an item this wallet cannot read in full. */
+  | "item_unreadable";
+
 type Scan =
   /** An older runtime: 400 face_request_invalid on the first page. */
   | { status: "unsupported" }
-  /** Nothing listed: the first page could not be minted or read. */
-  | { status: "unavailable" }
-  | { status: "listed"; items: RecoveryItem[]; complete: boolean };
+  /** Nothing listed: the first page could not be minted (`unsigned`) or read. */
+  | { status: "unavailable"; reason: "unreachable" | "invalid" | "unsigned" }
+  | {
+      status: "listed";
+      items: RecoveryItem[];
+      unreadable: UnreadableItem[];
+      complete: boolean;
+      reason: ScanIncompleteReason | null;
+    };
 
-const incomplete = (items: RecoveryItem[]): Scan => ({
-  status: "listed",
-  items,
-  complete: false,
-});
+const incomplete = (
+  items: RecoveryItem[],
+  unreadable: UnreadableItem[],
+  reason: ScanIncompleteReason,
+): Scan => ({ status: "listed", items, unreadable, complete: false, reason });
 
 /** Strict order of a scan: (recorded_at, operation_id) ascending. */
 function follows(previous: RecoveryItem | undefined, item: RecoveryItem) {
@@ -210,6 +234,7 @@ async function scanRuntime(
   runtime: ScopedRuntime,
 ): Promise<Scan> {
   const items: RecoveryItem[] = [];
+  const unreadable: UnreadableItem[] = [];
   const cursors = new Set<string>();
   let cursor: string | undefined;
   let snapshot: { scanId: string; asOf: number } | undefined;
@@ -224,18 +249,24 @@ async function scanRuntime(
       ...(runtime.audienceOf ? { audienceOf: runtime.audienceOf } : {}),
     });
     if (!minted.ok) {
-      return page === 0 ? { status: "unavailable" } : incomplete(items);
+      return page === 0
+        ? { status: "unavailable", reason: "unsigned" }
+        : incomplete(items, unreadable, "read_failed");
     }
     const result = await readRecoveryList(runtime, read, minted.assertion);
     if (result.outcome === "unsupported") {
       // Only a first page says the runtime has no r20; later it is a failure.
-      return page === 0 ? { status: "unsupported" } : incomplete(items);
+      return page === 0
+        ? { status: "unsupported" }
+        : incomplete(items, unreadable, "read_failed");
     }
     if (result.outcome !== "listed") {
       // A first page that cannot be read lists nothing: the host falls back
       // to today's cookie-based retained steps rather than showing an empty
       // incomplete check as if the runtime had answered.
-      return page === 0 ? { status: "unavailable" } : incomplete(items);
+      return page === 0
+        ? { status: "unavailable", reason: result.reason }
+        : incomplete(items, unreadable, "read_failed");
     }
     const { page: listed } = result;
     const asOf = Date.parse(listed.asOf);
@@ -246,7 +277,7 @@ async function scanRuntime(
         (listed.scanId !== snapshot.scanId || asOf !== snapshot.asOf)) ||
       (listed.next !== null && cursors.has(listed.next))
     ) {
-      return incomplete(items);
+      return incomplete(items, unreadable, "page_invalid");
     }
     snapshot ??= { scanId: listed.scanId, asOf };
     for (const item of listed.items) {
@@ -256,17 +287,73 @@ async function scanRuntime(
         recordedAt > asOf ||
         !follows(items.at(-1), item)
       ) {
-        return incomplete(items);
+        return incomplete(items, unreadable, "page_invalid");
       }
       items.push(item);
     }
+    unreadable.push(...listed.unreadable);
     complete = complete && listed.complete;
-    if (listed.next === null) return { status: "listed", items, complete };
+    if (listed.next === null) {
+      // An item this wallet could not read is a violation of the page's
+      // form (contract §2): the check is incomplete, and what it did list
+      // is shown but nothing of it is acknowledged.
+      if (unreadable.length > 0) {
+        return incomplete(items, unreadable, "item_unreadable");
+      }
+      return {
+        status: "listed",
+        items,
+        unreadable,
+        complete,
+        reason: complete ? null : "runtime_incomplete",
+      };
+    }
     cursors.add(listed.next);
     cursor = listed.next;
   }
   // The scan goes on beyond what the host follows: not a complete check.
-  return incomplete(items);
+  return incomplete(items, unreadable, "pages_exceeded");
+}
+
+/**
+ * What the host tells the person about each runtime it asked (host-owned
+ * words, never face text): whether its records were checked and, when not,
+ * why, so an incomplete check names the runtime and the cause.
+ */
+export interface RuntimeCheck {
+  /** The face's own runtime (product records) or the linked Warranty runtime (service records). */
+  runtime: "product" | "service";
+  status: "checked" | "incomplete" | "unavailable" | "unsupported";
+  reason: ScanIncompleteReason | "unreachable" | "invalid" | "unsigned" | null;
+  /** Items listed by this runtime that this wallet could not read in full. */
+  unreadable: number;
+}
+
+function checkOf(runtime: ScopedRuntime, scan: Scan): RuntimeCheck {
+  const kind = runtime.audienceOf ? "service" : "product";
+  switch (scan.status) {
+    case "listed":
+      return {
+        runtime: kind,
+        status: scan.complete ? "checked" : "incomplete",
+        reason: scan.reason,
+        unreadable: scan.unreadable.length,
+      };
+    case "unavailable":
+      return {
+        runtime: kind,
+        status: "unavailable",
+        reason: scan.reason,
+        unreadable: 0,
+      };
+    case "unsupported":
+      return {
+        runtime: kind,
+        status: "unsupported",
+        reason: null,
+        unreadable: 0,
+      };
+  }
 }
 
 interface Proof {
@@ -575,6 +662,7 @@ export async function listRecovery(
   // Supported only when some runtime answered a page; a first page that
   // could not be read is not an answer, so the host keeps today's behaviour.
   const supported = scans.some(({ scan }) => scan.status === "listed");
+  const checks = scans.map(({ runtime, scan }) => checkOf(runtime, scan));
   if (!supported) {
     return {
       supported: false,
@@ -584,6 +672,8 @@ export async function listRecovery(
       continuation: null,
       items: [],
       discovered: [],
+      checks,
+      unreadable: [],
     };
   }
   // A runtime without r20 beside one with it, or one that could not be
@@ -761,6 +851,10 @@ export async function listRecovery(
         : null,
     items,
     discovered,
+    checks,
+    unreadable: scans.flatMap(({ scan }) =>
+      scan.status === "listed" ? scan.unreadable : [],
+    ),
   };
 }
 

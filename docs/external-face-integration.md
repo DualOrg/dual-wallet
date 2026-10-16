@@ -600,9 +600,26 @@ What the host does on each face launch, after the bootstrap
   Service write or a transfer offer. A proved outcome
   carries the contract's `outcome_proof`, whose hash the wallet recomputes.
   Items of a disabled journey are neither resolved nor acknowledged
-  (`withheld`). An id listed twice is not checked.
+  (`withheld`). An id listed twice is not checked. An item the runtime lists
+  but the wallet can read only by its identity (operation id, kind, state and
+  recorded time; a record the runtime retains however malformed, contract §2)
+  is kept as `unreadable`: never resolved, never acknowledged, and that
+  runtime's check is incomplete for that reason; an item without even an
+  identity makes the page unreadable. Every answer names each runtime asked
+  in `checks` (`product`: the face's own runtime; `service`: the linked
+  Warranty runtime), with `checked`, `incomplete`, `unavailable` or
+  `unsupported` and the cause (`runtime_incomplete`, `page_invalid`,
+  `pages_exceeded`, `read_failed`, `item_unreadable`, `unreachable`,
+  `invalid`, `unsigned`), so an incomplete check is diagnosable from the
+  response alone.
 - The host shows what it proved in its own notice (never face text), with held
-  and unknown items as still being confirmed. Nothing recovered is re-sent,
+  and unknown items as still being confirmed. The notice also says, per
+  runtime asked, whether the person's product records and service records
+  were checked and, when not, why in plain words, counts the records this
+  wallet could read only by identity ("could not be read by this wallet and
+  were not checked"), and for an incomplete check without a continuation
+  offers **Check again**, which re-lists from the start while the launch is
+  live. Nothing recovered is re-sent,
   re-reserved, re-minted for the face or executed, and this launch's journal
   is never written by the listing; a held runtime write of this launch that
   a complete scan named comes back as a discovery ticket the host hands

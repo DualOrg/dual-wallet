@@ -898,6 +898,69 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
     listFaceRecovery.mockReset().mockResolvedValue(unsupportedRecovery);
   });
 
+  it("carries each runtime's check and the unreadable count into the notice, and Check again re-lists from the start", async () => {
+    const checks = [
+      { runtime: "product", status: "checked", reason: null, unreadable: 0 },
+      {
+        runtime: "service",
+        status: "incomplete",
+        reason: "item_unreadable",
+        unreadable: 1,
+      },
+    ];
+    listFaceRecovery.mockResolvedValueOnce({
+      supported: true,
+      complete: false,
+      withheld: 0,
+      continuation: null,
+      items: [heldWrite],
+      checks,
+      unreadable: 1,
+    });
+    const { hook } = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
+    expect(hook.result.current.notice).toMatchObject({
+      kind: "recovery",
+      complete: false,
+      moreToCheck: false,
+      checks,
+      unreadable: 1,
+    });
+    // Check again: a fresh listing from the start replaces the check's word.
+    listFaceRecovery.mockResolvedValueOnce({
+      supported: true,
+      complete: true,
+      withheld: 0,
+      continuation: null,
+      items: [heldWrite],
+      checks: checks.map((check) => ({
+        ...check,
+        status: "checked",
+        reason: null,
+        unreadable: 0,
+      })),
+      unreadable: 0,
+    });
+    await act(async () => {
+      hook.result.current.checkRecoveryAgain();
+      await tick();
+    });
+    expect(listFaceRecovery).toHaveBeenCalledTimes(2);
+    expect(listFaceRecovery).toHaveBeenNthCalledWith(2, face);
+    expect(hook.result.current.notice).toMatchObject({
+      kind: "recovery",
+      complete: true,
+      unreadable: 0,
+      checks: [
+        { runtime: "product", status: "checked" },
+        { runtime: "service", status: "checked" },
+      ],
+    });
+  });
+
   it("hands a page's discovery tickets straight back, once, while the launch is live", async () => {
     confirmFaceDiscovery.mockClear();
     listFaceRecovery
@@ -1158,6 +1221,8 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
     expect(listFaceRecovery).toHaveBeenCalledWith(face);
     expect(hook.result.current.notice).toEqual({
       kind: "recovery",
+      checks: [],
+      unreadable: 0,
       complete: true,
       moreToCheck: false,
       withheld: 0,
@@ -1297,6 +1362,8 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
     });
     expect(hook.result.current.notice).toEqual({
       kind: "recovery",
+      checks: [],
+      unreadable: 0,
       complete: false,
       moreToCheck: false,
       withheld: 0,

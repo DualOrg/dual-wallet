@@ -585,7 +585,33 @@
       "recoveryIncomplete": "Not every earlier request could be checked this time. Nothing was sent again.",
       "recoveryMore": "There are more earlier requests to check.",
       "recoveryWithheld": "Some earlier requests belong to a feature this wallet does not offer, so they are not shown here.",
-      "recoveryContinue": "Continue checking"
+      "recoveryContinue": "Continue checking",
+      "recoveryCheckAgain": "Check again",
+      "recoveryCheck": {
+        "product": {
+          "checked": "Your product records with {publisher} were checked.",
+          "incomplete": "Not all of your product records with {publisher} could be checked this time.",
+          "unavailable": "Your product records with {publisher} could not be checked this time.",
+          "unsupported": "Your product records with {publisher} cannot be checked by this wallet yet."
+        },
+        "service": {
+          "checked": "Your service records with {publisher} were checked.",
+          "incomplete": "Not all of your service records with {publisher} could be checked this time.",
+          "unavailable": "Your service records with {publisher} could not be checked this time.",
+          "unsupported": "Your service records with {publisher} cannot be checked by this wallet yet."
+        }
+      },
+      "recoveryReason": {
+        "runtime_incomplete": "The application reported that it could not read all of its records.",
+        "page_invalid": "The application answered in a way this wallet could not verify.",
+        "pages_exceeded": "There were more records than this wallet checks at once.",
+        "read_failed": "A page of records could not be read.",
+        "item_unreadable": "Some of its records are in a form this wallet cannot read.",
+        "unreachable": "The application did not answer.",
+        "invalid": "The application answered in a way this wallet could not read.",
+        "unsigned": "This wallet could not sign the request."
+      },
+      "recoveryUnreadable": "{count, plural, one {# earlier request} other {# earlier requests}} could not be read by this wallet and {count, plural, one {was} other {were}} not checked. Nothing was sent again."
     }
   },
   "host": {

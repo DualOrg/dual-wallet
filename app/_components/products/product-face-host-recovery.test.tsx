@@ -37,6 +37,7 @@ jest.mock("@/app/_services/product-face.client", () => ({
 let notice: ProductFaceHostNotice | null = null;
 const dismissNotice = jest.fn();
 const continueRecovery = jest.fn();
+const checkRecoveryAgain = jest.fn();
 jest.mock("@/app/_hooks/use-product-face-host", () => ({
   useProductFaceHost: () => ({
     state: { status: "live" },
@@ -46,6 +47,7 @@ jest.mock("@/app/_hooks/use-product-face-host", () => ({
     notice,
     dismissNotice,
     continueRecovery,
+    checkRecoveryAgain,
   }),
 }));
 
@@ -102,6 +104,8 @@ describe("the recovery notice (proposed contract r20)", () => {
   it("offers Continue checking while items remain, and says so, without calling it incomplete", async () => {
     notice = {
       kind: "recovery",
+      checks: [],
+      unreadable: 0,
       complete: true,
       moreToCheck: true,
       withheld: 0,
@@ -127,6 +131,8 @@ describe("the recovery notice (proposed contract r20)", () => {
   it("says when earlier requests were withheld as a feature this wallet does not offer", async () => {
     notice = {
       kind: "recovery",
+      checks: [],
+      unreadable: 0,
       complete: true,
       moreToCheck: false,
       withheld: 2,
@@ -147,6 +153,8 @@ describe("the recovery notice (proposed contract r20)", () => {
   it("offers no Continue checking when nothing remains", async () => {
     notice = {
       kind: "recovery",
+      checks: [],
+      unreadable: 0,
       complete: false,
       moreToCheck: false,
       withheld: 0,
@@ -167,6 +175,8 @@ describe("the recovery notice (proposed contract r20)", () => {
   it("renders one plain line per listed outcome, in the host's own words", async () => {
     notice = {
       kind: "recovery",
+      checks: [],
+      unreadable: 0,
       complete: true,
       moreToCheck: false,
       withheld: 0,
@@ -212,6 +222,8 @@ describe("the recovery notice (proposed contract r20)", () => {
   it("says when not every earlier request could be checked, and that nothing was sent again", async () => {
     notice = {
       kind: "recovery",
+      checks: [],
+      unreadable: 0,
       complete: false,
       moreToCheck: false,
       withheld: 0,
@@ -231,9 +243,85 @@ describe("the recovery notice (proposed contract r20)", () => {
     ).toBe("P");
   });
 
+  it("names each runtime it asked and why one could not be checked, counts the records it could not read, and offers Check again", async () => {
+    notice = {
+      kind: "recovery",
+      complete: false,
+      moreToCheck: false,
+      withheld: 0,
+      checks: [
+        { runtime: "product", status: "checked", reason: null, unreadable: 0 },
+        {
+          runtime: "service",
+          status: "incomplete",
+          reason: "item_unreadable",
+          unreadable: 2,
+        },
+      ],
+      unreadable: 2,
+      items: [item("case-0123456789abcdef", "runtime", "outcome_unknown")],
+    };
+    renderHost();
+    await screen.findByTitle("Morrow Home Arc product application");
+    expect(
+      screen.getByText(/Your product records with .+ were checked\./),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Not all of your service records with .+ could be checked this time\. Some of its records are in a form this wallet cannot read\./,
+      ),
+    ).toBeTruthy();
+    // The test's intl mock does not format ICU plurals; the catalog does.
+    expect(
+      screen.getByText(/could not be read by this wallet and .*not checked/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Not every earlier request could be checked this time/),
+    ).toBeTruthy();
+    const again = screen.getByRole("button", { name: "Check again" });
+    expect(
+      screen.queryByRole("button", { name: "Continue checking" }),
+    ).toBeNull();
+    act(() => again.click());
+    expect(checkRecoveryAgain).toHaveBeenCalledTimes(1);
+  });
+
+  it("says a runtime did not answer, and offers no Check again while items remain to continue", async () => {
+    notice = {
+      kind: "recovery",
+      complete: false,
+      moreToCheck: true,
+      withheld: 0,
+      checks: [
+        {
+          runtime: "product",
+          status: "unavailable",
+          reason: "unreachable",
+          unreadable: 0,
+        },
+        { runtime: "service", status: "checked", reason: null, unreadable: 0 },
+      ],
+      unreadable: 0,
+      items: [],
+    };
+    renderHost();
+    await screen.findByTitle("Morrow Home Arc product application");
+    expect(
+      screen.getByText(
+        /Your product records with .+ could not be checked this time\. The application did not answer\./,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Continue checking" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Check again" })).toBeNull();
+  });
+
   it("reports an incomplete check even when nothing was listed", async () => {
     notice = {
       kind: "recovery",
+      checks: [],
+      unreadable: 0,
       complete: false,
       moreToCheck: false,
       withheld: 0,
@@ -251,6 +339,8 @@ describe("the recovery notice (proposed contract r20)", () => {
   it("Dismiss hands the notice back to the hook, which decides what to acknowledge", async () => {
     notice = {
       kind: "recovery",
+      checks: [],
+      unreadable: 0,
       complete: true,
       moreToCheck: false,
       withheld: 0,

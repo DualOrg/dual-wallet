@@ -610,6 +610,7 @@ describe("readRecoveryList (proposed r20)", () => {
             artifactCompatible: true,
           },
         ],
+        unreadable: [],
         next: null,
         complete: true,
       },
@@ -618,6 +619,52 @@ describe("readRecoveryList (proposed r20)", () => {
       ...LIST_REQUEST,
       assertion: ASSERTION,
     });
+  });
+
+  it("keeps an item it can read only by identity (a record retained however malformed) as unreadable, and holds a page whose item has no identity", async () => {
+    // Shaped as the actual Studio runtime shapes an index entry it retains
+    // although malformed (src/product-face-recovery.mjs recoveryItemOf).
+    const malformed = {
+      kind: "runtime",
+      operation_id: "case-legacy-0001",
+      operation: null,
+      object_id: null,
+      case_id: null,
+      offer_id: null,
+      proposal_id: null,
+      step: null,
+      action_id: null,
+      state: "unresolved",
+      recorded_at: "2026-10-16T09:00:00.000Z",
+      recorded_artifact: null,
+      artifact_compatible: false,
+    };
+    const result = await recoveryListOf(
+      200,
+      recoveryListed([TRANSFER_ITEM, malformed]),
+    );
+    expect(result.outcome).toBe("listed");
+    if (result.outcome !== "listed") return;
+    expect(result.page.items).toHaveLength(1);
+    expect(result.page.unreadable).toEqual([
+      {
+        operationId: "case-legacy-0001",
+        kind: "runtime",
+        state: "unresolved",
+        recordedAt: "2026-10-16T09:00:00.000Z",
+      },
+    ]);
+    for (const broken of [
+      { ...malformed, operation_id: "x" },
+      { ...malformed, kind: "legacy" },
+      { ...malformed, state: "lost" },
+      { ...malformed, recorded_at: "yesterday" },
+    ]) {
+      expect(await recoveryListOf(200, recoveryListed([broken]))).toEqual({
+        outcome: "unavailable",
+        reason: "invalid",
+      });
+    }
   });
 
   it("parses every kind, an empty page and a following page", async () => {
@@ -651,7 +698,7 @@ describe("readRecoveryList (proposed r20)", () => {
     expect(result.page.complete).toBe(false);
     expect(await recoveryListOf(200, recoveryListed([]))).toMatchObject({
       outcome: "listed",
-      page: { items: [], next: null, complete: true },
+      page: { items: [], unreadable: [], next: null, complete: true },
     });
   });
 
@@ -676,20 +723,20 @@ describe("readRecoveryList (proposed r20)", () => {
     ["a 200 with invalid JSON", 200, "{not json"],
     ["a 200 array", 200, [recoveryListed()]],
   ])("is unavailable on %s", async (_label, status, body) => {
-    expect(await recoveryListOf(status, body)).toEqual({
+    expect(await recoveryListOf(status, body)).toMatchObject({
       outcome: "unavailable",
     });
   });
 
   it("is unavailable when the fetch is lost or throws", async () => {
     jest.mocked(fetchBounded).mockResolvedValueOnce(undefined);
-    expect(await readRecoveryList(RUNTIME, LIST_REQUEST, ASSERTION)).toEqual({
-      outcome: "unavailable",
-    });
+    expect(
+      await readRecoveryList(RUNTIME, LIST_REQUEST, ASSERTION),
+    ).toMatchObject({ outcome: "unavailable" });
     jest.mocked(fetchBounded).mockRejectedValueOnce(new Error("socket"));
-    expect(await readRecoveryList(RUNTIME, LIST_REQUEST, ASSERTION)).toEqual({
-      outcome: "unavailable",
-    });
+    expect(
+      await readRecoveryList(RUNTIME, LIST_REQUEST, ASSERTION),
+    ).toMatchObject({ outcome: "unavailable" });
   });
 
   it.each<[string, (body: Json) => Json]>([
@@ -718,7 +765,7 @@ describe("readRecoveryList (proposed r20)", () => {
       (body) => ({ ...body, asserting_artifact: { version: "1.0.0" } }),
     ],
   ])("is unavailable with %s", async (_label, mutate) => {
-    expect(await recoveryListOf(200, mutate(recoveryListed()))).toEqual({
+    expect(await recoveryListOf(200, mutate(recoveryListed()))).toMatchObject({
       outcome: "unavailable",
     });
   });
@@ -728,7 +775,7 @@ describe("readRecoveryList (proposed r20)", () => {
       ...TRANSFER_ITEM,
       operation_id: `op-step-${String(index).padStart(12, "0")}`,
     }));
-    expect(await recoveryListOf(200, recoveryListed(items))).toEqual({
+    expect(await recoveryListOf(200, recoveryListed(items))).toMatchObject({
       outcome: "unavailable",
     });
     expect(
@@ -736,15 +783,27 @@ describe("readRecoveryList (proposed r20)", () => {
     ).toMatchObject({ outcome: "listed" });
   });
 
+  // An item without even an identity (id, kind, state, recorded time) makes
+  // the page unreadable, never a shorter page.
   it.each<[string, unknown]>([
     ["a non-object item", "transfer"],
     ["an unknown kind", { ...TRANSFER_ITEM, kind: "quote" }],
     ["a malformed operation_id", { ...TRANSFER_ITEM, operation_id: "Op 1" }],
+    ["an unknown state", { ...TRANSFER_ITEM, state: "pending" }],
+    ["an unparseable recorded_at", { ...TRANSFER_ITEM, recorded_at: "now" }],
+  ])("is unavailable when one item is %s", async (_label, item) => {
+    expect(
+      await recoveryListOf(200, recoveryListed([REGISTRATION_ITEM, item])),
+    ).toEqual({ outcome: "unavailable", reason: "invalid" });
+  });
+
+  // An item with an identity but any other field malformed, or carrying a
+  // field not of its kind, is kept by that identity alone: never a full
+  // item, never resolved; the caller counts it and holds the check incomplete.
+  it.each<[string, unknown]>([
     ["a malformed object_id", { ...TRANSFER_ITEM, object_id: "unit-1" }],
     ["a malformed offer_id", { ...TRANSFER_ITEM, offer_id: "offer-1" }],
-    ["an unknown state", { ...TRANSFER_ITEM, state: "pending" }],
     ["an unknown step", { ...TRANSFER_ITEM, step: "accept" }],
-    ["an unparseable recorded_at", { ...TRANSFER_ITEM, recorded_at: "now" }],
     [
       "a malformed recorded_artifact",
       { ...TRANSFER_ITEM, recorded_artifact: { version: "1.0.0" } },
@@ -783,11 +842,29 @@ describe("readRecoveryList (proposed r20)", () => {
     ],
     ["a runtime item with a step", { ...RUNTIME_ITEM, step: "request" }],
     ["a runtime item with an offer", { ...RUNTIME_ITEM, offer_id: OFFER_ID }],
-  ])("is unavailable when one item is %s", async (_label, item) => {
-    expect(
-      await recoveryListOf(200, recoveryListed([REGISTRATION_ITEM, item])),
-    ).toEqual({ outcome: "unavailable" });
-  });
+  ])(
+    "keeps %s by its identity only, beside the items it can read",
+    async (_label, item) => {
+      const result = await recoveryListOf(
+        200,
+        recoveryListed([REGISTRATION_ITEM, item]),
+      );
+      expect(result.outcome).toBe("listed");
+      if (result.outcome !== "listed") return;
+      const broken = item as Record<string, unknown>;
+      expect(result.page.items.map((listed) => listed.operationId)).toEqual([
+        REGISTRATION_ITEM.operation_id,
+      ]);
+      expect(result.page.unreadable).toEqual([
+        {
+          operationId: broken.operation_id,
+          kind: broken.kind,
+          state: broken.state,
+          recordedAt: broken.recorded_at,
+        },
+      ]);
+    },
+  );
 });
 
 // --- recovery.ack -----------------------------------------------------------
