@@ -83,9 +83,10 @@ export async function resolveFaceRequest(
     mutation?: boolean;
     /**
      * Whether the route writes this launch's journal on success (default:
-     * every mutation). A read-only launch (`capacity`) is refused such a
-     * route here; a mutation that never journals (recovery-ack) or decides
-     * per request (assertions) passes `journals: false` and refuses itself.
+     * every mutation, the assertions route included: a mint is recorded).
+     * A read-only launch (`capacity`) is refused such a route here; a
+     * mutation that never journals for the calling launch (recovery-ack, a
+     * progress read of another launch's step) passes `journals: false`.
      */
     journals?: boolean;
     /**

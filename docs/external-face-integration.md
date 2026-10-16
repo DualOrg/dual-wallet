@@ -453,15 +453,26 @@ the discovery itself (contract r20 §2): a complete, validated, echo-bound
 `recovery.list` scan of this actor, from the runtime that serves the
 operation, naming exactly that record (same operation id, operation, object
 and case, listed by one runtime only), read by the launch that holds the
-write (on its open or **Continue checking**). A scan the wallet found
-violated, or one the runtime calls incomplete, marks nothing even for the
-records it named. Nothing else marks anything: a
+write. The listing itself writes nothing: for each such record it returns a
+sealed, short-lived discovery ticket (bound to the session, wallet, face,
+programme and launch) that the host hands straight back
+(`POST /api/faces/[slug]/recovery/discovered`), and the mark is applied
+against the journal as it is then, never from the listing's own earlier
+read, so a write journaled while the scan ran is never overwritten. In the
+shipped host that listing runs when a launch opens (before it holds
+anything) and on **Continue checking**, so a launch's own held writes are
+confirmed only when that same launch lists again; a launch whose frame is
+gone stays undroppable for its own 24 hours on every runtime. A scan the
+wallet found violated, or one the runtime calls incomplete, yields no ticket
+even for the records it named. Nothing else marks anything: a
 `write_applied` answer settles the entry instead, a `write_refused` answer
-leaves it held and unmarked, and a `409 write_outcome_unknown` carries no
-echo, so it is not a bound answer about any record and proves nothing. A
-planned or presumed recovery never marks anything; a runtime without r20
-never confirms, so against it every (c) launch stays undroppable for its own
-24 hours. Other launches go first, the oldest within a
+leaves it held and unmarked, and a `409 write_outcome_unknown` is never read
+as bound (the wallet validates no echo on a refusal; whether refusals must
+carry the §0 echo is open with Root, see the evidence record), so it proves
+nothing about any record. A planned or presumed recovery never marks
+anything; a runtime without r20 never confirms, so against it every (c)
+launch stays undroppable for its own 24 hours. Other launches go first, the
+oldest within a
 rank; any unreadable one, another wallet's and an earlier session's without
 such history are dropped on the next write. Each cookie still expires 24
 hours after its own last write:
@@ -585,15 +596,18 @@ What the host does on each face launch, after the bootstrap
   page it cannot read makes the check incomplete until it is re-read),
   through the existing resolver of its kind: `registration.status` for a
   registration, `registration.settle.status` for a settle,
-  `transfer.verify` or `transfer.status` for a transfer step, `write.status`
-  for a Warranty & Service write or a transfer offer. A proved outcome
+  `transfer.status` for a transfer step, `write.status` for a Warranty &
+  Service write or a transfer offer. A proved outcome
   carries the contract's `outcome_proof`, whose hash the wallet recomputes.
   Items of a disabled journey are neither resolved nor acknowledged
   (`withheld`). An id listed twice is not checked.
 - The host shows what it proved in its own notice (never face text), with held
   and unknown items as still being confirmed. Nothing recovered is re-sent,
   re-reserved, re-minted for the face or executed, and this launch's journal
-  is never written by the listing.
+  is never written by the listing; a held runtime write of this launch that
+  a complete scan named comes back as a discovery ticket the host hands
+  straight back, which marks that entry `discoverable` (retention above) and
+  frees no journal slot.
 - When the person dismisses the notice, the host acknowledges
   (`POST /api/faces/[slug]/recovery/ack`, `recovery.ack`) only the items whose
   outcome was proved in this launch, whose journey is enabled, and only when

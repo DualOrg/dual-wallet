@@ -17,6 +17,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   const context = await resolveFaceRequest(request, slug, {
     mutation: true,
     route: "transfer-progress",
+    // A read-only launch may still read back another kept launch's step
+    // (its own journal is empty, so nothing of it is ever settled or kept).
+    journals: false,
   });
   if (!("binding" in context)) return context;
   const body = await readJsonRecord(request);

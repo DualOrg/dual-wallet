@@ -46,9 +46,13 @@ export async function GET(request: NextRequest, { params }: Params) {
     isTaskPath(task) && context.binding.handover.enabled
       ? faceHandoverKindOfTask(task)
       : undefined;
-  // A branded host hands over no ticket for a journey it does not serve.
+  // A branded host hands over no ticket for a journey it does not serve. A
+  // read-only launch (launch_capacity on its writes) consumes none either:
+  // it could not redeem it, so the one-time ticket stays bound to the
+  // session for a launch that can, within its own lifetime.
   const taskKind =
     handoverKind &&
+    context.capacity === "full" &&
     hostJourneyEnabled(handoverKind === "accept" ? "transfer" : "registration")
       ? handoverKind
       : undefined;

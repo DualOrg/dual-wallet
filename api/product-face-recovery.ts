@@ -100,11 +100,12 @@ export interface RecoveryListing {
   continuation: string | null;
   items: RecoveredItem[];
   /**
-   * This launch's journal with every held runtime write the exact runtime
-   * listed marked discoverable (api/face-journal.ts); the same object as
-   * the context's when nothing was marked.
+   * Sealed discovery tickets (applyDiscovery), one per held runtime write
+   * of this launch that a complete, validated scan named exactly. The
+   * listing writes nothing itself: the host hands them straight back and
+   * the mark is applied against the journal as it is then.
    */
-  journal: FaceJournal;
+  discovered: string[];
 }
 
 /** One runtime the host lists from, and how mint routes an assertion to it. */
@@ -582,7 +583,7 @@ export async function listRecovery(
       unchecked: 0,
       continuation: null,
       items: [],
-      journal,
+      discovered: [],
     };
   }
   // A runtime without r20 beside one with it, or one that could not be
@@ -605,25 +606,44 @@ export async function listRecovery(
   // (every page validated and echo-bound, the runtime declaring every store
   // read to its end) of this actor's records, from the runtime that serves
   // the operation, naming exactly one of this launch's held runtime writes
-  // (same id, operation, object and case, listed by one runtime only). That
-  // entry is marked discoverable: its cookie is no longer the write's only
-  // known correlation (api/face-journal.ts). Nothing else marks anything: a
-  // scan the wallet found violated, or one the runtime calls incomplete,
-  // marks nothing even for the items it did name.
+  // (same id, operation, object and case, listed by one runtime only). For
+  // each, a sealed discovery ticket; applyDiscovery marks the entry against
+  // the journal as it is when the host hands the ticket back (this long
+  // read never writes the journal it read at its start). Nothing else marks
+  // anything: a scan the wallet found violated, or one the runtime calls
+  // incomplete, yields no ticket even for the items it did name.
   const trusted = new Set(
     scans
       .filter(({ scan }) => scan.status === "listed" && scan.complete)
       .map(({ runtime }) => runtime),
   );
-  let discovered = journal;
+  const discovered: string[] = [];
   for (const { runtime, item } of listed) {
     if (
       trusted.has(runtime) &&
       item.kind === "runtime" &&
       belongsTo(runtime, item) &&
-      seen.get(item.operationId) === 1
+      seen.get(item.operationId) === 1 &&
+      heldRuntimeWriteNamed(context, journal, item)
     ) {
-      discovered = discoverRuntimeWrite(context, discovered, item);
+      discovered.push(
+        sealForPurpose(discoveryPurpose(context), {
+          v: 1,
+          op: item.operationId,
+          operation: item.operation,
+          object_id: item.objectId,
+          case_id: item.caseId,
+          runtime: {
+            application_id: runtime.applicationId,
+            origin: runtime.origin,
+          },
+          artifact: {
+            version: context.binding.version,
+            artifact_hash: context.binding.artifactHash,
+          },
+          exp: Date.now() + DISCOVERY_TTL_MS,
+        } satisfies DiscoveryTicket),
+      );
     }
   }
   let withheld = 0;
@@ -740,40 +760,156 @@ export async function listRecovery(
           } satisfies Continuation)
         : null,
     items,
-    journal: discovered,
+    discovered,
   };
 }
 
-/**
- * Marks one of this launch's held runtime writes discoverable from the
- * listing item that named it; unchanged for anything else (another slug,
- * another identity, a write not held, an unknown id).
- */
-function discoverRuntimeWrite(
+/** A listing item that names exactly one of this launch's held runtime writes. */
+function heldRuntimeWriteNamed(
   context: FaceRequestContext,
   journal: FaceJournal,
   item: RecoveryItem,
-): FaceJournal {
-  const own = journal.entries.find(
+) {
+  return journal.entries.some(
     (entry) =>
       entry.operationId === item.operationId &&
-      entry.slug === context.binding.slug,
+      entry.slug === context.binding.slug &&
+      entry.kind === "runtime" &&
+      entry.phase === "assertion_issued" &&
+      entry.discoverable !== true &&
+      entry.operation === item.operation &&
+      entry.objectId === item.objectId &&
+      (entry.caseId ?? null) === item.caseId,
   );
-  if (!own) return journal;
-  const result = applyJournalTransition(
-    journal.entries,
-    {
-      kind: "discover",
-      operationId: item.operationId,
-      operation: item.operation,
-      objectId: item.objectId,
-      caseId: item.caseId,
-    },
-    Date.now(),
+}
+
+/**
+ * What a complete listing proved about one held runtime write of this
+ * launch, sealed for this session, wallet, face, programme and launch: the
+ * record's exact identity and the runtime that listed it. Short-lived: the
+ * host hands it back at once (POST .../recovery/discovered).
+ */
+interface DiscoveryTicket {
+  v: 1;
+  op: string;
+  operation: string;
+  object_id: string;
+  case_id: string | null;
+  runtime: { application_id: string; origin: string };
+  artifact: { version: string; artifact_hash: string };
+  exp: number;
+}
+
+const DISCOVERY_TTL_MS = 10 * 60 * 1000;
+const MAX_DISCOVERY_TICKETS = 25;
+
+const discoveryPurpose = (context: FaceRequestContext) =>
+  [
+    "dual-face-recovery-discovered",
+    context.owner.sidHash,
+    context.wallet.id,
+    context.binding.slug,
+    context.binding.programmeId,
+    context.scope.launchId,
+  ].join(":");
+
+function parseDiscoveryTicket(
+  context: FaceRequestContext,
+  value: unknown,
+): DiscoveryTicket | undefined {
+  if (typeof value !== "string" || value.length > 4096) return undefined;
+  const opened = unsealForPurpose(discoveryPurpose(context), value);
+  if (!record(opened)) return undefined;
+  const ticket = opened as Partial<DiscoveryTicket>;
+  const runtime = ticket.runtime as
+    Partial<DiscoveryTicket["runtime"]> | undefined;
+  const artifact = ticket.artifact as
+    Partial<DiscoveryTicket["artifact"]> | undefined;
+  if (
+    ticket.v !== 1 ||
+    !isOperationId(ticket.op) ||
+    typeof ticket.operation !== "string" ||
+    !isObjectId(ticket.object_id) ||
+    (ticket.case_id !== null && !isCaseId(ticket.case_id)) ||
+    !record(runtime) ||
+    typeof runtime.application_id !== "string" ||
+    typeof runtime.origin !== "string" ||
+    !record(artifact) ||
+    typeof artifact.version !== "string" ||
+    typeof artifact.artifact_hash !== "string" ||
+    typeof ticket.exp !== "number" ||
+    ticket.exp <= Date.now()
+  ) {
+    return undefined;
+  }
+  return ticket as DiscoveryTicket;
+}
+
+/**
+ * POST /api/faces/[slug]/recovery/discovered: marks the held runtime writes
+ * named by the discovery tickets a complete listing issued in this same
+ * launch, against this launch's journal as it is NOW (the listing never
+ * writes the journal it read at its start, so a write journaled while the
+ * scan ran is never overwritten). Each ticket is checked again: sealed for
+ * this session, wallet, face, programme and launch; its runtime still bound
+ * and its artifact still served; and the journal entry's exact identity
+ * (the `discover` transition refuses any other). Nothing is sent anywhere.
+ */
+export function applyDiscovery(
+  context: FaceRequestContext,
+  body: Record<string, unknown>,
+): FaceOperationResult<{ marked: number }> {
+  if (
+    Object.keys(body).join(",") !== "discovered" ||
+    !Array.isArray(body.discovered) ||
+    body.discovered.length > MAX_DISCOVERY_TICKETS
+  ) {
+    return fail("invalid_request", 400);
+  }
+  const tickets = body.discovered.map((value) =>
+    parseDiscoveryTicket(context, value),
   );
-  return result.ok && result.entries !== journal.entries
-    ? { ...journal, entries: result.entries }
-    : journal;
+  if (tickets.some((ticket) => ticket === undefined)) {
+    return fail("invalid_request", 400);
+  }
+  let journal = context.journal;
+  let marked = 0;
+  const now = Date.now();
+  for (const ticket of tickets as DiscoveryTicket[]) {
+    const runtime = scopedRuntimes(context).find(
+      (candidate) =>
+        candidate.applicationId === ticket.runtime.application_id &&
+        candidate.origin === ticket.runtime.origin,
+    );
+    if (
+      !runtime ||
+      ticket.artifact.version !== context.binding.version ||
+      ticket.artifact.artifact_hash !== context.binding.artifactHash
+    ) {
+      return fail("invalid_request", 400);
+    }
+    const own = journal.entries.find(
+      (entry) =>
+        entry.operationId === ticket.op && entry.slug === context.binding.slug,
+    );
+    if (!own || own.discoverable) continue;
+    const result = applyJournalTransition(
+      journal.entries,
+      {
+        kind: "discover",
+        operationId: ticket.op,
+        operation: ticket.operation,
+        objectId: ticket.object_id,
+        caseId: ticket.case_id,
+      },
+      now,
+    );
+    if (result.ok && result.entries !== journal.entries) {
+      journal = { ...journal, entries: result.entries };
+      marked += 1;
+    }
+  }
+  return { ok: true, marked, ...(marked > 0 ? { journal } : {}) };
 }
 
 function parseTicket(

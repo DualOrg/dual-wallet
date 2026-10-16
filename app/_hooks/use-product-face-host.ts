@@ -27,6 +27,7 @@ import {
 import { useSession } from "@/app/_providers/session-provider";
 import {
   acknowledgeFaceRecovery,
+  confirmFaceDiscovery,
   executeSettleAction,
   executeTransferAction,
   listFaceOperations,
@@ -129,6 +130,13 @@ async function collectRecovery(
     pages += 1;
     if (pages === 1) withheld = page.withheld;
     for (const item of page.items) merged.set(item.operation_id, item);
+    // Proposed r20: the tickets for this launch's held writes the complete
+    // listing named go straight back, so the BFF marks them against the
+    // journal as it is now (never from the listing's own stale read).
+    // Fire-and-forget and read-only for every runtime.
+    if (page.discovered && page.discovered.length > 0 && live()) {
+      void confirmFaceDiscovery(face, page.discovered).catch(() => undefined);
+    }
     scanComplete = scanComplete && page.complete;
     continuation =
       typeof page.continuation === "string" ? page.continuation : null;

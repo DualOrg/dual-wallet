@@ -356,6 +356,11 @@ export interface FaceRecovery {
    */
   continuation: string | null;
   items: FaceRecoveryItem[];
+  /**
+   * Sealed discovery tickets for this launch's held writes the complete
+   * listing named; the host hands them straight back (confirmFaceDiscovery).
+   */
+  discovered?: string[];
 }
 
 /**
@@ -376,6 +381,7 @@ export async function listFaceRecovery(
     withheld: unknown;
     continuation?: unknown;
     items: unknown;
+    discovered?: unknown;
   }>(
     face,
     continuation
@@ -393,7 +399,12 @@ export async function listFaceRecovery(
       result.continuation !== undefined &&
       typeof result.continuation !== "string") ||
     !Array.isArray(result.items) ||
-    !result.items.every(isFaceRecoveryItem)
+    !result.items.every(isFaceRecoveryItem) ||
+    (result.discovered !== undefined &&
+      !(
+        Array.isArray(result.discovered) &&
+        result.discovered.every((ticket) => typeof ticket === "string")
+      ))
   ) {
     throw new ProductFaceError("temporarily_unavailable");
   }
@@ -404,7 +415,25 @@ export async function listFaceRecovery(
     continuation:
       typeof result.continuation === "string" ? result.continuation : null,
     items: result.items,
+    ...(Array.isArray(result.discovered) && result.discovered.length > 0
+      ? { discovered: result.discovered as string[] }
+      : {}),
   };
+}
+
+/**
+ * Proposed contract r20: hands the discovery tickets a listing issued in
+ * this launch straight back, so the BFF marks the named held writes against
+ * the launch journal as it is now. Host-only; nothing reaches a runtime.
+ */
+export async function confirmFaceDiscovery(
+  face: FaceLaunch,
+  discovered: string[],
+): Promise<{ marked: number }> {
+  return faceRequest<{ marked: number }>(face, "/recovery/discovered", {
+    method: "POST",
+    json: { discovered },
+  });
 }
 
 const recoveryKinds: readonly string[] = [

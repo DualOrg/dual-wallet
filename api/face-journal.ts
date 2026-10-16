@@ -351,12 +351,12 @@ function holdsUnresolvedHistory(sealed: Partial<SealedJournal>, now: number) {
 /**
  * How much a kept launch's sealed journal is worth keeping, within the same
  * MAX_FACE_LAUNCHES budget: unresolved evidence that authority left the
- * wallet first (2: unresolvedEvidence), then any other unfinished work (1),
- * then an empty or finished launch (0). Every face-host mount persists a new,
- * usually empty, launch; recency alone would let those evict the evidence a
- * result page or a progress read is still reading. A launch holding signed
- * evidence (rank 3) is never dropped (launchWouldDropUnresolved); one holding
- * only held runtime writes (rank 2) goes after every other kind.
+ * wallet (3: unresolvedEvidence, that is (a), (b) and an unconfirmed (c)),
+ * never dropped (launchWouldDropUnresolved); then a launch holding only
+ * discoverable runtime writes (2), dropped last; then any other unfinished
+ * work (1); then an empty or finished launch (0). Every face-host mount
+ * persists a new, usually empty, launch; recency alone would let those evict
+ * the evidence a result page or a progress read is still reading.
  */
 function retentionRank(sealed: Partial<SealedJournal>, now: number) {
   const entries = ownEntries(sealed, now);

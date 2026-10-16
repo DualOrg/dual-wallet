@@ -291,6 +291,16 @@ export function toBridgeError(error: unknown) {
         : error.code;
     const message = faceErrorMessages[code];
     if (message) return new ExternalFaceBridgeError(code, message);
+    // Nothing was sent, and retrying in this launch cannot change that: a
+    // full journal needs a new launch, a read-only launch an earlier
+    // launch's evidence to resolve. Not retryable.
+    if (code === "journal_full" || code === "launch_capacity") {
+      return new ExternalFaceBridgeError(
+        "temporarily_unavailable",
+        "The wallet could not complete this request.",
+        false,
+      );
+    }
     if (error.status === 401) {
       return new ExternalFaceBridgeError(
         "session_ended",

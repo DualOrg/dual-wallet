@@ -107,6 +107,7 @@ import { GET as contextGET } from "@/app/api/faces/[slug]/context/route";
 import { POST as handoverPOST } from "@/app/api/faces/[slug]/handover/route";
 import { GET as recoveryGET } from "@/app/api/faces/[slug]/recovery/route";
 import { POST as recoveryAckPOST } from "@/app/api/faces/[slug]/recovery/ack/route";
+import { POST as recoveryDiscoveredPOST } from "@/app/api/faces/[slug]/recovery/discovered/route";
 import { GET as statusGET } from "@/app/api/faces/[slug]/operations/[operationId]/route";
 import {
   GET as operationsGET,
@@ -2848,6 +2849,15 @@ class Browser {
     });
   }
 
+  /** POST /recovery/discovered (proposed r20): hand discovery tickets back. */
+  recoveryDiscovered(body: Json, delivery: Delivery = {}) {
+    return this.send(
+      recoveryDiscoveredPOST,
+      this.route("/recovery/discovered"),
+      { body, params: this.params, ...delivery },
+    );
+  }
+
   /** POST /recovery/ack (proposed r20): acknowledge one proved outcome. */
   recoveryAck(body: Json, delivery: Delivery = {}) {
     return this.send(recoveryAckPOST, this.route("/recovery/ack"), {
@@ -4253,11 +4263,11 @@ describe("a runtime write's slot, freed only by its verified outcome (PROPOSED r
         body: { code: "launch_capacity" },
       });
       // The runtime's durable discovery names the id, but as a record of
-      // another case: not this write's record, so the scan marks nothing.
+      // another case: not this write's record, so the scan issues no ticket.
       const mismatched = await second.recovery();
       expect(mismatched).toMatchObject({
         status: 200,
-        body: { supported: true },
+        body: { supported: true, discovered: [] },
       });
       expect(
         (mismatched.body.items as Json[]).map((item) => item.operation_id),
@@ -4292,17 +4302,25 @@ describe("a runtime write's slot, freed only by its verified outcome (PROPOSED r
       runtime.incompleteScan = true;
       expect(await second.recovery()).toMatchObject({
         status: 200,
-        body: { supported: true, complete: false },
+        body: { supported: true, complete: false, discovered: [] },
       });
       runtime.incompleteScan = false;
+      // FIXTURE: a scan the wallet itself finds violated (a page echoing
+      // another actor) names the write too; no ticket either.
+      runtime.recoveryViolation = "wrong_echo";
+      expect(await second.recovery()).toMatchObject({
+        status: 200,
+        body: { supported: true, complete: false, discovered: [] },
+      });
+      runtime.recoveryViolation = undefined;
       expect(await select(second.relaunch(fifth.launchId))).toMatchObject({
         status: 409,
         body: { code: "launch_capacity" },
       });
       // The second launch's own complete scan of the runtime's actor-scoped
-      // listing names its write exactly: only now is that one cookie
-      // expendable. The fifth launch takes its place, exactly that cookie
-      // goes, the other three stay, and nothing was sent again.
+      // listing names its write exactly: one discovery ticket. The listing
+      // itself writes nothing (the cookie is byte-for-byte what it was).
+      const sealedBefore = second.cookies.get(names[1]);
       const listed = await second.recovery();
       expect(listed.body.items).toEqual(
         expect.arrayContaining([
@@ -4312,6 +4330,29 @@ describe("a runtime write's slot, freed only by its verified outcome (PROPOSED r
           }),
         ]),
       );
+      expect(listed.body.discovered).toHaveLength(1);
+      expect(second.cookies.get(names[1])).toBe(sealedBefore);
+      expect(await select(second.relaunch(fifth.launchId))).toMatchObject({
+        status: 409,
+        body: { code: "launch_capacity" },
+      });
+      // The ticket is this launch's: another launch handing it back marks
+      // nothing (a read-only one is refused before that; a kept one finds
+      // it sealed for the launch that listed, not itself).
+      const third = second.relaunch(launches[2].launchId);
+      expect(
+        await third.recoveryDiscovered({ discovered: listed.body.discovered }),
+      ).toMatchObject({ status: 400, body: { code: "invalid_request" } });
+      // Handed back by the listing launch: marked against its journal as it
+      // is now. Only now is that one cookie expendable: the fifth launch
+      // takes its place, exactly that cookie goes, the other three stay, and
+      // nothing was sent again.
+      expect(
+        await second.recoveryDiscovered({
+          discovered: listed.body.discovered,
+        }),
+      ).toMatchObject({ status: 200, body: { marked: 1 } });
+      expect(second.cookies.get(names[1])).not.toBe(sealedBefore);
       const again = second.relaunch(fifth.launchId);
       expect(await select(again)).toMatchObject({ status: 200 });
       expect(again.cookies.has(names[1])).toBe(false);

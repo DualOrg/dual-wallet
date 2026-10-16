@@ -31,7 +31,6 @@ const knownErrors = [
   "artifact_unavailable",
   "unknown_application",
   "session_expired",
-  "launch_capacity",
 ] as const;
 
 type RecoveryItem = Extract<

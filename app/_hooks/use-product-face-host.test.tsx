@@ -95,7 +95,10 @@ jest.mock("@/app/_services/product-face.client", () => ({
   listFaceRecovery: (...args: unknown[]) => listFaceRecovery(...(args as [])),
   acknowledgeFaceRecovery: (...args: unknown[]) =>
     acknowledgeFaceRecovery(...(args as [])),
+  confirmFaceDiscovery: (...args: unknown[]) =>
+    confirmFaceDiscovery(...(args as [])),
 }));
+const confirmFaceDiscovery = jest.fn(async () => ({ marked: 1 }));
 
 let captured: ProductFaceHandlers | undefined;
 let initialized: ((host: unknown) => void) | undefined;
@@ -893,6 +896,35 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
   });
   afterAll(() => {
     listFaceRecovery.mockReset().mockResolvedValue(unsupportedRecovery);
+  });
+
+  it("hands a page's discovery tickets straight back, once, while the launch is live", async () => {
+    confirmFaceDiscovery.mockClear();
+    listFaceRecovery
+      .mockResolvedValueOnce({
+        supported: true,
+        complete: true,
+        withheld: 0,
+        continuation: "continue-after-held-prefix",
+        items: [heldWrite],
+        discovered: ["discovery-ticket-1"],
+      })
+      .mockResolvedValueOnce({
+        supported: true,
+        complete: true,
+        withheld: 0,
+        continuation: null,
+        items: [transferred],
+      });
+    launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
+    expect(confirmFaceDiscovery).toHaveBeenCalledTimes(1);
+    expect(confirmFaceDiscovery).toHaveBeenCalledWith(face, [
+      "discovery-ticket-1",
+    ]);
   });
 
   it("follows the listing's continuation pages deterministically, later pages replacing unchecked items", async () => {
