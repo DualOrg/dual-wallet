@@ -354,35 +354,56 @@ A normal linked Warranty write can intend MORE THAN ONE Dual action (a
 carries one proof, and the wallet holds every record whose intended count is
 not `1`; one proof never stands for a second effect.
 
-This is NOT an executed-input-byte proof. The public Dual update log exposes
-`params: {id, data_hash}` and not the raw update data; public update history
-omits the change; no inspected public SDK documents how `data_hash` is
-derived from submitted JSON. Submitted raw data therefore cannot be
-reconstructed from public logs, so r20's `expected_payload_hash`,
-`observed_payload_hash` and `payload_match` (an executed-input proof) are
-WITHDRAWN by this amendment: a runtime must not answer them, the wallet
-holds any answer that carries them, and none of their meaning is carried
-over under another name. What replaces them is a receipt chain the server
-holds and corroborates: the write's pre-dispatch intent commitment, the
-protected original verifier's qualifying receipt of each effect, and a fresh
-historical corroboration of exactly that receipt's RAW content hash.
+This is NOT an executed-input-byte proof. The public Dual action log exposes
+`params: {id, data_hash}` and not the raw update data, and it carries NO
+content hash of its own; public update history omits the change; no
+inspected public SDK documents how `data_hash` is derived from submitted
+JSON. Submitted raw data therefore cannot be reconstructed from public logs,
+so r20's `expected_payload_hash`, `observed_payload_hash` and
+`payload_match` (an executed-input proof) are WITHDRAWN by this amendment: a
+runtime must not answer them, the wallet holds any answer that carries them,
+and none of their meaning is carried over under another name. What replaces
+them is a receipt chain the server holds and corroborates: the write's
+pre-dispatch intent commitment, the protected original verifier's qualifying
+receipt of each effect, and a fresh historical corroboration, from the exact
+state-change history entry linked to the action's affected object, of that
+receipt's RAW provider content hash.
 
 ### Names, kept distinct
 
 - **Intent commitment**: the versioned domain commitment the server made
   BEFORE dispatch, over a retained preimage, recomputed by the server at
-  every read (`intent_commitment`).
-- **Original verified content hash**: the RAW content hash of the effect as
-  the protected original verifier observed it at the time, explicitly a raw
-  original content hash and never a state hash (`original_receipt.
-content_hash_raw`).
-- **Fresh historical corroboration**: the same raw content hash, the
-  action's terminal success, its authority and affected objects, read at
-  this status read from the historical Dual action log and history entry
-  (`historical_corroboration`).
+  every read (`intent_commitment.hash`, a `sha256:` commitment of ours).
+- **Original verified raw content hash**: the provider's RAW content hash of
+  the effect as the protected original verifier observed it at the time
+  (`original_receipt.content_hash_raw`): the provider's own value,
+  preserved, never a state hash and never re-hashed.
+- **Fresh historical corroboration**: the same raw provider content hash
+  read now from the exact state-change history entry linked to the
+  action's affected object, together with the action's terminal success,
+  authority, object, scope and affected objects read from the historical
+  action log (`historical_corroboration`).
 
-Only hashes and identifiers appear on the wire; never content, raw data,
-private attributes or another holder's data.
+SHA-256 (`sha256:<64 hex>`) is used ONLY for our own canonical commitments:
+`intent_commitment.hash`, `domain_commitment`, `request_hash`,
+`outcome_hash`. A provider raw hash is never hashed again and never given a
+`sha256:` prefix. Only hashes and identifiers appear on the wire; never
+content, raw data, private attributes or another holder's data.
+
+### Formats
+
+- **Provider raw content hash** (`content_hash_format:
+"provider_raw_hex_v1"`): the provider's raw hash value as emitted, `0x`
+  followed by exactly 64 hexadecimal digits. Normalization: the hexadecimal
+  digits are lower-cased; the `0x` prefix is required and kept; nothing else
+  is accepted (no `sha256:` prefix, no bare hex, no other length). Equality
+  is byte-for-byte equality of the normalized strings. The value is the
+  provider's bytes as a hex string; it is preserved, never derived from hex
+  text by hashing it.
+- **Address**: `0x` followed by exactly 40 hexadecimal digits, lower-cased
+  for comparison; equality is equality of the normalized strings.
+- **Our commitments**: `sha256:` followed by exactly 64 lower-case
+  hexadecimal digits.
 
 ### The `dual` block under r20.1
 
@@ -419,24 +440,39 @@ private attributes or another holder's data.
         "action_kind": "<same action kind>",
         "action_id": "<same action id>",
         "object_id": "<same object id>",
-        "network": "<plain code>",
+        "network": "<plain code: the ORIGINAL network, pinned>",
+        "api_scope": "<plain code: the ORIGINAL API scope, pinned>",
         "template_id": "<24 hex>",
-        "authority": { "account": "<expected signing account>", "controller": "<expected controller or null>" },
+        "authority": {
+          "account": "0x<40 hex: the expected signing account>",
+          "controller": "0x<40 hex: the declared controller>, or null: direct, no controller"
+        },
         "domain_commitment": "sha256:<hex, the original domain commitment the verifier observed>",
         "projection": "full_declared",
-        "content_hash_raw": "sha256:<hex, the RAW original content hash>",
+        "content_hash_format": "provider_raw_hex_v1",
+        "content_hash_raw": "0x<64 hex: the provider's RAW original content hash>",
         "content_hash_source": "raw_original_content"
       },
       "historical_corroboration": {
         "read_at": "<RFC 3339 of this read>",
         "resolver": "dual_action_log",
         "action_id": "<same action id>",
-        "history_entry_id": "<id of the history entry corroborated>",
+        "action_kind": "<as the log shows>",
+        "object_id": "<as the log shows>",
+        "network": "<as read, must equal the pinned original>",
+        "api_scope": "<as read, must equal the pinned original>",
+        "template_id": "<as read>",
         "execution": "succeeded",
         "status_raw": "<Dual's own status value, preserved verbatim>",
-        "authority": { "account": "<observed signing account>", "controller": "<observed controller or null>" },
+        "authority": {
+          "account": "0x<40 hex: the observed signing account>",
+          "controller": "0x<40 hex: the observed controller>, or null: direct, no controller"
+        },
         "affected_objects": ["<24 hex>", "..."],
-        "content_hash_raw": "sha256:<hex, as the log and history entry carry it>",
+        "history_entry_id": "<id of the state-change history entry read>",
+        "history_entry_object_id": "<24 hex: the affected object that entry belongs to>",
+        "content_hash_format": "provider_raw_hex_v1",
+        "content_hash_raw": "0x<64 hex: as that history entry carries it>",
         "content_hash_match": true
       },
       "effect_verdict": "verified"
@@ -456,24 +492,39 @@ private attributes or another holder's data.
    unrecomputable preimage is `409 {status: "write_outcome_unknown", reason:
 "intent_preimage_missing"}`.
 2. **Original verified receipt.** The protected original verifier's
-   qualifying receipt of the effect is retained with the record: the exact
-   action kind and id, the object, the network and template, the expected
-   signing account and controller authority, the original domain commitment
-   it observed (which must equal the recomputed intent commitment hash) with
-   the FULL declared projection, and explicitly the RAW original content
-   hash with its provenance. A receipt whose content hash is, or falls back
-   to, a state hash is not qualifying. A missing or non-qualifying receipt is
+   qualifying receipt (effect descriptor) is retained with the record: the
+   exact action kind and id, the canonical object, the ORIGINAL network and
+   API scope (pinned), the template, the expected signing authority as an
+   explicit `account` address and an explicit `controller` that is either a
+   declared address or `null` meaning the account signed directly with no
+   controller, the original domain commitment it observed (equal to the
+   recomputed intent commitment hash) with the FULL declared projection, and
+   the provider's RAW original content hash in `provider_raw_hex_v1` form
+   with its provenance. A receipt is NOT qualifying when its content hash is,
+   or falls back to, a state hash; when its controller is absent, unknown or
+   unrecorded (the field must be present as an address or `null`); or when
+   any of these fields is missing. A missing or non-qualifying receipt is
    `409 {status: "write_outcome_unknown", reason: "original_receipt_missing"}`.
 3. **Fresh historical corroboration.** At this read, through the runtime's
-   existing strict Dual action-log resolver, the runtime reads the historical
-   action and its history entry and answers: terminal success normalized as
+   existing strict Dual action-log resolver, the runtime reads the
+   historical action log entry for `action_id` and proves, against the
+   protected original receipt: the exact action id and kind, the canonical
+   object, the pinned ORIGINAL network and API scope, the template, the
+   expected account and controller authority (the observed, normalized
+   controller must EXACTLY equal the declared one, `null` included; the
+   comparison is never skipped), and terminal success normalized as
    `execution: "succeeded"` (its reviewed mapping from Dual's raw status,
    preserved verbatim in `status_raw`; `pending`, `failed` or `unknown` is
-   never applied), the observed signing authority, the affected objects, and
-   the raw content hash the log and history entry carry, which must equal
-   the receipt's `content_hash_raw` (`content_hash_match: true`). A
-   corroboration that cannot be read, is not terminal, or does not carry the
-   same raw content hash is `409 {status: "write_outcome_unknown", reason:
+   never applied). It then reads the exact STATE-CHANGE HISTORY ENTRY linked
+   to that log entry's affected object (`history_entry_id`,
+   `history_entry_object_id`) and takes the provider raw content hash from
+   THAT entry: the public action log itself carries no content hash, and a
+   match is never inferred from the equality of a response echo with the
+   receipt. `content_hash_match: true` means that entry's normalized value
+   equals the receipt's. `original_receipt.verified_at` must not be after
+   `historical_corroboration.read_at`. A corroboration that cannot be read,
+   is not terminal, differs in any of these, or does not carry the same raw
+   content hash is `409 {status: "write_outcome_unknown", reason:
 "effects_unproved", proved_effects: k}`.
 
 Exact coverage: `effects.length === intended_dual_writes`; a record whose
@@ -484,6 +535,10 @@ i`), `action_id` is unique across the list, and every effect's `bound_to`
 names this operation and recorded request hash. Later state never
 invalidates proved history (§0): a later legitimate action on an affected
 object changes nothing above.
+
+Authority policy: exact comparison only. Any policy beyond exact equality
+(a controller rotation, a delegated signer) is a Root decision to be pinned
+explicitly; there is no wildcard and no "unknown matches anything".
 
 ### Outcome hash over the whole ordered list and the original request
 
@@ -496,17 +551,18 @@ For a Dual-backed write under r20.1:
     "proof_kind": "original_verified_effect_receipt_v1",
     "request": { "operation_id": "<op_id>", "request_hash": "sha256:<recorded>" },
     "effects": [
-      { "index": 0, "action_id": "...", "object_id": "...", "intent_commitment_hash": "sha256:...", "content_hash_raw": "sha256:..." },
+      { "index": 0, "action_id": "...", "object_id": "...", "intent_commitment_hash": "sha256:...", "content_hash_raw": "0x..." },
       { "index": 1, "..." : "..." }
     ]
   }
 }
 ```
 
-`outcome_hash` therefore binds the ENTIRE ordered effect list AND the
-original request, and `recovery.ack` acknowledges exactly that. An answer
-whose `outcome_proof.dual` is not this projection of `effects` and of the
-answer's `operation_id` and `request_hash` is malformed.
+`outcome_hash` (a `sha256:` commitment of ours over this canonical JSON)
+therefore binds the ENTIRE ordered effect list AND the original request, and
+`recovery.ack` acknowledges exactly that. An answer whose
+`outcome_proof.dual` is not this projection of `effects` and of the answer's
+`operation_id` and `request_hash` is malformed.
 
 ### Exactly one representation
 
@@ -525,28 +581,37 @@ Every §1 gate as approved, and for `backed: true`: `proof_kind ===
 with `bound_to.effect_index` equal; unique, well-formed `action_id`s; per
 effect: `bound_to.operation_id` and `bound_to.request_hash` equal to the
 answer's; `intent_commitment` with plain-code `version` and `scheme`, a
-well-formed `hash`, `preimage_retained === true` and non-empty scope ids;
-`original_receipt` with a plain-code `verifier`, a parseable `verified_at`,
-`action_kind`, `action_id` and `object_id` equal to the effect's, a
-plain-code `network`, a well-formed `template_id`, a non-empty
-`authority.account` (`controller` a string or null), `domain_commitment ===
-intent_commitment.hash`, `projection === "full_declared"`,
-`content_hash_source === "raw_original_content"` and a well-formed
-`content_hash_raw`; `historical_corroboration` with `resolver ===
-"dual_action_log"`, `action_id` equal, a non-empty `history_entry_id`,
-`execution === "succeeded"` exactly (`status_raw` a string, never
-interpreted), `authority.account === original_receipt.authority.account`
-and `controller` equal when the receipt declares one, `affected_objects` a
-non-empty array of object ids containing `object_id`, `content_hash_raw ===
-original_receipt.content_hash_raw` and `content_hash_match === true`,
-`read_at` within ten minutes of the wallet's clock; `effect_verdict ===
-"verified"`; and `outcome_proof.dual` equal to the projection above with
-`request` equal to the answer's `operation_id` and `request_hash`. The
-wallet still does not require the authority account to be the holder, nor
-any `object_id` to be the product target: it checks the server's stated
-binding and the agreement of receipt and corroboration. Anything else: held
-(the journal entry keeps its slot; a recovered item is `outcome_unknown`
-without a ticket).
+well-formed `sha256:` `hash`, `preimage_retained === true` and non-empty
+scope ids; `original_receipt` with a plain-code `verifier`, a parseable
+`verified_at`, `action_kind`, `action_id` and `object_id` equal to the
+effect's, plain-code `network` and `api_scope`, a well-formed `template_id`,
+`authority.account` a well-formed address and `authority.controller`
+present as a well-formed address or exactly `null` (absent: held),
+`domain_commitment === intent_commitment.hash`, `projection ===
+"full_declared"`, `content_hash_format === "provider_raw_hex_v1"`,
+`content_hash_source === "raw_original_content"` and `content_hash_raw`
+matching `^0x[0-9a-f]{64}$` after lower-casing; `historical_corroboration`
+with `resolver === "dual_action_log"`, `action_id`, `action_kind`,
+`object_id`, `network`, `api_scope` and `template_id` each equal to the
+receipt's, a non-empty `history_entry_id`, `history_entry_object_id` a
+well-formed object id contained in `affected_objects`, `execution ===
+"succeeded"` exactly (`status_raw` a string, never interpreted),
+`authority.account` equal to the receipt's normalized account and
+`authority.controller` EXACTLY equal to the receipt's normalized controller
+(`null` equals only `null`; the comparison is never skipped),
+`affected_objects` a non-empty array of object ids containing `object_id`,
+`content_hash_format === "provider_raw_hex_v1"`, normalized
+`content_hash_raw` equal to the receipt's and `content_hash_match ===
+true`, `Date.parse(original_receipt.verified_at) <=
+Date.parse(read_at)`, and `read_at` within the existing reviewed clock
+bound (ten minutes of the wallet's clock, no further future tolerance);
+`effect_verdict === "verified"`; and `outcome_proof.dual` equal to the
+projection above with `request` equal to the answer's `operation_id` and
+`request_hash`. The wallet still does not require the authority account to
+be the holder, nor any `object_id` to be the product target: it checks the
+server's stated binding and the exact agreement of receipt and
+corroboration. Anything else: held (the journal entry keeps its slot; a
+recovered item is `outcome_unknown` without a ticket).
 
 ### What this amendment does not do
 
