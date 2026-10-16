@@ -991,7 +991,14 @@ Dual, and synthesizes only the standard `update` action availability that fake
 lacks. The fake api-v3's session account is
 `0x1234567890abcdef1234567890abcdef12345678`, the harness default holder.
 `FACE_ASSERTION_ISSUER` from the snippet is not read: the wallet derives `iss`
-from the exact tenant host.
+from the exact tenant host. The snippet's registry entries must be in the
+wallet's registry form above; in particular the linked Warranty runtime is
+`linkedRuntimes[{purpose: "claims-warranty", applicationId, origin,
+instanceId}]`, and an entry naming it otherwise (the Studio harness at
+a2b04b9 writes the r10 proposal form `linkedCases`) is dropped fail-closed,
+so every face of that entry answers `unknown_application`. The wallet runs
+in development for this mode (`npm run dev`): a production build accepts
+only `https` face origins.
 
 ## Change impact guide
 

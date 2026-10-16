@@ -32,7 +32,7 @@ const cookie = () =>
   [...jar].map(([key, value]) => `${key}=${value}`).join("; ");
 
 // node:http so the Host header names the tenant; fetch forbids setting it.
-function call(method, path, body) {
+function call(method, path, body, headers = {}) {
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : undefined;
     const request = http.request(
@@ -48,6 +48,7 @@ function call(method, path, body) {
           "content-type": "application/json",
           cookie: cookie(),
           ...(data ? { "content-length": Buffer.byteLength(data) } : {}),
+          ...headers,
         },
       },
       (response) => {
@@ -155,11 +156,23 @@ if (
 ) {
   process.exit(1);
 }
-// The existing executor's email path, through the allow-listed proxy.
-const executed = await call("POST", "/api/backend/ebus/execute", {
-  action: { update: { id: OBJECT, data: { custom: p.input.data.custom } } },
-  nonce: 0,
-});
+// The existing executor's email path, through the allow-listed proxy. The
+// host binds the execution to this launch's won settle step (contract r18:
+// face slug, step operation id and the session's wallet id); the BFF refuses
+// any other body or identity before anything reaches Dual.
+const executed = await call(
+  "POST",
+  "/api/backend/ebus/execute",
+  {
+    action: { update: { id: OBJECT, data: { custom: p.input.data.custom } } },
+    nonce: 0,
+  },
+  {
+    "x-dual-face-slug": SLUG,
+    "x-dual-face-operation": SETTLE,
+    "x-dual-face-wallet": login.body.wallet.id,
+  },
+);
 step(
   "holder executes the exact proposal",
   executed.body.action_id,
