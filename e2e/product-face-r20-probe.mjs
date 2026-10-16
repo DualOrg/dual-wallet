@@ -328,17 +328,46 @@ if (CASE) {
       `${listing.status} supported=${listing.body.supported} complete=${listing.body.complete} open=${openItem?.outcome ?? "absent"} evidence=${item?.outcome ?? "absent"} ticket=${item?.ticket ? "yes" : "no"}`,
       listing.status === 200 && Boolean(item),
     );
-    if (item?.ticket) {
+    for (const [label, op, listedItem] of [
+      ["case.open", openOp, openItem],
+      ["case.evidence.submit", evidenceOp, item],
+    ]) {
+      if (!listedItem?.ticket) continue;
       const ack = await call("POST", `${faces}/recovery/ack`, {
-        operation_id: evidenceOp,
-        ticket: item.ticket,
+        operation_id: op,
+        ticket: listedItem.ticket,
       });
       step(
-        "recovery.ack of the proved case write",
+        `recovery.ack of the proved ${label}`,
         `${ack.status} ${JSON.stringify(ack.body)}`,
         ack.status === 200 && ack.body.acknowledged === true,
       );
     }
+    // C. Service recovery closed: a fresh launch (new id, empty journal, no
+    // cookie of this launch) lists this actor from the runtimes' own stores;
+    // none of this probe's acknowledged writes is listed again, and nothing
+    // of this probe is left unresolved.
+    const freshLaunch = createHash("sha256")
+      .update(`launch-fresh-${stamp}`)
+      .digest("base64url")
+      .slice(0, 32);
+    const fresh = await call(
+      "GET",
+      `${faces}/recovery`,
+      undefined,
+      freshLaunch,
+    );
+    const mine = new Set([offerOp, openOp, evidenceOp]);
+    const leftover = (fresh.body.items ?? []).filter((entry) =>
+      mine.has(entry.operation_id),
+    );
+    step(
+      "a fresh launch's listing no longer names this probe's acknowledged writes",
+      `${fresh.status} supported=${fresh.body.supported} complete=${fresh.body.complete} leftover=${JSON.stringify(leftover.map((entry) => [entry.operation_id, entry.outcome]))}`,
+      fresh.status === 200 &&
+        fresh.body.supported === true &&
+        leftover.length === 0,
+    );
     const runtimeStatus = await fetch(
       `${RUNTIME}/api/product-face/v1/operations`,
       {
