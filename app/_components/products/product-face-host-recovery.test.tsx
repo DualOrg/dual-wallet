@@ -172,6 +172,42 @@ describe("the recovery notice (proposed contract r20)", () => {
     ).toBeTruthy();
   });
 
+  it("tells a recovered transfer offer and its cancellation as what they were, never as a service request", async () => {
+    notice = {
+      kind: "recovery",
+      checks: [],
+      unreadable: 0,
+      complete: true,
+      moreToCheck: false,
+      withheld: 0,
+      items: [
+        {
+          ...item("offer-1", "runtime", "write_applied", true),
+          operation: "transfer.offer",
+        },
+        {
+          ...item("cancel-1", "runtime", "write_applied", true),
+          operation: "transfer.cancel",
+        },
+      ],
+    };
+    renderHost();
+    await screen.findByTitle("Morrow Home Arc product application");
+    expect(
+      screen.getByText(
+        "Your offer to pass on a product, made earlier, was recorded. The product is still yours until the handover is done.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Your cancellation of an offer to pass on a product, made earlier, was recorded. The product stays yours.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText("A service request you sent earlier was received."),
+    ).toBeNull();
+  });
+
   it("renders one plain line per listed outcome, in the host's own words", async () => {
     notice = {
       kind: "recovery",

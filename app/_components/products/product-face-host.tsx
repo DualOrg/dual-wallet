@@ -73,7 +73,13 @@ function recoveryLineKey(item: RecoveryItem) {
     case "transferred":
       return `notices.recovery.transfer.${item.outcome}` as const;
     case "write_applied":
-      return "notices.recovery.runtime.write_applied";
+      // A runtime write is a service request (case.*) or a transfer offer
+      // or its cancellation: each is told as what it was.
+      return item.operation === "transfer.offer"
+        ? "notices.recovery.runtime.transfer_offered"
+        : item.operation === "transfer.cancel"
+          ? "notices.recovery.runtime.transfer_cancelled"
+          : "notices.recovery.runtime.write_applied";
     default:
       return `notices.recovery.any.${item.outcome}` as const;
   }

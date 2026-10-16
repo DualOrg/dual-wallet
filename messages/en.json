@@ -574,7 +574,9 @@
           "transferred": "Your transfer is complete: the product now belongs to the recipient's wallet."
         },
         "runtime": {
-          "write_applied": "A service request you sent earlier was received."
+          "write_applied": "A service request you sent earlier was received.",
+          "transfer_offered": "Your offer to pass on a product, made earlier, was recorded. The product is still yours until the handover is done.",
+          "transfer_cancelled": "Your cancellation of an offer to pass on a product, made earlier, was recorded. The product stays yours."
         },
         "any": {
           "write_refused": "A request you sent earlier was not accepted. Nothing was changed.",

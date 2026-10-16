@@ -724,6 +724,11 @@ class BrandRuntime {
     { objectId: string; holder: string }
   >();
   private readonly settleReservations = new Set<string>();
+  /** The settle reservations by their own settle operation id. */
+  private readonly settlesByOperation = new Map<
+    string,
+    { objectId: string; proposalId: string; holder: string }
+  >();
   private readonly offers = new Map<string, Offer>();
   /** FIXTURE: the fixture object a Dual-backed write's action is applied to. */
   readonly dualBackedObjectId: string;
@@ -1977,10 +1982,26 @@ class BrandRuntime {
     input: Json,
     claims: Json,
   ) {
+    // As the Studio runtime reads it (src/product-face-runtime.mjs
+    // settleStatus): the settle's own operation id, the unit, NO input.
+    if (
+      Object.keys(target).join(",") !== "object_id" ||
+      Object.keys(input).length > 0
+    ) {
+      return json(400, { ok: false, status: "face_request_invalid" });
+    }
     const objectId = String(target.object_id ?? "");
-    const settleOp = String(input.settle_operation_id ?? "");
-    const proposalId = String(input.proposal_id ?? "");
+    const settleOp = operationId;
     const holder = String(claims.holder);
+    const reserved = this.settlesByOperation.get(settleOp);
+    if (
+      !reserved ||
+      reserved.objectId !== objectId ||
+      !sameAddress(reserved.holder, holder)
+    ) {
+      return json(404, { ok: false, status: "settle_reservation_not_found" });
+    }
+    const proposalId = reserved.proposalId;
     // Proved from the historical settle action, never current ownership (§0).
     const action = this.holderAction(objectId, holder, "update");
     if (!action) {
@@ -2332,6 +2353,11 @@ class BrandRuntime {
           });
         }
         this.settleReservations.add(key);
+        this.settlesByOperation.set(operationId, {
+          objectId,
+          proposalId,
+          holder,
+        });
         return json(200, {
           ok: true,
           status: "granted",

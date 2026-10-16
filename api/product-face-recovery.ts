@@ -541,17 +541,17 @@ async function resolveItem(
   } else {
     // A settle or transfer step: the runtime's own read-only reconcile
     // through the Dual action logs (transfer.status, never transfer.verify:
-    // the host holds no action id of its own for a recovered step).
+    // the host holds no action id of its own for a recovered step). The
+    // settle read is the one the face itself makes (contract r13): the
+    // settle's OWN operation id, the unit, and no input; the runtime refuses
+    // anything else. Its answer's proof names the proposal, checked below.
     const read =
       item.kind === "settle"
         ? {
             operation: "registration.settle.status" as const,
-            operationId: `settle-status-${hex(10)}`,
+            operationId: item.operationId,
             target: { object_id: item.objectId },
-            input: {
-              settle_operation_id: item.operationId,
-              proposal_id: item.proposalId,
-            },
+            input: {},
           }
         : {
             operation: "transfer.status" as const,
