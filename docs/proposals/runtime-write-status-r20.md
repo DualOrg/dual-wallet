@@ -107,6 +107,22 @@ match. A runtime that does not return `outcome_proof` for a committed outcome
 is pre-r20 for that operation: the wallet shows nothing more than it does
 today and acknowledges nothing.
 
+### The existing resolvers' committed answers (additive r20 fields)
+
+On a committed answer of `registration.status`, `registration.settle.status`,
+`registration.settle.verify`, `transfer.status` or `transfer.verify` an r20
+runtime adds, beside its existing fields: the full §0 echo (`operation_id`
+of the request, `holder`, `wallet`, `issuer`, `application_id`,
+`programme`, `asserting_artifact`), the accounting block below,
+`outcome_proof` and `outcome_hash`. The wallet accepts such an answer as a
+proved outcome only with all of them, every business counter `0`, the echo
+matching, and the proof's identities equal to the listed original item:
+`object_id`; `offer_id` and `step` for a transfer step; `proposal_id` for a
+settle; `action_id` equal to the listed one when the listing carried it,
+otherwise a well-formed action id (a reconcile may find the action only
+now). A committed answer without them is pre-r20 for that operation: shown
+as it is today, acknowledged never.
+
 ### Accounting, on every answer
 
 ```json
@@ -341,6 +357,17 @@ Acknowledged records are not listed. Nothing is listed for another `iss`,
   runtimes, as conflicting: it resolves nothing for that id, acknowledges
   nothing, and reports it as not checked.
 
+### What the wallet validates on a scan
+
+Every page: the §0 echo; `contract: "r20"`; the accounting block at zero;
+`scan_id` and `as_of` identical on every page of the scan; every item's
+`recorded_at <= as_of`; items strictly increasing in (`recorded_at`,
+`operation_id`) across the whole scan (so no repeated id and no reordering
+between pages); a `next` cursor never seen before in this scan (no cycle);
+at most 50 items a page and at most 20 pages followed. Any violation makes
+that runtime's check incomplete: its items are shown at most as not checked
+and nothing of it is acknowledged.
+
 ### Result
 
 ```json
@@ -400,8 +427,12 @@ Acknowledged records are not listed. Nothing is listed for another `iss`,
   - `registration` → `registrations/status` (`registration.status`);
   - `settle` → `registration.settle.status` (read-only reconcile through the
     Dual action logs), with the wallet's own canonical readback beside it;
-  - `transfer` → `transfer.verify` with the recorded `action_id`, else
-    `transfer.status`, both bound to `offer_id` and `step_operation_id`;
+  - `transfer` → `transfer.status` only, bound to `offer_id` and
+    `step_operation_id`: the runtime's read-only reconcile through the Dual
+    action logs (a won step whose holder action it finds is committed there;
+    that appended outcome is bookkeeping, not a business write). The wallet
+    never calls `transfer.verify` for a recovered item: it holds no action id
+    of its own for it
   - `runtime` → `write.status` above.
 - An item whose journey the host disables is neither resolved nor
   acknowledged on that host and stays listed.
@@ -475,23 +506,36 @@ outcome_hash}` where `original_operation` is the record's operation
   touches the journal and never frees a slot.
 - Listing: on each face launch, after the bootstrap, the host lists recovery
   from the face's runtime and each linked runtime, following `next` to the
-  end of each scan (bounded to 20 pages per runtime). Each page's echoed
-  binding is validated (§0). A scan whose last page is `complete: true` is
-  a complete scan; a `complete: false` page, a page follow stopped before
+  end of each scan and validating each page (§2). A scan whose last page is
+  `complete: true` and passed every validation is a complete scan. A
+  `complete: false` page, a validation failure, a page follow stopped before
   `next: null`, a cursor refusal, an unavailable runtime or a runtime without
-  r20 makes the whole check INCOMPLETE.
-- Resolving and showing: each listed item of an enabled journey is resolved
-  through its kind's resolver; a proved outcome is shown in the host's own
-  UI (never face text), a held or unknown one is shown as still being
-  confirmed. Showing never writes anything. A conflicting id (§2) is shown as
-  not checked.
-- Acknowledging: the wallet acknowledges an item only when ALL hold: the
-  check was complete across every scoped runtime; the item's outcome was
-  proved in that same launch with a matching `outcome_hash`; the item's
-  journey is enabled on this host; and the person has seen it (the notice
-  was dismissed). An incomplete check acknowledges nothing, even for items
-  that were proved. Held, unknown, refused and conflicting items are never
-  acknowledged.
+  r20 beside one with it makes the whole check INCOMPLETE.
+- Resolving and showing: listed items of an enabled journey are resolved in
+  listing order (oldest first) through their kind's resolver, at most 25 per
+  listing; the rest are returned as not checked, with their count, so a
+  larger queue drains across launches once the checked ones are
+  acknowledged. A proved outcome is shown in the host's own UI (never face
+  text); a held, unknown or refused one as it is; a refused runtime write is
+  shown as refused only after its answer passed the same binding checks as an
+  applied one. Showing never writes anything. A conflicting id (§2) is shown
+  as not checked.
+- Acknowledging: the wallet acknowledges an item only when ALL hold: every
+  scoped runtime's scan was complete (the resolution bound above does not
+  make a complete scan incomplete); the item's outcome was proved in that
+  same launch with a matching `outcome_hash`; the item's journey is enabled
+  on this host at listing and again at acknowledgement; and the person has
+  seen it (the notice was dismissed). An incomplete check acknowledges
+  nothing, even for items that were proved. Held, unknown, refused, not
+  checked and conflicting items are never acknowledged.
+- The acknowledgement ticket a listing issues is sealed to the session, the
+  wallet, the face slug and programme, and the launch, and names the
+  original operation id, kind, original operation, target, `outcome_hash`,
+  the runtime's application id AND origin, and the face artifact (version and
+  hash) the host served at listing. It is honoured for one hour and only
+  while the same runtime (application and origin) is still bound and the same
+  face artifact is still served; a changed linked origin, a changed artifact
+  or a different host makes it invalid.
 - Nothing recovered is ever re-sent, re-reserved, re-minted for the face, or
   executed. The wallet's cookie-based retained listing stays as a second
   source for runtimes without r20.
