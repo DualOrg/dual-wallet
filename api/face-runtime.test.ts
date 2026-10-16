@@ -1017,192 +1017,396 @@ describe("outcomeHashOf and verifiedOutcomeProof", () => {
 
 // --- write.status: a Dual-backed effect and a refused write ------------------
 
-describe("readWriteStatus: a Dual-backed write's minimal bound proof (proposed r20)", () => {
-  const ACTION_OBJECT = "d".repeat(24);
-  const PAYLOAD_HASH = `sha256:${"e".repeat(64)}`;
-  /** Synthetic: the signer is not the holder, the object not the target. */
-  function dualProof(): Json {
+describe("readWriteStatus: a Dual-backed write under r20.1 (original_verified_effect_receipt_v1)", () => {
+  // SYNTHETIC fixture of the accepted amendment: a case.open that mints a
+  // fixture object and then updates the product, two intended Dual effects,
+  // each with its receipt chain. The signer is a service account (not the
+  // holder); the minted object is not the product target.
+  const MINTED = "d".repeat(24);
+  const TEMPLATE = "e".repeat(24);
+  const SERVICE = `0x${"f1".repeat(20)}`;
+  const CONTROLLER = `0x${"c2".repeat(20)}`;
+  const RAW = (fill: string) => `0x${fill.repeat(64)}`;
+  const INTENT = (fill: string) => `sha256:${fill.repeat(64)}`;
+  const readAt = () => new Date(Date.now()).toISOString();
+  const verifiedAt = () => new Date(Date.now() - 60_000).toISOString();
+
+  function effect(index: number, objectId: string, fill: string): Json {
     return {
-      resolver: "dual_action_log",
-      action_id: "dual-action-77",
-      object_id: ACTION_OBJECT,
-      signer: "0x00000000000000000000000000000000000000f1",
-      expected_payload_hash: PAYLOAD_HASH,
-      observed_payload_hash: PAYLOAD_HASH,
-      payload_match: true,
-      bound_to: { operation_id: OPERATION_ID, request_hash: REQUEST_HASH },
-      verified_at: new Date(Date.now()).toISOString(),
+      index,
+      action_id: `dual-action-${index + 70}`,
+      action_kind: index === 0 ? "mint" : "update",
+      object_id: objectId,
+      bound_to: {
+        operation_id: OPERATION_ID,
+        request_hash: REQUEST_HASH,
+        effect_index: index,
+      },
+      intent_commitment: {
+        version: "v1",
+        scheme: "dual_case_open_v1",
+        hash: INTENT(fill),
+        preimage_retained: true,
+        scope: {
+          event_id: `evt-${index}`,
+          outbox_id: `outbox-${index}`,
+          installation_id: "inst-fixture-1",
+        },
+      },
+      original_receipt: {
+        verifier: "runtime_original_verifier",
+        verified_at: verifiedAt(),
+        action_kind: index === 0 ? "mint" : "update",
+        action_id: `dual-action-${index + 70}`,
+        object_id: objectId,
+        network: "dual_main",
+        api_scope: "api_v3",
+        template_id: TEMPLATE,
+        authority: {
+          account: SERVICE,
+          controller: index === 0 ? null : CONTROLLER,
+        },
+        domain_commitment: INTENT(fill),
+        projection: "full_declared",
+        content_hash_format: "provider_raw_hex_v1",
+        content_hash_raw: RAW(fill),
+        content_hash_source: "raw_original_content",
+      },
+      historical_corroboration: {
+        read_at: readAt(),
+        resolver: "dual_action_log",
+        action_id: `dual-action-${index + 70}`,
+        action_kind: index === 0 ? "mint" : "update",
+        object_id: objectId,
+        network: "dual_main",
+        api_scope: "api_v3",
+        template_id: TEMPLATE,
+        execution: "succeeded",
+        status_raw: "COMPLETED",
+        authority: {
+          account: SERVICE,
+          controller: index === 0 ? null : CONTROLLER,
+        },
+        affected_objects: index === 0 ? [MINTED] : [OBJECT_ID, MINTED],
+        history_entry_id: `hist-${index}`,
+        history_entry_object_id: objectId,
+        content_hash_format: "provider_raw_hex_v1",
+        content_hash_raw: RAW(fill),
+        content_hash_match: true,
+      },
+      effect_verdict: "verified",
     };
   }
-  function writeBacked(proof: Json = dualProof()): Json {
-    const outcome_proof = {
-      ...WRITE_PROOF,
-      dual: {
-        action_id: proof.action_id,
-        object_id: proof.object_id,
-        observed_payload_hash: proof.observed_payload_hash,
-      },
-    };
+  const projection = (effects: Json[]) => ({
+    proof_kind: "original_verified_effect_receipt_v1",
+    request: { operation_id: OPERATION_ID, request_hash: REQUEST_HASH },
+    effects: effects.map((item) => {
+      const intent = item.intent_commitment as Json;
+      const receipt = item.original_receipt as Json;
+      return {
+        index: item.index,
+        action_id: item.action_id,
+        object_id: item.object_id,
+        intent_commitment_hash: intent.hash,
+        content_hash_raw: receipt.content_hash_raw,
+      };
+    }),
+  });
+  function writeBacked(
+    effects: Json[] = [effect(0, MINTED, "a"), effect(1, OBJECT_ID, "b")],
+    intended = effects.length,
+  ): Json {
+    const outcome_proof = { ...WRITE_PROOF, dual: projection(effects) };
     return {
       ...writeApplied(),
-      dual: { backed: true, intended_dual_writes: 1, proof },
+      dual: {
+        backed: true,
+        proof_kind: "original_verified_effect_receipt_v1",
+        intended_dual_writes: intended,
+        effects,
+      },
       outcome_proof,
       outcome_hash: outcomeHashOf(outcome_proof),
     };
   }
+  const withEffect = (index: number, change: (item: Json) => Json) => {
+    const effects = [effect(0, MINTED, "a"), effect(1, OBJECT_ID, "b")];
+    effects[index] = change(effects[index]);
+    return writeBacked(effects);
+  };
+  const inReceipt = (index: number, patch: Json) =>
+    withEffect(index, (item) => ({
+      ...item,
+      original_receipt: { ...(item.original_receipt as Json), ...patch },
+    }));
+  const inFresh = (index: number, patch: Json) =>
+    withEffect(index, (item) => ({
+      ...item,
+      historical_corroboration: {
+        ...(item.historical_corroboration as Json),
+        ...patch,
+      },
+    }));
 
-  it("parses one intended Dual action proved by its one historical action", async () => {
-    const proof = dualProof();
-    const result = await writeStatusOf(200, writeBacked(proof));
+  it("parses two intended Dual effects, each proved by its own receipt chain", async () => {
+    const result = await writeStatusOf(200, writeBacked());
     expect(result.outcome).toBe("applied");
     if (result.outcome !== "applied") return;
-    expect(result.record.dual).toEqual({
+    expect(result.record.dual).toMatchObject({
       backed: true,
-      intendedDualWrites: 1,
-      proof: {
-        actionId: "dual-action-77",
-        objectId: ACTION_OBJECT,
-        signer: "0x00000000000000000000000000000000000000f1",
-        expectedPayloadHash: PAYLOAD_HASH,
-        observedPayloadHash: PAYLOAD_HASH,
-        boundTo: { operationId: OPERATION_ID, requestHash: REQUEST_HASH },
-        verifiedAt: proof.verified_at,
-      },
+      proofKind: "original_verified_effect_receipt_v1",
+      intendedDualWrites: 2,
     });
-    expect((result.record.outcomeProof.dual as Json).action_id).toBe(
-      "dual-action-77",
-    );
+    if (!result.record.dual.backed) return;
+    expect(
+      result.record.dual.effects.map((item) => [
+        item.index,
+        item.actionId,
+        item.objectId,
+        item.actionKind,
+      ]),
+    ).toEqual([
+      [0, "dual-action-70", MINTED, "mint"],
+      [1, "dual-action-71", OBJECT_ID, "update"],
+    ]);
+    expect(result.record.dual.effects[0].authority).toEqual({
+      account: SERVICE,
+      controller: null,
+    });
+    expect(result.record.dual.effects[1].authority).toEqual({
+      account: SERVICE,
+      controller: CONTROLLER,
+    });
+    expect(result.record.dual.effects[1].contentHashRaw).toBe(RAW("b"));
+    expect((result.record.outcomeProof.dual as Json).request).toEqual({
+      operation_id: OPERATION_ID,
+      request_hash: REQUEST_HASH,
+    });
   });
 
-  it.each<[string, (body: Json) => Json]>([
+  it("normalizes upper-case provider hashes and addresses, never re-hashing them", async () => {
+    const upper = (item: Json) => ({
+      ...item,
+      original_receipt: {
+        ...(item.original_receipt as Json),
+        content_hash_raw: RAW("a").toUpperCase().replace("0X", "0x"),
+        authority: {
+          account: SERVICE.toUpperCase().replace("0X", "0x"),
+          controller: null,
+        },
+      },
+    });
+    const effects = [upper(effect(0, MINTED, "a")), effect(1, OBJECT_ID, "b")];
+    const result = await writeStatusOf(200, writeBacked(effects));
+    expect(result.outcome).toBe("applied");
+    if (result.outcome !== "applied" || !result.record.dual.backed) return;
+    expect(result.record.dual.effects[0].contentHashRaw).toBe(RAW("a"));
+    expect(result.record.dual.effects[0].authority.account).toBe(SERVICE);
+  });
+
+  it.each<[string, () => Json]>([
     [
-      "two intended Dual writes with one proof (unsupported, never inferred)",
-      (body) => ({
-        ...body,
-        dual: { ...(body.dual as Json), intended_dual_writes: 2 },
-      }),
+      "one effect for two intended",
+      () => writeBacked([effect(0, MINTED, "a")], 2),
     ],
     [
-      "zero intended Dual writes but backed",
-      (body) => ({
-        ...body,
-        dual: { ...(body.dual as Json), intended_dual_writes: 0 },
-      }),
+      "two effects for one intended",
+      () => writeBacked([effect(0, MINTED, "a"), effect(1, OBJECT_ID, "b")], 1),
     ],
     [
-      "expected and observed payload hashes differ",
-      (body) => ({
-        ...body,
+      "an unknown proof kind",
+      () => ({
+        ...writeBacked(),
         dual: {
-          ...(body.dual as Json),
-          proof: {
-            ...((body.dual as Json).proof as Json),
-            observed_payload_hash: `sha256:${"f".repeat(64)}`,
-          },
+          ...(writeBacked().dual as Json),
+          proof_kind: "executed_input_v1",
         },
       }),
     ],
     [
-      "payload_match false",
-      (body) => ({
-        ...body,
-        dual: {
-          ...(body.dual as Json),
-          proof: {
-            ...((body.dual as Json).proof as Json),
-            payload_match: false,
-          },
-        },
+      "the withdrawn singular proof beside the list",
+      () => ({
+        ...writeBacked(),
+        dual: { ...(writeBacked().dual as Json), proof: {} },
       }),
     ],
     [
-      "bound to another operation",
-      (body) => ({
-        ...body,
-        dual: {
-          ...(body.dual as Json),
-          proof: {
-            ...((body.dual as Json).proof as Json),
-            bound_to: {
-              operation_id: "case-write-zz-9999",
-              request_hash: REQUEST_HASH,
-            },
-          },
-        },
+      "a withdrawn payload field",
+      () => ({
+        ...writeBacked(),
+        dual: { ...(writeBacked().dual as Json), payload_match: true },
       }),
     ],
     [
-      "bound to another request",
-      (body) => ({
-        ...body,
-        dual: {
-          ...(body.dual as Json),
-          proof: {
-            ...((body.dual as Json).proof as Json),
-            bound_to: {
+      "effects out of order",
+      () => writeBacked([effect(1, OBJECT_ID, "b"), effect(0, MINTED, "a")]),
+    ],
+    [
+      "a repeated action id",
+      () =>
+        withEffect(1, (item) => ({
+          ...item,
+          action_id: "dual-action-70",
+          original_receipt: {
+            ...(item.original_receipt as Json),
+            action_id: "dual-action-70",
+          },
+          historical_corroboration: {
+            ...(item.historical_corroboration as Json),
+            action_id: "dual-action-70",
+          },
+        })),
+    ],
+    [
+      "an effect bound to another operation",
+      () =>
+        withEffect(1, (item) => ({
+          ...item,
+          bound_to: {
+            ...(item.bound_to as Json),
+            operation_id: "case-write-zz-9999",
+          },
+        })),
+    ],
+    [
+      "an effect bound to another request",
+      () =>
+        withEffect(1, (item) => ({
+          ...item,
+          bound_to: {
+            ...(item.bound_to as Json),
+            request_hash: `sha256:${"1".repeat(64)}`,
+          },
+        })),
+    ],
+    [
+      "an effect bound to another index",
+      () =>
+        withEffect(1, (item) => ({
+          ...item,
+          bound_to: { ...(item.bound_to as Json), effect_index: 0 },
+        })),
+    ],
+    [
+      "an intent preimage not retained",
+      () =>
+        withEffect(0, (item) => ({
+          ...item,
+          intent_commitment: {
+            ...(item.intent_commitment as Json),
+            preimage_retained: false,
+          },
+        })),
+    ],
+    [
+      "a domain commitment unequal to the intent hash",
+      () => inReceipt(0, { domain_commitment: INTENT("9") }),
+    ],
+    [
+      "a receipt without a declared controller",
+      () => inReceipt(1, { authority: { account: SERVICE } }),
+    ],
+    [
+      "a controller declared but observed null",
+      () => inFresh(1, { authority: { account: SERVICE, controller: null } }),
+    ],
+    [
+      "a null controller but one observed",
+      () =>
+        inFresh(0, { authority: { account: SERVICE, controller: CONTROLLER } }),
+    ],
+    [
+      "another observed signing account",
+      () =>
+        inFresh(1, {
+          authority: {
+            account: `0x${"ab".repeat(20)}`,
+            controller: CONTROLLER,
+          },
+        }),
+    ],
+    [
+      "a sha256-prefixed content hash",
+      () => inReceipt(0, { content_hash_raw: `sha256:${"a".repeat(64)}` }),
+    ],
+    [
+      "a bare-hex content hash",
+      () => inReceipt(0, { content_hash_raw: "a".repeat(64) }),
+    ],
+    [
+      "a content hash that is a state hash",
+      () => inReceipt(0, { content_hash_source: "state_hash" }),
+    ],
+    [
+      "a corroboration with another raw hash",
+      () => inFresh(1, { content_hash_raw: RAW("c") }),
+    ],
+    [
+      "a corroboration that says no match",
+      () => inFresh(1, { content_hash_match: false }),
+    ],
+    [
+      "a history entry of another object",
+      () => inFresh(1, { history_entry_object_id: MINTED }),
+    ],
+    [
+      "an affected list without the object",
+      () => inFresh(1, { affected_objects: [MINTED] }),
+    ],
+    ["a pending execution", () => inFresh(1, { execution: "pending" })],
+    ["a failed execution", () => inFresh(0, { execution: "failed" })],
+    ["another network", () => inFresh(0, { network: "dual_test" })],
+    ["another api scope", () => inFresh(0, { api_scope: "api_v2" })],
+    ["another template", () => inFresh(0, { template_id: "1".repeat(24) })],
+    [
+      "a verification after the read",
+      () =>
+        inReceipt(0, {
+          verified_at: new Date(Date.now() + 120_000).toISOString(),
+        }),
+    ],
+    [
+      "a stale read (eleven minutes ago)",
+      () =>
+        inFresh(0, {
+          read_at: new Date(Date.now() - 11 * 60_000).toISOString(),
+        }),
+    ],
+    [
+      "an unverified effect verdict",
+      () =>
+        withEffect(0, (item) => ({ ...item, effect_verdict: "unverified" })),
+    ],
+    [
+      "an outcome proof without the second effect",
+      () => {
+        const body = writeBacked();
+        const dual = (body.outcome_proof as Json).dual as Json;
+        const proof = {
+          ...(body.outcome_proof as Json),
+          dual: { ...dual, effects: (dual.effects as Json[]).slice(0, 1) },
+        };
+        return {
+          ...body,
+          outcome_proof: proof,
+          outcome_hash: outcomeHashOf(proof),
+        };
+      },
+    ],
+    [
+      "an outcome proof bound to another request",
+      () => {
+        const body = writeBacked();
+        const dual = (body.outcome_proof as Json).dual as Json;
+        const proof = {
+          ...(body.outcome_proof as Json),
+          dual: {
+            ...dual,
+            request: {
               operation_id: OPERATION_ID,
               request_hash: `sha256:${"1".repeat(64)}`,
             },
           },
-        },
-      }),
-    ],
-    [
-      "a stale verification (eleven minutes ago)",
-      (body) => ({
-        ...body,
-        dual: {
-          ...(body.dual as Json),
-          proof: {
-            ...((body.dual as Json).proof as Json),
-            verified_at: new Date(Date.now() - 11 * 60_000).toISOString(),
-          },
-        },
-      }),
-    ],
-    [
-      "another resolver",
-      (body) => ({
-        ...body,
-        dual: {
-          ...(body.dual as Json),
-          proof: {
-            ...((body.dual as Json).proof as Json),
-            resolver: "application_db",
-          },
-        },
-      }),
-    ],
-    [
-      "no action id",
-      (body) => ({
-        ...body,
-        dual: {
-          ...(body.dual as Json),
-          proof: without((body.dual as Json).proof as Json, "action_id"),
-        },
-      }),
-    ],
-    [
-      "an outcome_proof without the proved effect",
-      (body) => {
-        const proof = without(body.outcome_proof as Json, "dual");
-        return {
-          ...body,
-          outcome_proof: proof,
-          outcome_hash: outcomeHashOf(proof),
-        };
-      },
-    ],
-    [
-      "an outcome_proof naming another action",
-      (body) => {
-        const proof = {
-          ...(body.outcome_proof as Json),
-          dual: {
-            ...((body.outcome_proof as Json).dual as Json),
-            action_id: "dual-action-78",
-          },
         };
         return {
           ...body,
@@ -1211,10 +1415,8 @@ describe("readWriteStatus: a Dual-backed write's minimal bound proof (proposed r
         };
       },
     ],
-  ])("holds a Dual-backed answer with %s", async (_label, change) => {
-    expect(await writeStatusOf(200, change(writeBacked()))).toEqual({
-      outcome: "held",
-    });
+  ])("holds a Dual-backed answer with %s", async (_label, make) => {
+    expect(await writeStatusOf(200, make())).toEqual({ outcome: "held" });
   });
 });
 

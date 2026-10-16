@@ -432,15 +432,29 @@ export type WriteReceipt =
  * bound by the server to the original operation and request. The signer is
  * not assumed to be the holder, nor the object the product target.
  */
-export interface DualActionProof {
+/**
+ * Contract r20.1 (`original_verified_effect_receipt_v1`): one verified effect
+ * of a Dual-backed write, as the server answered it. Three distinct parts:
+ * the pre-dispatch intent commitment, the protected original verifier's
+ * receipt, and the fresh historical corroboration from the state-change
+ * history entry of that effect's own object. The signer is not assumed to
+ * be the holder, nor the object the product target.
+ */
+export interface VerifiedEffect {
+  index: number;
   actionId: string;
+  actionKind: string;
   objectId: string;
-  signer: string;
-  expectedPayloadHash: string;
-  observedPayloadHash: string;
-  boundTo: { operationId: string; requestHash: string };
+  intentCommitmentHash: string;
+  /** The provider's raw content hash (0x + 64 hex), normalized. */
+  contentHashRaw: string;
+  authority: { account: string; controller: string | null };
+  historyEntryId: string;
   verifiedAt: string;
+  readAt: string;
 }
+
+export const EFFECT_RECEIPT_PROOF_KIND = "original_verified_effect_receipt_v1";
 
 /** The runtime's durable record of one write, exactly as it answered it. */
 export interface RecordedWrite extends RuntimeEcho {
@@ -460,7 +474,12 @@ export interface RecordedWrite extends RuntimeEcho {
    */
   dual:
     | { backed: false; targetReadback: "verified" | "absent" }
-    | { backed: true; intendedDualWrites: number; proof: DualActionProof };
+    | {
+        backed: true;
+        proofKind: typeof EFFECT_RECEIPT_PROOF_KIND;
+        intendedDualWrites: number;
+        effects: VerifiedEffect[];
+      };
   outcomeProof: Record<string, unknown>;
   outcomeHash: string;
   acknowledged: boolean;
@@ -569,10 +588,19 @@ function runtimeOutcomeOf(
     proof.case_id !== recorded.caseId ||
     !sameJson(proof.receipt, body.receipt) ||
     (recorded.dual.backed &&
-      !sameJson(proof.dual, {
-        action_id: recorded.dual.proof.actionId,
-        object_id: recorded.dual.proof.objectId,
-        observed_payload_hash: recorded.dual.proof.observedPayloadHash,
+      !sameJson(normalizedEffectProjection(proof.dual), {
+        proof_kind: EFFECT_RECEIPT_PROOF_KIND,
+        request: {
+          operation_id: recorded.operationId,
+          request_hash: body.request_hash,
+        },
+        effects: recorded.dual.effects.map((effect) => ({
+          index: effect.index,
+          action_id: effect.actionId,
+          object_id: effect.objectId,
+          intent_commitment_hash: effect.intentCommitmentHash,
+          content_hash_raw: effect.contentHashRaw,
+        })),
       }))
   ) {
     return undefined;
@@ -603,45 +631,193 @@ function dualOf(
       : undefined;
   }
   if (dual.backed !== true) return undefined;
-  const proof = dual.proof;
-  // One proof names one action: exactly one intended Dual write is proved
-  // here. More than one is held as unsupported (never inferred proved) until
-  // the contract carries one proof per effect (contract §5).
+  // r20.1 withdraws the executed-input proof: any of its fields, or the
+  // singular proof, makes the answer malformed, never a relabelled proof.
   if (
-    dual.intended_dual_writes !== 1 ||
-    !record(proof) ||
-    proof.resolver !== "dual_action_log" ||
-    typeof proof.action_id !== "string" ||
-    !RECEIPT_ID.test(proof.action_id) ||
-    !isObjectId(proof.object_id) ||
-    !text(proof.signer) ||
-    !isRequestHash(proof.expected_payload_hash) ||
-    !isRequestHash(proof.observed_payload_hash) ||
-    proof.expected_payload_hash !== proof.observed_payload_hash ||
-    proof.payload_match !== true ||
-    !record(proof.bound_to) ||
-    proof.bound_to.operation_id !== body.operation_id ||
-    proof.bound_to.request_hash !== body.request_hash ||
-    !timestamp(proof.verified_at) ||
-    Math.abs(Date.parse(proof.verified_at) - now) > PROOF_FRESHNESS_MS
+    "proof" in dual ||
+    "expected_payload_hash" in dual ||
+    "observed_payload_hash" in dual ||
+    "payload_match" in dual ||
+    dual.proof_kind !== EFFECT_RECEIPT_PROOF_KIND ||
+    !Number.isInteger(dual.intended_dual_writes) ||
+    (dual.intended_dual_writes as number) < 1 ||
+    !Array.isArray(dual.effects) ||
+    dual.effects.length !== dual.intended_dual_writes
+  ) {
+    return undefined;
+  }
+  const effects: VerifiedEffect[] = [];
+  const actionIds = new Set<string>();
+  for (const [index, value] of dual.effects.entries()) {
+    const effect = effectOf(value, index, body, now);
+    if (!effect || actionIds.has(effect.actionId)) return undefined;
+    actionIds.add(effect.actionId);
+    effects.push(effect);
+  }
+  return {
+    backed: true,
+    proofKind: EFFECT_RECEIPT_PROOF_KIND,
+    intendedDualWrites: dual.intended_dual_writes as number,
+    effects,
+  };
+}
+
+const PROVIDER_RAW_HASH = /^0x[0-9a-f]{64}$/;
+const ADDRESS = /^0x[0-9a-f]{40}$/;
+
+/**
+ * The outcome_proof's effect projection with its provider raw hashes
+ * normalized (contract §1a: equality is of the normalized strings), so a
+ * server emitting upper-case hex in both places is compared as it should be.
+ */
+function normalizedEffectProjection(value: unknown) {
+  if (!record(value) || !Array.isArray(value.effects)) return value;
+  return {
+    ...value,
+    effects: value.effects.map((effect: unknown) =>
+      record(effect) && typeof effect.content_hash_raw === "string"
+        ? { ...effect, content_hash_raw: effect.content_hash_raw.toLowerCase() }
+        : effect,
+    ),
+  };
+}
+
+/** A provider raw content hash (`provider_raw_hex_v1`), normalized, or undefined. */
+function providerRawHash(value: unknown) {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.toLowerCase();
+  return PROVIDER_RAW_HASH.test(normalized) ? normalized : undefined;
+}
+
+/** An address, normalized, or undefined. */
+function addressOf(value: unknown) {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.toLowerCase();
+  return ADDRESS.test(normalized) ? normalized : undefined;
+}
+
+/** A declared controller: an address, or exactly null (direct signing). */
+function controllerOf(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  return addressOf(value);
+}
+
+/**
+ * One effect of the r20.1 chain (contract §1a consumer validation): the
+ * effect bound to this operation, request and its index; the intent
+ * commitment recomputed from a retained preimage; the original receipt with
+ * exact authority and the RAW provider content hash; and the fresh
+ * corroboration from the state-change history entry of this very object,
+ * terminally succeeded, with the same authority and the same raw hash.
+ */
+function effectOf(
+  value: unknown,
+  index: number,
+  body: Record<string, unknown>,
+  now: number,
+): VerifiedEffect | undefined {
+  if (!record(value)) return undefined;
+  const bound = value.bound_to;
+  const intent = value.intent_commitment;
+  const receipt = value.original_receipt;
+  const fresh = value.historical_corroboration;
+  if (
+    value.index !== index ||
+    typeof value.action_id !== "string" ||
+    !RECEIPT_ID.test(value.action_id) ||
+    !plainCode(value.action_kind) ||
+    !isObjectId(value.object_id) ||
+    value.effect_verdict !== "verified" ||
+    !record(bound) ||
+    bound.operation_id !== body.operation_id ||
+    bound.request_hash !== body.request_hash ||
+    bound.effect_index !== index ||
+    !record(intent) ||
+    !record(receipt) ||
+    !record(fresh)
+  ) {
+    return undefined;
+  }
+  const scope = intent.scope;
+  if (
+    !plainCode(intent.version) ||
+    !plainCode(intent.scheme) ||
+    !isRequestHash(intent.hash) ||
+    intent.preimage_retained !== true ||
+    !record(scope) ||
+    !text(scope.event_id) ||
+    !text(scope.outbox_id) ||
+    !text(scope.installation_id)
+  ) {
+    return undefined;
+  }
+  const receiptAuthority = receipt.authority;
+  const freshAuthority = fresh.authority;
+  if (!record(receiptAuthority) || !record(freshAuthority)) return undefined;
+  const account = addressOf(receiptAuthority.account);
+  const controller = controllerOf(receiptAuthority.controller);
+  const receiptHash = providerRawHash(receipt.content_hash_raw);
+  const freshHash = providerRawHash(fresh.content_hash_raw);
+  if (
+    !plainCode(receipt.verifier) ||
+    !timestamp(receipt.verified_at) ||
+    receipt.action_kind !== value.action_kind ||
+    receipt.action_id !== value.action_id ||
+    receipt.object_id !== value.object_id ||
+    !plainCode(receipt.network) ||
+    !plainCode(receipt.api_scope) ||
+    !isObjectId(receipt.template_id) ||
+    !account ||
+    // The controller must be declared: an address, or exactly null. An
+    // absent or unrecorded controller is not a qualifying receipt.
+    !("controller" in receiptAuthority) ||
+    controller === undefined ||
+    receipt.domain_commitment !== intent.hash ||
+    receipt.projection !== "full_declared" ||
+    receipt.content_hash_format !== "provider_raw_hex_v1" ||
+    receipt.content_hash_source !== "raw_original_content" ||
+    !receiptHash ||
+    !timestamp(fresh.read_at) ||
+    fresh.resolver !== "dual_action_log" ||
+    fresh.action_id !== value.action_id ||
+    fresh.action_kind !== value.action_kind ||
+    fresh.object_id !== value.object_id ||
+    fresh.network !== receipt.network ||
+    fresh.api_scope !== receipt.api_scope ||
+    fresh.template_id !== receipt.template_id ||
+    !text(fresh.history_entry_id) ||
+    // Exact object: the corroborating history entry is this effect's own
+    // object's, not merely another affected object's.
+    fresh.history_entry_object_id !== value.object_id ||
+    fresh.execution !== "succeeded" ||
+    typeof fresh.status_raw !== "string" ||
+    addressOf(freshAuthority.account) !== account ||
+    !("controller" in freshAuthority) ||
+    controllerOf(freshAuthority.controller) !== controller ||
+    !Array.isArray(fresh.affected_objects) ||
+    fresh.affected_objects.length === 0 ||
+    !fresh.affected_objects.every(isObjectId) ||
+    !fresh.affected_objects.includes(value.object_id) ||
+    fresh.content_hash_format !== "provider_raw_hex_v1" ||
+    !freshHash ||
+    freshHash !== receiptHash ||
+    fresh.content_hash_match !== true ||
+    Date.parse(receipt.verified_at) > Date.parse(fresh.read_at) ||
+    Math.abs(Date.parse(fresh.read_at) - now) > PROOF_FRESHNESS_MS
   ) {
     return undefined;
   }
   return {
-    backed: true,
-    intendedDualWrites: 1,
-    proof: {
-      actionId: proof.action_id,
-      objectId: proof.object_id,
-      signer: proof.signer,
-      expectedPayloadHash: proof.expected_payload_hash,
-      observedPayloadHash: proof.observed_payload_hash,
-      boundTo: {
-        operationId: body.operation_id as string,
-        requestHash: body.request_hash as string,
-      },
-      verifiedAt: proof.verified_at,
-    },
+    index,
+    actionId: value.action_id,
+    actionKind: value.action_kind,
+    objectId: value.object_id,
+    intentCommitmentHash: intent.hash,
+    contentHashRaw: receiptHash,
+    authority: { account, controller },
+    historyEntryId: fresh.history_entry_id,
+    verifiedAt: receipt.verified_at,
+    readAt: fresh.read_at,
   };
 }
 

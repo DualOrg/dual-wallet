@@ -341,11 +341,16 @@ nothing is ever re-sent.
 
 ## 1a. Amendment r20.1 (PROPOSED, awaiting Root approval): `original_verified_effect_receipt_v1`, one receipt chain per intended Dual effect
 
-Status: **PROPOSED AMENDMENT, NOT APPROVED, NOT IMPLEMENTED** on either
-side. Nothing of the approved r20 wire outside §1's `dual.backed: true`
-branch changes; on approval this section SUPERSEDES that branch. Neither the
-wallet reader nor the fixture moves to it before Root approves this exact
-text.
+Status: **ACCEPTED by Root for matching SOURCE implementation** (pin
+`c607d3cc3b8f138be23d7f7ad111f867e327fa13`, with the exact-object
+clarification below). Source agreement is not hosted acceptance. Nothing of
+the approved r20 wire outside §1's `dual.backed: true` branch changes; this
+section SUPERSEDES that branch.
+
+Exact-object condition (Root's clarification, no new wire shape): each
+corroborating state-change history entry belongs to THAT effect's object,
+`historical_corroboration.history_entry_object_id === effect.object_id`, not
+merely to another object listed in `affected_objects`.
 
 ### Why, and what this is not
 
