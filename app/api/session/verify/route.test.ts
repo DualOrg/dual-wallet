@@ -163,3 +163,77 @@ describe("the renewed session", () => {
     expect(writeSession).toHaveBeenCalledWith(response, SESSION_STATE);
   });
 });
+
+// A branded host serves exactly its entrance organisation (contract
+// dual-wallet-host-configuration-v1, Entrance and isolation): a mail link of
+// another organisation is refused before anything reaches the API; its own
+// organisation's link verifies as on the generic wallet.
+describe("on a branded host", () => {
+  const {
+    applyHostEnvironment,
+    clearHostEnvironment,
+    hostEnvironment,
+    tidewellDocument,
+    TIDEWELL_ORGANIZATION,
+    TIDEWELL_ORIGIN,
+  } = jest.requireActual("@/test/wallet-host-fixtures");
+  const { resetWalletHostCache } = jest.requireActual("@/api/wallet-host");
+  const hostPost = (body: unknown) =>
+    POST(
+      new NextRequest(`${TIDEWELL_ORIGIN}/api/session/verify`, {
+        method: "POST",
+        headers: {
+          origin: TIDEWELL_ORIGIN,
+          host: new URL(TIDEWELL_ORIGIN).host,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }),
+    );
+
+  beforeEach(() => {
+    resetWalletHostCache();
+    applyHostEnvironment(hostEnvironment(tidewellDocument()));
+  });
+  afterEach(() => {
+    clearHostEnvironment();
+    resetWalletHostCache();
+  });
+
+  it("refuses another organisation's link, sending nothing", async () => {
+    const response = await hostPost({
+      code: "abc123",
+      email: "user@example.com",
+      organization_id: "6a882d5aa27843f3c0f6fdf8",
+    });
+    expect(response.status).toBe(421);
+    expect(await response.json()).toMatchObject({ code: "host_misdirected" });
+    expect(verifyWallet).not.toHaveBeenCalled();
+    expect(currentWallet).not.toHaveBeenCalled();
+  });
+
+  it("verifies its own organisation's link, and a link naming none", async () => {
+    for (const body of [
+      {
+        code: "abc123",
+        email: "user@example.com",
+        organization_id: TIDEWELL_ORGANIZATION,
+      },
+      { code: "abc123", email: "user@example.com" },
+    ]) {
+      verifyWallet.mockClear();
+      const response = await hostPost(body);
+      expect(response.status).toBe(200);
+      expect(verifyWallet).toHaveBeenCalledWith(
+        {
+          verifyIn: {
+            code: "abc123",
+            email: "user@example.com",
+            organizationId: TIDEWELL_ORGANIZATION,
+          },
+        },
+        { cache: "no-store" },
+      );
+    }
+  });
+});

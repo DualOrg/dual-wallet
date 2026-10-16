@@ -13,6 +13,7 @@ import { ShareObjectButton } from "@/app/_components/inventory/share-object-butt
 import type { InventoryObject } from "@/app/_domain/inventory";
 import { useInventoryObject } from "@/app/_hooks/data";
 import { useErrorMessage } from "@/app/_hooks/use-error-message";
+import { useHostPresentation } from "@/app/_providers/host-provider";
 import { useSession } from "@/app/_providers/session-provider";
 
 function ObjectActionsSlot({ item }: { item: InventoryObject }) {
@@ -23,6 +24,7 @@ export function ObjectPageClient({ objectId }: { objectId: string }) {
   const t = useTranslations("object");
   const errorMessage = useErrorMessage();
   const session = useSession();
+  const host = useHostPresentation();
   const query = useInventoryObject(objectId);
   const item = query.data;
 
@@ -54,7 +56,10 @@ export function ObjectPageClient({ objectId }: { objectId: string }) {
       ) : (
         <ObjectDetail
           item={item}
-          action={<ShareObjectButton objectId={item.id} />}
+          // The public object view is the viewer's, on its own domain: a
+          // branded host offers no link under its own domain to a page it
+          // does not serve.
+          action={host ? undefined : <ShareObjectButton objectId={item.id} />}
           actions={
             item.actions.length ? <ObjectActionsSlot item={item} /> : undefined
           }
