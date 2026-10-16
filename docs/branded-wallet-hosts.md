@@ -199,7 +199,11 @@ uses those tokens:
 | `transfer`        | `/accept…`; `/products/<id>/transfer…`; the handover entry | `transfer.*`; journal kind `transfer`; `transfer-proposal`, `transfer-progress`, `accept-offer`; an acceptance ticket | a `transferRequest` template and `handover.enabled` |
 
 The face home, `/support` and `/ended` need no journey; the context read,
-selection and the journal list are shared by all of them.
+selection and the journal list are shared by all of them. The list's
+`retained` entries (transfer steps this same wallet sent from another launch
+of the same face and programme) are listed on every host, to the wallet's own
+page only; reading or moving one (`transfer-progress`, by its id or its offer)
+is the transfer journey's and is refused on a host without it.
 
 ### Enforcement is on the server
 

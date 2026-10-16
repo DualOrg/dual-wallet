@@ -328,10 +328,10 @@ describe("disabled journeys in the face BFF", () => {
     expect(getObjectByIdPublic).not.toHaveBeenCalled();
     expect(minted).not.toHaveBeenCalled();
     expect(runtime).not.toHaveBeenCalled();
-    // Nothing was journaled.
+    // Nothing was journaled, and no other launch holds a sent step.
     expect(
       (await browser.call(operationsGET, face("/operations"), slug)).body,
-    ).toEqual({ operations: [] });
+    ).toEqual({ operations: [], retained: [] });
 
     // Enabled, the same journal step reaches the route (the public unit read).
     configure({ registration: true });
@@ -486,7 +486,7 @@ describe("disabled journeys in the face BFF", () => {
     ).toEqual({ status: 200, body: { context_id: null, product: null } });
     expect(
       await browser.call(operationsGET, face("/operations"), slug),
-    ).toEqual({ status: 200, body: { operations: [] } });
+    ).toEqual({ status: 200, body: { operations: [], retained: [] } });
   });
 
   it("a face that is not this host's is unknown, even when the registry has it", async () => {
@@ -513,6 +513,223 @@ describe("disabled journeys in the face BFF", () => {
     ).toEqual({
       status: 404,
       body: expect.objectContaining({ code: "handover_unavailable" }),
+    });
+  });
+});
+
+// GET /operations is the shared journal list: besides this launch's own
+// entries it names, under `retained`, the transfer steps this same wallet
+// sent from another launch of this same face and programme (read from the
+// browser's own sealed launch journals). The list reaches only the wallet's
+// own page (host-only, SameSite=Strict cookies and the launch header; the
+// cross-origin frame has no listing operation). Every action on such a step
+// is the transfer journey's and stays behind the host's server gate.
+describe("a transfer step another launch of this wallet sent (`retained`)", () => {
+  const STEP = "xfer-0123456789abcdef";
+  const OFFER = "pto-0123456789abcdef01234567";
+  const OTHER_SECRET = Buffer.alloc(32, 7).toString("base64");
+  const sentStep = (operationId = STEP) => ({
+    operationId,
+    kind: "transfer" as const,
+    operation: "transfer.transfer",
+    slug: SLUG,
+    programmeId: "morrow-home-arc",
+    objectId: UNIT,
+    phase: "submitted" as const,
+    proposalId: "ptp-0123456789abcdef01234567",
+    offerId: OFFER,
+    actionId: "action-transfer-1",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+  /**
+   * Seals another launch's journal into this browser, as a launch of that
+   * scope would have written it (by default this wallet, this face).
+   */
+  function sealLaunch(
+    browser: Browser,
+    launchId: string,
+    entries: FaceJournal["entries"],
+    {
+      slug: faceSlug = SLUG,
+      programmeId = "morrow-home-arc",
+      walletId = "wallet-1",
+      secret,
+    }: {
+      slug?: string;
+      programmeId?: string;
+      walletId?: string;
+      secret?: string;
+    } = {},
+  ) {
+    const own = process.env.SESSION_SECRET;
+    if (secret) process.env.SESSION_SECRET = secret;
+    try {
+      const response = NextResponse.json({});
+      writeFaceJournal(
+        response,
+        new NextRequest(`http://localhost/api/faces/${faceSlug}/operations`),
+        {
+          owner: { sidHash: sessionIdHash(browser.state)!, walletId },
+          launchId,
+          slug: faceSlug,
+          programmeId,
+        },
+        { ...emptyFaceJournal(), entries },
+      );
+      browser.take(response);
+    } finally {
+      process.env.SESSION_SECRET = own;
+    }
+  }
+  const progress = (browser: Browser, body: Record<string, unknown>) =>
+    browser.call(transferProgressPOST, face("/transfer-progress"), slug, body);
+
+  it("transfer disabled: the list may name this wallet's own sent step, but nothing acts on it; its progress is refused before any runtime call or mint", async () => {
+    // Sent while the host still served transfer; then transfer is disabled.
+    configure({ transfer: true });
+    const browser = new Browser();
+    sealLaunch(browser, `launch-${"o".repeat(28)}`, [sentStep()]);
+    configure({ transfer: false });
+
+    const listed = await browser.call(operationsGET, face("/operations"), slug);
+    expect(listed).toEqual({
+      status: 200,
+      body: {
+        operations: [],
+        retained: [
+          expect.objectContaining({
+            operation_id: STEP,
+            kind: "transfer",
+            operation: "transfer.transfer",
+            phase: "submitted",
+          }),
+        ],
+      },
+    });
+    // By its original id, or by a new id with its offer (the bridge's
+    // retained-first read): refused by the host's gate, nothing journaled,
+    // minted or asked of the runtime.
+    for (const body of [
+      { operation_id: STEP },
+      { operation_id: STEP, offer_id: OFFER },
+      { operation_id: "xfer-fedcba9876543210", offer_id: OFFER },
+    ]) {
+      expect(await progress(browser, body)).toEqual(REFUSED);
+    }
+    // Nor can anything else of the journey move it.
+    expect(
+      await browser.call(
+        transferProposalPOST,
+        face("/transfer-proposal"),
+        slug,
+        {
+          context_id: "c".repeat(24),
+          offer_id: OFFER,
+          object_id: UNIT,
+        },
+      ),
+    ).toEqual(REFUSED);
+    expect(
+      await browser.call(operationsPOST, face("/operations"), slug, {
+        transition: "begin",
+        kind: "transfer",
+        operation: "transfer.transfer",
+        operation_id: "xfer-fedcba9876543210",
+        object_id: UNIT,
+        context_id: "c".repeat(24),
+        proposal_id: "ptp-0123456789abcdef01234567",
+        offer_id: OFFER,
+      }),
+    ).toEqual(REFUSED);
+    expect(minted).not.toHaveBeenCalled();
+    expect(runtime).not.toHaveBeenCalled();
+
+    // The gate is the only thing in between: served again, the same read
+    // reaches the runtime (unreachable here, so the outcome stays unknown).
+    configure({ transfer: true });
+    expect(await progress(browser, { operation_id: STEP })).toEqual({
+      status: 200,
+      body: { status: "outcome_unknown", step: "transfer" },
+    });
+    expect(minted).toHaveBeenCalledTimes(1);
+    expect(runtime).toHaveBeenCalledTimes(1);
+  });
+
+  it("another face's, programme's, wallet's or brand's sent step is never listed, and its progress is refused", async () => {
+    configure();
+    const browser = new Browser();
+    const foreign: Array<[string, Parameters<typeof sealLaunch>[3]]> = [
+      // Another face of the shared registry (not this host's).
+      [
+        "xfer-face-0000000001",
+        { slug: "tidewell-care", programmeId: "tidewell-kettle" },
+      ],
+      // This face's slug under another programme.
+      ["xfer-prog-0000000002", { programmeId: "morrow-home-other" }],
+      // Another wallet in this browser.
+      ["xfer-wall-0000000003", { walletId: "wallet-2" }],
+      // Another brand host: sealed under that host's own SESSION_SECRET.
+      ["xfer-host-0000000004", { secret: OTHER_SECRET }],
+    ];
+    foreign.forEach(([operationId, scope], index) =>
+      sealLaunch(
+        browser,
+        `launch-${String(index).repeat(28)}`,
+        [sentStep(operationId)],
+        scope,
+      ),
+    );
+    expect(
+      await browser.call(operationsGET, face("/operations"), slug),
+    ).toEqual({ status: 200, body: { operations: [], retained: [] } });
+    for (const [operationId] of foreign) {
+      for (const body of [
+        { operation_id: operationId },
+        { operation_id: operationId, offer_id: OFFER },
+        { operation_id: "xfer-fedcba9876543210", offer_id: OFFER },
+      ]) {
+        expect(await progress(browser, body)).toEqual({
+          status: 404,
+          body: expect.objectContaining({ code: "unknown_operation" }),
+        });
+      }
+    }
+    // The other brand's face itself is not this host's.
+    const unknownFace = {
+      status: 404,
+      body: expect.objectContaining({ code: "unknown_application" }),
+    };
+    expect(
+      await browser.call(
+        transferProgressPOST,
+        "/api/faces/tidewell-care/transfer-progress",
+        { slug: "tidewell-care" },
+        { operation_id: "xfer-face-0000000001" },
+      ),
+    ).toEqual(unknownFace);
+    expect(
+      await browser.call(operationsGET, "/api/faces/tidewell-care/operations", {
+        slug: "tidewell-care",
+      }),
+    ).toEqual(unknownFace);
+    expect(minted).not.toHaveBeenCalled();
+    expect(runtime).not.toHaveBeenCalled();
+
+    // This wallet's own step of this face, beside them: listed and read.
+    sealLaunch(browser, `launch-${"s".repeat(28)}`, [sentStep()]);
+    expect(
+      (await browser.call(operationsGET, face("/operations"), slug)).body
+        .retained,
+    ).toEqual([expect.objectContaining({ operation_id: STEP })]);
+    expect(
+      await progress(browser, {
+        operation_id: "xfer-fedcba9876543210",
+        offer_id: OFFER,
+      }),
+    ).toEqual({
+      status: 200,
+      body: { status: "outcome_unknown", step: "transfer" },
     });
   });
 });
@@ -625,7 +842,7 @@ describe("the route a face request is served by, not its path", () => {
     expect(minted).toHaveBeenCalledTimes(1);
     expect(
       await browser.call(operationsGET, face("/operations"), slug),
-    ).toEqual({ status: 200, body: { operations: [] } });
+    ).toEqual({ status: 200, body: { operations: [], retained: [] } });
   });
 
   it("refuses any face request it cannot classify on an active host", async () => {
