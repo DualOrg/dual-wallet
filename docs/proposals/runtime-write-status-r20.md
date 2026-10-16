@@ -865,13 +865,10 @@ outcome_hash}` where `original_operation` is the record's operation
 
 ## 4a. Explicit limitations of the wallet consumer
 
-- One intended Dual action per write, until amendment r20.1 (§1a) is
-  approved: the wallet accepts `backed: true` only with
-  `intended_dual_writes: 1` and the one proof naming that action. A record
-  intending more than one Dual write is HELD as unsupported; the wallet
-  never infers the remaining effects proved. §1a is the proposed remedy: one
-  original-verified-effect receipt chain per intended effect, exact count,
-  ordered, hash over the whole list and the original request.
+- A Dual-backed write is proved only by the r20.1 receipt chain (§1a): one
+  verified effect per intended Dual action, exact count, ordered, hash over
+  the whole list and the original request. A record intending effects the
+  chain does not prove is HELD; the wallet never infers an effect proved.
 - Resolution per listing page is bounded (25 items) in the contract's stable
   (`recorded_at`, `operation_id`) order. A page that leaves items unresolved
   returns a sealed, host-local continuation naming the last key it resolved
@@ -893,9 +890,10 @@ outcome_hash}` where `original_operation` is the record's operation
 
 - Whether a verified `write_refused` may ever free a wallet slot (the wallet
   keeps it held).
-- Approval of amendment r20.1 (§1a): one `original_verified_effect_receipt_v1`
-  chain per intended Dual effect, so a normal linked `case.open` intending
-  two Dual actions can be proved; until then such a record is held (§4a).
+- Amendment r20.1 (§1a) is accepted for source implementation; hosted
+  acceptance of the receipt chain, with the Studio runtime's original-proof
+  retention, remains Root's, as does the face's allowed-origins entry for the
+  new wallet entrance before hosted use.
 - Whether a proved server-only write whose target object has since been
   deleted from Dual (`target_readback: "absent"`) may settle; the wallet holds
   it until decided.
