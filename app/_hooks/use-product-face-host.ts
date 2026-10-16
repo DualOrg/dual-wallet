@@ -26,9 +26,11 @@ import {
 } from "@/app/_lib/external-face-bridge/core/executor-identity";
 import { useSession } from "@/app/_providers/session-provider";
 import {
+  acknowledgeFaceRecovery,
   executeSettleAction,
   executeTransferAction,
   listFaceOperations,
+  listFaceRecovery,
   listRetainedTransferSteps,
   listProgrammeProducts,
   mintFaceAssertion,
@@ -46,6 +48,7 @@ import {
   sha256Hash,
   takeFaceHandoverTicket,
   writeFaceJournal,
+  type FaceRecoveryOutcome,
 } from "@/app/_services/product-face.client";
 
 export type ProductFaceHostState =
@@ -75,6 +78,15 @@ function confirmationReducer(
 
 type HostAction =
   { type: "live" } | { type: "ended"; reason: SessionEndReason };
+
+// Proposed contract r20: the committed outcomes a host may acknowledge once
+// seen. Everything else is held, unknown, refused or unchecked.
+const provedRecoveryOutcomes: ReadonlySet<FaceRecoveryOutcome> = new Set([
+  "registered",
+  "transfer_request_committed",
+  "transferred",
+  "write_applied",
+]);
 
 function hostReducer(
   state: ProductFaceHostState,
@@ -119,6 +131,11 @@ export function useProductFaceHost({
     { id: number; resolve: (confirmed: boolean) => void } | undefined
   >(undefined);
   const confirmationId = useRef(0);
+  // Proposed contract r20 (not deployed): the acknowledgement tickets of the
+  // recovery items this launch's live host listed, by operation id. Taken
+  // once when the person dismisses the notice; never rendered, never kept
+  // past the host that listed them.
+  const recoveryTickets = useRef<Map<string, string> | undefined>(undefined);
   const lastTask = useRef<string | undefined>(undefined);
   const sessionRef = useRef(session);
   useEffect(() => {
@@ -139,6 +156,7 @@ export function useProductFaceHost({
     (reason: SessionEndReason) => {
       host.current?.end(reason);
       host.current = undefined;
+      recoveryTickets.current = undefined;
       answerConfirmation(false);
       dispatch({ type: "ended", reason });
       onEnded(reason);
@@ -155,6 +173,7 @@ export function useProductFaceHost({
     () => () => {
       host.current?.close();
       host.current = undefined;
+      recoveryTickets.current = undefined;
       const pending = pendingConfirmation.current;
       pendingConfirmation.current = undefined;
       pending?.resolve(false);
@@ -179,6 +198,9 @@ export function useProductFaceHost({
       const holder = current.wallet?.account.address;
       if (!holder || state.status === "ended") return;
       host.current?.close();
+      // A new host lists recovery afresh; the replaced host's tickets never
+      // acknowledge anything.
+      recoveryTickets.current = undefined;
       const face = { slug, launchId };
       // This launch's own host, live: not ended, not replaced, not torn down.
       const launched: { host?: ProductFaceBridgeHost } = {};
@@ -352,26 +374,82 @@ export function useProductFaceHost({
           // Each await may outlive this launch (a frame reload, a teardown, a
           // sign-out or another account): only this launch's own live host
           // dispatches a read or shows the answer.
-          void listRetainedTransferSteps(face)
-            .then(async (steps) => {
-              for (const step of steps) {
-                if (step.kind !== "transfer" || step.phase !== "submitted") {
-                  continue;
+          const readRetainedTransferSteps = () => {
+            void listRetainedTransferSteps(face)
+              .then(async (steps) => {
+                for (const step of steps) {
+                  if (step.kind !== "transfer" || step.phase !== "submitted") {
+                    continue;
+                  }
+                  if (!liveHost()) return;
+                  const progress = await readTransferProgress(
+                    face,
+                    step.operation_id,
+                  ).catch(() => undefined);
+                  if (!liveHost()) return;
+                  if (
+                    progress?.status === "transferred" ||
+                    progress?.status === "outcome_unknown"
+                  ) {
+                    setNotice({
+                      kind: "transfer_step",
+                      reason: progress.status,
+                    });
+                  }
                 }
+              })
+              .catch(() => undefined);
+          };
+          // Proposed contract r20 (PROPOSED, not deployed; no runtime answers
+          // it today): the runtime's own durable listing of this wallet's
+          // earlier operations, resolved read-only by the BFF, supersedes the
+          // cookie-based retained listing above when the face's runtimes
+          // support it. The host only shows the listed outcomes and keeps the
+          // tickets of the items it may acknowledge once the person has seen
+          // them (dismissNotice). Nothing listed is ever re-sent. A runtime
+          // without r20, or a listing the BFF could not read, fails closed:
+          // nothing is acknowledged and today's retained read runs unchanged.
+          void listFaceRecovery(face)
+            .then(
+              (recovery) => {
                 if (!liveHost()) return;
-                const progress = await readTransferProgress(
-                  face,
-                  step.operation_id,
-                ).catch(() => undefined);
-                if (!liveHost()) return;
-                if (
-                  progress?.status === "transferred" ||
-                  progress?.status === "outcome_unknown"
-                ) {
-                  setNotice({ kind: "transfer_step", reason: progress.status });
+                if (!recovery.supported) {
+                  readRetainedTransferSteps();
+                  return;
                 }
-              }
-            })
+                // Defence in depth beside the BFF's ticketing: a ticket is
+                // kept only for a proved outcome of a complete check. Held,
+                // unknown, refused and unchecked items are never acknowledged,
+                // and an incomplete check acknowledges nothing at all.
+                const acknowledgeable = (item: (typeof recovery.items)[0]) =>
+                  item.ticket !== null &&
+                  recovery.complete &&
+                  provedRecoveryOutcomes.has(item.outcome);
+                recoveryTickets.current = new Map(
+                  recovery.items.flatMap((item) =>
+                    acknowledgeable(item) && item.ticket !== null
+                      ? [[item.operation_id, item.ticket] as const]
+                      : [],
+                  ),
+                );
+                if (recovery.items.length === 0 && recovery.complete) return;
+                setNotice({
+                  kind: "recovery",
+                  complete: recovery.complete,
+                  items: recovery.items.map((item) => ({
+                    operationId: item.operation_id,
+                    kind: item.kind,
+                    operation: item.operation,
+                    step: item.step,
+                    outcome: item.outcome,
+                    acknowledgeable: acknowledgeable(item),
+                  })),
+                });
+              },
+              () => {
+                if (liveHost()) readRetainedTransferSteps();
+              },
+            )
             .catch(() => undefined);
         },
       });
@@ -380,12 +458,33 @@ export function useProductFaceHost({
     [application, frameUrl, launchId, router, slug, state.status, task],
   );
 
+  // Proposed contract r20: dismissing the recovery notice is the person
+  // having seen it, the last condition for acknowledging the items the BFF
+  // ticketed (proved, complete check, enabled journey). The tickets are taken
+  // once (never twice), and only while this host is still live: not ended,
+  // not replaced, not torn down. Each acknowledgement is fire-and-forget and
+  // read-only for the business record; its failure changes nothing here.
+  const acknowledgeRecovery = () => {
+    const tickets = recoveryTickets.current;
+    recoveryTickets.current = undefined;
+    if (!tickets || host.current?.session.ended !== null) return;
+    for (const [operationId, ticket] of tickets) {
+      void acknowledgeFaceRecovery(
+        { slug, launchId },
+        { operation_id: operationId, ticket },
+      ).catch(() => undefined);
+    }
+  };
+
   return {
     state,
     confirmation: confirmation.status === "open" ? confirmation.request : null,
     answerConfirmation,
     onFrameLoad,
     notice,
-    dismissNotice: () => setNotice(null),
+    dismissNotice: () => {
+      if (notice?.kind === "recovery") acknowledgeRecovery();
+      setNotice(null);
+    },
   };
 }

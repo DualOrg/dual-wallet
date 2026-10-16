@@ -62,6 +62,21 @@ const readTransferProgress = jest.fn();
 const listFaceOperations = jest.fn(async (): Promise<unknown[]> => []);
 const readFaceOperationStatus = jest.fn();
 const writeFaceJournal = jest.fn();
+// Proposed contract r20 (not deployed): by default no runtime supports the
+// durable recovery listing, so today's retained-step read runs unchanged.
+const unsupportedRecovery = {
+  supported: false,
+  complete: false,
+  withheld: 0,
+  items: [],
+};
+const listFaceRecovery = jest.fn(
+  async (): Promise<unknown> => unsupportedRecovery,
+);
+const acknowledgeFaceRecovery = jest.fn(async () => ({
+  acknowledged: true as const,
+  first: true,
+}));
 jest.mock("@/app/_services/product-face.client", () => ({
   executeSettleAction: (...args: unknown[]) =>
     executeSettleAction(...(args as [])),
@@ -77,6 +92,9 @@ jest.mock("@/app/_services/product-face.client", () => ({
   readTransferProgress: (...args: unknown[]) =>
     readTransferProgress(...(args as [])),
   writeFaceJournal: (...args: unknown[]) => writeFaceJournal(...(args as [])),
+  listFaceRecovery: (...args: unknown[]) => listFaceRecovery(...(args as [])),
+  acknowledgeFaceRecovery: (...args: unknown[]) =>
+    acknowledgeFaceRecovery(...(args as [])),
 }));
 
 let captured: ProductFaceHandlers | undefined;
@@ -757,5 +775,447 @@ describe("a launch whose journal has no room left", () => {
       await expect(pending).rejects.toMatchObject({ code: "journal_full" });
     });
     expect(hook.result.current.notice).toBeNull();
+  });
+});
+
+// Proposed contract r20 (PROPOSED, not deployed; no runtime answers it
+// today): the BFF lists this wallet's earlier operations from the runtimes'
+// own durable stores, resolves each read-only and tickets only the items the
+// host may acknowledge (proved, complete check, enabled journey). The host
+// shows the outcomes in its own UI, skips the cookie-based retained read the
+// listing supersedes, and acknowledges exactly the ticketed items once the
+// person dismissed the notice, once, while the launch is still live. Nothing
+// is ever re-sent. These tests drive the real hook against a local fixture;
+// that is not delivery and not interoperability.
+describe("the runtime's durable recovery listing (proposed contract r20)", () => {
+  const face = { slug: "morrow-home", launchId: LAUNCH };
+  const transferred = {
+    operation_id: "xfer-f0a31dc6781e57f040c2",
+    kind: "transfer",
+    operation: "transfer.transfer",
+    object_id: "aaaaaaaaaaaaaaaaaaaaaaaa",
+    case_id: null,
+    offer_id: "pto-bbbbbbbbbbbbbbbbbbbbbbbb",
+    step: "transfer",
+    outcome: "transferred",
+    ticket: "ack-ticket-f0a31dc6",
+  };
+  const heldWrite = {
+    operation_id: "case-0123456789abcdef",
+    kind: "runtime",
+    operation: "case.open",
+    object_id: "aaaaaaaaaaaaaaaaaaaaaaaa",
+    case_id: "case-77",
+    offer_id: null,
+    step: null,
+    outcome: "outcome_unknown",
+    ticket: null,
+  };
+  const retainedStep = {
+    operation_id: "xfer-0b1c2d3e4f5a6b7c8d9e",
+    kind: "transfer",
+    operation: "transfer.transfer",
+    object_id: "aaaaaaaaaaaaaaaaaaaaaaaa",
+    case_id: null,
+    phase: "submitted",
+    status: null,
+    action_id: "6ad178a32880577b1a494932",
+  };
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((settle) => {
+      resolve = settle;
+    });
+    return { promise, resolve };
+  }
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+  type Launched = ReturnType<typeof launch>;
+  let endSession: () => void;
+  const changes: Array<
+    [string, (launched: Launched, endSession: () => void) => void]
+  > = [
+    ["the launch is torn down", ({ hook }) => hook.unmount()],
+    [
+      "the frame reloads and a new host replaces it",
+      ({ hook }) =>
+        act(() =>
+          hook.result.current.onFrameLoad(document.createElement("iframe")),
+        ),
+    ],
+    ["the account changes", (_launched, end) => act(() => end())],
+  ];
+
+  beforeEach(() => {
+    captured = undefined;
+    initialized = undefined;
+    fakeHost.session.ended = null;
+    endSession = () => {
+      throw new Error("no session-end listener");
+    };
+    session = {
+      wallet: accountA,
+      authenticationMethod: "email",
+      isAuthenticated: true,
+      isLoading: false,
+      refresh: jest.fn(),
+      logout: jest.fn(),
+      onSessionEnd: (listener) => {
+        endSession = () => listener("account_changed");
+        return () => undefined;
+      },
+    };
+    listFaceRecovery.mockReset();
+    acknowledgeFaceRecovery.mockReset();
+    acknowledgeFaceRecovery.mockResolvedValue({
+      acknowledged: true,
+      first: true,
+    });
+    listRetainedTransferSteps.mockReset().mockResolvedValue([]);
+    readTransferProgress.mockReset();
+    executeTransferAction.mockClear();
+    executeSettleAction.mockClear();
+  });
+  afterAll(() => {
+    listFaceRecovery.mockReset().mockResolvedValue(unsupportedRecovery);
+  });
+
+  it("shows a proved and a held item, acknowledges only the ticketed one on dismiss, once, and skips the retained read", async () => {
+    listFaceRecovery.mockResolvedValue({
+      supported: true,
+      complete: true,
+      withheld: 0,
+      items: [transferred, heldWrite],
+    });
+    const { hook } = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
+    expect(listFaceRecovery).toHaveBeenCalledTimes(1);
+    expect(listFaceRecovery).toHaveBeenCalledWith(face);
+    expect(hook.result.current.notice).toEqual({
+      kind: "recovery",
+      complete: true,
+      items: [
+        {
+          operationId: "xfer-f0a31dc6781e57f040c2",
+          kind: "transfer",
+          operation: "transfer.transfer",
+          step: "transfer",
+          outcome: "transferred",
+          acknowledgeable: true,
+        },
+        {
+          operationId: "case-0123456789abcdef",
+          kind: "runtime",
+          operation: "case.open",
+          step: null,
+          outcome: "outcome_unknown",
+          acknowledgeable: false,
+        },
+      ],
+    });
+    // The ticket never reaches the notice.
+    expect(JSON.stringify(hook.result.current.notice)).not.toContain(
+      "ack-ticket",
+    );
+    // The runtime listing supersedes the cookie-based retained read.
+    expect(listRetainedTransferSteps).not.toHaveBeenCalled();
+    expect(readTransferProgress).not.toHaveBeenCalled();
+    // Seeing it is the last condition: nothing is acknowledged before.
+    expect(acknowledgeFaceRecovery).not.toHaveBeenCalled();
+    act(() => hook.result.current.dismissNotice());
+    expect(hook.result.current.notice).toBeNull();
+    expect(acknowledgeFaceRecovery).toHaveBeenCalledTimes(1);
+    expect(acknowledgeFaceRecovery).toHaveBeenCalledWith(face, {
+      operation_id: "xfer-f0a31dc6781e57f040c2",
+      ticket: "ack-ticket-f0a31dc6",
+    });
+    // Never twice.
+    act(() => hook.result.current.dismissNotice());
+    expect(acknowledgeFaceRecovery).toHaveBeenCalledTimes(1);
+    expect(executeTransferAction).not.toHaveBeenCalled();
+    expect(executeSettleAction).not.toHaveBeenCalled();
+  });
+
+  it("a failed acknowledgement changes nothing and is not retried", async () => {
+    listFaceRecovery.mockResolvedValue({
+      supported: true,
+      complete: true,
+      withheld: 0,
+      items: [transferred],
+    });
+    acknowledgeFaceRecovery.mockRejectedValue(
+      new ProductFaceError("outcome_unknown", 409),
+    );
+    const { hook } = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
+    await act(async () => {
+      hook.result.current.dismissNotice();
+      await tick();
+    });
+    expect(acknowledgeFaceRecovery).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.notice).toBeNull();
+    act(() => hook.result.current.dismissNotice());
+    expect(acknowledgeFaceRecovery).toHaveBeenCalledTimes(1);
+  });
+
+  // An incomplete check acknowledges nothing, even an item that was proved
+  // and that the BFF ticketed anyway.
+  it("an incomplete check is shown as such and acknowledges nothing", async () => {
+    listFaceRecovery.mockResolvedValue({
+      supported: true,
+      complete: false,
+      withheld: 1,
+      items: [transferred, heldWrite],
+    });
+    const { hook } = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
+    expect(hook.result.current.notice).toMatchObject({
+      kind: "recovery",
+      complete: false,
+      items: [
+        { operationId: transferred.operation_id, acknowledgeable: false },
+        { operationId: heldWrite.operation_id, acknowledgeable: false },
+      ],
+    });
+    expect(listRetainedTransferSteps).not.toHaveBeenCalled();
+    act(() => hook.result.current.dismissNotice());
+    expect(acknowledgeFaceRecovery).not.toHaveBeenCalled();
+    expect(hook.result.current.notice).toBeNull();
+  });
+
+  // Held, unknown, refused and unchecked items are never acknowledged, even
+  // if a ticket arrives for one.
+  it.each(["write_refused", "outcome_unknown", "not_checked"] as const)(
+    "a ticketed %s item is shown but never acknowledged",
+    async (outcome) => {
+      listFaceRecovery.mockResolvedValue({
+        supported: true,
+        complete: true,
+        withheld: 0,
+        items: [{ ...heldWrite, outcome, ticket: "ack-ticket-held" }],
+      });
+      const { hook } = launch();
+      await act(async () => {
+        initialized?.(fakeHost);
+        await tick();
+      });
+      expect(hook.result.current.notice).toMatchObject({
+        kind: "recovery",
+        items: [{ outcome, acknowledgeable: false }],
+      });
+      act(() => hook.result.current.dismissNotice());
+      expect(acknowledgeFaceRecovery).not.toHaveBeenCalled();
+    },
+  );
+
+  it("an incomplete check with nothing listed is still reported", async () => {
+    listFaceRecovery.mockResolvedValue({
+      supported: true,
+      complete: false,
+      withheld: 0,
+      items: [],
+    });
+    const { hook } = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
+    expect(hook.result.current.notice).toEqual({
+      kind: "recovery",
+      complete: false,
+      items: [],
+    });
+    act(() => hook.result.current.dismissNotice());
+    expect(acknowledgeFaceRecovery).not.toHaveBeenCalled();
+  });
+
+  it("a complete check with nothing listed shows nothing and reads nothing more", async () => {
+    listFaceRecovery.mockResolvedValue({
+      supported: true,
+      complete: true,
+      withheld: 0,
+      items: [],
+    });
+    const { hook } = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
+    expect(hook.result.current.notice).toBeNull();
+    expect(listRetainedTransferSteps).not.toHaveBeenCalled();
+  });
+
+  it("a runtime without r20 fails closed: today's retained read runs unchanged and nothing is acknowledged", async () => {
+    listFaceRecovery.mockResolvedValue(unsupportedRecovery);
+    listRetainedTransferSteps.mockResolvedValue([retainedStep]);
+    readTransferProgress.mockResolvedValue({
+      status: "transferred",
+      step: "transfer",
+    });
+    const { hook } = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
+    expect(listRetainedTransferSteps).toHaveBeenCalledTimes(1);
+    expect(listRetainedTransferSteps).toHaveBeenCalledWith(face);
+    expect(readTransferProgress).toHaveBeenCalledTimes(1);
+    expect(readTransferProgress.mock.calls[0]).toEqual([
+      face,
+      "xfer-0b1c2d3e4f5a6b7c8d9e",
+    ]);
+    expect(hook.result.current.notice).toEqual({
+      kind: "transfer_step",
+      reason: "transferred",
+    });
+    act(() => hook.result.current.dismissNotice());
+    expect(acknowledgeFaceRecovery).not.toHaveBeenCalled();
+    expect(executeTransferAction).not.toHaveBeenCalled();
+  });
+
+  it("a listing the BFF could not read fails closed the same way", async () => {
+    listFaceRecovery.mockRejectedValue(
+      new ProductFaceError("temporarily_unavailable", 503),
+    );
+    listRetainedTransferSteps.mockResolvedValue([retainedStep]);
+    readTransferProgress.mockResolvedValue({
+      status: "outcome_unknown",
+      step: "transfer",
+    });
+    const { hook } = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
+    expect(listRetainedTransferSteps).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.notice).toEqual({
+      kind: "transfer_step",
+      reason: "outcome_unknown",
+    });
+    act(() => hook.result.current.dismissNotice());
+    expect(acknowledgeFaceRecovery).not.toHaveBeenCalled();
+  });
+
+  // The listing may still be in flight when this launch stops being the live
+  // one. A late answer must never land a notice, keep a ticket or dispatch
+  // the retained read in whatever host is current.
+  it.each(changes)(
+    "%s while the listing is pending: no notice, no acknowledgement, no further read",
+    async (_label, change) => {
+      const listing = deferred<unknown>();
+      listFaceRecovery.mockImplementation(() => listing.promise);
+      const launched = launch();
+      const resume = initialized!;
+      await act(async () => {
+        resume(fakeHost);
+        await tick();
+      });
+      expect(listFaceRecovery).toHaveBeenCalledTimes(1);
+      change(launched, endSession);
+      // The replacing host's own listing (a frame reload) stays pending too.
+      listFaceRecovery.mockImplementation(() => new Promise(() => undefined));
+      await act(async () => {
+        listing.resolve({
+          supported: true,
+          complete: true,
+          withheld: 0,
+          items: [transferred],
+        });
+        await tick();
+      });
+      expect(launched.hook.result.current.notice).toBeNull();
+      expect(listRetainedTransferSteps).not.toHaveBeenCalled();
+      act(() => launched.hook.result.current.dismissNotice());
+      expect(acknowledgeFaceRecovery).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(changes)(
+    "%s while an unsupported listing is pending: the retained read is not dispatched either",
+    async (_label, change) => {
+      const listing = deferred<unknown>();
+      listFaceRecovery.mockImplementation(() => listing.promise);
+      listRetainedTransferSteps.mockResolvedValue([retainedStep]);
+      const launched = launch();
+      const resume = initialized!;
+      await act(async () => {
+        resume(fakeHost);
+        await tick();
+      });
+      change(launched, endSession);
+      listFaceRecovery.mockImplementation(() => new Promise(() => undefined));
+      await act(async () => {
+        listing.resolve(unsupportedRecovery);
+        await tick();
+      });
+      expect(listRetainedTransferSteps).not.toHaveBeenCalled();
+      expect(readTransferProgress).not.toHaveBeenCalled();
+      expect(launched.hook.result.current.notice).toBeNull();
+    },
+  );
+
+  it("a dismissal after the launch ended acknowledges nothing", async () => {
+    listFaceRecovery.mockResolvedValue({
+      supported: true,
+      complete: true,
+      withheld: 0,
+      items: [transferred],
+    });
+    const { hook } = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
+    expect(hook.result.current.notice).toMatchObject({ kind: "recovery" });
+    fakeHost.session.ended = "logout";
+    act(() => hook.result.current.dismissNotice());
+    expect(acknowledgeFaceRecovery).not.toHaveBeenCalled();
+    expect(hook.result.current.notice).toBeNull();
+  });
+
+  it("a dismissal after the account changed acknowledges nothing", async () => {
+    listFaceRecovery.mockResolvedValue({
+      supported: true,
+      complete: true,
+      withheld: 0,
+      items: [transferred],
+    });
+    const { hook } = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
+    act(() => endSession());
+    act(() => hook.result.current.dismissNotice());
+    expect(acknowledgeFaceRecovery).not.toHaveBeenCalled();
+  });
+
+  it("a frame reload drops the replaced host's tickets before its own listing answers", async () => {
+    listFaceRecovery.mockResolvedValue({
+      supported: true,
+      complete: true,
+      withheld: 0,
+      items: [transferred],
+    });
+    const { hook } = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
+    expect(hook.result.current.notice).toMatchObject({ kind: "recovery" });
+    listFaceRecovery.mockImplementation(() => new Promise(() => undefined));
+    act(() =>
+      hook.result.current.onFrameLoad(document.createElement("iframe")),
+    );
+    act(() => hook.result.current.dismissNotice());
+    expect(acknowledgeFaceRecovery).not.toHaveBeenCalled();
   });
 });

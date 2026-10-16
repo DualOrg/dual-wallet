@@ -308,6 +308,145 @@ export async function listRetainedTransferSteps(face: FaceLaunch) {
   return Array.isArray(retained) ? retained : [];
 }
 
+export type FaceRecoveryKind =
+  "registration" | "settle" | "transfer" | "runtime";
+
+/** The one canonical outcome vocabulary of the proposed contract r20. */
+export type FaceRecoveryOutcome =
+  | "registered"
+  | "transfer_request_committed"
+  | "transferred"
+  | "write_applied"
+  | "write_refused"
+  | "outcome_unknown"
+  | "not_checked";
+
+/**
+ * One of this wallet's earlier operations the runtime listed durably,
+ * resolved read-only by the BFF. Only the actor's own minimal correlation
+ * identifiers; never case, quote, owner or recipient content.
+ */
+export interface FaceRecoveryItem {
+  operation_id: string;
+  kind: FaceRecoveryKind;
+  operation: string;
+  object_id: string;
+  case_id: string | null;
+  offer_id: string | null;
+  step: "request" | "transfer" | null;
+  outcome: FaceRecoveryOutcome;
+  /**
+   * Present ONLY for an item the host may acknowledge once the person has
+   * seen it: a proved outcome, from a complete check, of an enabled journey.
+   * Held, unknown, refused and unchecked items carry none.
+   */
+  ticket: string | null;
+}
+
+export interface FaceRecovery {
+  /** false: no runtime of this face answers the proposed contract r20. */
+  supported: boolean;
+  /** true only when every scoped runtime scan ran to its end this launch. */
+  complete: boolean;
+  /** Items the BFF resolved but withheld (a journey disabled on this host). */
+  withheld: number;
+  items: FaceRecoveryItem[];
+}
+
+/**
+ * Proposed contract r20 (PROPOSED, not deployed; no Studio runtime supports
+ * it today): the durable listing of this wallet's operations whose outcome it
+ * may not have seen, read by the BFF from the face's runtime and each linked
+ * runtime without any browser cookie. Read-only: nothing listed is ever
+ * re-sent, re-reserved or executed. A runtime without r20 answers
+ * `supported: false` and the cookie-based retained listing keeps working.
+ */
+export async function listFaceRecovery(
+  face: FaceLaunch,
+): Promise<FaceRecovery> {
+  const result = await faceRequest<{
+    supported: unknown;
+    complete: unknown;
+    withheld: unknown;
+    items: unknown;
+  }>(face, "/recovery");
+  // The outcome and kind drive the host's copy and what it may acknowledge:
+  // an answer outside the pinned vocabulary is refused whole, as any other
+  // malformed read, and the host then falls back to today's behaviour.
+  if (
+    typeof result.supported !== "boolean" ||
+    typeof result.complete !== "boolean" ||
+    typeof result.withheld !== "number" ||
+    !Array.isArray(result.items) ||
+    !result.items.every(isFaceRecoveryItem)
+  ) {
+    throw new ProductFaceError("temporarily_unavailable");
+  }
+  return {
+    supported: result.supported,
+    complete: result.complete,
+    withheld: result.withheld,
+    items: result.items,
+  };
+}
+
+const recoveryKinds: readonly string[] = [
+  "registration",
+  "settle",
+  "transfer",
+  "runtime",
+] satisfies FaceRecoveryKind[];
+const recoveryOutcomes: readonly string[] = [
+  "registered",
+  "transfer_request_committed",
+  "transferred",
+  "write_applied",
+  "write_refused",
+  "outcome_unknown",
+  "not_checked",
+] satisfies FaceRecoveryOutcome[];
+
+function isFaceRecoveryItem(value: unknown): value is FaceRecoveryItem {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
+  const nullableString = (field: unknown) =>
+    field === null || typeof field === "string";
+  return (
+    typeof item.operation_id === "string" &&
+    typeof item.kind === "string" &&
+    recoveryKinds.includes(item.kind) &&
+    typeof item.operation === "string" &&
+    typeof item.object_id === "string" &&
+    nullableString(item.case_id) &&
+    nullableString(item.offer_id) &&
+    (item.step === null ||
+      item.step === "request" ||
+      item.step === "transfer") &&
+    typeof item.outcome === "string" &&
+    recoveryOutcomes.includes(item.outcome) &&
+    nullableString(item.ticket)
+  );
+}
+
+/**
+ * Proposed contract r20 (not deployed): records, idempotently, that this host
+ * delivered one listed outcome to its actor. `ticket` is the BFF's one-time
+ * proof that the item was proved in this launch from a complete check; the
+ * runtime answer is never changed by it. Errors arrive as ProductFaceError
+ * codes `invalid_request` (400), `outcome_unknown` (409) and
+ * `recovery_unsupported` (409).
+ */
+export async function acknowledgeFaceRecovery(
+  face: FaceLaunch,
+  input: { operation_id: string; ticket: string },
+): Promise<{ acknowledged: true; first: boolean }> {
+  return faceRequest<{ acknowledged: true; first: boolean }>(
+    face,
+    "/recovery/ack",
+    { method: "POST", json: input },
+  );
+}
+
 export async function readFaceOperationStatus(
   face: FaceLaunch,
   operationId: string,

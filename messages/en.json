@@ -561,7 +561,28 @@
       "transfer_step": {
         "transferred": "Your transfer is complete: the product now belongs to the recipient's wallet. Its private details and service requests are no longer shown to you.",
         "outcome_unknown": "Your wallet already sent a transfer step for a product you offered. It is still being confirmed and will not be sent again. Check back later."
-      }
+      },
+      "recovery": {
+        "registration": {
+          "registered": "Your registration of this product is complete."
+        },
+        "settle": {
+          "registered": "{publisher}'s confirmation of this product is complete."
+        },
+        "transfer": {
+          "transfer_request_committed": "Your transfer request was recorded. The handover itself has not been done yet.",
+          "transferred": "Your transfer is complete: the product now belongs to the recipient's wallet."
+        },
+        "runtime": {
+          "write_applied": "A service request you sent earlier was received."
+        },
+        "any": {
+          "write_refused": "A request you sent earlier was not accepted. Nothing was changed.",
+          "outcome_unknown": "A request you sent earlier is still being confirmed. It will not be sent again.",
+          "not_checked": "One earlier request could not be checked this time."
+        }
+      },
+      "recoveryIncomplete": "Not every earlier request could be checked this time. Nothing was sent again."
     }
   },
   "host": {

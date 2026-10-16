@@ -65,6 +65,34 @@ export type ProductFaceHostNotice =
        */
       kind: "launch_full";
       reason: "journal_full";
+    }
+  | {
+      /**
+       * Proposed contract r20 (PROPOSED, not deployed): outcomes of this
+       * wallet's earlier operations, listed durably by the runtime and
+       * resolved read-only by the host. Host-owned data only, never face
+       * text; the acknowledgement tickets stay in the host hook, never here.
+       * `complete: false` means not every runtime scan ran to its end, so
+       * nothing is acknowledged from this listing.
+       */
+      kind: "recovery";
+      complete: boolean;
+      items: Array<{
+        operationId: string;
+        kind: "registration" | "settle" | "transfer" | "runtime";
+        operation: string;
+        step: "request" | "transfer" | null;
+        outcome:
+          | "registered"
+          | "transfer_request_committed"
+          | "transferred"
+          | "write_applied"
+          | "write_refused"
+          | "outcome_unknown"
+          | "not_checked";
+        /** The host may acknowledge it once the person dismissed the notice. */
+        acknowledgeable: boolean;
+      }>;
     };
 
 export interface OperationStatusResponse {

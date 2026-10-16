@@ -18,6 +18,7 @@ import {
 } from "@/app/_domain/product-face";
 import { productFaceContextQueryOptions } from "@/app/_hooks/query-options";
 import { useProductFaceHost } from "@/app/_hooks/use-product-face-host";
+import type { ProductFaceHostNotice } from "@/app/_lib/external-face-bridge/core/product-session";
 import { useHostPresentation } from "@/app/_providers/host-provider";
 import { useSession } from "@/app/_providers/session-provider";
 
@@ -32,6 +33,33 @@ const knownErrors = [
   "session_expired",
   "launch_capacity",
 ] as const;
+
+type RecoveryItem = Extract<
+  ProductFaceHostNotice,
+  { kind: "recovery" }
+>["items"][number];
+
+/**
+ * Proposed contract r20 (not deployed): the copy for one recovered outcome.
+ * A kind-specific line exists only where the kind changes the meaning (a
+ * registration, the brand's confirmation of one, a transfer step, a service
+ * request); every other outcome reads the same whatever was sent.
+ */
+function recoveryLineKey(item: RecoveryItem) {
+  switch (item.outcome) {
+    case "registered":
+      return item.kind === "settle"
+        ? "notices.recovery.settle.registered"
+        : "notices.recovery.registration.registered";
+    case "transfer_request_committed":
+    case "transferred":
+      return `notices.recovery.transfer.${item.outcome}` as const;
+    case "write_applied":
+      return "notices.recovery.runtime.write_applied";
+    default:
+      return `notices.recovery.any.${item.outcome}` as const;
+  }
+}
 
 /**
  * One slim row: Back, the programme name and a disclosure for the publisher.
@@ -127,9 +155,26 @@ function ProductFaceFrame({
       {notice ? (
         <div className="product-face-notice" role="status">
           <Alert tone="info">
-            {t(`notices.${notice.kind}.${notice.reason}`, {
-              publisher: application.publisher,
-            })}
+            {notice.kind === "recovery" ? (
+              // The host's own words for what the runtime proved about the
+              // person's earlier requests; nothing here was re-sent.
+              <div>
+                {notice.items.map((item) => (
+                  <p key={item.operationId}>
+                    {t(recoveryLineKey(item), {
+                      publisher: application.publisher,
+                    })}
+                  </p>
+                ))}
+                {notice.complete ? null : (
+                  <p>{t("notices.recoveryIncomplete")}</p>
+                )}
+              </div>
+            ) : (
+              t(`notices.${notice.kind}.${notice.reason}`, {
+                publisher: application.publisher,
+              })
+            )}
           </Alert>
           {notice.kind === "launch_full" ? (
             <Button onClick={onRelaunch}>{t("notices.relaunch")}</Button>
