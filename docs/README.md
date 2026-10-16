@@ -16,3 +16,7 @@
   isolation, fail-closed mode and readback
 - Specs:
   - [Wallet branding contract](./specs/2026-08-20-wallet-branding-design.md)
+- Proposals (not deployed):
+  - [Runtime write outcome read, r20](./proposals/runtime-write-status-r20.md):
+    the Studio runtime contract the wallet needs to free a journal slot from a
+    verified Warranty & Service or transfer offer outcome
