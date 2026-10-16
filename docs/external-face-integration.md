@@ -608,10 +608,15 @@ What the host does on each face launch, after the bootstrap
   identity makes the page unreadable. Every answer names each runtime asked
   in `checks` (`product`: the face's own runtime; `service`: the linked
   Warranty runtime), with `checked`, `incomplete`, `unavailable` or
-  `unsupported` and the cause (`runtime_incomplete`, `page_invalid`,
-  `pages_exceeded`, `read_failed`, `item_unreadable`, `unreachable`,
-  `invalid`, `unsigned`), so an incomplete check is diagnosable from the
-  response alone.
+  `unsupported` and the cause (`runtime_incomplete`, `echo_mismatch` with
+  the mismatching fields in `detail`, `time_invalid`, `snapshot_changed`,
+  `cursor_cycle`, `out_of_order`, `pages_exceeded`, `read_failed`,
+  `item_unreadable`, `unreachable`, `invalid`, `unsigned`), so an incomplete
+  check is diagnosable from the response alone. A holder is an address: the
+  API writes it in EIP-55 mixed case, the wallet's assertions and the
+  runtimes carry, store and echo it in lowercase, so every comparison of a
+  holder with an echoed or recorded one is case-insensitive
+  (`sameHolder`), never string equality.
 - The host shows what it proved in its own notice (never face text), with held
   and unknown items as still being confirmed. The notice also says, per
   runtime asked, whether the person's product records and service records

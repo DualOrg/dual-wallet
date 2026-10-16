@@ -36,6 +36,7 @@ import {
   isObjectId,
   isOperationId,
   type RuntimeOperation,
+  sameHolder,
 } from "@/app/_domain/product-face";
 import { applyJournalTransition } from "@/app/_domain/product-face-journal";
 import { journeyOfJournalEntry } from "@/app/_domain/wallet-host";
@@ -150,6 +151,38 @@ function record(value: unknown): value is Record<string, unknown> {
  * runtime the request was routed to, the face binding and the request sent.
  * Nothing is taken from the endpoint having answered.
  */
+/**
+ * The echoed fields that do not name this read: empty when the answer is
+ * bound to this actor, host, runtime and binding. The holder is an address
+ * (sameHolder); every other field is exact.
+ */
+function echoMismatches(
+  context: FaceRequestContext,
+  request: NextRequest,
+  runtime: ScopedRuntime,
+  operationId: string,
+  echo: RuntimeEcho,
+): string[] {
+  const mismatches: string[] = [];
+  if (echo.operationId !== operationId) mismatches.push("operation_id");
+  if (!sameHolder(echo.holder, context.holder)) mismatches.push("holder");
+  if (echo.wallet !== context.wallet.id) mismatches.push("wallet");
+  if (echo.issuer !== walletIssuerOrigin(request)) mismatches.push("issuer");
+  if (echo.applicationId !== runtime.applicationId) {
+    mismatches.push("application_id");
+  }
+  if (echo.programme !== context.binding.programmeId) {
+    mismatches.push("programme");
+  }
+  if (
+    echo.assertingArtifact.version !== context.binding.version ||
+    echo.assertingArtifact.artifactHash !== context.binding.artifactHash
+  ) {
+    mismatches.push("asserting_artifact");
+  }
+  return mismatches;
+}
+
 function echoMatches(
   context: FaceRequestContext,
   request: NextRequest,
@@ -158,14 +191,7 @@ function echoMatches(
   echo: RuntimeEcho,
 ) {
   return (
-    echo.operationId === operationId &&
-    echo.holder === context.holder &&
-    echo.wallet === context.wallet.id &&
-    echo.issuer === walletIssuerOrigin(request) &&
-    echo.applicationId === runtime.applicationId &&
-    echo.programme === context.binding.programmeId &&
-    echo.assertingArtifact.version === context.binding.version &&
-    echo.assertingArtifact.artifactHash === context.binding.artifactHash
+    echoMismatches(context, request, runtime, operationId, echo).length === 0
   );
 }
 
@@ -184,8 +210,16 @@ function committedAnswerEcho(body: Record<string, unknown>) {
 export type ScanIncompleteReason =
   /** The runtime itself declared a page incomplete (a store it could not read to its end). */
   | "runtime_incomplete"
-  /** A page failed this wallet's validation: echo, snapshot, order, cursor cycle. */
-  | "page_invalid"
+  /** A page's echo named another actor, host, runtime or binding (the fields in `detail`). */
+  | "echo_mismatch"
+  /** A page carried an `as_of` or `recorded_at` that is not a time, or a record after `as_of`. */
+  | "time_invalid"
+  /** A later page changed the scan's snapshot (`scan_id` or `as_of`). */
+  | "snapshot_changed"
+  /** A page's `next` cursor was seen before in this scan. */
+  | "cursor_cycle"
+  /** Items were not strictly increasing in (recorded_at, operation_id). */
+  | "out_of_order"
   /** More pages than the host follows in one check. */
   | "pages_exceeded"
   /** A page after the first could not be minted or read. */
@@ -204,13 +238,23 @@ type Scan =
       unreadable: UnreadableItem[];
       complete: boolean;
       reason: ScanIncompleteReason | null;
+      /** For echo_mismatch: the echoed fields that did not match. */
+      detail: string[] | null;
     };
 
 const incomplete = (
   items: RecoveryItem[],
   unreadable: UnreadableItem[],
   reason: ScanIncompleteReason,
-): Scan => ({ status: "listed", items, unreadable, complete: false, reason });
+  detail: string[] | null = null,
+): Scan => ({
+  status: "listed",
+  items,
+  unreadable,
+  complete: false,
+  reason,
+  detail,
+});
 
 /** Strict order of a scan: (recorded_at, operation_id) ascending. */
 function follows(previous: RecoveryItem | undefined, item: RecoveryItem) {
@@ -270,24 +314,36 @@ async function scanRuntime(
     }
     const { page: listed } = result;
     const asOf = Date.parse(listed.asOf);
+    const mismatch = echoMismatches(
+      context,
+      request,
+      runtime,
+      read.operationId,
+      listed,
+    );
+    if (mismatch.length > 0) {
+      return incomplete(items, unreadable, "echo_mismatch", mismatch);
+    }
+    if (Number.isNaN(asOf)) {
+      return incomplete(items, unreadable, "time_invalid");
+    }
     if (
-      !echoMatches(context, request, runtime, read.operationId, listed) ||
-      Number.isNaN(asOf) ||
-      (snapshot !== undefined &&
-        (listed.scanId !== snapshot.scanId || asOf !== snapshot.asOf)) ||
-      (listed.next !== null && cursors.has(listed.next))
+      snapshot !== undefined &&
+      (listed.scanId !== snapshot.scanId || asOf !== snapshot.asOf)
     ) {
-      return incomplete(items, unreadable, "page_invalid");
+      return incomplete(items, unreadable, "snapshot_changed");
+    }
+    if (listed.next !== null && cursors.has(listed.next)) {
+      return incomplete(items, unreadable, "cursor_cycle");
     }
     snapshot ??= { scanId: listed.scanId, asOf };
     for (const item of listed.items) {
       const recordedAt = Date.parse(item.recordedAt);
-      if (
-        Number.isNaN(recordedAt) ||
-        recordedAt > asOf ||
-        !follows(items.at(-1), item)
-      ) {
-        return incomplete(items, unreadable, "page_invalid");
+      if (Number.isNaN(recordedAt) || recordedAt > asOf) {
+        return incomplete(items, unreadable, "time_invalid");
+      }
+      if (!follows(items.at(-1), item)) {
+        return incomplete(items, unreadable, "out_of_order");
       }
       items.push(item);
     }
@@ -306,6 +362,7 @@ async function scanRuntime(
         unreadable,
         complete,
         reason: complete ? null : "runtime_incomplete",
+        detail: null,
       };
     }
     cursors.add(listed.next);
@@ -325,6 +382,8 @@ export interface RuntimeCheck {
   runtime: "product" | "service";
   status: "checked" | "incomplete" | "unavailable" | "unsupported";
   reason: ScanIncompleteReason | "unreachable" | "invalid" | "unsigned" | null;
+  /** For echo_mismatch: the echoed fields that did not match this read. */
+  detail: string[] | null;
   /** Items listed by this runtime that this wallet could not read in full. */
   unreadable: number;
 }
@@ -337,6 +396,7 @@ function checkOf(runtime: ScopedRuntime, scan: Scan): RuntimeCheck {
         runtime: kind,
         status: scan.complete ? "checked" : "incomplete",
         reason: scan.reason,
+        detail: scan.detail,
         unreadable: scan.unreadable.length,
       };
     case "unavailable":
@@ -344,6 +404,7 @@ function checkOf(runtime: ScopedRuntime, scan: Scan): RuntimeCheck {
         runtime: kind,
         status: "unavailable",
         reason: scan.reason,
+        detail: null,
         unreadable: 0,
       };
     case "unsupported":
@@ -351,6 +412,7 @@ function checkOf(runtime: ScopedRuntime, scan: Scan): RuntimeCheck {
         runtime: kind,
         status: "unsupported",
         reason: null,
+        detail: null,
         unreadable: 0,
       };
   }

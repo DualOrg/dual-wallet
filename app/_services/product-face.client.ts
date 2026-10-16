@@ -348,6 +348,8 @@ export interface FaceRecoveryCheck {
   runtime: "product" | "service";
   status: "checked" | "incomplete" | "unavailable" | "unsupported";
   reason: string | null;
+  /** For an echo mismatch: the echoed fields that did not match. */
+  detail?: string[] | null;
   unreadable: number;
 }
 
@@ -462,6 +464,10 @@ function isFaceRecoveryCheck(value: unknown): value is FaceRecoveryCheck {
     typeof check.status === "string" &&
     recoveryCheckStatuses.includes(check.status) &&
     (check.reason === null || typeof check.reason === "string") &&
+    (check.detail === undefined ||
+      check.detail === null ||
+      (Array.isArray(check.detail) &&
+        check.detail.every((field) => typeof field === "string"))) &&
     typeof check.unreadable === "number"
   );
 }

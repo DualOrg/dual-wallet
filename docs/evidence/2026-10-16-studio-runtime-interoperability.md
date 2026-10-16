@@ -368,6 +368,55 @@ cannot and must not make that choice. If they read `unavailable` with
 `unreachable`, the wallet's server cannot reach the linked Warranty runtime's
 origin or the runtime refuses the host-only listing: a deployment matter.
 
+## Hosted observation 2 (Root, 2026-10-16): both checks `echo_mismatch`; the cause was the wallet's
+
+With `43eb808` live, the recipient's fresh reopen reported both the product
+and the service check as "The application answered in a way this wallet
+could not verify" (the `page_invalid` reason of that candidate), and Check
+again did not clear it. No operation was re-sent.
+
+Diagnosis at the wallet boundary. That reason is raised when the wallet's
+own validation of a listing page fails: the §0 echo match, the time checks,
+the snapshot, the cursor cycle or the order. Both runtimes failing alike,
+on every reopen, with nothing re-sent, pointed at the one check whose inputs
+differ between the hosted actor and every fixture and harness actor: the
+echo's `holder`. The wallet mints the assertion's `holder` in lowercase
+(`api/face-assertion.ts`, as the runtimes store and compare it); the Studio
+runtime lowercases it again at verification and echoes it in lowercase
+(`src/product-face-assertion.mjs` 146 and 156, `src/product-face-recovery.mjs`
+94); the wallet then compared that echo with `context.holder`, the account
+address exactly as the API returns it, by string equality. Every fixture,
+harness and probe actor so far was an all-lowercase address
+(`0x1234567890abcdef…`, `0x…a101`), so the comparison held there; a real
+account's EIP-55 mixed-case address fails it on both runtimes at once. The
+same string equality guarded `write.status` settlement of a runtime write
+(`verifyRuntimeWrite`), so a real account's held writes would also never
+have settled.
+
+Reproduction in the branded fixture: Tidewell's holder address is now mixed
+case (`0x…B2C1`). With the strict comparison, the fixture's recovery tests
+fail with the service check `incomplete`, reason `echo_mismatch`, detail
+`["holder"]` (the exact hosted symptom, now named); with the repair they
+pass. The fixture's local fake Dual and fake runtimes now compare addresses
+case-insensitively, as Dual and the Studio runtime do.
+
+Repair (this commit): `sameHolder` (`app/_domain/product-face.ts`) compares
+holders case-insensitively wherever an echoed or recorded holder meets the
+session's (`echoMismatches` in the recovery module and `verifyRuntimeWrite`
+in the operations module). The `page_invalid` reason is split into the exact
+check that failed (`echo_mismatch` with the mismatching fields in `detail`,
+`time_invalid`, `snapshot_changed`, `cursor_cycle`, `out_of_order`), so a
+future failure of this kind names itself in the response and the notice.
+
+Not a Studio dependency: the runtime's behaviour here is contract-conformant
+(the echo returns the assertion's holder as the runtime holds it). The face
+text Root also saw, "No service request is available for this product yet",
+is the face's own and reflects the Warranty runtime's case state for that
+unit and holder (a case is activated for a registered product's holder);
+the wallet neither produces nor can diagnose it. With this repair the
+wallet's service check will say whether the Warranty runtime listed anything
+for the recipient, which is the fact Studio needs for that question.
+
 ## Re-running
 
 In the Studio checkout at the recorded commit (`a2b04b9` for run 1,

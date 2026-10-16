@@ -217,7 +217,7 @@ const TIDEWELL: Brand = {
   issuer: "0x00000000000000000000000000000000000155b2",
   holder: {
     walletId: "wallet-tidewell-holder",
-    address: "0x000000000000000000000000000000000000b201",
+    address: "0x000000000000000000000000000000000000B2C1",
   },
   recipient: {
     walletId: "wallet-tidewell-recipient",
@@ -290,6 +290,11 @@ const sha = (value: string) =>
 const sha256Hex = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 /** The runtime request hash: the canonical body without its assertion. */
+/** Dual and the runtimes compare 0x addresses case-insensitively (EIP-55 is a display form). */
+const sameAddress = (left: unknown, right: unknown) =>
+  typeof left === "string" &&
+  typeof right === "string" &&
+  left.toLowerCase() === right.toLowerCase();
 const hashOf = (
   operation: string,
   operationId: string,
@@ -472,7 +477,8 @@ class FakeDual {
     const unit = this.units.get(objectId);
     const lifecycle = unit?.custom.lifecycle as Json | undefined;
     return (
-      unit?.owner === holder &&
+      unit !== undefined &&
+      sameAddress(unit.owner, holder) &&
       unit.custom.state === "Authenticity verified" &&
       lifecycle?.target_state === unit.custom.state
     );
@@ -499,7 +505,7 @@ class FakeDual {
       { id: string; custom?: Json; data?: { custom: Json } } | undefined;
     const transfer = action.transfer as { id: string; to: string } | undefined;
     const unit = this.units.get((update ?? transfer)?.id ?? "");
-    if (!unit || unit.owner !== party.address) {
+    if (!unit || !sameAddress(unit.owner, party.address)) {
       return json(403, { code: 7, message: "not the holder" });
     }
     if (update) unit.custom = clone(update.data?.custom ?? update.custom ?? {});
@@ -1556,7 +1562,7 @@ class BrandRuntime {
   ) {
     return this.dual.executed.find(
       (action) =>
-        action.account === holder &&
+        sameAddress(action.account, holder) &&
         action.objectId === objectId &&
         action.name === kind &&
         (kind === "transfer" ? action.to === to : true),
@@ -2240,7 +2246,7 @@ class BrandRuntime {
   ): Response {
     const objectId = String(target.object_id ?? "");
     const unit = this.dual.units.get(objectId);
-    const owned = unit?.owner === holder;
+    const owned = sameAddress(unit?.owner, holder);
     switch (operation) {
       case "registration.submit": {
         if (
@@ -2490,7 +2496,7 @@ class BrandRuntime {
         // Committed only on the holder's own executed action for this step.
         const done = this.dual.executed.some(
           (action) =>
-            action.account === offer.holder &&
+            sameAddress(action.account, offer.holder) &&
             action.objectId === offer.objectId &&
             (operation === "transfer.status" ||
               action.actionId === input.action_id) &&
@@ -2528,7 +2534,7 @@ class BrandRuntime {
       return json(400, { ok: false, status: "face_request_invalid" });
     }
     const unit = this.dual.units.get(String(target.object_id ?? ""));
-    if (unit?.owner !== holder) {
+    if (!sameAddress(unit?.owner, holder)) {
       return json(403, { ok: false, status: "not_holder" });
     }
     if (operation === "cases.list") {
@@ -2956,7 +2962,8 @@ async function faceCall(
     aud: runtimeOf(brand).audience(kind),
     app_id: brand.applicationId,
     programme: brand.programmeId,
-    holder: browser.party.address,
+    // The wallet mints the holder in lowercase, whatever case the API wrote.
+    holder: browser.party.address.toLowerCase(),
     operation: request.operation,
     op_id: request.operationId,
   });
@@ -5640,7 +5647,8 @@ describe("recovery: the bounded page and its continuation (PROPOSED r20 fixture)
 
 /** The holder's warranty-runtime actor, as the wallet mints it for recovery. */
 const warrantyActor = (brand: Brand): Actor => ({
-  holder: brand.holder.address,
+  // As the runtime stores it: the assertion's lowercase holder.
+  holder: brand.holder.address.toLowerCase(),
   sub: brand.holder.walletId,
   iss: brand.origin,
   aud: `${brand.warranty.applicationId}@${brand.warranty.origin}`,

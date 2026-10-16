@@ -603,7 +603,11 @@
       },
       "recoveryReason": {
         "runtime_incomplete": "The application reported that it could not read all of its records.",
-        "page_invalid": "The application answered in a way this wallet could not verify.",
+        "echo_mismatch": "The application answered for a different account, application or version than this wallet asked about.",
+        "time_invalid": "The application dated its records in a way this wallet could not verify.",
+        "snapshot_changed": "The application's list of records changed while it was being read.",
+        "cursor_cycle": "The application's list of records repeated itself.",
+        "out_of_order": "The application's list of records was not in the order this wallet expects.",
         "pages_exceeded": "There were more records than this wallet checks at once.",
         "read_failed": "A page of records could not be read.",
         "item_unreadable": "Some of its records are in a form this wallet cannot read.",

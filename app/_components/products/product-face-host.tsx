@@ -47,7 +47,11 @@ type RecoveryItem = Extract<
 /** The BFF's reasons the host has words for; anything else is not shown. */
 const recoveryReasons = [
   "runtime_incomplete",
-  "page_invalid",
+  "echo_mismatch",
+  "time_invalid",
+  "snapshot_changed",
+  "cursor_cycle",
+  "out_of_order",
   "pages_exceeded",
   "read_failed",
   "item_unreadable",

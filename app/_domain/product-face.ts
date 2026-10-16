@@ -57,6 +57,17 @@ export function isObjectId(value: unknown): value is string {
   return typeof value === "string" && OBJECT_ID.test(value);
 }
 
+/**
+ * Two holder addresses name the same account. A 0x address is a
+ * case-insensitive identifier: the API writes it in EIP-55 mixed case, the
+ * wallet's assertions and the runtimes carry and echo it in lowercase, so
+ * every comparison of a holder with an echoed or recorded one goes through
+ * here, never through string equality.
+ */
+export function sameHolder(left: string, right: string) {
+  return left.toLowerCase() === right.toLowerCase();
+}
+
 export function isOperationId(value: unknown): value is string {
   return typeof value === "string" && OPERATION_ID.test(value);
 }

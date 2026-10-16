@@ -51,6 +51,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         runtime: check.runtime,
         status: check.status,
         reason: check.reason,
+        detail: check.detail,
         unreadable: check.unreadable,
       })),
       unreadable: listing.unreadable.map((item) => ({

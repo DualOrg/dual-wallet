@@ -74,6 +74,7 @@ import {
   type RuntimeOperation,
   type SettleFieldChange,
   type SettleProposal,
+  sameHolder,
 } from "@/app/_domain/product-face";
 
 export type FaceOperationFailure = {
@@ -660,7 +661,7 @@ async function verifyRuntimeWrite(
     recorded.objectId !== entry.objectId ||
     recorded.caseId !== (entry.caseId ?? null) ||
     recorded.requestHash !== entry.requestHash ||
-    recorded.holder !== context.holder ||
+    !sameHolder(recorded.holder, context.holder) ||
     recorded.wallet !== context.wallet.id ||
     recorded.issuer !== issuer ||
     recorded.applicationId !== runtime.applicationId ||
