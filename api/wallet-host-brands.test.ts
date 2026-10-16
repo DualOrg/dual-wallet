@@ -116,6 +116,8 @@ import { proxy } from "@/proxy";
 
 type Json = Record<string, unknown>;
 type RuntimeKind = "passport" | "warranty";
+/** The r20 recovery item kinds (contract §2). */
+type RecoveryKind = "registration" | "settle" | "transfer" | "runtime";
 
 interface Party {
   walletId: string;
@@ -223,6 +225,12 @@ const TIDEWELL: Brand = {
 
 const BRANDS = [MORROW, TIDEWELL];
 
+// FIXTURE (PROPOSED r20): the account that signs a synthetic Dual-backed
+// action. It is not any brand's holder, recipient or issuer: the contract
+// assumes neither that the signer is the holder nor that the object is the
+// product target.
+const SERVICE_ACCOUNT = `0x${"f".repeat(40)}`;
+
 // ---------------------------------------------------------------- helpers
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -304,6 +312,8 @@ class FakeDual {
     objectId: string;
     name: "update" | "transfer";
     to?: string;
+    /** FIXTURE ONLY: the executed payload of a synthetic r20 Dual-backed action. */
+    payload?: Json;
   }> = [];
   readonly ebus: Array<{ path: string; account: string }> = [];
   private readonly parties = new Map<string, Party>();
@@ -333,6 +343,25 @@ class FakeDual {
     const party = this.partyOf(token);
     if (!party) throw new ResponseError(new Response(null, { status: 401 }));
     return walletDto(party);
+  }
+
+  /**
+   * FIXTURE ONLY (PROPOSED r20): one synthetic Dual action log entry, so a
+   * runtime write can be recorded as a genuine Dual-backed effect. The
+   * contract assumes nothing: the signer need not be the holder and the
+   * object need not be the product target. Never part of Dual's business
+   * semantics; only the r20 Dual-backed write fixture records one.
+   */
+  recordDualBackedAction(objectId: string, signer: string, payload: Json) {
+    const actionId = `dual-action-${this.executed.length + 1}`;
+    this.executed.push({
+      actionId,
+      account: signer,
+      objectId,
+      name: "update",
+      payload: clone(payload),
+    });
+    return actionId;
   }
 
   object(objectId: string) {
@@ -430,8 +459,18 @@ interface CaseRecord {
  * (docs/proposals/runtime-write-status-r20.md): a runtime's durable record of
  * one face write, keyed by its runtime and original operation id.
  */
+interface Actor {
+  holder: string;
+  sub: string;
+  iss: string;
+  aud: string;
+  programme: string;
+  artifact: { version: string; artifactHash: string };
+}
+
 interface WriteRecord {
   kind: RuntimeKind;
+  operationId: string;
   operation: string;
   target: Json;
   requestHash: string;
@@ -442,8 +481,51 @@ interface WriteRecord {
   programme: string;
   artifact: { version: string; artifactHash: string };
   applied: boolean;
+  /** PROPOSED r20: outcomes the runtime cannot yet decide (held, 409). */
+  unresolved: number;
   receipt: Json | null;
+  /** The runtime's record time (RFC 3339, the mocked clock). */
+  recordedAt: string;
+  /**
+   * FIXTURE knob: a Dual-backed effect proved from the Dual action log. The
+   * synthetic action is recorded once; write.status re-reads its executed
+   * payload for the observed hash each time.
+   */
+  dualBacked?: {
+    actionId: string;
+    objectId: string;
+    signer: string;
+    expectedPayloadHash: string;
+    /** The ORIGINAL write's intended Dual writes (the wallet holds more than 1). */
+    intendedDualWrites: number;
+    /** FIXTURE knob: answer a verified_at 11 minutes old (the wallet holds it). */
+    stale?: boolean;
+  };
+  /** FIXTURE knob: the target object cannot be read at all (409 unknown). */
+  dualUnavailable?: boolean;
   answer: { status: number; body: Json };
+}
+
+/** PROPOSED r20: a non-write durable record a runtime can recover and ack. */
+interface Recoverable {
+  kind: "registration" | "settle" | "transfer";
+  operationId: string;
+  operation: string;
+  objectId: string;
+  proposalId: string | null;
+  offerId: string | null;
+  step: "request" | "transfer" | null;
+  actor: Actor;
+  recordedAt: string;
+}
+
+/** PROPOSED r20: one appended acknowledgement row beside a record. */
+interface AckRow {
+  iss: string;
+  sub: string;
+  holder: string;
+  outcomeHash: string;
+  at: string;
 }
 
 const WRITE_OPERATIONS = new Set([
@@ -471,6 +553,33 @@ class BrandRuntime {
   /** r20 fixture: artifacts the runtime treats as compatible (its set A). */
   compatible: Set<string> | undefined;
   readonly writes = new Map<string, WriteRecord>();
+  /** r20 fixture: durable registration/settle/transfer records, by op id. */
+  readonly recoverables = new Map<string, Recoverable>();
+  /** r20 fixture: acknowledgement rows, keyed `${kind}:${operationId}`. */
+  readonly acks = new Map<string, AckRow[]>();
+  /** r20 fixture: operations recorded as Dual-backed, and how. */
+  readonly dualBackedOps = new Map<
+    string,
+    { intendedDualWrites: number; stale?: boolean }
+  >();
+  /** r20 fixture: a recovery.list page holds at most this many items. */
+  recoveryPageSize = 50;
+  /** r20 fixture: force an incomplete scan (a store could not be read). */
+  incompleteScan = false;
+  /** r20 fixture: inject one scan violation the wallet must catch. */
+  recoveryViolation:
+    | "repeat_id"
+    | "out_of_order"
+    | "cursor_cycle"
+    | "change_scan_id"
+    | "wrong_echo"
+    | undefined;
+  /** r20 fixture: live recovery scans, by opaque scan id. */
+  private readonly scans = new Map<
+    string,
+    { asOf: number; actorKey: string; items: Json[] }
+  >();
+  private scanCounter = 0;
   private events = 0;
   readonly calls: Array<{
     by: "wallet" | "face";
@@ -495,11 +604,17 @@ class BrandRuntime {
   >();
   private readonly settleReservations = new Set<string>();
   private readonly offers = new Map<string, Offer>();
+  /** FIXTURE: the fixture object a Dual-backed write's action is applied to. */
+  readonly dualBackedObjectId: string;
 
   constructor(
     readonly brand: Brand,
     private readonly dual: FakeDual,
   ) {
+    this.dualBackedObjectId = sha256Hex(`${brand.brandId}-dual-backed`).slice(
+      0,
+      24,
+    );
     const provider = `${brand.label} Service Centre`;
     this.cases = new Map([
       [
@@ -663,7 +778,17 @@ class BrandRuntime {
     const recorded = this.writes.get(key);
     let answer: Response;
     if (claims && this.r20 && operation === "write.status") {
-      answer = this.writeStatus(kind, target, claims, recorded);
+      answer = this.writeStatus(kind, target, input, claims, recorded);
+    } else if (claims && this.r20 && operation === "recovery.list") {
+      answer = this.recoveryList(kind, operationId, claims, input);
+    } else if (claims && this.r20 && operation === "recovery.ack") {
+      answer = this.recoveryAck(kind, target, input, claims);
+    } else if (
+      claims &&
+      this.r20 &&
+      operation === "registration.settle.status"
+    ) {
+      answer = this.settleStatus(kind, operationId, target, input, claims);
     } else if (
       claims &&
       this.r20 &&
@@ -700,8 +825,35 @@ class BrandRuntime {
         const answered = (await answer.clone().json()) as Json;
         this.events += 1;
         const applied = answer.status === 200;
+        // FIXTURE: a chosen warranty write is a genuine Dual-backed effect:
+        // one synthetic Dual action, signed by a service account (NOT the
+        // holder), on a fixture object (NOT the product target).
+        const backing = applied ? this.dualBackedOps.get(operation) : undefined;
+        let dualBacked: WriteRecord["dualBacked"];
+        if (backing) {
+          const dualObject = this.dualBackedObjectId;
+          const payload = {
+            action: "update",
+            object_id: dualObject,
+            operation_id: operationId,
+          };
+          const actionId = this.dual.recordDualBackedAction(
+            dualObject,
+            SERVICE_ACCOUNT,
+            payload,
+          );
+          dualBacked = {
+            actionId,
+            objectId: dualObject,
+            signer: SERVICE_ACCOUNT,
+            expectedPayloadHash: sha(canonicalJson(payload)),
+            intendedDualWrites: backing.intendedDualWrites,
+            ...(backing.stale ? { stale: true } : {}),
+          };
+        }
         this.writes.set(key, {
           kind,
+          operationId,
           operation,
           target: {
             object_id: target.object_id,
@@ -718,6 +870,9 @@ class BrandRuntime {
             artifactHash: String(claims.artifact),
           },
           applied,
+          unresolved: 0,
+          recordedAt: new Date(Date.now()).toISOString(),
+          ...(dualBacked ? { dualBacked } : {}),
           receipt: !applied
             ? null
             : kind === "warranty"
@@ -735,6 +890,33 @@ class BrandRuntime {
           answer: { status: answer.status, body: answered },
         });
       }
+      // r20: durable registration/settle/transfer records for recovery.list.
+      if (claims && this.r20 && kind === "passport") {
+        await this.recordRecoverable(
+          claims,
+          operation,
+          operationId,
+          target,
+          input,
+          answer,
+        );
+      }
+      // r20 additive: a committed transfer.status/verify answer carries the
+      // §0 echo, zero accounting and its outcome_proof (legacy: as today).
+      if (
+        claims &&
+        this.r20 &&
+        (operation === "transfer.status" || operation === "transfer.verify") &&
+        answer.status === 200
+      ) {
+        answer = await this.augmentTransfer(
+          kind,
+          target,
+          input,
+          claims,
+          answer,
+        );
+      }
     }
     this.calls.push({
       by,
@@ -746,13 +928,84 @@ class BrandRuntime {
     return answer;
   }
 
+  private applicationIdFor(kind: RuntimeKind) {
+    return kind === "passport"
+      ? this.brand.applicationId
+      : this.brand.warranty.applicationId;
+  }
+
+  /** PROPOSED r20 §0: the echoed binding and the read-only accounting block. */
+  private echoBlock(kind: RuntimeKind, claims: Json, operationId: string) {
+    return {
+      operation_id: operationId,
+      holder: claims.holder,
+      wallet: claims.sub,
+      issuer: claims.iss,
+      application_id: this.applicationIdFor(kind),
+      programme: claims.programme,
+      asserting_artifact: {
+        version: String(claims.app_version),
+        artifactHash: String(claims.artifact),
+      },
+    };
+  }
+
+  private readonly accounting = {
+    writesExecuted: 0,
+    dualWritesExecuted: 0,
+    providerWritesExecuted: 0,
+    unknownWriteOutcomes: 0,
+    secretReturned: false,
+  };
+
+  private bookkeeping(acknowledgementsRecorded: 0 | 1) {
+    return { assertionsConsumed: 1, acknowledgementsRecorded };
+  }
+
+  private ackRow(kind: RuntimeKind, operationId: string, iss: unknown) {
+    return (this.acks.get(`${kind}:${operationId}`) ?? []).find(
+      (row) => row.iss === iss,
+    );
+  }
+
+  /**
+   * PROPOSED r20 §0: the runtime kind's outcome_proof, derived only from the
+   * immutable record and its appended outcome; a Dual-backed write names the
+   * proved effect so the acknowledgement binds it.
+   */
+  private runtimeOutcomeProof(
+    recorded: WriteRecord,
+    observedPayloadHash: string | null,
+  ) {
+    const proof: Json = {
+      kind: "runtime",
+      operation_id: recorded.operationId,
+      operation: recorded.operation,
+      object_id: recorded.target.object_id,
+      case_id: recorded.target.case_id ?? null,
+      receipt: recorded.receipt,
+      status: recorded.applied ? "write_applied" : "write_refused",
+    };
+    if (recorded.dualBacked && observedPayloadHash !== null) {
+      proof.dual = {
+        action_id: recorded.dualBacked.actionId,
+        object_id: recorded.dualBacked.objectId,
+        observed_payload_hash: observedPayloadHash,
+      };
+    }
+    return proof;
+  }
+
   /** r20 fixture: the verified record of one write, to its own caller only. */
   private writeStatus(
     kind: RuntimeKind,
     target: Json,
+    input: Json,
     claims: Json,
     recorded: WriteRecord | undefined,
   ) {
+    // §0: authenticate, then exact-match holder/sub/iss/aud/programme AND the
+    // record's target AND its operation against input.original_operation.
     if (
       !recorded ||
       recorded.kind !== kind ||
@@ -760,7 +1013,9 @@ class BrandRuntime {
       recorded.wallet !== claims.sub ||
       recorded.audience !== claims.aud ||
       recorded.issuer !== claims.iss ||
-      canonicalJson(recorded.target) !== canonicalJson(target)
+      recorded.programme !== claims.programme ||
+      canonicalJson(recorded.target) !== canonicalJson(target) ||
+      recorded.operation !== input.original_operation
     ) {
       return json(404, { ok: false, status: "face_operation_not_found" });
     }
@@ -774,36 +1029,806 @@ class BrandRuntime {
         status: "face_operation_artifact_retired",
       });
     }
+    // An outcome the runtime cannot yet decide (a provider or Dual write in
+    // flight) is 409 write_outcome_unknown, never a guess.
+    if (recorded.unresolved > 0) {
+      return json(409, { ok: false, status: "write_outcome_unknown" });
+    }
+    // §1 dual: the server's binding of the write's ACTUAL effect to its
+    // record, in one of two truthful branches.
+    let dual: Json;
+    let observedPayloadHash: string | null = null;
+    if (recorded.dualBacked) {
+      const action = this.dual.executed.find(
+        (entry) => entry.actionId === recorded.dualBacked!.actionId,
+      );
+      observedPayloadHash = sha(canonicalJson(action?.payload ?? {}));
+      const verifiedAt = recorded.dualBacked.stale
+        ? new Date(Date.now() - 11 * 60_000).toISOString()
+        : new Date(Date.now()).toISOString();
+      dual = {
+        backed: true,
+        intended_dual_writes: recorded.dualBacked.intendedDualWrites,
+        proof: {
+          resolver: "dual_action_log",
+          action_id: recorded.dualBacked.actionId,
+          object_id: recorded.dualBacked.objectId,
+          signer: recorded.dualBacked.signer,
+          expected_payload_hash: recorded.dualBacked.expectedPayloadHash,
+          observed_payload_hash: observedPayloadHash,
+          payload_match:
+            recorded.dualBacked.expectedPayloadHash === observedPayloadHash,
+          bound_to: {
+            operation_id: recorded.operationId,
+            request_hash: recorded.requestHash,
+          },
+          verified_at: verifiedAt,
+        },
+      };
+    } else {
+      // A server-only effect: a FRESH Dual read of the original target object.
+      if (recorded.dualUnavailable) {
+        return json(409, {
+          ok: false,
+          status: "write_outcome_unknown",
+          reason: "target_readback_unavailable",
+        });
+      }
+      const present = this.dual.units.has(String(recorded.target.object_id));
+      dual = {
+        backed: false,
+        intended_dual_writes: 0,
+        reason: "server_only_effect",
+        target_readback: present ? "verified" : "absent",
+      };
+    }
+    const outcomeProof = this.runtimeOutcomeProof(
+      recorded,
+      observedPayloadHash,
+    );
     const body: Json = {
       ok: true,
       status: recorded.applied ? "write_applied" : "write_refused",
       contract: "r20",
-      readback: "verified",
-      artifact_compatible: true,
-      operation_id: claims.op_id,
+      ...this.echoBlock(kind, claims, String(claims.op_id)),
       operation: recorded.operation,
       target: recorded.target,
       request_hash: recorded.requestHash,
-      holder: recorded.holder,
-      wallet: recorded.wallet,
-      issuer: recorded.issuer,
-      application_id:
-        kind === "passport"
-          ? this.brand.applicationId
-          : this.brand.warranty.applicationId,
-      programme: recorded.programme,
       recorded_artifact: recorded.artifact,
-      asserting_artifact: {
+      artifact_compatible: true,
+      readback: "verified",
+      receipt: recorded.receipt,
+      dual,
+      outcome_proof: outcomeProof,
+      outcome_hash: sha(canonicalJson(outcomeProof)),
+      acknowledged:
+        this.ackRow(kind, recorded.operationId, claims.iss) !== undefined,
+      ...this.accounting,
+      bookkeeping: this.bookkeeping(0),
+    };
+    return json(200, this.tamper ? this.tamper(body) : body);
+  }
+
+  // ------------------------------------------- r20 recovery (fixture)
+
+  private actorOf(claims: Json): Actor {
+    return {
+      holder: String(claims.holder),
+      sub: String(claims.sub),
+      iss: String(claims.iss),
+      aud: String(claims.aud),
+      programme: String(claims.programme),
+      artifact: {
         version: String(claims.app_version),
         artifactHash: String(claims.artifact),
       },
-      receipt: recorded.receipt,
-      writesExecuted: 0,
-      dualWritesExecuted: 0,
-      unknownWriteOutcomes: 0,
-      secretReturned: false,
     };
-    return json(200, this.tamper ? this.tamper(body) : body);
+  }
+
+  private sameActor(left: Actor, right: Actor) {
+    return (
+      left.holder === right.holder &&
+      left.sub === right.sub &&
+      left.iss === right.iss &&
+      left.aud === right.aud &&
+      left.programme === right.programme
+    );
+  }
+
+  /**
+   * FIXTURE SEEDING (PROPOSED r20): one write record bound to a captured
+   * actor identity, so a listing can be driven past its resolution bound
+   * without the confirmations each real write needs. Clearly a fixture; it
+   * records nothing in Dual.
+   */
+  seedWriteRecord(
+    actor: Actor,
+    options: {
+      operationId: string;
+      operation?: string;
+      caseId?: string;
+      recordedAt: string;
+      recordedArtifact?: { version: string; artifactHash: string };
+      applied?: boolean;
+      unresolved?: number;
+    },
+  ) {
+    const operation = options.operation ?? "case.evidence.submit";
+    const kind: RuntimeKind = operation.startsWith("case.")
+      ? "warranty"
+      : "passport";
+    this.events += 1;
+    this.writes.set(`${kind}:${options.operationId}`, {
+      kind,
+      operationId: options.operationId,
+      operation,
+      target: {
+        object_id: this.brand.unit.id,
+        ...(options.caseId ? { case_id: options.caseId } : {}),
+      },
+      requestHash: sha(`seed:${options.operationId}`),
+      holder: actor.holder,
+      wallet: actor.sub,
+      issuer: actor.iss,
+      audience: actor.aud,
+      programme: actor.programme,
+      artifact: options.recordedArtifact ?? actor.artifact,
+      applied: options.applied ?? true,
+      unresolved: options.unresolved ?? 0,
+      recordedAt: options.recordedAt,
+      receipt: {
+        kind: "case_event",
+        case_id: options.caseId ?? this.brand.cases[0],
+        event_id: `case-event-seed-${this.events}`,
+      },
+      answer: { status: 200, body: { ok: true } },
+    });
+  }
+
+  private async recordRecoverable(
+    claims: Json,
+    operation: string,
+    operationId: string,
+    target: Json,
+    input: Json,
+    answer: Response,
+  ) {
+    if (answer.status !== 200 && answer.status !== 202) return;
+    let body: Json;
+    try {
+      body = (await answer.clone().json()) as Json;
+    } catch {
+      return;
+    }
+    if (body.ok !== true) return;
+    const actor = this.actorOf(claims);
+    const recordedAt = new Date(Date.now()).toISOString();
+    const base = {
+      objectId: String(target.object_id ?? ""),
+      caseId: null,
+      actor,
+      recordedAt,
+      proposalId: null as string | null,
+      offerId: null as string | null,
+      step: null as "request" | "transfer" | null,
+    };
+    if (
+      operation === "registration.submit" ||
+      operation === "transfer.accept"
+    ) {
+      this.recoverables.set(operationId, {
+        ...base,
+        kind: "registration",
+        operationId,
+        operation: "registration.submit",
+      });
+    } else if (operation === "registration.settle.reserve") {
+      this.recoverables.set(operationId, {
+        ...base,
+        kind: "settle",
+        operationId,
+        operation: "registration.settle",
+        proposalId: String(input.proposal_id),
+      });
+    } else if (operation === "transfer.reserve") {
+      const reservation = (body.reservation ?? {}) as Json;
+      const step = reservation.step;
+      if (step === "request" || step === "transfer") {
+        this.recoverables.set(operationId, {
+          ...base,
+          kind: "transfer",
+          operationId,
+          operation:
+            step === "transfer" ? "transfer.transfer" : "transfer.request",
+          offerId: String(input.offer_id),
+          step,
+        });
+      }
+    }
+  }
+
+  /** The holder's Dual action for a settle or transfer step, if it ran. */
+  private holderAction(
+    objectId: string,
+    holder: string,
+    kind: "update" | "transfer",
+    to?: string,
+  ) {
+    return this.dual.executed.find(
+      (action) =>
+        action.account === holder &&
+        action.objectId === objectId &&
+        action.name === kind &&
+        (kind === "transfer" ? action.to === to : true),
+    );
+  }
+
+  private recoverableState(rec: Recoverable): {
+    state: "unresolved" | "completed";
+    actionId: string | null;
+  } {
+    if (rec.kind === "registration") {
+      return {
+        state: this.dual.settled(rec.objectId, rec.actor.holder)
+          ? "completed"
+          : "unresolved",
+        actionId: null,
+      };
+    }
+    if (rec.kind === "settle") {
+      const action = this.holderAction(
+        rec.objectId,
+        rec.actor.holder,
+        "update",
+      );
+      return {
+        state:
+          this.dual.settled(rec.objectId, rec.actor.holder) && action
+            ? "completed"
+            : "unresolved",
+        actionId: action?.actionId ?? null,
+      };
+    }
+    // transfer
+    const offer = rec.offerId ? this.offers.get(rec.offerId) : undefined;
+    const action = offer
+      ? this.holderAction(
+          rec.objectId,
+          rec.actor.holder,
+          rec.step === "transfer" ? "transfer" : "update",
+          offer.recipient ?? undefined,
+        )
+      : undefined;
+    const committed = Boolean(
+      offer && rec.step && offer.committed.has(rec.step),
+    );
+    return {
+      state: committed ? "completed" : "unresolved",
+      actionId: action?.actionId ?? null,
+    };
+  }
+
+  private recoveryItem(item: {
+    kind: RecoveryKind;
+    operationId: string;
+    operation: string;
+    objectId: string;
+    caseId: string | null;
+    offerId: string | null;
+    proposalId: string | null;
+    step: "request" | "transfer" | null;
+    actionId: string | null;
+    state: "unresolved" | "completed" | "refused";
+    recordedAt: string;
+    artifact: { version: string; artifactHash: string };
+  }): Json {
+    const compatible = this.compatible
+      ? this.compatible.has(item.artifact.artifactHash)
+      : true;
+    return {
+      kind: item.kind,
+      operation_id: item.operationId,
+      operation: item.operation,
+      object_id: item.objectId,
+      case_id: item.caseId,
+      offer_id: item.offerId,
+      proposal_id: item.proposalId,
+      step: item.step,
+      action_id: item.actionId,
+      state: item.state,
+      recorded_at: item.recordedAt,
+      recorded_artifact: item.artifact,
+      artifact_compatible: compatible,
+    };
+  }
+
+  /** This actor's recovery items at this runtime, in the contract's order. */
+  private buildRecoveryItems(kind: RuntimeKind, actor: Actor): Json[] {
+    const items: Json[] = [];
+    for (const rec of this.writes.values()) {
+      if (
+        rec.kind !== kind ||
+        rec.holder !== actor.holder ||
+        rec.wallet !== actor.sub ||
+        rec.issuer !== actor.iss ||
+        rec.audience !== actor.aud ||
+        rec.programme !== actor.programme ||
+        this.ackRow(kind, rec.operationId, actor.iss)
+      ) {
+        continue;
+      }
+      const state =
+        rec.unresolved > 0
+          ? "unresolved"
+          : rec.applied
+            ? "completed"
+            : "refused";
+      items.push(
+        this.recoveryItem({
+          kind: "runtime",
+          operationId: rec.operationId,
+          operation: rec.operation,
+          objectId: String(rec.target.object_id),
+          caseId: (rec.target.case_id as string) ?? null,
+          offerId: null,
+          proposalId: null,
+          step: null,
+          actionId: null,
+          state,
+          recordedAt: rec.recordedAt,
+          artifact: rec.artifact,
+        }),
+      );
+    }
+    if (kind === "passport") {
+      for (const rec of this.recoverables.values()) {
+        if (
+          !this.sameActor(rec.actor, actor) ||
+          this.ackRow(kind, rec.operationId, actor.iss)
+        ) {
+          continue;
+        }
+        const { state, actionId } = this.recoverableState(rec);
+        items.push(
+          this.recoveryItem({
+            kind: rec.kind,
+            operationId: rec.operationId,
+            operation: rec.operation,
+            objectId: rec.objectId,
+            caseId: null,
+            offerId: rec.offerId,
+            proposalId: rec.proposalId,
+            step: rec.step,
+            actionId,
+            state,
+            recordedAt: rec.recordedAt,
+            artifact: rec.actor.artifact,
+          }),
+        );
+      }
+    }
+    items.sort((left, right) => {
+      const byTime =
+        Date.parse(left.recorded_at as string) -
+        Date.parse(right.recorded_at as string);
+      if (byTime !== 0) return byTime;
+      const a = left.operation_id as string;
+      const b = right.operation_id as string;
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
+    return items;
+  }
+
+  private makeCursor(scanId: string, offset: number) {
+    return Buffer.from(JSON.stringify({ s: scanId, o: offset })).toString(
+      "base64url",
+    );
+  }
+
+  private parseCursor(value: string) {
+    try {
+      const parsed = JSON.parse(
+        Buffer.from(value, "base64url").toString("utf8"),
+      ) as Json;
+      return typeof parsed.s === "string" && typeof parsed.o === "number"
+        ? { scanId: parsed.s, offset: parsed.o }
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private recoveryPage(
+    kind: RuntimeKind,
+    claims: Json,
+    opId: string,
+    fields: {
+      scanId: string;
+      asOf: number;
+      items: Json[];
+      next: string | null;
+      complete: boolean;
+      echo?: Json;
+    },
+  ) {
+    return json(200, {
+      ok: true,
+      status: "recovery_listed",
+      contract: "r20",
+      ...(fields.echo ?? this.echoBlock(kind, claims, opId)),
+      scan_id: fields.scanId,
+      as_of: new Date(fields.asOf).toISOString(),
+      items: fields.items,
+      next: fields.next,
+      complete: fields.complete,
+      ...this.accounting,
+      bookkeeping: this.bookkeeping(0),
+    });
+  }
+
+  private recoveryList(
+    kind: RuntimeKind,
+    operationId: string,
+    claims: Json,
+    input: Json,
+  ) {
+    const actor = this.actorOf(claims);
+    const actorKey = [
+      actor.holder,
+      actor.sub,
+      actor.iss,
+      actor.aud,
+      actor.programme,
+    ].join("|");
+    if (this.recoveryViolation) {
+      return this.recoveryViolationPage(
+        kind,
+        operationId,
+        claims,
+        actor,
+        input,
+      );
+    }
+    const cursor = typeof input.cursor === "string" ? input.cursor : undefined;
+    let scanId: string;
+    let asOf: number;
+    let all: Json[];
+    let offset: number;
+    if (!cursor) {
+      this.scanCounter += 1;
+      scanId = `scan-${this.brand.tag}-${this.scanCounter}`;
+      asOf = Date.now();
+      all = this.buildRecoveryItems(kind, actor).filter(
+        (item) => Date.parse(item.recorded_at as string) <= asOf,
+      );
+      this.scans.set(scanId, { asOf, actorKey, items: all });
+      offset = 0;
+    } else {
+      const parsed = this.parseCursor(cursor);
+      const scan = parsed ? this.scans.get(parsed.scanId) : undefined;
+      if (!parsed || !scan || scan.actorKey !== actorKey) {
+        return json(409, { ok: false, status: "recovery_cursor_invalid" });
+      }
+      scanId = parsed.scanId;
+      asOf = scan.asOf;
+      all = scan.items;
+      offset = parsed.offset;
+    }
+    const pageItems = all.slice(offset, offset + this.recoveryPageSize);
+    const nextOffset = offset + pageItems.length;
+    const next =
+      nextOffset < all.length ? this.makeCursor(scanId, nextOffset) : null;
+    return this.recoveryPage(kind, claims, operationId, {
+      scanId,
+      asOf,
+      items: pageItems,
+      next,
+      complete: !this.incompleteScan,
+    });
+  }
+
+  /** FIXTURE: a scripted two-page scan carrying one violation the wallet catches. */
+  private recoveryViolationPage(
+    kind: RuntimeKind,
+    opId: string,
+    claims: Json,
+    actor: Actor,
+    input: Json,
+  ) {
+    const all = this.buildRecoveryItems(kind, actor);
+    const first = all[0];
+    const second = all[1] ?? all[0];
+    const asOf = Date.now();
+    const scanId = `scan-${this.brand.tag}-viol`;
+    const nextCursor = "recovery-violation-next";
+    const page1 = input.cursor === nextCursor;
+    const emit = (fields: {
+      items: Json[];
+      next: string | null;
+      scanId?: string;
+      echo?: Json;
+    }) =>
+      this.recoveryPage(kind, claims, opId, {
+        scanId: fields.scanId ?? scanId,
+        asOf,
+        items: fields.items,
+        next: fields.next,
+        complete: true,
+        echo: fields.echo,
+      });
+    switch (this.recoveryViolation) {
+      case "wrong_echo":
+        return emit({
+          items: [first],
+          next: null,
+          echo: {
+            ...this.echoBlock(kind, claims, opId),
+            holder: `0x${"e".repeat(40)}`,
+          },
+        });
+      case "change_scan_id":
+        return page1
+          ? emit({ items: [second], next: null, scanId: `${scanId}-other` })
+          : emit({ items: [first], next: nextCursor });
+      case "cursor_cycle":
+        return page1
+          ? emit({ items: [second], next: nextCursor })
+          : emit({ items: [first], next: nextCursor });
+      case "repeat_id":
+        return page1
+          ? emit({ items: [first], next: null })
+          : emit({ items: [first], next: nextCursor });
+      case "out_of_order":
+        return page1
+          ? emit({ items: [first], next: null })
+          : emit({ items: [second], next: nextCursor });
+    }
+    return emit({ items: all, next: null });
+  }
+
+  private registrationProof(
+    objectId: string,
+    operationId: string,
+    actionId: string | null,
+  ): Json {
+    return {
+      kind: "registration",
+      operation_id: operationId,
+      object_id: objectId,
+      action_id: actionId,
+      status: "registered",
+    };
+  }
+
+  private settleProof(
+    settleOpId: string,
+    proposalId: string,
+    objectId: string,
+    actionId: string,
+  ): Json {
+    return {
+      kind: "settle",
+      operation_id: settleOpId,
+      proposal_id: proposalId,
+      object_id: objectId,
+      action_id: actionId,
+      status: "registered",
+    };
+  }
+
+  private transferProof(
+    stepOpId: string,
+    offerId: string,
+    objectId: string,
+    step: "request" | "transfer",
+    actionId: string,
+    status: string,
+  ): Json {
+    return {
+      kind: "transfer",
+      operation_id: stepOpId,
+      offer_id: offerId,
+      object_id: objectId,
+      step,
+      action_id: actionId,
+      status,
+    };
+  }
+
+  /** r20: a host-only read-only settle reconcile; never a dispatch. */
+  private settleStatus(
+    kind: RuntimeKind,
+    operationId: string,
+    target: Json,
+    input: Json,
+    claims: Json,
+  ) {
+    const objectId = String(target.object_id ?? "");
+    const settleOp = String(input.settle_operation_id ?? "");
+    const proposalId = String(input.proposal_id ?? "");
+    const holder = String(claims.holder);
+    const action = this.holderAction(objectId, holder, "update");
+    if (!this.dual.settled(objectId, holder) || !action) {
+      return json(202, { ok: false, status: "outcome_unknown" });
+    }
+    const proof = this.settleProof(
+      settleOp,
+      proposalId,
+      objectId,
+      action.actionId,
+    );
+    return json(200, {
+      ok: true,
+      status: "registered",
+      contract: "r20",
+      ...this.echoBlock(kind, claims, operationId),
+      object_id: objectId,
+      proposal_id: proposalId,
+      outcome_proof: proof,
+      outcome_hash: sha(canonicalJson(proof)),
+      ...this.accounting,
+      bookkeeping: this.bookkeeping(0),
+    });
+  }
+
+  /** r20 additive fields on a committed transfer.status/verify answer. */
+  private async augmentTransfer(
+    kind: RuntimeKind,
+    target: Json,
+    input: Json,
+    claims: Json,
+    answer: Response,
+  ) {
+    const body = (await answer.clone().json()) as Json;
+    const offerId = String(input.offer_id ?? "");
+    const stepOp = String(input.step_operation_id ?? "");
+    const offer = this.offers.get(offerId);
+    const step = offer?.steps.get(stepOp);
+    if (!offer || (step !== "request" && step !== "transfer")) return answer;
+    const action = this.holderAction(
+      offer.objectId,
+      offer.holder,
+      step === "transfer" ? "transfer" : "update",
+      offer.recipient ?? undefined,
+    );
+    if (!action) return answer;
+    const proof = this.transferProof(
+      stepOp,
+      offerId,
+      offer.objectId,
+      step,
+      action.actionId,
+      String(body.status),
+    );
+    return json(200, {
+      ...body,
+      contract: "r20",
+      ...this.echoBlock(kind, claims, String(claims.op_id)),
+      outcome_proof: proof,
+      outcome_hash: sha(canonicalJson(proof)),
+      ...this.accounting,
+      bookkeeping: this.bookkeeping(0),
+    });
+  }
+
+  /** The current outcome proof + hash of a record, or why it cannot be acked. */
+  private recordProof(
+    kind: RuntimeKind,
+    opId: string,
+    target: Json,
+    input: Json,
+    claims: Json,
+  ): "not_found" | "unresolved" | { hash: string } {
+    const actor = this.actorOf(claims);
+    const originalOperation = String(input.original_operation ?? "");
+    const objectId = String(target.object_id ?? "");
+    const write = this.writes.get(`${kind}:${opId}`);
+    if (write) {
+      if (
+        write.holder !== actor.holder ||
+        write.wallet !== actor.sub ||
+        write.issuer !== actor.iss ||
+        write.audience !== actor.aud ||
+        write.programme !== actor.programme ||
+        canonicalJson(write.target) !== canonicalJson(target) ||
+        write.operation !== originalOperation
+      ) {
+        return "not_found";
+      }
+      if (write.unresolved > 0) return "unresolved";
+      let observed: string | null = null;
+      if (write.dualBacked) {
+        const action = this.dual.executed.find(
+          (entry) => entry.actionId === write.dualBacked!.actionId,
+        );
+        observed = sha(canonicalJson(action?.payload ?? {}));
+      }
+      const proof = this.runtimeOutcomeProof(write, observed);
+      return { hash: sha(canonicalJson(proof)) };
+    }
+    if (kind !== "passport") return "not_found";
+    const rec = this.recoverables.get(opId);
+    if (
+      !rec ||
+      !this.sameActor(rec.actor, actor) ||
+      rec.objectId !== objectId ||
+      rec.operation !== originalOperation
+    ) {
+      return "not_found";
+    }
+    const { state, actionId } = this.recoverableState(rec);
+    if (state !== "completed") return "unresolved";
+    let proof: Json;
+    if (rec.kind === "registration") {
+      proof = this.registrationProof(rec.objectId, rec.operationId, null);
+    } else if (rec.kind === "settle") {
+      proof = this.settleProof(
+        rec.operationId,
+        rec.proposalId ?? "",
+        rec.objectId,
+        actionId ?? "",
+      );
+    } else {
+      const offer = rec.offerId ? this.offers.get(rec.offerId) : undefined;
+      const status =
+        rec.step === "transfer" ? "transferred" : "transfer_request_committed";
+      proof = this.transferProof(
+        rec.operationId,
+        rec.offerId ?? "",
+        rec.objectId,
+        rec.step ?? "request",
+        actionId ?? "",
+        status,
+      );
+      void offer;
+    }
+    return { hash: sha(canonicalJson(proof)) };
+  }
+
+  /** r20: the idempotent acknowledgement row, bound to the proved outcome. */
+  private recoveryAck(
+    kind: RuntimeKind,
+    target: Json,
+    input: Json,
+    claims: Json,
+  ) {
+    const opId = String(claims.op_id);
+    const resolved = this.recordProof(kind, opId, target, input, claims);
+    if (resolved === "not_found") {
+      return json(404, { ok: false, status: "face_operation_not_found" });
+    }
+    if (resolved === "unresolved") {
+      return json(409, { ok: false, status: "recovery_unresolved" });
+    }
+    if (resolved.hash !== String(input.outcome_hash)) {
+      return json(409, { ok: false, status: "recovery_outcome_mismatch" });
+    }
+    const ackKey = `${kind}:${opId}`;
+    const rows = this.acks.get(ackKey) ?? [];
+    const existing = rows.find((row) => row.iss === claims.iss);
+    const first = !existing;
+    const at = existing?.at ?? new Date(Date.now()).toISOString();
+    if (first) {
+      rows.push({
+        iss: String(claims.iss),
+        sub: String(claims.sub),
+        holder: String(claims.holder),
+        outcomeHash: resolved.hash,
+        at,
+      });
+      this.acks.set(ackKey, rows);
+    }
+    return json(200, {
+      ok: true,
+      status: "recovery_acknowledged",
+      contract: "r20",
+      ...this.echoBlock(kind, claims, opId),
+      outcome_hash: resolved.hash,
+      first,
+      acknowledged_at: at,
+      ...this.accounting,
+      bookkeeping: this.bookkeeping(first ? 1 : 0),
+    });
   }
 
   private dispatch(
