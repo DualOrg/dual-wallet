@@ -2300,15 +2300,17 @@ describe("launch retention during ordinary result-page navigation (one session)"
     }
   });
 
-  // The launches' last writes may share one millisecond (back-to-back
-  // writes): within a rank the oldest-created launch still goes first.
+  // Four launches each holding an unresolved registration fill the budget.
+  // However their last writes are ordered (one millisecond or apart), none
+  // is ever dropped: a fifth launch is refused launch_capacity before any
+  // work, and every evidence cookie stays exactly as it was.
   it.each([
     ["all in one millisecond", [0, 0, 0, 0]],
     ["the two oldest in one millisecond", [0, 0, 5, 10]],
     ["the two newest in one millisecond", [0, 5, 10, 10]],
     ["each in its own millisecond", [0, 5, 10, 15]],
   ])(
-    "evicts the oldest unresolved launch when its last write is %s, never newer evidence",
+    "refuses a fifth launch when the four last writes are %s, and drops no evidence",
     async (_label, offsets) => {
       const ids = [
         "register-op-0601",
@@ -2344,13 +2346,15 @@ describe("launch retention during ordinary result-page navigation (one session)"
         getObjectByIdPublic.mockResolvedValue(
           smartObject(UNIT, HOLDER, { state: "Transfer pending" }),
         );
-        // An empty mount reading the newest registration: one slot too few.
-        const status = await mountResultPage(browser, launchId(400), ids[3]);
-        expect(status).toMatchObject({ objectId: UNIT });
-        expect(launchCookies(browser).length).toBe(MAX_FACE_LAUNCHES);
-        expect(browser.cookies.has(evidence[0])).toBe(false);
-        for (const name of evidence.slice(1))
-          expect(browser.cookies.has(name)).toBe(true);
+        const sealed = evidence.map((name) => browser.cookies.get(name));
+        // An empty mount: it would need to drop one: refused, nothing kept.
+        await expect(
+          mountResultPage(browser, launchId(400), ids[3]),
+        ).rejects.toMatchObject({ code: "launch_capacity", status: 409 });
+        expect(launchCookies(browser).sort()).toEqual([...evidence].sort());
+        expect(evidence.map((name) => browser.cookies.get(name))).toEqual(
+          sealed,
+        );
       } finally {
         clock.mockRestore();
         restore();
@@ -2364,7 +2368,7 @@ describe("launch retention during ordinary result-page navigation (one session)"
     },
   );
 
-  it("stays bounded: with more unresolved registrations than slots the oldest goes first, empty launches before any of them, and another account still clears them", async () => {
+  it("stays bounded without dropping evidence: a launch beyond four unresolved ones is refused, and another account still clears them", async () => {
     const ids = [
       "register-op-0591",
       "register-op-0592",
@@ -2395,24 +2399,27 @@ describe("launch retention during ordinary result-page navigation (one session)"
       getObjectByIdPublic.mockResolvedValue(
         smartObject(UNIT, HOLDER, { state: "Transfer pending" }),
       );
-      // An empty mount: four unresolved launches compete for three other slots;
-      // the oldest unresolved one is the one dropped, never an evidence cookie
-      // for a newer one, and the empty current launch stays as the current one.
-      await mountResultPage(browser, launchId(200), ids[3]);
-      expect(launchCookies(browser).length).toBe(MAX_FACE_LAUNCHES);
-      expect(browser.cookies.has(evidence[0])).toBe(false);
-      for (const name of evidence.slice(1))
-        expect(browser.cookies.has(name)).toBe(true);
-      // Further empty mounts drop the previous empty launch, not the evidence.
-      await mountResultPage(browser, launchId(201), ids[3]);
-      expect(browser.cookies.has(`dual_face_launch_${launchId(200)}`)).toBe(
-        false,
-      );
-      for (const name of evidence.slice(1))
-        expect(browser.cookies.has(name)).toBe(true);
+      // Empty mounts: four unresolved launches already fill the budget, so
+      // each is refused launch_capacity and every evidence cookie is kept.
+      for (const mount of [200, 201]) {
+        await expect(
+          mountResultPage(browser, launchId(mount), ids[3]),
+        ).rejects.toMatchObject({ code: "launch_capacity" });
+        expect(launchCookies(browser).sort()).toEqual([...evidence].sort());
+      }
+      // An existing launch of the four still reads its own registration.
+      browser.launchId = launchId(103);
+      expect(
+        await readFaceOperationStatus(
+          { slug: SLUG, launchId: launchId(103) },
+          ids[3],
+        ),
+      ).toMatchObject({ objectId: UNIT });
+      expect(launchCookies(browser).sort()).toEqual([...evidence].sort());
       restore();
       restore = () => {};
-      // Another account on the same browser: its first write still drops them.
+      // Another account on the same browser: its first write still drops
+      // them (residual: they are no longer this wallet's to keep).
       const account = await getWallet();
       getWallet.mockResolvedValue({
         ...account,

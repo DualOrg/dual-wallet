@@ -441,21 +441,34 @@ the outcome needs the runtime's own record
 (`docs/proposals/runtime-write-status-r20.md`).
 
 A launch journal holds at most six entries (`JOURNAL_MAX_ENTRIES`). Only a
-`cancelled` or `settled` entry makes room; an entry whose authority left the
-wallet and that never settles here (a Warranty & Service write or a transfer
-offer, `kind: "runtime"`, stays `assertion_issued`) is kept. When nothing can
-make room, a `begin` is refused `journal_full` (409) before anything is
-confirmed or minted. The face hears `temporarily_unavailable`; the host, in
-its own UI and only while that launch is live, shows a notice offering
-**Restart the application**: the same face launched again with a new launch ID
-and an empty journal, under the same wallet session. Nothing is re-sent for the
-earlier launch. Its journal stays sealed only under the cookie rules above
-(it may be dropped). On start-up the new launch reads back only an unsettled
-transfer step the wallet sent from another retained launch; a registration is
-recovered only when the face asks for its id. A Warranty & Service write or
-quote decision is not read back. A full Passport registration, a Warranty &
-Service case with its writes and quote decisions, and a transfer therefore
-take more than one launch.
+`cancelled` or `settled` entry makes room. An entry whose authority left the
+wallet (`assertion_issued` or `submitted`) is never evicted to make room and
+never aged out of the journal. A runtime write (a Warranty & Service write, a
+transfer offer or cancellation, `kind: "runtime"`) is sent by the face, so the
+wallet never sees its answer. The wallet records the write's exact request
+hash when it issues its assertion. It settles the entry only from the runtime's
+own verified record of exactly that write: `write.status`, **proposed contract
+r20, not deployed by any runtime** (`docs/proposals/runtime-write-status-r20.md`).
+That happens on the face's status read of the write, and when a `begin` finds
+no room (the two oldest held writes are read). Anything but an exact verified
+`write_applied` answer keeps the entry held, and nothing is ever re-sent.
+Every deployed runtime today answers that read as unknown, so against them
+these entries stay `assertion_issued`.
+
+When nothing can make room, a `begin` is refused `journal_full` (409) before
+anything is confirmed or minted. The face hears `temporarily_unavailable`; the
+host, in its own UI and only while that launch is live, shows a notice
+offering **Restart the application**: the same face launched again with a new
+launch ID and an empty journal, under the same wallet session. Nothing is
+re-sent for the earlier launch, and its journal is kept under the cookie rules
+above; a restart that would need to drop it is itself refused
+`launch_capacity`. On start-up the new launch reads back only an unsettled
+transfer step the wallet sent from another kept launch; a registration is
+recovered only when the face asks for its id; a Warranty & Service write or
+quote decision is not read back. Against today's runtimes, a full Passport
+registration, a Warranty & Service case with its writes and quote decisions,
+and a transfer therefore take more than one launch. Under r20 they fit in
+one.
 
 It holds IDs, hashes and phases only: operation ID, kind (`registration`,
 `runtime`, `settle`), operation or action name, object, case, phase
