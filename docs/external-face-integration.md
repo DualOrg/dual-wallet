@@ -418,9 +418,14 @@ bound to the session ID hash, the wallet ID, the face and the launch; any
 other session, wallet, face or launch reads it as empty, and two tabs never
 overwrite each other. At most four launch cookies are kept per browser: this
 session's, and an earlier session's of the same wallet while it still holds a
-registration whose assertion was issued (kept as it was, never re-sealed);
-the oldest, any unreadable one, another wallet's and an earlier session's
-without such a registration are dropped on the next write.
+registration whose assertion was issued or a transfer step that was sent
+(`submitted`) and is not settled. Such a cookie is kept as it was: a later
+write never names it, so it is neither re-sealed nor given a new expiry, and
+its own 24 hours still apply (a transfer progress read of that step writes the
+reading launch's journal and keeps the record it reads). Within the four,
+launches holding such evidence are dropped last; the oldest, any unreadable
+one, another wallet's and an earlier session's without such history are
+dropped on the next write.
 
 It holds IDs, hashes and phases only: operation ID, kind (`registration`,
 `runtime`, `settle`), operation or action name, object, case, phase
@@ -629,10 +634,12 @@ reserve answer lost) is never released or replaced from the host. Proposal
 expiry plus an empty history is not evidence that nothing executed: the host
 status stays `outcome_unknown` (or follows the canonical readback once it
 shows the settled state), the entry cannot be cancelled into
-`not_submitted`, it is kept until the journal's 7-day retention (then the
-status is unknown, never "not submitted"), and the same launch refuses a
-replacement settle of that unit (`operation_conflict`) before asking the
-runtime. Another launch may ask, and the runtime's reservation refuses it.
+`not_submitted`, it is kept as long as its launch cookie lasts (24 hours
+from that launch's last write; the journal itself would prune an open entry
+only after 7 days), then the status is unknown, never "not submitted"; and
+the same launch refuses a replacement settle of that unit
+(`operation_conflict`) before asking the runtime. Another launch may ask,
+and the runtime's reservation refuses it.
 
 **No proposal (G6b).** The runtime originates the brand's proposal; when it
 has none it answers `settle_proposal_unavailable` with a reason
@@ -736,17 +743,27 @@ keeping its step ids in memory only (a relaunch gives it a new one) changes
 nothing, because the one step of that offer this wallet already sent (under
 its original operation id and recorded action) is read instead. Only a step
 the BFF reports `unknown_operation` or `operation_conflict` is signed; more
-than one sent step for the offer is `outcome_unknown`, never guessed. Since
-the sender can no longer list or select a product whose custody moved, the
-host also reads such a step once when the face launches: `GET
-/api/faces/[slug]/operations` lists it under `retained`, and only the
-runtime's answer (its exact action, signer, recipient and proof) is reported,
-as a native notice. `transfer.offer` and `transfer.cancel` are
-host-confirmed runtime writes for the selected product; the recipient's
-`transfer.offer.read` (target `{}`) and `transfer.accept` (target
-`{object_id}`, r19) and either party's `transfer.read` need no
-selection, and `transfer.accept` is confirmed natively first. The acceptance
-link opens the runtime's accept page, which continues to
+than one sent step for the offer is `outcome_unknown`, never guessed. Another
+launch's entry is never settled here, so a request step found this way, once
+the runtime reports it committed, is finished: the new id reads
+`unknown_operation` and the offer's custody step, never sent, is signed the
+normal way (proposal, confirmation, reservation); the request keeps its one
+runtime reservation and is never reserved or executed again, and its own id
+still reads committed. A step id this wallet already knows, asked with
+another `offer_id`, is `invalid_request` before anything is minted or asked,
+and the host signs nothing for it. Since the sender can no longer list or
+select a product whose custody moved, the host also reads such a step once
+when the face launches: `GET /api/faces/[slug]/operations` lists it under
+`retained`, and only the runtime's answer (its exact action, signer,
+recipient and proof) is reported, as a native notice, and only while that
+launch's host is live: an answer that arrives after a frame reload, a
+teardown or an account change is dropped and starts no further read.
+`transfer.offer` and `transfer.cancel` are host-confirmed runtime writes for
+the selected product; the recipient's `transfer.offer.read` (target `{}`)
+and `transfer.accept` (target `{object_id}`, r19) and either party's
+`transfer.read` need no selection, and `transfer.accept` is confirmed
+natively first. The acceptance link opens the runtime's accept page, which
+continues to
 `/products/<slug>/handover#accept=<ticket>`; the entry stores it as kind
 `accept` in the same sealed, account-bound cookie and continues to
 `/products/<slug>/accept`, where the context read (`?task=/accept`) hands it

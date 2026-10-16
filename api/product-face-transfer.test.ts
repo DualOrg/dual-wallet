@@ -178,6 +178,51 @@ class Browser {
     return { status: response.status, body: await response.json() };
   }
 
+  /**
+   * As a browser does it: the request carries this jar's cookies, and the
+   * response's raw Set-Cookie headers are applied back to the jar (a value
+   * sets the cookie; an empty value, Max-Age=0 or a past Expires deletes it).
+   * A cookie the response does not name stays exactly as it was. Returns the
+   * raw headers too.
+   */
+  async post(handler: Handler, path: string, body: unknown) {
+    const response = await handler(
+      new NextRequest(`http://localhost${path}`, {
+        method: "POST",
+        headers: {
+          host: "localhost",
+          origin: "http://localhost",
+          "content-type": "application/json",
+          "x-dual-face-launch": this.launchId,
+          cookie: Array.from(this.cookies, ([k, v]) => `${k}=${v}`).join("; "),
+        },
+        body: JSON.stringify(body),
+      }),
+      { params: Promise.resolve({ slug: SLUG }) },
+    );
+    const setCookie = response.headers.getSetCookie();
+    for (const header of setCookie) {
+      const [pair, ...attributes] = header.split(";");
+      const at = pair.indexOf("=");
+      const name = pair.slice(0, at).trim();
+      const value = pair.slice(at + 1).trim();
+      const expired = attributes.some((attribute) => {
+        const [key, raw = ""] = attribute.trim().split("=");
+        return (
+          (key.toLowerCase() === "max-age" && Number(raw) <= 0) ||
+          (key.toLowerCase() === "expires" && Date.parse(raw) <= Date.now())
+        );
+      });
+      if (!value || expired) this.cookies.delete(name);
+      else this.cookies.set(name, value);
+    }
+    return {
+      status: response.status,
+      body: await response.json(),
+      setCookie,
+    };
+  }
+
   /** The wallet's own /api/backend proxy, as its executor calls it. */
   async backend(
     instance: Instance,
@@ -245,14 +290,17 @@ type Step = "request" | "transfer";
  * LOCAL FAKE of the runtime's G8 host operations: transfer.propose answers the
  * next step for the bound recipient; transfer.reserve creates ONE reservation
  * per step ("won" only for that call) unless the offer was cancelled first;
- * verify/status commit a step only when the test reports the holder's action.
+ * verify/status commit a step only when the test reports the holder's action,
+ * each answering for the step that operation reserved. With `advance`, once a
+ * request step's action is found the offer's next step is its custody step.
  */
 function fakeTransferRuntime({
-  step = "request" as Step,
+  step: firstStep = "request" as Step,
   propose = undefined as
     undefined | ((body: Record<string, unknown>) => Record<string, unknown>),
   cancelled = false,
   loseReserve = false,
+  advance = false,
 } = {}) {
   const calls: Array<{
     origin: string | null;
@@ -262,7 +310,15 @@ function fakeTransferRuntime({
   }> = [];
   const reservations = new Map<string, string>();
   const executed = new Set<string>();
+  /** The step each reserved step operation is. */
+  const stepOf = new Map<string, Step>();
+  const current = (): Step =>
+    advance &&
+    [...executed].some((operationId) => stepOf.get(operationId) === "request")
+      ? "transfer"
+      : firstStep;
   const stepAnswer = (objectId: string) => {
+    const step = current();
     // As the Studio runtime builds it (contract r17): a deep copy of its own
     // fresh read of the unit with only the governed leaves written.
     const input =
@@ -339,6 +395,7 @@ function fakeTransferRuntime({
           executionPermitted: false,
         });
       }
+      const step = current();
       const key = `${input.offer_id}:${step}`;
       if (reservations.has(key)) {
         return json(409, {
@@ -349,6 +406,7 @@ function fakeTransferRuntime({
         });
       }
       reservations.set(key, String(body.operationId));
+      stepOf.set(String(body.operationId), step);
       if (loseReserve) throw new TypeError("connection reset after reserve");
       return json(200, {
         ok: true,
@@ -371,6 +429,7 @@ function fakeTransferRuntime({
           reason: "transfer_action_not_found",
         });
       }
+      const step = stepOf.get(input.step_operation_id) ?? firstStep;
       return json(200, {
         ok: true,
         status:
@@ -902,22 +961,26 @@ describe("G8 transfer step, the holder's host (contract r16 transfer.sign)", () 
     // launch's sealed journal is untouched; the new launch never holds it.
     expect(reserves()).toBe(reserved);
     expect(cookies.get(oldName)).toBe(oldSealed);
+    // The new launch's own journal write (this read minted) keeps the old
+    // launch's cookie as it was: the response never names it (not deleted,
+    // re-sealed or given a new expiry).
+    relaunched.cookies.set(oldName, oldSealed);
+    const written = await relaunched.post(instance.progress, path, {
+      operation_id: STEP_OP,
+    });
+    expect(written.status).toBe(200);
+    expect(
+      written.setCookie.filter((header) => header.startsWith(`${oldName}=`)),
+    ).toEqual([]);
+    expect(relaunched.cookies.get(oldName)).toBe(oldSealed);
     // Whatever the new launch wrote, without the old launch's journal the step
     // is unknown there: it was never added to the new launch's journal.
-    await relaunched.call(
-      instance.progress,
-      path,
-      { operation_id: STEP_OP },
-      cookies,
-      true,
-    );
-    expect(relaunched.cookies.get(oldName)).toBeUndefined();
     expect(
       await relaunched.call(
         instance.progress,
         path,
         { operation_id: STEP_OP },
-        relaunched.cookies,
+        new Map([...relaunched.cookies].filter(([name]) => name !== oldName)),
         false,
       ),
     ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
@@ -946,20 +1009,114 @@ describe("G8 transfer step, the holder's host (contract r16 transfer.sign)", () 
     ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
   });
 
-  // Root's next user journey: the sender signs in again and the pinned face
-  // relaunches. The face keeps step ids in memory only, so it has a NEW step
-  // id; the moved object reads 404 for the sender, so the sender can neither
-  // list nor select it. The ORIGINAL step is found from this wallet's own
-  // sealed history (the host's launch listing, and the sign request's own
-  // offer) and read only: verified with its recorded action, never signed,
-  // reserved or rebound. Real sealed launch journals and two sessions.
-  it("after a sign-in and a relaunch with a NEW step id for the same offer and the moved object's 404, the original sent step is found and read only; nothing is signed, reserved or rebound", async () => {
+  // The review's decisive case. Reading a step another session's launch sent
+  // mints (the runtime read), so the response writes the NEW launch's journal;
+  // that write must keep the earlier session's launch cookie, the only record
+  // of the step, exactly as it was. One browser and its own cookie jar: each
+  // read sends the jar and applies the response's real Set-Cookie headers.
+  it("reading a step an earlier session's launch sent keeps that launch's cookie byte for byte: two successive reads through the browser's cookie jar both resolve it", async () => {
     const runtime = fakeTransferRuntime();
     global.fetch = runtime.fetchImpl as unknown as typeof fetch;
     const instance = loadInstance();
     const browser = new Browser(instance);
     const contextId = await selected(instance, browser);
     const submit = await confirmedStep(instance, browser, contextId);
+    expect((await submit()).body.reservation).toBe("won");
+    expect(
+      (
+        await browser.call(
+          instance.operations,
+          `/api/faces/${SLUG}/operations`,
+          {
+            transition: "record_action",
+            operation_id: STEP_OP,
+            action_id: "action-transfer-1",
+          },
+        )
+      ).status,
+    ).toBe(200);
+    const [[oldName, oldSealed], ...more] = [...browser.cookies].filter(
+      ([name]) => name.startsWith("dual_face_launch_"),
+    );
+    expect(more).toEqual([]);
+    // The session expired, the holder signed in again and the face relaunched:
+    // the same browser now holds a new session and still the old launch.
+    const relaunched = new Browser(instance, `launch-${"w".repeat(28)}`);
+    relaunched.cookies.set(oldName, oldSealed);
+    const newName = `dual_face_launch_${relaunched.launchId}`;
+    const reserves = () =>
+      runtime.calls.filter((call) => call.operation === "transfer.reserve")
+        .length;
+    const reserved = reserves();
+    const read = () =>
+      relaunched.post(
+        instance.progress,
+        `/api/faces/${SLUG}/transfer-progress`,
+        {
+          operation_id: STEP_OP,
+        },
+      );
+    const named = (setCookie: string[], name: string) =>
+      setCookie.filter((header) => header.startsWith(`${name}=`));
+
+    const first = await read();
+    expect(first).toMatchObject({
+      status: 200,
+      body: { status: "outcome_unknown", step: "request" },
+    });
+    // The read minted, so the new launch's journal was written ...
+    expect(named(first.setCookie, newName)).toHaveLength(1);
+    expect(relaunched.cookies.has(newName)).toBe(true);
+    // ... and the old launch's cookie was not named at all: not deleted,
+    // re-sealed or given a new expiry; the jar holds it byte for byte.
+    expect(named(first.setCookie, oldName)).toEqual([]);
+    expect(relaunched.cookies.get(oldName)).toBe(oldSealed);
+
+    // The runtime finds the holder's action; the second read, with whatever
+    // the first response left in the jar, still resolves the original step.
+    runtime.executed(STEP_OP);
+    const second = await read();
+    expect(second).toMatchObject({
+      status: 200,
+      body: { status: "transfer_request_committed", step: "request" },
+    });
+    expect(runtime.calls.at(-1)).toMatchObject({
+      operation: "transfer.verify",
+      body: {
+        input: {
+          offer_id: OFFER,
+          action_id: "action-transfer-1",
+          step_operation_id: STEP_OP,
+        },
+      },
+    });
+    expect(named(second.setCookie, oldName)).toEqual([]);
+    expect(relaunched.cookies.get(oldName)).toBe(oldSealed);
+    // Read only: nothing reserved again.
+    expect(reserves()).toBe(reserved);
+  });
+
+  // Root's next user journey: the sender signs in again and the pinned face
+  // relaunches. The face keeps step ids in memory only, so it has a NEW step
+  // id; the moved object reads 404 for the sender, so the sender can neither
+  // list nor select it. The ORIGINAL step is found from this wallet's own
+  // sealed history (the host's launch listing, and the sign request's own
+  // offer) and read only: verified with its recorded action, never signed,
+  // reserved or rebound. Real sealed launch journals and two sessions. (The
+  // object reads 404 only once custody moved: the sent step is the custody
+  // step.)
+  it("after a sign-in and a relaunch with a NEW step id for the same offer and the moved object's 404, the original sent step is found and read only; nothing is signed, reserved or rebound", async () => {
+    const runtime = fakeTransferRuntime({ step: "transfer" });
+    global.fetch = runtime.fetchImpl as unknown as typeof fetch;
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    const contextId = await selected(instance, browser);
+    const submit = await confirmedStep(
+      instance,
+      browser,
+      contextId,
+      "transfer.transfer",
+    );
     expect((await submit()).body.reservation).toBe("won");
     expect(
       (
@@ -1018,6 +1175,7 @@ describe("G8 transfer step, the holder's host (contract r16 transfer.sign)", () 
       {
         operation_id: STEP_OP,
         kind: "transfer",
+        operation: "transfer.transfer",
         phase: "submitted",
         object_id: UNIT,
         action_id: "action-transfer-1",
@@ -1039,7 +1197,7 @@ describe("G8 transfer step, the holder's host (contract r16 transfer.sign)", () 
       );
     expect(await progress()).toMatchObject({
       status: 200,
-      body: { status: "outcome_unknown", step: "request" },
+      body: { status: "outcome_unknown", step: "transfer" },
     });
     expect(runtime.calls.at(-1)).toMatchObject({
       operation: "transfer.verify",
@@ -1056,7 +1214,7 @@ describe("G8 transfer step, the holder's host (contract r16 transfer.sign)", () 
     runtime.executed(STEP_OP);
     expect(await progress()).toMatchObject({
       status: 200,
-      body: { status: "transfer_request_committed", step: "request" },
+      body: { status: "transferred", step: "transfer" },
     });
     // Without the offer, a new id is still unknown (never guessed).
     expect(await progress({})).toMatchObject({
@@ -1112,6 +1270,249 @@ describe("G8 transfer step, the holder's host (contract r16 transfer.sign)", () 
         false,
       ),
     ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+  });
+
+  // The review's journey for the same-offer fallback. A request step another
+  // session's launch sent is recovered after a sign-in and a relaunch (the
+  // face has a NEW step id for the same offer) and reads back committed.
+  // Another launch's entry is never settled here, so the fallback must not
+  // keep answering the offer from it: the offer's next, custody, step was
+  // never sent and is signed by the normal flow, and the request is never
+  // sent again. Real routes, one browser jar, the old launch kept as it was.
+  it("after a recovered request step commits, the offer's unsent custody step proceeds through proposal, confirmation and submission: never answered from the old request entry, and the request is never sent again", async () => {
+    const runtime = fakeTransferRuntime({ advance: true });
+    global.fetch = runtime.fetchImpl as unknown as typeof fetch;
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    const contextId = await selected(instance, browser);
+    const submit = await confirmedStep(instance, browser, contextId);
+    expect((await submit()).body.reservation).toBe("won");
+    const operationsPath = `/api/faces/${SLUG}/operations`;
+    expect(
+      (
+        await browser.call(instance.operations, operationsPath, {
+          transition: "record_action",
+          operation_id: STEP_OP,
+          action_id: "action-transfer-1",
+        })
+      ).status,
+    ).toBe(200);
+    const [[oldName, oldSealed]] = [...browser.cookies].filter(([name]) =>
+      name.startsWith("dual_face_launch_"),
+    );
+    // Signed in again and relaunched: the same browser, a new session and
+    // launch, and still the old launch's cookie.
+    const relaunched = new Browser(instance, `launch-${"x".repeat(28)}`);
+    relaunched.cookies.set(oldName, oldSealed);
+    const progress = (body: Record<string, unknown>) =>
+      relaunched.post(
+        instance.progress,
+        `/api/faces/${SLUG}/transfer-progress`,
+        body,
+      );
+    const RELAUNCH_STEP = "xfer-fedcba9876543210";
+    const CUSTODY_STEP = "xfer-0a1b2c3d4e5f6789";
+
+    // The face's NEW id for the same offer: the request step it already sent
+    // is read back while its outcome is open, never signed anew.
+    expect(
+      await progress({ operation_id: RELAUNCH_STEP, offer_id: OFFER }),
+    ).toMatchObject({
+      status: 200,
+      body: { status: "outcome_unknown", step: "request" },
+    });
+    expect(runtime.calls.at(-1)).toMatchObject({
+      operation: "transfer.verify",
+      body: { input: { step_operation_id: STEP_OP } },
+    });
+    // The runtime finds the holder's request action: the recovered step
+    // reads back committed (by its original id, as the host's resume reads it).
+    runtime.executed(STEP_OP);
+    expect(await progress({ operation_id: STEP_OP })).toMatchObject({
+      status: 200,
+      body: { status: "transfer_request_committed", step: "request" },
+    });
+    // Committed, it is finished: the offer's new ids are no longer answered
+    // from it (that would hold the offer at its request step for good). The
+    // custody step was never sent: unknown_operation, so it may be signed.
+    for (const id of [RELAUNCH_STEP, CUSTODY_STEP]) {
+      expect(
+        await progress({ operation_id: id, offer_id: OFFER }),
+      ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+    }
+
+    // The normal flow for the custody step: the selected product, the
+    // runtime's proposal (now its custody step), the journal begin, the
+    // native confirmation and the submission with its own reservation.
+    const select = await relaunched.post(
+      instance.selection,
+      `/api/faces/${SLUG}/selection`,
+      { object_id: UNIT },
+    );
+    expect(select.status).toBe(200);
+    const context = select.body.context_id as string;
+    const proposal = await relaunched.post(
+      instance.proposal,
+      `/api/faces/${SLUG}/transfer-proposal`,
+      { context_id: context, offer_id: OFFER, object_id: UNIT },
+    );
+    expect(proposal).toMatchObject({
+      status: 200,
+      body: {
+        proposal: {
+          step: "transfer",
+          action: "transfer",
+          offer_id: OFFER,
+          recipient: RECIPIENT,
+        },
+      },
+    });
+    for (const transition of [
+      {
+        transition: "begin",
+        kind: "transfer",
+        operation: "transfer.transfer",
+        object_id: UNIT,
+        proposal_id: PROPOSAL,
+        offer_id: OFFER,
+      },
+      { transition: "confirm" },
+    ]) {
+      expect(
+        (
+          await relaunched.post(instance.operations, operationsPath, {
+            ...transition,
+            operation_id: CUSTODY_STEP,
+            context_id: context,
+          })
+        ).status,
+      ).toBe(200);
+    }
+    expect(
+      await relaunched.post(instance.operations, operationsPath, {
+        transition: "submit",
+        operation_id: CUSTODY_STEP,
+        context_id: context,
+      }),
+    ).toMatchObject({ status: 200, body: { reservation: "won" } });
+    expect(runtime.calls.at(-1)).toMatchObject({
+      operation: "transfer.reserve",
+      body: { operationId: CUSTODY_STEP },
+    });
+    // Its progress is its own, read under the custody step's id with the
+    // offer the face sends: never the old request entry.
+    const custodyReads = runtime.calls.length;
+    expect(
+      await progress({ operation_id: CUSTODY_STEP, offer_id: OFFER }),
+    ).toMatchObject({
+      status: 200,
+      body: { status: "outcome_unknown", step: "transfer" },
+    });
+    runtime.executed(CUSTODY_STEP);
+    expect(
+      (
+        await relaunched.post(instance.operations, operationsPath, {
+          transition: "record_action",
+          operation_id: CUSTODY_STEP,
+          action_id: "action-transfer-2",
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      await progress({ operation_id: CUSTODY_STEP, offer_id: OFFER }),
+    ).toMatchObject({
+      status: 200,
+      body: { status: "transferred", step: "transfer" },
+    });
+    expect(
+      runtime.calls
+        .slice(custodyReads)
+        .map((call) => [call.operation, call.body.input]),
+    ).toEqual([
+      ["transfer.status", { offer_id: OFFER, step_operation_id: CUSTODY_STEP }],
+      [
+        "transfer.verify",
+        {
+          offer_id: OFFER,
+          action_id: "action-transfer-2",
+          step_operation_id: CUSTODY_STEP,
+        },
+      ],
+    ]);
+    // The request was reserved once, by the launch that sent it, and never
+    // again; the custody step has its own one reservation.
+    expect(
+      runtime.calls
+        .filter((call) => call.operation === "transfer.reserve")
+        .map((call) => call.body.operationId),
+    ).toEqual([STEP_OP, CUSTODY_STEP]);
+    expect(runtime.reservations).toEqual(
+      new Map([
+        [`${OFFER}:request`, STEP_OP],
+        [`${OFFER}:transfer`, CUSTODY_STEP],
+      ]),
+    );
+    // And the old launch's record is still there, as it was.
+    expect(relaunched.cookies.get(oldName)).toBe(oldSealed);
+  });
+
+  // A step id this wallet already knows (this launch's journal, or its sealed
+  // history) names its own offer. A sign request naming another offer for it
+  // is malformed: refused before anything is minted, asked or written, and
+  // never a reason to sign anything.
+  it("a known step id asked with another offer is invalid_request before any runtime call, mint or journal write", async () => {
+    const runtime = fakeTransferRuntime();
+    global.fetch = runtime.fetchImpl as unknown as typeof fetch;
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    const contextId = await selected(instance, browser);
+    const submit = await confirmedStep(instance, browser, contextId);
+    expect((await submit()).body.reservation).toBe("won");
+    const OTHER_OFFER = "pto-ffffffffffffffffffffffff";
+    const path = `/api/faces/${SLUG}/transfer-progress`;
+    const launchWrites = (setCookie: string[]) =>
+      setCookie.filter((header) => header.startsWith("dual_face_launch_"));
+    const calls = runtime.calls.length;
+    const [[oldName, oldSealed]] = [...browser.cookies].filter(([name]) =>
+      name.startsWith("dual_face_launch_"),
+    );
+    // This launch's own entry.
+    const own = await browser.post(instance.progress, path, {
+      operation_id: STEP_OP,
+      offer_id: OTHER_OFFER,
+    });
+    expect(own).toMatchObject({
+      status: 400,
+      body: { code: "invalid_request" },
+    });
+    expect(launchWrites(own.setCookie)).toEqual([]);
+    expect(browser.cookies.get(oldName)).toBe(oldSealed);
+    // The same id from this wallet's sealed history, after a relaunch.
+    const relaunched = new Browser(instance, `launch-${"y".repeat(28)}`);
+    relaunched.cookies.set(oldName, oldSealed);
+    const historical = await relaunched.post(instance.progress, path, {
+      operation_id: STEP_OP,
+      offer_id: OTHER_OFFER,
+    });
+    expect(historical).toMatchObject({
+      status: 400,
+      body: { code: "invalid_request" },
+    });
+    expect(launchWrites(historical.setCookie)).toEqual([]);
+    // Nothing reached the runtime, and nothing was minted for either.
+    expect(runtime.calls).toHaveLength(calls);
+    // Its own offer (or none) still reads it.
+    for (const body of [
+      { operation_id: STEP_OP, offer_id: OFFER },
+      { operation_id: STEP_OP },
+    ]) {
+      expect(
+        await relaunched.post(instance.progress, path, body),
+      ).toMatchObject({
+        status: 200,
+        body: { status: "outcome_unknown", step: "request" },
+      });
+    }
   });
 
   it("refuses a transfer journal entry without its offer and proposal, or for an unselected product", async () => {

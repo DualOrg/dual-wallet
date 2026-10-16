@@ -12,6 +12,7 @@ import {
   type FaceJournalScope,
 } from "@/api/face-journal";
 import { sealForPurpose } from "@/api/server-session";
+import type { FaceJournalEntry } from "@/app/_domain/product-face-journal";
 
 const owner = { sidHash: "sid-1", walletId: "wallet-1" };
 const launchA = "launch-aaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -337,5 +338,142 @@ describe("registration history (another launch of the same wallet)", () => {
         .filter((cookie) => cookie.value === "")
         .map((cookie) => cookie.name),
     ).toEqual([names[0]]);
+  });
+});
+
+// A transfer step's progress read mints, so it writes the CURRENT launch's
+// journal; an earlier session's launch that holds a sent, unsettled transfer
+// step is the only record of that step and must survive that write as it was.
+describe("transfer history (another launch of the same wallet)", () => {
+  const earlierSession = { sidHash: "sid-1", walletId: "wallet-1" };
+  const laterSession = { sidHash: "sid-2", walletId: "wallet-1" };
+  const step: FaceJournalEntry = {
+    operationId: "xfer-0123456789abcdef",
+    kind: "transfer",
+    operation: "transfer.request",
+    slug: "morrow-home",
+    programmeId: "morrow-home-arc",
+    objectId: "aaaaaaaaaaaaaaaaaaaaaaaa",
+    phase: "submitted",
+    proposalId: "ptp-0123456789abcdef01234567",
+    offerId: "pto-0123456789abcdef01234567",
+    actionId: "action-transfer-1",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  const fresh = "launch-newnewnewnewnewnewnewnewnewnew";
+
+  function sealedFor(
+    who: FaceJournalOwner,
+    launchId: string,
+    entries: FaceJournalEntry[] = [step],
+    now = Date.now(),
+  ) {
+    const response = NextResponse.json({});
+    writeFaceJournal(
+      response,
+      emptyRequest(),
+      {
+        owner: who,
+        launchId,
+        slug: "morrow-home",
+        programmeId: "morrow-home-arc",
+      },
+      { entries, selections: [], mints: [] },
+      now,
+    );
+    return response.cookies.get(faceJournalCookieName(launchId))!;
+  }
+
+  function write(cookies: Record<string, string>, now: number) {
+    const response = NextResponse.json({});
+    writeFaceJournal(
+      response,
+      requestWith(cookies),
+      { ...scope(fresh), owner: laterSession },
+      { entries: [], selections: [], mints: [Date.now() + 30_000] },
+      now,
+    );
+    return response;
+  }
+
+  it("keeps an earlier session's sent, unsettled step through the next session's writes, never naming it; drops one whose step is not sent, settled or another wallet's", () => {
+    const sent = sealedFor(earlierSession, launchA, [step], 1_000);
+    const confirmed = sealedFor(
+      earlierSession,
+      launchB,
+      [{ ...step, phase: "confirmed" }],
+      1_001,
+    );
+    const settled = sealedFor(
+      earlierSession,
+      "launch-cccccccccccccccccccccccccccc",
+      [{ ...step, phase: "settled" }],
+      1_002,
+    );
+    const foreign = sealedFor(
+      { sidHash: "sid-1", walletId: "wallet-2" },
+      "launch-dddddddddddddddddddddddddddd",
+      [step],
+      1_003,
+    );
+    // The browser's jar, updated from each response as a browser does.
+    const jar: Record<string, string> = {
+      [sent.name]: sent.value,
+      [confirmed.name]: confirmed.value,
+      [settled.name]: settled.value,
+      [foreign.name]: foreign.value,
+    };
+    const first = write(jar, 2_000);
+    // Kept: not set at all (neither deleted, re-sealed nor given an expiry).
+    expect(first.cookies.get(sent.name)).toBeUndefined();
+    expect(
+      first.cookies
+        .getAll()
+        .filter((cookie) => cookie.value === "")
+        .map((cookie) => cookie.name)
+        .sort(),
+    ).toEqual([confirmed.name, settled.name, foreign.name].sort());
+    for (const cookie of first.cookies.getAll()) {
+      if (cookie.value) jar[cookie.name] = cookie.value;
+      else delete jar[cookie.name];
+    }
+    // A second write of the new launch: the sent step's launch, unchanged,
+    // is still not named, and the step still reads back from it.
+    const second = write(jar, 3_000);
+    expect(second.cookies.get(sent.name)).toBeUndefined();
+    expect(
+      second.cookies.getAll().filter((cookie) => cookie.value === ""),
+    ).toEqual([]);
+    expect(jar[sent.name]).toBe(sent.value);
+    expect(
+      readFaceHistory(
+        requestWith(jar),
+        { ...scope(fresh), owner: laterSession },
+        step.operationId,
+      ),
+    ).toEqual([step]);
+  });
+
+  it(`within the ${MAX_FACE_LAUNCHES}-launch budget, newer empty launches go before a sent step`, () => {
+    const sent = sealedFor(earlierSession, launchA, [step], 1_000);
+    const cookies: Record<string, string> = { [sent.name]: sent.value };
+    const plain: string[] = [];
+    for (let index = 0; index < MAX_FACE_LAUNCHES - 1; index += 1) {
+      const launchId = `launch-${String(index).repeat(28).slice(0, 28)}`;
+      const cookie = sealedFor(laterSession, launchId, [], 2_000 + index);
+      cookies[cookie.name] = cookie.value;
+      plain.push(cookie.name);
+    }
+    const response = write(cookies, 9_999);
+    // Three kept besides the new launch: the sent step first, then the newest
+    // empty ones; the oldest empty launch is dropped.
+    expect(
+      response.cookies
+        .getAll()
+        .filter((cookie) => cookie.value === "")
+        .map((cookie) => cookie.name),
+    ).toEqual([plain[0]]);
+    expect(response.cookies.get(sent.name)).toBeUndefined();
   });
 });

@@ -85,7 +85,9 @@ jest.mock("@/app/_lib/external-face-bridge", () => ({
   }) => {
     captured = options.handlers;
     initialized = options.onInitialized;
-    return fakeHost;
+    // Each start is its own host (a frame reload replaces it); they share the
+    // session, so ending it ends every one.
+    return { ...fakeHost };
   },
 }));
 
@@ -381,6 +383,137 @@ describe("a transfer step this wallet sent from another launch", () => {
       expect(executeTransferAction).not.toHaveBeenCalled();
     },
   );
+
+  // The resume awaits the listing, then each read: either may still be in
+  // flight when this launch stops being the live one. A late answer must
+  // never dispatch a read or land a notice in whatever host is current.
+  describe("a late answer never reaches a launch that is no longer live", () => {
+    const retained = (operationId: string) => ({
+      operation_id: operationId,
+      kind: "transfer",
+      operation: "transfer.transfer",
+      object_id: "aaaaaaaaaaaaaaaaaaaaaaaa",
+      case_id: null,
+      phase: "submitted",
+      status: null,
+      action_id: "6ad178a32880577b1a494932",
+    });
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((settle) => {
+        resolve = settle;
+      });
+      return { promise, resolve };
+    }
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    type Launched = ReturnType<typeof launch>;
+    const changes: Array<
+      [string, (launched: Launched, endSession: () => void) => void]
+    > = [
+      ["the launch is torn down", ({ hook }) => hook.unmount()],
+      [
+        "the frame reloads and a new host replaces it",
+        ({ hook }) =>
+          act(() =>
+            hook.result.current.onFrameLoad(document.createElement("iframe")),
+          ),
+      ],
+      [
+        "the account changes",
+        (_launched, endSession) => act(() => endSession()),
+      ],
+    ];
+    let endSession: () => void;
+    beforeEach(() => {
+      endSession = () => {
+        throw new Error("no session-end listener");
+      };
+      session.onSessionEnd = (listener) => {
+        endSession = () => listener("account_changed");
+        return () => undefined;
+      };
+    });
+
+    it.each(changes)(
+      "%s while the listing is pending: nothing is read and no notice is shown",
+      async (_label, change) => {
+        const listing = deferred<unknown[]>();
+        listRetainedTransferSteps.mockImplementation(() => listing.promise);
+        readTransferProgress.mockResolvedValue({
+          status: "transferred",
+          step: "transfer",
+        });
+        const launched = launch();
+        const resume = initialized!;
+        await act(async () => {
+          resume(fakeHost);
+          await tick();
+        });
+        expect(listRetainedTransferSteps).toHaveBeenCalledTimes(1);
+        change(launched, endSession);
+        await act(async () => {
+          listing.resolve([retained("xfer-f0a31dc6781e57f040c2")]);
+          await tick();
+        });
+        expect(readTransferProgress).not.toHaveBeenCalled();
+        expect(launched.hook.result.current.notice).toBeNull();
+        expect(executeTransferAction).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(changes)(
+      "%s while a read is pending: its answer is dropped and no further read is dispatched",
+      async (_label, change) => {
+        listRetainedTransferSteps.mockResolvedValue([
+          retained("xfer-f0a31dc6781e57f040c2"),
+          retained("xfer-0b1c2d3e4f5a6b7c8d9e"),
+        ]);
+        const read = deferred<{ status: string; step: string }>();
+        readTransferProgress.mockImplementation(() => read.promise);
+        const launched = launch();
+        const resume = initialized!;
+        await act(async () => {
+          resume(fakeHost);
+          await tick();
+        });
+        expect(readTransferProgress).toHaveBeenCalledTimes(1);
+        change(launched, endSession);
+        await act(async () => {
+          read.resolve({ status: "transferred", step: "transfer" });
+          await tick();
+        });
+        expect(readTransferProgress).toHaveBeenCalledTimes(1);
+        expect(launched.hook.result.current.notice).toBeNull();
+        expect(executeTransferAction).not.toHaveBeenCalled();
+      },
+    );
+
+    it("while the launch stays live, the same late answers are read and shown", async () => {
+      const listing = deferred<unknown[]>();
+      listRetainedTransferSteps.mockImplementation(() => listing.promise);
+      const read = deferred<{ status: string; step: string }>();
+      readTransferProgress.mockImplementation(() => read.promise);
+      const launched = launch();
+      const resume = initialized!;
+      await act(async () => {
+        resume(fakeHost);
+        await tick();
+      });
+      await act(async () => {
+        listing.resolve([retained("xfer-f0a31dc6781e57f040c2")]);
+        await tick();
+      });
+      expect(readTransferProgress).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        read.resolve({ status: "transferred", step: "transfer" });
+        await tick();
+      });
+      expect(launched.hook.result.current.notice).toEqual({
+        kind: "transfer_step",
+        reason: "transferred",
+      });
+    });
+  });
 
   it("reports nothing when no retained step is listed or its read fails", async () => {
     listRetainedTransferSteps.mockResolvedValue([]);

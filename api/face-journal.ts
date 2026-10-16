@@ -6,6 +6,7 @@ import {
   parseJournalEntry,
   pruneJournal,
   recoverableRegistration,
+  sentTransferStep,
   type FaceJournalEntry,
 } from "@/app/_domain/product-face-journal";
 import { isObjectId } from "@/app/_domain/product-face";
@@ -280,12 +281,29 @@ function holdsRegistrationHistory(sealed: Partial<SealedJournal>, now: number) {
 }
 
 /**
+ * Whether a sealed journal still holds a transfer step that left the wallet
+ * and is not settled (sentTransferStep), re-validated for the face and
+ * programme it was sealed for: after a sign-in since, it is the only record
+ * that step is read back from (readFaceTransferHistory, readFaceHistory).
+ */
+function holdsTransferHistory(sealed: Partial<SealedJournal>, now: number) {
+  return (
+    typeof sealed.slug === "string" &&
+    typeof sealed.programme === "string" &&
+    sealedEntries(sealed, sealed.slug, sealed.programme, now).some(
+      sentTransferStep,
+    )
+  );
+}
+
+/**
  * How much a kept launch's sealed journal is worth keeping, within the same
- * MAX_FACE_LAUNCHES budget: unresolved evidence that a registration's one
- * assertion left the wallet first (2), then any other unfinished work (1),
- * then an empty or finished launch (0). Every face-host mount persists a new,
- * usually empty, launch; recency alone would let those evict the evidence a
- * result page is still reading.
+ * MAX_FACE_LAUNCHES budget: unresolved evidence that authority left the
+ * wallet first (2: a registration's one assertion, or a sent transfer step
+ * not settled), then any other unfinished work (1), then an empty or
+ * finished launch (0). Every face-host mount persists a new, usually empty,
+ * launch; recency alone would let those evict the evidence a result page or
+ * a transfer progress read is still reading.
  */
 function retentionRank(sealed: Partial<SealedJournal>, now: number) {
   if (typeof sealed.slug !== "string" || typeof sealed.programme !== "string")
@@ -294,7 +312,11 @@ function retentionRank(sealed: Partial<SealedJournal>, now: number) {
   const unfinished = (entry: FaceJournalEntry) =>
     entry.phase !== "settled" && entry.phase !== "cancelled";
   if (
-    entries.some((entry) => recoverableRegistration(entry) && unfinished(entry))
+    entries.some(
+      (entry) =>
+        (recoverableRegistration(entry) && unfinished(entry)) ||
+        sentTransferStep(entry),
+    )
   )
     return 2;
   return entries.some(unfinished) ? 1 : 0;
@@ -363,10 +385,14 @@ export function writeFaceJournal(
   );
   // Keep at most MAX_FACE_LAUNCHES launches: this session's, and this
   // wallet's earlier sessions' that still hold a registration whose one
-  // assertion was issued (their sealed evidence, kept as it is, never
-  // re-sealed). Anything else (unreadable, another wallet's, an earlier
-  // session's without such history) is dropped; within the budget the
-  // least worth keeping goes first (retentionRank), the oldest within a rank.
+  // assertion was issued or a transfer step that was sent and is not settled
+  // (their sealed evidence: a progress read of such a step writes this
+  // launch's journal, and must not drop the record it is reading). A kept
+  // cookie is never named in this response: not re-sealed, rewritten or
+  // given a new expiry; its own 24 hours still apply. Anything else
+  // (unreadable, another wallet's, an earlier session's without such
+  // history) is dropped; within the budget the least worth keeping goes
+  // first (retentionRank), the oldest within a rank.
   // Two launches last written in the same millisecond are ordered by the
   // request: a browser sends its cookies oldest-created first (RFC 6265
   // 5.4; an update keeps its place), so the later one is the newer.
@@ -377,7 +403,8 @@ export function writeFaceJournal(
       const kept =
         opened?.wallet === scope.owner.walletId &&
         (opened.sid === scope.owner.sidHash ||
-          holdsRegistrationHistory(opened, now));
+          holdsRegistrationHistory(opened, now) ||
+          holdsTransferHistory(opened, now));
       return {
         launchId,
         at: kept && typeof opened.at === "number" ? opened.at : -1,

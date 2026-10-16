@@ -336,16 +336,21 @@ export function useProductFaceHost({
           // correlation is read once here, read-only (the runtime verifies the
           // recorded action, signer, recipient and proof); nothing is signed,
           // reserved or sent again, and only the runtime's answer is reported.
+          // Each await may outlive this launch (a frame reload, a teardown, a
+          // sign-out or another account): only this launch's own live host
+          // dispatches a read or shows the answer.
           void listRetainedTransferSteps(face)
             .then(async (steps) => {
               for (const step of steps) {
                 if (step.kind !== "transfer" || step.phase !== "submitted") {
                   continue;
                 }
+                if (!liveHost()) return;
                 const progress = await readTransferProgress(
                   face,
                   step.operation_id,
                 ).catch(() => undefined);
+                if (!liveHost()) return;
                 if (
                   progress?.status === "transferred" ||
                   progress?.status === "outcome_unknown"

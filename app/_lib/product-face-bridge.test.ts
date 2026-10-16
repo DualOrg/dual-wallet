@@ -1928,6 +1928,57 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
     expect(run.handlers.executeTransfer).not.toHaveBeenCalled();
   });
 
+  // The BFF refuses a step id it knows asked with another offer
+  // (invalid_request, 400, before any runtime call or mint;
+  // api/product-face-transfer.test.ts proves it on real sealed journals).
+  // That refusal is an error for the face, never "not sent": nothing is read,
+  // proposed, journalled, confirmed or executed, for a step this launch never
+  // issued and for one it did.
+  it("a known step id asked with another offer (the BFF's invalid_request) signs nothing", async () => {
+    const refused = jest.fn(async () => {
+      throw new ProductFaceError("invalid_request", 400);
+    });
+    const run = await transferRuntime(
+      {
+        transferProgress:
+          refused as unknown as ProductFaceHandlers["transferProgress"],
+      },
+      { journalled: ["xfer-step-0001"] },
+    );
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).rejects.toMatchObject({ code: "invalid_request" });
+    expect(refused).toHaveBeenCalledWith("xfer-step-0001", OFFER);
+    expect(run.handlers.readProduct).not.toHaveBeenCalled();
+    expect(run.handlers.readTransferProposal).not.toHaveBeenCalled();
+    expect(run.handlers.journal).not.toHaveBeenCalled();
+    expect(run.handlers.confirm).not.toHaveBeenCalled();
+    expect(run.handlers.executeTransfer).not.toHaveBeenCalled();
+
+    // A step this launch itself issued stays outcome_unknown, still unsigned.
+    const issued = await transferRuntime({
+      readTransferProposal: jest.fn(async () => transferStep),
+      transferProgress: jest.fn(async () => ({
+        status: "outcome_unknown" as const,
+        step: "transfer" as const,
+      })),
+    });
+    await expect(
+      issued.call("programme.product.transfer.sign", issued.request),
+    ).rejects.toMatchObject({ code: "outcome_unknown" });
+    expect(issued.handlers.executeTransfer).toHaveBeenCalledTimes(1);
+    (issued.handlers.transferProgress as jest.Mock).mockImplementation(
+      async () => {
+        throw new ProductFaceError("invalid_request", 400);
+      },
+    );
+    await expect(
+      issued.call("programme.product.transfer.sign", issued.request),
+    ).rejects.toMatchObject({ code: "outcome_unknown" });
+    expect(issued.handlers.executeTransfer).toHaveBeenCalledTimes(1);
+    expect(issued.handlers.confirm).toHaveBeenCalledTimes(1);
+  });
+
   it("a step never journalled (or journalled but not submitted) is signed as before; a journal that cannot be read signs nothing", async () => {
     const fresh = await transferRuntime();
     await expect(

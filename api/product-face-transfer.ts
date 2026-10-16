@@ -30,6 +30,7 @@ import {
 import {
   applyJournalTransition,
   authorityLeft,
+  sentTransferStep,
   type FaceJournalEntry,
 } from "@/app/_domain/product-face-journal";
 import {
@@ -333,12 +334,9 @@ export function retainedTransferSteps(
   context: FaceRequestContext,
   request: NextRequest,
 ) {
+  // The same steps whose launch cookie writeFaceJournal keeps (face-journal).
   const sent = (entry: FaceJournalEntry) =>
-    entry.kind === "transfer" &&
-    entry.slug === context.binding.slug &&
-    entry.phase === "submitted" &&
-    Boolean(entry.offerId) &&
-    transferStepOfOperation(entry.operation) !== undefined;
+    entry.slug === context.binding.slug && sentTransferStep(entry);
   const own = context.journal.entries.filter(sent);
   const known = new Set(
     context.journal.entries.map((entry) => entry.operationId),
@@ -375,6 +373,13 @@ export async function transferStepProgress(
         item.operationId === body.operation_id &&
         item.slug === context.binding.slug,
     ) ?? recoveredTransferStep(context, request, body.operation_id);
+  // A known step names its own offer: another offer for it is a malformed
+  // request, refused before anything is minted, asked or written.
+  if (entry && body.offer_id !== undefined && entry.offerId !== body.offer_id) {
+    return fail("invalid_request", 400);
+  }
+  // Set when the step was found by its offer, not by the requested id.
+  let byOffer = false;
   if (!entry && typeof body.offer_id === "string") {
     // A step of this offer already left this wallet under another operation
     // id (a relaunch or sign-in gave the face a new one, and the sender can no
@@ -386,6 +391,7 @@ export async function transferStepProgress(
     );
     if (sent.length > 1) return fail("outcome_unknown", 409);
     entry = sent[0];
+    byOffer = entry !== undefined;
   }
   const own =
     entry && context.journal.entries.includes(entry) ? entry : undefined;
@@ -424,6 +430,16 @@ export async function transferStepProgress(
   }
   // Another launch's step is only read: its journal is never settled here.
   if (!own) {
+    // So a request step of another launch, found by its offer for a NEW id,
+    // stays "submitted" there and would answer that offer forever, holding
+    // it at its request step. Once the runtime reports it committed it is
+    // finished and the new id is not that step: unknown_operation, so the
+    // offer's next (custody) step, never sent, is signed through the normal
+    // flow. The request itself is never reserved or executed again (its
+    // runtime reservation stands), and its own id still reads committed.
+    if (byOffer && step === "request") {
+      return { ...fail("unknown_operation", 404), journal };
+    }
     return {
       ok: true,
       progress: { status: committedStatus(step), step },

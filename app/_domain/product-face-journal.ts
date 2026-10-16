@@ -104,7 +104,9 @@ export interface JournalClosure {
 export const REGISTRATION_CLOSE_AFTER_MS = 30 * 60 * 1000;
 /**
  * The runtime keeps an operation journal 30 days; only within that does its
- * absence mean anything. (This journal drops an open entry after 7 days.)
+ * absence mean anything. (This journal would drop an open entry after 7
+ * days, but the launch cookie that holds it expires 24 hours after that
+ * launch's last write.)
  */
 const RUNTIME_JOURNAL_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -285,6 +287,22 @@ export function recoverableRegistration(entry: FaceJournalEntry) {
     entry.kind === "registration" &&
     entry.issuedAt !== undefined &&
     (entry.phase === "assertion_issued" || entry.phase === "settled")
+  );
+}
+
+/**
+ * A transfer step that left the wallet (submitted: reserved at the runtime,
+ * perhaps executed) and is not settled. Found in another launch journal of
+ * the same wallet, face and programme (a reload, a sign-in since), that
+ * journal is the wallet's only record of it: it is read back, read-only,
+ * under its original operation id and never signed, reserved or sent again.
+ */
+export function sentTransferStep(entry: FaceJournalEntry) {
+  return (
+    entry.kind === "transfer" &&
+    entry.phase === "submitted" &&
+    TRANSFER_OPERATIONS.includes(entry.operation) &&
+    Boolean(entry.offerId)
   );
 }
 
