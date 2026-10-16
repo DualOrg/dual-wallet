@@ -1148,11 +1148,13 @@ class BrandRuntime {
     options: {
       operationId: string;
       operation?: string;
+      objectId?: string;
       caseId?: string;
       recordedAt: string;
       recordedArtifact?: { version: string; artifactHash: string };
       applied?: boolean;
       unresolved?: number;
+      dualUnavailable?: boolean;
     },
   ) {
     const operation = options.operation ?? "case.evidence.submit";
@@ -1165,7 +1167,7 @@ class BrandRuntime {
       operationId: options.operationId,
       operation,
       target: {
-        object_id: this.brand.unit.id,
+        object_id: options.objectId ?? this.brand.unit.id,
         ...(options.caseId ? { case_id: options.caseId } : {}),
       },
       requestHash: sha(`seed:${options.operationId}`),
@@ -1178,6 +1180,7 @@ class BrandRuntime {
       applied: options.applied ?? true,
       unresolved: options.unresolved ?? 0,
       recordedAt: options.recordedAt,
+      ...(options.dualUnavailable ? { dualUnavailable: true } : {}),
       receipt: {
         kind: "case_event",
         case_id: options.caseId ?? this.brand.cases[0],
@@ -4391,6 +4394,146 @@ describe("recovery: logout, sign-in again and account switch (PROPOSED r20 fixtu
 
       expect(faceSends(brand)).toBe(sendsBefore);
       expect(businessOf()).toEqual(business);
+    },
+  );
+});
+
+describe("recovery: mixed proofs, only the one-action Dual-backed write settles (PROPOSED r20 fixture)", () => {
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s: intended_dual_writes 2, a stale proof, an unresolved outcome and an unavailable readback stay held; the one proved write is acknowledged",
+    async (_label, brand) => {
+      const { holder, contextId } = await r20Holder(brand);
+      const runtime = runtimeOf(brand);
+      // One warranty write is a genuine single-action Dual-backed effect; the
+      // other Dual-backed writes intend two actions or carry a stale proof.
+      runtime.dualBackedOps.set("case.evidence.submit", {
+        intendedDualWrites: 1,
+      });
+      runtime.dualBackedOps.set("case.information.provide", {
+        intendedDualWrites: 2,
+      });
+      runtime.dualBackedOps.set("case.open", {
+        intendedDualWrites: 1,
+        stale: true,
+      });
+
+      const positive = await heldWrite(holder, contextId, 1, {
+        dispatch: true,
+        operation: "case.evidence.submit",
+        caseIndex: 0,
+      });
+      const intended2 = await heldWrite(holder, contextId, 2, {
+        dispatch: true,
+        operation: "case.information.provide",
+        caseIndex: 0,
+      });
+      const stale = await heldWrite(holder, contextId, 3, {
+        dispatch: true,
+        operation: "case.open",
+        caseIndex: 0,
+      });
+      // A definitive zero-write refusal (case.open on an already-open case).
+      const refused = await heldWrite(holder, contextId, 4, {
+        dispatch: true,
+        operation: "case.open",
+        caseIndex: 1,
+      });
+      expect(refused.answer).toMatchObject({ status: 409 });
+
+      // Two server-only held variants, seeded on this holder's warranty actor:
+      // one with an unresolved outcome, one whose target cannot be read.
+      const captured = runtime.writes.get(`warranty:${positive.operationId}`)!;
+      const actor: Actor = {
+        holder: captured.holder,
+        sub: captured.wallet,
+        iss: captured.issuer,
+        aud: captured.audience,
+        programme: captured.programme,
+        artifact: captured.artifact,
+      };
+      const unresolvedOp = `case-write-${brand.tag}-0005`;
+      const unavailableOp = `case-write-${brand.tag}-0006`;
+      runtime.seedWriteRecord(actor, {
+        operationId: unresolvedOp,
+        operation: "case.evidence.submit",
+        caseId: brand.cases[0],
+        recordedAt: new Date(Date.now()).toISOString(),
+        unresolved: 1,
+      });
+      runtime.seedWriteRecord(actor, {
+        operationId: unavailableOp,
+        operation: "case.information.provide",
+        caseId: brand.cases[0],
+        recordedAt: new Date(Date.now()).toISOString(),
+        dualUnavailable: true,
+      });
+
+      const sendsBefore = faceSends(brand);
+      const business = businessOf();
+      const listed = await holder.recovery();
+      expect(listed.body).toMatchObject({ supported: true, complete: true });
+
+      // Only the single-action Dual-backed write is proved and ticketed.
+      const positiveItem = itemOf(listed.body, positive.operationId);
+      expect(positiveItem).toMatchObject({ outcome: "write_applied" });
+      expect(typeof positiveItem!.ticket).toBe("string");
+      // Every other proof is held: nothing proved, no ticket.
+      for (const operationId of [
+        intended2.operationId,
+        stale.operationId,
+        unresolvedOp,
+        unavailableOp,
+      ]) {
+        expect(itemOf(listed.body, operationId)).toMatchObject({
+          outcome: "outcome_unknown",
+          ticket: null,
+        });
+      }
+      // The refusal is shown as write_refused (after its binding checks) and
+      // frees nothing: no ticket.
+      expect(itemOf(listed.body, refused.operationId)).toMatchObject({
+        outcome: "write_refused",
+        ticket: null,
+      });
+
+      const ack = await holder.recoveryAck({
+        operation_id: positive.operationId,
+        ticket: positiveItem!.ticket,
+      });
+      expect(ack).toMatchObject({
+        status: 200,
+        body: { acknowledged: true, first: true },
+      });
+
+      // No recovery call re-sent a write or touched Dual or the bus.
+      expect(faceSends(brand)).toBe(sendsBefore);
+      expect(businessOf()).toEqual(business);
+    },
+  );
+
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s: a proved server-only write whose target object was deleted reads absent and stays held",
+    async (_label, brand) => {
+      const { holder, contextId } = await r20Holder(brand);
+      const write = await heldWrite(holder, contextId, 1, {
+        dispatch: true,
+        operation: "case.evidence.submit",
+        caseIndex: 0,
+      });
+      expect(write.answer).toMatchObject({ status: 200 });
+      // The unit is deleted from Dual after the write: the readback is absent,
+      // which the wallet holds (a decision for Root, contract §5).
+      world.dual.units.delete(brand.unit.id);
+      const listed = await holder.recovery();
+      expect(listed.body).toMatchObject({ supported: true });
+      expect(itemOf(listed.body, write.operationId)).toMatchObject({
+        outcome: "outcome_unknown",
+        ticket: null,
+      });
     },
   );
 });
