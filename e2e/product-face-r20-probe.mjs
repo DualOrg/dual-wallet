@@ -22,13 +22,19 @@
 import { createHash } from "node:crypto";
 import http from "node:http";
 
-const SLUG = "morrow-home";
-const PASSPORT_APP = "studio.morrow-home";
-const WARRANTY_APP = "studio.morrow-home.service";
+// PROBE_SLUG / PROBE_APPLICATION name another brand's face (the harness
+// serves Morrow Home and Tidewell); PROBE_WALLET another wallet origin, such
+// as a branded host's entrance; PROBE_RUNTIME another harness origin.
+const SLUG = process.env.PROBE_SLUG || "morrow-home";
+const PASSPORT_APP = process.env.PROBE_APPLICATION || "studio.morrow-home";
+const WARRANTY_APP = `${PASSPORT_APP}.service`;
 const OBJECT = process.env.PROBE_OBJECT || "6ab000000000000000000004";
 const CASE = process.env.PROBE_CASE || "";
-const RUNTIME = "http://localhost:4180";
-const TENANT = "demo.localhost:3000";
+const RUNTIME = process.env.PROBE_RUNTIME || "http://localhost:4180";
+const WALLET = new URL(
+  process.env.PROBE_WALLET || "http://demo.localhost:3000",
+);
+const TENANT = WALLET.host;
 const stamp = Date.now().toString(36);
 const LAUNCH = createHash("sha256")
   .update(`launch-${stamp}`)
@@ -45,12 +51,12 @@ function call(method, path, body, launch = LAUNCH) {
     const request = http.request(
       {
         host: "127.0.0.1",
-        port: 3000,
+        port: Number(WALLET.port || 80),
         method,
         path,
         headers: {
           host: TENANT,
-          origin: `http://${TENANT}`,
+          origin: WALLET.origin,
           "x-dual-face-launch": launch,
           "content-type": "application/json",
           cookie: cookie(),

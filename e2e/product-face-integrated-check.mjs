@@ -11,6 +11,9 @@
 //
 // Expects the wallet on 127.0.0.1:3000 (tenant host demo.localhost:3000),
 // the fake api-v3 with MOCK_PROGRAMME_DUAL_URL, and the harness on 4180/4011.
+// CHECK_WALLET names another wallet origin, such as a branded host's entrance
+// (http://localhost:3100): requests go to 127.0.0.1 on its port with its
+// exact host, as a browser on that origin would send them.
 import { createHash } from "node:crypto";
 import http from "node:http";
 
@@ -20,7 +23,10 @@ const OBJECT = process.env.CHECK_OBJECT || "6ab000000000000000000003";
 const REGISTRATION = process.env.CHECK_OPERATION || "reg-harness-morr-0001";
 const SETTLE = `settle-check-${Date.now().toString(36)}`;
 const RUNTIME = process.env.CHECK_RUNTIME || "http://localhost:4180";
-const TENANT = "demo.localhost:3000";
+const WALLET = new URL(
+  process.env.CHECK_WALLET || "http://demo.localhost:3000",
+);
+const TENANT = WALLET.host;
 // One face launch (frame): the BFF keeps this launch's own journal.
 const LAUNCH = createHash("sha256")
   .update(`launch-${Date.now()}`)
@@ -38,12 +44,12 @@ function call(method, path, body, headers = {}) {
     const request = http.request(
       {
         host: "127.0.0.1",
-        port: 3000,
+        port: Number(WALLET.port || 80),
         method,
         path,
         headers: {
           host: TENANT,
-          origin: `http://${TENANT}`,
+          origin: WALLET.origin,
           "x-dual-face-launch": LAUNCH,
           "content-type": "application/json",
           cookie: cookie(),
