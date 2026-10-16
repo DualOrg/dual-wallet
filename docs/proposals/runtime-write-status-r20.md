@@ -339,141 +339,223 @@ recorded when it issued the write's assertion; an entry issued before the
 wallet recorded one is never settled from a read. Everything else is held;
 nothing is ever re-sent.
 
-## 1a. Amendment r20.1 (PROPOSED, awaiting Root approval): one proof per intended Dual effect
+## 1a. Amendment r20.1 (PROPOSED, awaiting Root approval): `original_verified_effect_receipt_v1`, one receipt chain per intended Dual effect
 
 Status: **PROPOSED AMENDMENT, NOT APPROVED, NOT IMPLEMENTED** on either
-side. Nothing of the approved r20 wire changes; this section adds to §1's
-`dual.backed: true` branch only. Neither the wallet reader nor the fixture
-moves to it before Root approves this exact text.
+side. Nothing of the approved r20 wire outside §1's `dual.backed: true`
+branch changes; on approval this section SUPERSEDES that branch. Neither the
+wallet reader nor the fixture moves to it before Root approves this exact
+text.
 
-### Why
+### Why, and what this is not
 
 A normal linked Warranty write can intend MORE THAN ONE Dual action (a
 `case.open` that mints and then updates: `intended_dual_writes: 2`). r20
-carries one `proof`, and the wallet holds every record whose intended count
-is not `1`; one proof is never taken to stand for a second effect. That
-leaves a required normal journey held. The remedy is a complete, ordered
-list of proofs, one per intended effect, each bound to the immutable
-original request and its position, with the outcome hash covering the whole
-list.
+carries one proof, and the wallet holds every record whose intended count is
+not `1`; one proof never stands for a second effect.
+
+This is NOT an executed-input-byte proof. The public Dual update log exposes
+`params: {id, data_hash}` and not the raw update data; public update history
+omits the change; no inspected public SDK documents how `data_hash` is
+derived from submitted JSON. Submitted raw data therefore cannot be
+reconstructed from public logs, so r20's `expected_payload_hash`,
+`observed_payload_hash` and `payload_match` (an executed-input proof) are
+WITHDRAWN by this amendment: a runtime must not answer them, the wallet
+holds any answer that carries them, and none of their meaning is carried
+over under another name. What replaces them is a receipt chain the server
+holds and corroborates: the write's pre-dispatch intent commitment, the
+protected original verifier's qualifying receipt of each effect, and a fresh
+historical corroboration of exactly that receipt's RAW content hash.
+
+### Names, kept distinct
+
+- **Intent commitment**: the versioned domain commitment the server made
+  BEFORE dispatch, over a retained preimage, recomputed by the server at
+  every read (`intent_commitment`).
+- **Original verified content hash**: the RAW content hash of the effect as
+  the protected original verifier observed it at the time, explicitly a raw
+  original content hash and never a state hash (`original_receipt.
+content_hash_raw`).
+- **Fresh historical corroboration**: the same raw content hash, the
+  action's terminal success, its authority and affected objects, read at
+  this status read from the historical Dual action log and history entry
+  (`historical_corroboration`).
+
+Only hashes and identifiers appear on the wire; never content, raw data,
+private attributes or another holder's data.
 
 ### The `dual` block under r20.1
 
 ```json
 "dual": {
   "backed": true,
+  "proof_kind": "original_verified_effect_receipt_v1",
   "intended_dual_writes": 2,
-  "proofs": [
+  "effects": [
     {
       "index": 0,
-      "resolver": "dual_action_log",
       "action_id": "<historical Dual action id, unique in this list>",
-      "action": "<the Dual action executed, e.g. mint | update | transfer>",
+      "action_kind": "<the Dual action kind, e.g. mint | update | transfer>",
       "object_id": "<24 hex: the canonical object the action was applied to>",
-      "signer": "<the account that signed the action>",
-      "intended_params_hash": "sha256:<hex>",
-      "observed_params_hash": "sha256:<hex>",
-      "params_match": true,
-      "execution": "succeeded",
-      "observed_status_raw": "<Dual's own status value for the action, preserved verbatim>",
-      "affected_objects": ["<24 hex>", "..."],
       "bound_to": {
         "operation_id": "<op_id>",
         "request_hash": "sha256:<recorded write request hash>",
         "effect_index": 0
       },
-      "verified_at": "<RFC 3339 of this read>"
+      "intent_commitment": {
+        "version": "v1",
+        "scheme": "<plain code of the reviewed commitment scheme>",
+        "hash": "sha256:<hex, recomputed now from the retained preimage>",
+        "preimage_retained": true,
+        "scope": {
+          "event_id": "<id>",
+          "outbox_id": "<id>",
+          "installation_id": "<id>"
+        }
+      },
+      "original_receipt": {
+        "verifier": "<plain code: the protected original verifier's provenance>",
+        "verified_at": "<RFC 3339, when the original verifier qualified it>",
+        "action_kind": "<same action kind>",
+        "action_id": "<same action id>",
+        "object_id": "<same object id>",
+        "network": "<plain code>",
+        "template_id": "<24 hex>",
+        "authority": { "account": "<expected signing account>", "controller": "<expected controller or null>" },
+        "domain_commitment": "sha256:<hex, the original domain commitment the verifier observed>",
+        "projection": "full_declared",
+        "content_hash_raw": "sha256:<hex, the RAW original content hash>",
+        "content_hash_source": "raw_original_content"
+      },
+      "historical_corroboration": {
+        "read_at": "<RFC 3339 of this read>",
+        "resolver": "dual_action_log",
+        "action_id": "<same action id>",
+        "history_entry_id": "<id of the history entry corroborated>",
+        "execution": "succeeded",
+        "status_raw": "<Dual's own status value, preserved verbatim>",
+        "authority": { "account": "<observed signing account>", "controller": "<observed controller or null>" },
+        "affected_objects": ["<24 hex>", "..."],
+        "content_hash_raw": "sha256:<hex, as the log and history entry carry it>",
+        "content_hash_match": true
+      },
+      "effect_verdict": "verified"
     },
     { "index": 1, "...": "the second intended effect, same shape" }
   ]
 }
 ```
 
-- `proofs` is ORDERED: position `i` is the `i`-th effect the ORIGINAL
-  request intended, as the server's immutable original domain record fixed
-  it; `index === i` and `bound_to.effect_index === i`.
-- Exact coverage: `proofs.length === intended_dual_writes`. A record whose
-  intended effects are not ALL proved is `409 {status:
-"write_outcome_unknown", reason: "effects_unproved", proved_effects: k}`,
-  never `write_applied` and never partially applied; the wallet infers no
-  remaining effect from the ones proved.
-- Unique `action_id` across the list; a repeated id is malformed.
-- `intended_params_hash`: `sha256:` hex of the canonical JSON of the
-  EXECUTION PARAMETERS the original request intended for this effect (the
-  action and its parameters as the original would execute them), from the
-  immutable original record, fixed when the write was recorded.
-  `observed_params_hash`: the same hash computed over the parameters the
-  action ACTUALLY executed with, read freshly at this status read from the
-  public Dual action log (which exposes the executed params, their hash,
-  the status and the affected objects). `params_match: true` means the two
-  are equal; a domain content hash (a custom map, a record body) is never
-  relabelled as either.
-- `execution` is the runtime's strict resolver's NORMALIZED verdict on the
-  action's executed status as the fresh public Dual action log reports it:
-  exactly `"succeeded"` when the log shows the action terminally and
-  successfully executed, `"pending"` while it is not terminal, `"failed"`
-  when it terminally failed or was refused, `"unknown"` when the log gives
-  no decidable status. The mapping from Dual's raw status values to these
-  four is the runtime's reviewed resolver's and is not restated here; the
-  raw value is preserved verbatim in `observed_status_raw` for audit and is
-  never interpreted by the wallet. Only `execution: "succeeded"` can be part
-  of a `write_applied` answer: a proof with matching params but `pending`,
-  `failed` or `unknown` execution leaves the record `409
-write_outcome_unknown` (reason `effects_unproved`), never applied.
-- `affected_objects` comes from that fresh log read; it lists the objects
-  the action affected and contains `object_id`.
-- `bound_to` names this very operation and request and the effect's index;
-  `verified_at` is this read's time (the wallet accepts ten minutes of
-  skew). Each proof is verified afresh at every read through the runtime's
-  existing strict Dual action-log resolver; application store or outbox
-  state alone is never the proof.
-- Later state never invalidates proved history (§0): a later legitimate
-  action on an affected object does not change an effect already proved
-  from the historical log.
+### Server obligations, for EACH intended effect
 
-### Outcome hash over the whole effect list
+1. **Intent commitment.** Before dispatch the runtime fixes, immutably, the
+   actor, the request (`operation_id`, `request_hash`), the event, outbox
+   and installation scope of the write, and a versioned domain commitment
+   over a retained preimage. At every status read it recomputes the
+   commitment from the retained preimage and answers the hash; a missing or
+   unrecomputable preimage is `409 {status: "write_outcome_unknown", reason:
+"intent_preimage_missing"}`.
+2. **Original verified receipt.** The protected original verifier's
+   qualifying receipt of the effect is retained with the record: the exact
+   action kind and id, the object, the network and template, the expected
+   signing account and controller authority, the original domain commitment
+   it observed (which must equal the recomputed intent commitment hash) with
+   the FULL declared projection, and explicitly the RAW original content
+   hash with its provenance. A receipt whose content hash is, or falls back
+   to, a state hash is not qualifying. A missing or non-qualifying receipt is
+   `409 {status: "write_outcome_unknown", reason: "original_receipt_missing"}`.
+3. **Fresh historical corroboration.** At this read, through the runtime's
+   existing strict Dual action-log resolver, the runtime reads the historical
+   action and its history entry and answers: terminal success normalized as
+   `execution: "succeeded"` (its reviewed mapping from Dual's raw status,
+   preserved verbatim in `status_raw`; `pending`, `failed` or `unknown` is
+   never applied), the observed signing authority, the affected objects, and
+   the raw content hash the log and history entry carry, which must equal
+   the receipt's `content_hash_raw` (`content_hash_match: true`). A
+   corroboration that cannot be read, is not terminal, or does not carry the
+   same raw content hash is `409 {status: "write_outcome_unknown", reason:
+"effects_unproved", proved_effects: k}`.
 
-For a Dual-backed write under r20.1, `outcome_proof.dual` is
-`{"effects": [{"index", "action_id", "object_id", "observed_params_hash"}, ...]}`
-in list order, so `outcome_hash` (and therefore `recovery.ack`) binds the
-ENTIRE effect list; an answer whose `outcome_proof.dual.effects` does not
-equal the projection of `proofs` is malformed.
+Exact coverage: `effects.length === intended_dual_writes`; a record whose
+effects are not ALL verified is never `write_applied` and never partially
+applied; nothing is inferred from the effects verified. The list is ORDERED
+as the original request intended (`index === i`, `bound_to.effect_index ===
+i`), `action_id` is unique across the list, and every effect's `bound_to`
+names this operation and recorded request hash. Later state never
+invalidates proved history (§0): a later legitimate action on an affected
+object changes nothing above.
 
-### Compatibility with approved r20: exactly one representation
+### Outcome hash over the whole ordered list and the original request
 
-- `intended_dual_writes: 1`: a runtime answers EITHER the approved r20
-  singular `proof` (its field names unchanged, with `outcome_proof.dual =
-{action_id, object_id, observed_payload_hash}`) OR the r20.1 `proofs` list
-  of one (with `outcome_proof.dual = {effects: [...]}`), never both. An
-  answer carrying both `proof` and `proofs` is malformed and held, whatever
-  they say; agreement between the two is not checked, because the two forms
-  are not compared.
-- `intended_dual_writes >= 2`: only `proofs`. A singular `proof` on such a
-  record, alone or beside the list, is malformed and the record stays held.
-- `backed: false` is unchanged.
+For a Dual-backed write under r20.1:
 
-### Wallet validation under r20.1 (what frees a slot or proves a recovered item)
+```json
+"outcome_proof": {
+  "kind": "runtime", "operation_id": "...", "operation": "...", "object_id": "...", "case_id": "...", "receipt": {"..."}, "status": "write_applied",
+  "dual": {
+    "proof_kind": "original_verified_effect_receipt_v1",
+    "request": { "operation_id": "<op_id>", "request_hash": "sha256:<recorded>" },
+    "effects": [
+      { "index": 0, "action_id": "...", "object_id": "...", "intent_commitment_hash": "sha256:...", "content_hash_raw": "sha256:..." },
+      { "index": 1, "..." : "..." }
+    ]
+  }
+}
+```
 
-Every §1 gate as approved, and for `backed: true`: exactly one
-representation present (`proofs`, or the singular `proof` only when the
-count is `1`); `proofs.length === intended_dual_writes >= 1`; indices `0..n-1` in order with `bound_to.effect_index` equal;
-unique, well-formed `action_id`s; per proof: `resolver ===
-"dual_action_log"`, a plain-code `action`, a well-formed `object_id` and
-non-empty `signer`, `intended_params_hash === observed_params_hash` (both
-`sha256:` hashes), `params_match === true`, `execution === "succeeded"`
-exactly (`observed_status_raw` present as a string but never interpreted),
-`affected_objects` a non-empty array of object ids containing `object_id`,
-`bound_to.operation_id` and `bound_to.request_hash` equal to the answer's,
-`verified_at` within ten minutes; and `outcome_proof.dual.effects` equal to
-the projection above. The wallet still does not require `signer` to be the
-holder, nor any `object_id` to be the product target. Anything else: held.
+`outcome_hash` therefore binds the ENTIRE ordered effect list AND the
+original request, and `recovery.ack` acknowledges exactly that. An answer
+whose `outcome_proof.dual` is not this projection of `effects` and of the
+answer's `operation_id` and `request_hash` is malformed.
+
+### Exactly one representation
+
+Under r20.1 a Dual-backed write has one form: `proof_kind:
+"original_verified_effect_receipt_v1"` with `effects`, for every intended
+count including `1`. The approved r20 singular `proof` (and any
+`expected_payload_hash`, `observed_payload_hash`, `payload_match` field,
+anywhere in the answer) is withdrawn: its presence makes the answer malformed
+and held. `backed: false` is unchanged.
+
+### Consumer validation under r20.1 (what frees a slot or proves a recovered item)
+
+Every §1 gate as approved, and for `backed: true`: `proof_kind ===
+"original_verified_effect_receipt_v1"`; no withdrawn field present;
+`effects.length === intended_dual_writes >= 1`; indices `0..n-1` in order
+with `bound_to.effect_index` equal; unique, well-formed `action_id`s; per
+effect: `bound_to.operation_id` and `bound_to.request_hash` equal to the
+answer's; `intent_commitment` with plain-code `version` and `scheme`, a
+well-formed `hash`, `preimage_retained === true` and non-empty scope ids;
+`original_receipt` with a plain-code `verifier`, a parseable `verified_at`,
+`action_kind`, `action_id` and `object_id` equal to the effect's, a
+plain-code `network`, a well-formed `template_id`, a non-empty
+`authority.account` (`controller` a string or null), `domain_commitment ===
+intent_commitment.hash`, `projection === "full_declared"`,
+`content_hash_source === "raw_original_content"` and a well-formed
+`content_hash_raw`; `historical_corroboration` with `resolver ===
+"dual_action_log"`, `action_id` equal, a non-empty `history_entry_id`,
+`execution === "succeeded"` exactly (`status_raw` a string, never
+interpreted), `authority.account === original_receipt.authority.account`
+and `controller` equal when the receipt declares one, `affected_objects` a
+non-empty array of object ids containing `object_id`, `content_hash_raw ===
+original_receipt.content_hash_raw` and `content_hash_match === true`,
+`read_at` within ten minutes of the wallet's clock; `effect_verdict ===
+"verified"`; and `outcome_proof.dual` equal to the projection above with
+`request` equal to the answer's `operation_id` and `request_hash`. The
+wallet still does not require the authority account to be the holder, nor
+any `object_id` to be the product target: it checks the server's stated
+binding and the agreement of receipt and corroboration. Anything else: held
+(the journal entry keeps its slot; a recovered item is `outcome_unknown`
+without a ticket).
 
 ### What this amendment does not do
 
-No new operation, store, status word, counter or lifetime; `recovery.list`
+No new operation, store, status word, counter or lifetime. `recovery.list`
 and `recovery.ack` are unchanged (the ack still names one `outcome_hash`,
-which now covers every effect). The resolution bound, continuation,
-ticketing and journey gate are unaffected.
+which now covers every effect and the original request). The server-only
+`backed: false` branch, the actor, host, programme, capability and artifact
+isolation, the journey gate, the resolution bound, the continuation and the
+ticketing are unaffected.
 
 ## 2. `recovery.list`
 
@@ -718,7 +800,8 @@ outcome_hash}` where `original_operation` is the record's operation
   `intended_dual_writes: 1` and the one proof naming that action. A record
   intending more than one Dual write is HELD as unsupported; the wallet
   never infers the remaining effects proved. §1a is the proposed remedy: one
-  proof per intended effect, exact count, ordered, hash over the whole list.
+  original-verified-effect receipt chain per intended effect, exact count,
+  ordered, hash over the whole list and the original request.
 - Resolution per listing page is bounded (25 items) in the contract's stable
   (`recorded_at`, `operation_id`) order. A page that leaves items unresolved
   returns a sealed, host-local continuation naming the last key it resolved
@@ -740,9 +823,9 @@ outcome_hash}` where `original_operation` is the record's operation
 
 - Whether a verified `write_refused` may ever free a wallet slot (the wallet
   keeps it held).
-- Approval of amendment r20.1 (§1a): one proof per intended Dual effect, so
-  a normal linked `case.open` intending two Dual actions can be proved;
-  until then such a record is held (§4a).
+- Approval of amendment r20.1 (§1a): one `original_verified_effect_receipt_v1`
+  chain per intended Dual effect, so a normal linked `case.open` intending
+  two Dual actions can be proved; until then such a record is held (§4a).
 - Whether a proved server-only write whose target object has since been
   deleted from Dual (`target_readback: "absent"`) may settle; the wallet holds
   it until decided.
