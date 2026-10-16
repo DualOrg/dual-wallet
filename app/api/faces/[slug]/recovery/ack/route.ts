@@ -17,6 +17,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   const context = await resolveFaceRequest(request, slug, {
     mutation: true,
     route: "recovery-ack",
+    // Never journals: a read-only launch may acknowledge what it recovered.
+    journals: false,
   });
   if (!("binding" in context)) return context;
   const body = await readJsonRecord(request);

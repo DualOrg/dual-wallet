@@ -33,6 +33,7 @@ import {
 } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { ResponseError } from "@/api/web-sdk/runtime";
+import { faceJournalCookieName } from "@/api/face-journal";
 import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
 import { canonicalJson } from "@/app/_domain/product-face";
 import {
@@ -4157,6 +4158,113 @@ const statusReads = (brand: Brand, operationId: string) =>
     .map((call) => [call.by, call.status]);
 
 describe("a runtime write's slot, freed only by its verified outcome (PROPOSED r20 fixture)", () => {
+  // Root's compatibility decision: no unknown eviction. A launch cookie that
+  // is a held write's only known correlation is never dropped by the launch
+  // budget; a new launch beyond it is read-only. The cookie becomes
+  // expendable only once the exact runtime confirms it holds the record.
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s: four launches of writes interrupted before dispatch make a fifth read-only; one becomes expendable only when the runtime confirms it holds that record (409 write_outcome_unknown), and nothing is sent again",
+    async (_label, brand) => {
+      const runtime = runtimeOf(brand);
+      const { holder, contextId } = await r20Holder(brand);
+      // One applied write, read once, lends the fixture this holder's exact
+      // warranty actor for the seeded record below; it settles the entry.
+      const applied = await heldWrite(holder, contextId, 21, {
+        dispatch: true,
+      });
+      expect(await holder.status(applied.operationId)).toMatchObject({
+        status: 200,
+        body: { phase: "settled" },
+      });
+      const captured = runtime.writes.get(`warranty:${applied.operationId}`)!;
+      const actor: Actor = {
+        holder: captured.holder,
+        sub: captured.wallet,
+        iss: captured.issuer,
+        aud: captured.audience,
+        programme: captured.programme,
+        artifact: captured.artifact,
+      };
+      // Four launches, each holding one write interrupted before dispatch:
+      // no runtime has a record of any, so each cookie is its write's only
+      // known correlation. Each launch is opened from the previous one's
+      // browser state (the same browser, cookies accumulating).
+      const launches: Browser[] = [holder];
+      const held = [
+        (await heldWrite(holder, contextId, 22, { dispatch: false }))
+          .operationId,
+      ];
+      for (const n of [23, 24, 25]) {
+        const launch = launches.at(-1)!.relaunch(launchOf(brand, `held${n}`));
+        const selected = await launch.select(brand.unit.id);
+        held.push(
+          (await heldWrite(launch, selected, n, { dispatch: false }))
+            .operationId,
+        );
+        launches.push(launch);
+      }
+      const names = launches.map((launch) =>
+        faceJournalCookieName(launch.launchId),
+      );
+      // A fifth launch: read-only. Its context opens, a selection (the
+      // first thing that would journal) is refused launch_capacity, no
+      // cookie of it is written and none of the four is dropped.
+      const fifth = launches.at(-1)!.relaunch(launchOf(brand, "fifth"));
+      expect((await fifth.context("/")).status).toBe(200);
+      expect(
+        await fifth.send(selectionPOST, `/api/faces/${brand.slug}/selection`, {
+          body: { object_id: brand.unit.id },
+          params: { slug: brand.slug },
+        }),
+      ).toMatchObject({ status: 409, body: { code: "launch_capacity" } });
+      for (const name of names) expect(fifth.cookies.has(name)).toBe(true);
+      expect(fifth.cookies.has(faceJournalCookieName(fifth.launchId))).toBe(
+        false,
+      );
+      expect(await fifth.status(held[1])).toMatchObject({ status: 404 });
+      // FIXTURE: the runtime now holds a record of the second launch's write
+      // whose outcome it cannot yet decide (the dispatch reached it, its
+      // answer was lost). The second launch's own status read learns only
+      // that (409 write_outcome_unknown): still held, read once, never sent
+      // by the wallet.
+      runtime.seedWriteRecord(actor, {
+        operationId: held[1],
+        operation: "case.evidence.submit",
+        caseId: brand.cases[0],
+        recordedAt: new Date(Date.now()).toISOString(),
+        unresolved: 1,
+      });
+      const second = fifth.relaunch(launches[1].launchId);
+      expect(await second.status(held[1])).toMatchObject({
+        status: 200,
+        body: { kind: "runtime", phase: "assertion_issued" },
+      });
+      expect(statusReads(brand, held[1])).toEqual([["wallet", 409]]);
+      expect(faceWrites(brand, held[1])).toBe(0);
+      // That record is now the runtime's to list for this actor, so its
+      // cookie is expendable: the fifth launch takes its place, exactly that
+      // one cookie goes, the other three stay, and nothing else changed.
+      const again = second.relaunch(fifth.launchId);
+      expect(
+        await again.send(selectionPOST, `/api/faces/${brand.slug}/selection`, {
+          body: { object_id: brand.unit.id },
+          params: { slug: brand.slug },
+        }),
+      ).toMatchObject({ status: 200 });
+      expect(again.cookies.has(names[1])).toBe(false);
+      for (const name of [names[0], names[2], names[3]]) {
+        expect(again.cookies.has(name)).toBe(true);
+      }
+      expect(again.cookies.has(faceJournalCookieName(again.launchId))).toBe(
+        true,
+      );
+      expect(faceWrites(brand, held[1])).toBe(0);
+      expect(runtime.writes.has(`warranty:${held[0]}`)).toBe(false);
+    },
+  );
+
   it.each(
     BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
   )(

@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import {
   FACE_LAUNCH_HEADER,
   FACE_LAUNCH_ID,
-  launchWouldDropUnresolved,
+  launchCapacity,
   readFaceJournal,
   writeFaceJournal,
   type FaceJournal,
@@ -49,6 +49,12 @@ export interface FaceRequestContext {
   /** This launch's journal scope (host-generated launch id, per frame). */
   scope: FaceJournalScope;
   journal: FaceJournal;
+  /**
+   * "read_only": a new launch the budget cannot give a cookie without
+   * dropping never-dropped evidence; it opens and reads, nothing of it is
+   * persisted, and journal-writing requests are refused launch_capacity.
+   */
+  capacity: "full" | "read_only";
   request: NextRequest;
 }
 
@@ -72,8 +78,16 @@ export async function resolveFaceRequest(
   {
     mutation = false,
     route,
+    journals = mutation,
   }: {
     mutation?: boolean;
+    /**
+     * Whether the route writes this launch's journal on success (default:
+     * every mutation). A read-only launch (`capacity`) is refused such a
+     * route here; a mutation that never journals (recovery-ack) or decides
+     * per request (assertions) passes `journals: false` and refuses itself.
+     */
+    journals?: boolean;
     /**
      * The calling route's own identity, for a branded host's journey check.
      * The assertion and journal routes name none and are recognised only at
@@ -129,13 +143,15 @@ export async function resolveFaceRequest(
     owner,
     scope,
     journal: readFaceJournal(request, scope),
+    capacity: launchCapacity(request, scope),
     request,
   };
-  // Never drop a launch cookie holding unresolved evidence of this wallet:
-  // a request whose journal write would have to (normally a new launch with
-  // the budget full of such launches) is refused here, before the journey
-  // gate and any route logic: nothing is read, minted, journaled or sent.
-  if (launchWouldDropUnresolved(request, scope)) {
+  // Never drop a launch cookie holding unresolved evidence of this wallet.
+  // A new launch the budget cannot hold runs read-only: it opens, lists and
+  // reads, and recovers and acknowledges; a request that would have to
+  // journal (a selection, a mint, a journal transition, a proposal) is
+  // refused here, before the journey gate and any route logic.
+  if (context.capacity === "read_only" && journals) {
     return faceContextError(context, "launch_capacity", 409);
   }
   // A branded host refuses a disabled journey's request here, before any

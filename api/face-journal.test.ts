@@ -23,6 +23,7 @@ jest.mock("@/api/face-artifact", () => {
 import {
   FACE_JOURNAL_COOKIE_PREFIX,
   faceJournalCookieName,
+  launchCapacity,
   launchWouldDropUnresolved,
   MAX_FACE_LAUNCHES,
   readFaceHistory,
@@ -37,6 +38,7 @@ import type { FaceJournalEntry } from "@/app/_domain/product-face-journal";
 import { GET as contextGET } from "@/app/api/faces/[slug]/context/route";
 import { POST as operationsPOST } from "@/app/api/faces/[slug]/operations/route";
 import { POST as assertionsPOST } from "@/app/api/faces/[slug]/assertions/route";
+import { GET as recoveryGET } from "@/app/api/faces/[slug]/recovery/route";
 
 const owner = { sidHash: "sid-1", walletId: "wallet-1" };
 const launchA = "launch-aaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -507,8 +509,11 @@ describe("transfer history (another launch of the same wallet)", () => {
 // A launch cookie can hold the wallet's only record that authority left it
 // and the outcome is unknown: an issued registration, a sent transfer step,
 // or an issued runtime write (Warranty & Service, transfer offer/cancel).
-// The four-launch budget never drops such a cookie; a launch that would need
-// that is refused (launch_capacity) before any work.
+// The four-launch budget never drops such a cookie (no unknown eviction); a
+// new launch that would need that is not given a cookie and runs read-only
+// (launchCapacity), and its journal-writing requests are refused
+// launch_capacity before any work. A runtime write becomes expendable only
+// once the exact runtime confirmed it holds the record (`discoverable`).
 describe("unresolved evidence is never dropped by the launch budget", () => {
   const earlierSession = { sidHash: "sid-1", walletId: "wallet-1" };
   const laterSession = { sidHash: "sid-2", walletId: "wallet-1" };
@@ -615,7 +620,7 @@ describe("unresolved evidence is never dropped by the launch budget", () => {
     ]);
   });
 
-  it("drops the oldest launch holding only a held runtime write before refusing: its outcome is the runtime's to tell, never this cookie's", () => {
+  it("never drops a launch holding a held runtime write the runtime has not confirmed: the fifth launch is read-only and nothing of it is kept", () => {
     const jar: Record<string, string> = {};
     const kinds: FaceJournalEntry[][] = [
       [runtimeWrite],
@@ -633,13 +638,80 @@ describe("unresolved evidence is never dropped by the launch budget", () => {
       jar[cookie.name] = cookie.value;
       return cookie.name;
     });
+    // Two launches hold signed evidence and two a runtime write whose only
+    // known correlation is its cookie: none is droppable.
+    expect(
+      launchWouldDropUnresolved(requestWith(jar), freshScope(), 9_999),
+    ).toBe(true);
+    expect(launchCapacity(requestWith(jar), freshScope(), 9_999)).toBe(
+      "read_only",
+    );
+    // The fifth launch's write persists nothing and drops nothing.
+    const response = NextResponse.json({});
+    expect(
+      writeFaceJournal(
+        response,
+        requestWith(jar),
+        freshScope(),
+        { entries: [], selections: [], mints: [] },
+        9_999,
+      ),
+    ).toEqual({ persisted: false });
+    expect(response.cookies.getAll()).toEqual([]);
+    for (const name of names) expect(jar[name]).toBeDefined();
+    // One of the four itself is not read-only: it already holds its cookie.
+    expect(
+      launchCapacity(
+        requestWith(jar),
+        { ...scope(launch(1)), owner: laterSession },
+        9_999,
+      ),
+    ).toBe("full");
+  });
+
+  it("drops the oldest launch holding only a discoverable runtime write before anything of this wallet's is refused: the exact runtime confirmed it holds that record", () => {
+    const jar: Record<string, string> = {};
+    const discoverable = { ...runtimeWrite, discoverable: true as const };
+    const kinds: FaceJournalEntry[][] = [
+      [discoverable],
+      [sentStep],
+      [entry],
+      [{ ...discoverable, operationId: "runtime-op-0009" }],
+    ];
+    const names = kinds.map((entries, index) => {
+      const cookie = sealedFor(
+        index % 2 ? laterSession : earlierSession,
+        launch(index),
+        entries,
+        1_000 + index,
+      );
+      jar[cookie.name] = cookie.value;
+      return cookie.name;
+    });
     // Two launches hold signed evidence (never dropped), two hold only a
-    // runtime write (dropped last, but droppable): a fifth launch is not
-    // refused, and the oldest runtime-write launch makes room.
+    // discoverable runtime write (dropped last, but droppable): a fifth
+    // launch gets its cookie, and the oldest discoverable launch makes room.
     expect(
       launchWouldDropUnresolved(requestWith(jar), freshScope(), 9_999),
     ).toBe(false);
+    expect(launchCapacity(requestWith(jar), freshScope(), 9_999)).toBe("full");
     expect(writeFresh(jar)).toEqual([names[0]]);
+    // A launch holding one discoverable and one unconfirmed runtime write
+    // still holds that write's only correlation: never dropped.
+    const mixed = sealedFor(
+      earlierSession,
+      launch(5),
+      [discoverable, { ...runtimeWrite, operationId: "runtime-op-0010" }],
+      900,
+    );
+    delete jar[names[0]];
+    jar[mixed.name] = mixed.value;
+    expect(
+      launchWouldDropUnresolved(requestWith(jar), freshScope(), 9_999),
+    ).toBe(false);
+    // The newer launch holding only a discoverable write goes, not the
+    // older one that still holds an unconfirmed write.
+    expect(writeFresh(jar)).toEqual([names[3]]);
   });
 
   it(`refuses, and never drops, when ${MAX_FACE_LAUNCHES} kept launches all hold signed evidence`, () => {
@@ -676,9 +748,26 @@ describe("unresolved evidence is never dropped by the launch budget", () => {
     expect(
       launchWouldDropUnresolved(requestWith(jar), freshScope(), 9_999),
     ).toBe(true);
-    // Defence in depth: the journal write of a fifth launch drops none of
-    // them (it would not be reached: the routes refuse first).
-    const cleared = writeFresh(jar);
+    // The fifth launch is read-only: its journal write persists nothing and
+    // drops nothing, not even the foreign and unreadable cookies (those go
+    // on the next write of a launch that is given a cookie).
+    expect(writeFresh(jar)).toEqual([]);
+    for (const name of names) expect(jar[name]).toBeDefined();
+    // Without the fifth launch's own need for room, a kept launch's write
+    // still drops the foreign and unreadable cookies, never the evidence.
+    const keptResponse = NextResponse.json({});
+    writeFaceJournal(
+      keptResponse,
+      requestWith(jar),
+      { ...scope(launch(1)), owner: laterSession },
+      { entries: [sentStep], selections: [], mints: [] },
+      9_999,
+    );
+    const cleared = keptResponse.cookies
+      .getAll()
+      .filter((cookie) => cookie.value === "")
+      .map((cookie) => cookie.name)
+      .sort();
     expect(cleared).toEqual([foreign.name, garbage].sort());
     for (const name of names) expect(cleared).not.toContain(name);
     // Another wallet's launch is not refused on this wallet's evidence.
@@ -742,7 +831,7 @@ describe("unresolved evidence is never dropped by the launch budget", () => {
   });
 });
 
-describe("a new launch refused launch_capacity (route level)", () => {
+describe("a new launch beyond the budget runs read-only (route level)", () => {
   const SLUG = "morrow-home";
   const keys = generateKeyPairSync("ed25519");
   const jwt = (claims: Record<string, unknown>) =>
@@ -868,13 +957,20 @@ describe("a new launch refused launch_capacity (route level)", () => {
       .filter((cookie) => cookie.name.startsWith(FACE_JOURNAL_COOKIE_PREFIX))
       .map((cookie) => cookie.name);
 
-  it("refuses the context, operation and assertion requests 409 before any work: nothing read, minted, journaled or dropped", async () => {
+  it("opens the context read-only: 200, no launch cookie written, none dropped", async () => {
+    const cookies = browserJar();
+    const response = await contextGET(
+      faceRequest(cookies, fresh, "/context?task=%2F"),
+      params(),
+    );
+    expect(response.status).toBe(200);
+    expect(launchCookiesSet(response)).toEqual([]);
+    expect(verifyFaceArtifact).toHaveBeenCalled();
+  });
+
+  it("refuses the operation and assertion requests 409 before any work: nothing read, minted, journaled or dropped", async () => {
     const cookies = browserJar();
     for (const response of [
-      await contextGET(
-        faceRequest(cookies, fresh, "/context?task=%2F"),
-        params(),
-      ),
       await operationsPOST(
         faceRequest(cookies, fresh, "/operations", {
           transition: "begin",
@@ -904,6 +1000,24 @@ describe("a new launch refused launch_capacity (route level)", () => {
     expect(verifyFaceArtifact).not.toHaveBeenCalled();
     expect(getObjectById).not.toHaveBeenCalled();
     expect(getObjectByIdPublic).not.toHaveBeenCalled();
+  });
+
+  it("still lists the runtime's recovery for the read-only launch (never launch_capacity), writing no launch cookie", async () => {
+    const cookies = browserJar();
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockRejectedValue(new Error("offline"));
+    try {
+      const response = await recoveryGET(
+        faceRequest(cookies, fresh, "/recovery"),
+        params(),
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ supported: false });
+      expect(launchCookiesSet(response)).toEqual([]);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("still serves one of the kept launches itself, dropping none of the others", async () => {

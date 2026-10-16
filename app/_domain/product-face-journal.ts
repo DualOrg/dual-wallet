@@ -83,6 +83,13 @@ export interface FaceJournalEntry {
    * read-only and zero-write; the entry keeps every other field as it was.
    */
   closure?: JournalClosure;
+  /**
+   * A runtime write whose record the exact runtime has confirmed it holds
+   * durably (an r20 write.status answer about it, or its recovery.list
+   * naming it for this actor): this cookie is no longer its only known
+   * correlation, so the launch holding it may make room (never before).
+   */
+  discoverable?: true;
 }
 
 export interface JournalClosure {
@@ -165,7 +172,8 @@ export function parseJournalEntry(
     !timestamp(entry.createdAt) ||
     !timestamp(entry.updatedAt) ||
     (entry.issuedAt !== undefined && !timestamp(entry.issuedAt)) ||
-    (entry.closure !== undefined && !closureOf(entry))
+    (entry.closure !== undefined && !closureOf(entry)) ||
+    (entry.discoverable !== undefined && entry.discoverable !== true)
   ) {
     return undefined;
   }
@@ -205,6 +213,7 @@ export function parseJournalEntry(
     updatedAt: entry.updatedAt,
     ...(entry.issuedAt ? { issuedAt: entry.issuedAt as number } : {}),
     ...(entry.closure ? { closure: closureOf(entry) as JournalClosure } : {}),
+    ...(entry.discoverable === true ? { discoverable: true as const } : {}),
   };
 }
 
@@ -385,6 +394,15 @@ export type JournalTransition =
       programmeId: string;
     }
   | { kind: "settle"; operationId: string; status: RegistrationStatus }
+  | {
+      /**
+       * The exact runtime confirmed it durably holds this runtime write's
+       * record (contract r20): the entry is marked discoverable, nothing else
+       * about it changes.
+       */
+      kind: "discover";
+      operationId: string;
+    }
   | {
       /**
        * Proposed r20: the runtime's own durable record says this runtime
@@ -602,6 +620,12 @@ export function applyJournalTransition(
         return { ok: false, error: "operation_conflict" };
       }
       return replace({ ...existing, phase: "settled", updatedAt: now });
+    case "discover":
+      if (existing.kind !== "runtime" || !authorityLeft(existing.phase)) {
+        return { ok: false, error: "operation_conflict" };
+      }
+      if (existing.discoverable) return { ok: true, entries, entry: existing };
+      return replace({ ...existing, discoverable: true, updatedAt: now });
     case "close":
       // Only on the runtime's own face_operation_not_found for exactly this
       // operation (the caller's proof); the history stays, nothing is deleted.

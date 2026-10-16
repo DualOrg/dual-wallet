@@ -365,12 +365,16 @@ export function useProductFaceHost({
           // The launch journal is full of steps whose authority already left
           // (kept, never evicted): the face cannot proceed in this launch, so
           // the host offers a new one. The face still hears the refusal.
+          // launch_capacity: the browser's launches holding such steps fill
+          // the budget (kept, never evicted), so this launch is read-only;
+          // a new launch would be the same, so none is offered.
           if (
             error instanceof ProductFaceError &&
-            error.code === "journal_full" &&
+            (error.code === "journal_full" ||
+              error.code === "launch_capacity") &&
             liveHost()
           ) {
-            setNotice({ kind: "launch_full", reason: "journal_full" });
+            setNotice({ kind: "launch_full", reason: error.code });
           }
           throw error;
         }

@@ -427,25 +427,38 @@ still holds such evidence (or a registration whose assertion was issued and
 that has settled since). Such a cookie is kept as it was: a later write never
 names it, so it is neither re-sealed nor given a new expiry (a transfer
 progress read of that step writes the reading launch's journal and keeps the
-record it reads). Within the four, a launch of this wallet holding signed
-evidence, (a) or (b), is never dropped: a request that would have to drop one
-to stay within four (normally a new launch while four such launches are kept)
-is refused `launch_capacity` (409) before anything is read, minted, journaled
-or sent, and the host shows a plain-language error instead of opening the
-frame. The journal write itself also never drops such a cookie, as defence in
-depth. A launch holding only (c), issued runtime writes, is kept ahead of
-every finished, unfinished or empty launch but may be dropped to stay within
-four. Rationale, recorded for Root's compatibility decision as a deviation
-from "no unknown eviction" on runtimes without durable discovery: the cookie
-is not the wallet's only record of a runtime write (the face sent it and the
-runtime holds it), its outcome is only ever learned from the runtime
-(`write.status`, `recovery.list`), never from this cookie, and keeping such
-launches undroppable would refuse every face for up to 24 hours after four
-of them, which "Restart the application" makes easy to reach. The policy is
-one rank check (`api/face-journal.ts`, `holdsUnresolved`) and reverts in one
-line if Root decides otherwise. Other launches go first, the oldest within a
+record it reads). Within the four, a launch of this wallet holding unresolved
+evidence, (a), (b) or (c), is never dropped (no unknown eviction: that cookie
+may be the wallet's only known correlation of the operation). A new launch
+that could be given a cookie only by dropping one runs **read-only** instead
+(`launchCapacity` in `api/face-journal.ts`): its context opens, the host's
+own reads (programme products, units, histories, an operation's status, the
+runtime's recovery listing and acknowledgement) answer, nothing of it is
+persisted (no launch cookie is written and no other launch is touched), and
+every request that would have to journal (a selection, a `begin` or other
+journal transition, an assertion, a transfer proposal or acceptance) is
+refused `launch_capacity` (409) before anything is read, minted, journaled or
+sent. The face hears the refusal; the host, in its own UI, says the launch is
+read-only and offers no restart (a new launch would be read-only too). Such a
+launch can do what it could not as soon as an earlier launch's evidence
+resolves, is confirmed as below, or expires. Face-driven runtime reads need
+an assertion and so a launch slot; they are not available read-only.
+
+A launch holding only (c) becomes expendable in exactly one way: when the
+exact runtime has confirmed that it holds the write's record for this actor,
+the entry is marked `discoverable` (journal transition `discover`) and that
+launch ranks below (a), (b) and unconfirmed (c), dropped only after every
+finished, unfinished and empty launch. The confirmation is the runtime's own
+(contract r20): a `write.status` answer about exactly that operation
+(`write_applied`, `write_refused`, or `409 write_outcome_unknown`, which the
+runtime gives only for an existing record of this actor), or its
+`recovery.list` page, echo-bound to this actor, naming the operation from the
+runtime that serves it. A planned or presumed recovery never marks anything;
+a runtime without r20 never confirms, so against it every (c) launch stays
+undroppable for its own 24 hours. Other launches go first, the oldest within a
 rank; any unreadable one, another wallet's and an earlier session's without
-such history are dropped on the next write. Each cookie still expires 24 hours after its own last write:
+such history are dropped on the next write. Each cookie still expires 24
+hours after its own last write:
 this is a bounded lifetime, not durable preservation. After that, recovering
 the outcome needs the runtime's own record
 (`docs/proposals/runtime-write-status-r20.md`).
@@ -471,8 +484,8 @@ host, in its own UI and only while that launch is live, shows a notice
 offering **Restart the application**: the same face launched again with a new
 launch ID and an empty journal, under the same wallet session. Nothing is
 re-sent for the earlier launch, and its journal is kept under the cookie rules
-above; a restart that would need to drop it is itself refused
-`launch_capacity`. On start-up the new launch reads back only an unsettled
+above; a restart that would need to drop it opens read-only instead
+(`launch_capacity` on its writes). On start-up the new launch reads back only an unsettled
 transfer step the wallet sent from another kept launch; a registration is
 recovered only when the face asks for its id; a Warranty & Service write or
 quote decision is not read back. Against today's runtimes, a full Passport

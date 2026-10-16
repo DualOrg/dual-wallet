@@ -592,3 +592,111 @@ describe("a runtime write settled from its verified outcome", () => {
     ).toEqual({ ok: false, error: "journal_full" });
   });
 });
+
+// The exact runtime confirmed it holds a runtime write's record (contract
+// r20: a write.status answer about it, or its recovery.list naming it): the
+// entry is marked discoverable, and only then may the launch budget drop its
+// cookie (api/face-journal.ts). Nothing else about the entry changes.
+describe("a runtime write the exact runtime confirmed it holds", () => {
+  const HASH = `sha256:${"a".repeat(64)}`;
+  const write = {
+    ...base,
+    operationId: "case-write-0002",
+    kind: "runtime" as const,
+    operation: "case.open",
+    caseId: "case-0002",
+  };
+  const issued = () =>
+    run([
+      { kind: "begin", entry: write },
+      { kind: "confirm", operationId: write.operationId, objectId: OBJECT },
+      {
+        kind: "issue",
+        operationId: write.operationId,
+        objectId: OBJECT,
+        caseId: write.caseId,
+        requestHash: HASH,
+      },
+    ]);
+
+  it("marks an issued runtime write discoverable, once, and keeps it held", () => {
+    const entries = issued();
+    expect(entries[0].discoverable).toBeUndefined();
+    const marked = applyJournalTransition(
+      entries,
+      { kind: "discover", operationId: write.operationId },
+      1_005,
+    );
+    expect(marked).toMatchObject({
+      ok: true,
+      entry: {
+        phase: "assertion_issued",
+        requestHash: HASH,
+        discoverable: true,
+        updatedAt: 1_005,
+      },
+    });
+    if (!marked.ok) return;
+    // Idempotent: the same entries, untouched.
+    const again = applyJournalTransition(
+      marked.entries,
+      { kind: "discover", operationId: write.operationId },
+      1_009,
+    );
+    expect(again).toEqual({
+      ok: true,
+      entries: marked.entries,
+      entry: marked.entry,
+    });
+    // Sealed and parsed back, the mark survives; anything but `true` does not.
+    expect(
+      parseJournalEntry(JSON.parse(JSON.stringify(marked.entries[0]))),
+    ).toMatchObject({ discoverable: true });
+    expect(
+      parseJournalEntry({ ...marked.entries[0], discoverable: false }),
+    ).toBeUndefined();
+    expect(
+      parseJournalEntry({ ...marked.entries[0], discoverable: "yes" }),
+    ).toBeUndefined();
+    // It still settles from its verified outcome, as before.
+    const settled = applyJournalTransition(
+      marked.entries,
+      { kind: "apply", operationId: write.operationId, requestHash: HASH },
+      1_010,
+    );
+    expect(settled).toMatchObject({
+      ok: true,
+      entry: { phase: "settled", discoverable: true },
+    });
+  });
+
+  it("marks nothing that is not a runtime write whose authority left", () => {
+    const confirming = run([{ kind: "begin", entry: write }]);
+    expect(
+      applyJournalTransition(
+        confirming,
+        { kind: "discover", operationId: write.operationId },
+        1_000,
+      ),
+    ).toEqual({ ok: false, error: "operation_conflict" });
+    const registration = run([
+      { kind: "begin", entry: { ...base, requestHash: HASH } },
+      { kind: "confirm", operationId: base.operationId, objectId: OBJECT },
+      { kind: "issue", operationId: base.operationId, objectId: OBJECT },
+    ]);
+    expect(
+      applyJournalTransition(
+        registration,
+        { kind: "discover", operationId: base.operationId },
+        1_000,
+      ),
+    ).toEqual({ ok: false, error: "operation_conflict" });
+    expect(
+      applyJournalTransition(
+        issued(),
+        { kind: "discover", operationId: "case-write-9999" },
+        1_000,
+      ),
+    ).toEqual({ ok: false, error: "unknown_operation" });
+  });
+});

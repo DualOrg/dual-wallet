@@ -60,11 +60,16 @@ export type ProductFaceHostNotice =
     }
   | {
       /**
-       * This launch's journal has no room left for another step: only a new
-       * launch (a fresh journal) can continue. Nothing was sent for it.
+       * Nothing was sent for the face's request. `journal_full`: this
+       * launch's journal has no room left for another step, and only a new
+       * launch (a fresh journal) can continue. `launch_capacity`: this
+       * browser keeps as many launches holding unresolved requests as it
+       * may, so this launch runs read-only (it opens and reads, nothing of it
+       * is kept, and a new launch would be the same) until an earlier
+       * launch's request resolves or its record expires.
        */
       kind: "launch_full";
-      reason: "journal_full";
+      reason: "journal_full" | "launch_capacity";
     }
   | {
       /**

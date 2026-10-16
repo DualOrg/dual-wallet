@@ -21,6 +21,7 @@ import {
   type RuntimeEcho,
 } from "@/api/face-runtime";
 import {
+  discoverRuntimeWrite,
   fail,
   mint,
   type FaceOperationFailure,
@@ -98,6 +99,12 @@ export interface RecoveryListing {
   /** Set when items remain beyond this page: the next page starts after them. */
   continuation: string | null;
   items: RecoveredItem[];
+  /**
+   * This launch's journal with every held runtime write the exact runtime
+   * listed marked discoverable (api/face-journal.ts); the same object as
+   * the context's when nothing was marked.
+   */
+  journal: FaceJournal;
 }
 
 /** One runtime the host lists from, and how mint routes an assertion to it. */
@@ -575,6 +582,7 @@ export async function listRecovery(
       unchecked: 0,
       continuation: null,
       items: [],
+      journal,
     };
   }
   // A runtime without r20 beside one with it, or one that could not be
@@ -587,6 +595,16 @@ export async function listRecovery(
       ? scan.items.map((item) => ({ runtime, item }))
       : [],
   );
+  // A held runtime write of this launch that the runtime serving it lists
+  // (an echo-bound page of this actor's records): the runtime holds it
+  // durably, so the entry is marked discoverable (contract r20) and its
+  // cookie is no longer the write's only known correlation.
+  let discovered = journal;
+  for (const { runtime, item } of listed) {
+    if (belongsTo(runtime, item)) {
+      discovered = discoverRuntimeWrite(discovered, item.operationId);
+    }
+  }
   // An id listed by two runtimes (a scan itself never repeats one) is
   // conflicting: nothing is resolved or acknowledged for it.
   const seen = new Map<string, number>();
@@ -707,6 +725,7 @@ export async function listRecovery(
           } satisfies Continuation)
         : null,
     items,
+    journal: discovered,
   };
 }
 

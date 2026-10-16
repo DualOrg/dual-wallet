@@ -295,19 +295,36 @@ function signedEvidence(entry: FaceJournalEntry) {
 }
 
 /**
- * (c): a runtime write whose assertion was issued. Kept ahead of anything
- * else, but it may be dropped to stay within the budget: its outcome is only
- * ever learned from the runtime's own record (write.status, recovery.list),
- * never from this cookie, so keeping it must never lock the wallet out of
- * every face (launch_capacity) on a runtime that cannot answer for it.
+ * (c): a runtime write whose assertion was issued and whose record the exact
+ * runtime has NOT confirmed it holds: this cookie is its only known
+ * correlation, so it is never dropped (no unknown eviction), on a legacy
+ * runtime for as long as the cookie lives.
  */
 function heldRuntimeWrite(entry: FaceJournalEntry) {
-  return entry.kind === "runtime" && entry.phase === "assertion_issued";
+  return (
+    entry.kind === "runtime" &&
+    entry.phase === "assertion_issued" &&
+    entry.discoverable !== true
+  );
 }
 
-/** Rank of a launch holding signed evidence: never dropped. */
+/**
+ * A runtime write the exact runtime confirmed it holds durably
+ * (`discoverable`, contract r20): recoverable from the runtime's own record
+ * for this actor, so its cookie is expendable. Kept ahead of finished and
+ * empty launches, dropped before nothing else.
+ */
+function discoverableRuntimeWrite(entry: FaceJournalEntry) {
+  return (
+    entry.kind === "runtime" &&
+    entry.phase === "assertion_issued" &&
+    entry.discoverable === true
+  );
+}
+
+/** Rank of a launch holding evidence that is never dropped. */
 const SIGNED_RANK = 3;
-/** Rank of a launch holding only held runtime writes: dropped last. */
+/** Rank of a launch holding only discoverable runtime writes: dropped last. */
 const RUNTIME_WRITE_RANK = 2;
 
 /** A sealed journal's entries, re-validated for the face it was sealed for. */
@@ -343,8 +360,8 @@ function holdsUnresolvedHistory(sealed: Partial<SealedJournal>, now: number) {
  */
 function retentionRank(sealed: Partial<SealedJournal>, now: number) {
   const entries = ownEntries(sealed, now);
-  if (entries.some(signedEvidence)) return SIGNED_RANK;
-  if (entries.some(heldRuntimeWrite)) return RUNTIME_WRITE_RANK;
+  if (entries.some(unresolvedEvidence)) return SIGNED_RANK;
+  if (entries.some(discoverableRuntimeWrite)) return RUNTIME_WRITE_RANK;
   return entries.some(
     (entry) => entry.phase !== "settled" && entry.phase !== "cancelled",
   )
@@ -403,9 +420,26 @@ function otherLaunches(
 const overBudget = (other: LaunchRetention, index: number) =>
   other.at < 0 || index >= MAX_FACE_LAUNCHES - 1;
 
-/** This wallet's launch holding signed evidence: never dropped. */
+/** This wallet's launch holding evidence that is never dropped. */
 const holdsUnresolved = (other: LaunchRetention) =>
   other.at >= 0 && other.rank === SIGNED_RANK;
+
+/**
+ * What a launch may do with its journal (contract: no unknown eviction, and
+ * read-only access when write capacity is blocked). A launch that already
+ * has a cookie keeps it. A new launch gets one only if the budget can make
+ * room without dropping a launch holding never-dropped evidence; otherwise
+ * it runs read-only: it opens and reads, nothing of it is persisted, and
+ * every request that would have to journal is refused launch_capacity.
+ */
+export function launchCapacity(
+  request: NextRequest,
+  scope: FaceJournalScope,
+  now = Date.now(),
+): "full" | "read_only" {
+  if (request.cookies.has(faceJournalCookieName(scope.launchId))) return "full";
+  return launchWouldDropUnresolved(request, scope, now) ? "read_only" : "full";
+}
 
 /**
  * Whether writing this launch's journal would need to drop another launch of
@@ -456,7 +490,12 @@ export function writeFaceJournal(
   scope: FaceJournalScope,
   journal: FaceJournal,
   now = Date.now(),
-) {
+): { persisted: boolean } {
+  // A read-only launch (launchCapacity): nothing of it is persisted and no
+  // other launch is touched, so no never-dropped evidence can be lost.
+  if (launchCapacity(request, scope, now) === "read_only") {
+    return { persisted: false };
+  }
   const selection = journal.selections.find((item) => item.slug === scope.slug);
   const sealed: SealedJournal = {
     v: 2,
@@ -507,6 +546,7 @@ export function writeFaceJournal(
   if (request.cookies.get(LEGACY_JOURNAL_COOKIE)) {
     response.cookies.set(LEGACY_JOURNAL_COOKIE, "", cookieOptions());
   }
+  return { persisted: true };
 }
 
 /** Clears every launch journal (and the earlier session-wide one). */

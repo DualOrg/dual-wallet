@@ -98,6 +98,21 @@ describe("a launch whose journal has no room left", () => {
     ).toEqual(launches);
   });
 
+  it("says a read-only launch cannot send and offers no restart (a new launch would be the same)", async () => {
+    notice = { kind: "launch_full", reason: "launch_capacity" };
+    renderHost();
+    await screen.findByTitle("Morrow Home Arc product application");
+    expect(
+      screen.getByText(
+        /keeping track of as many unfinished requests from the .+ application as it can, so nothing was sent/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Restart the application" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeTruthy();
+  });
+
   it("offers no restart for any other notice", async () => {
     notice = { kind: "transfer_step", reason: "outcome_unknown" };
     renderHost();

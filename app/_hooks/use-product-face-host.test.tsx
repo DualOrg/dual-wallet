@@ -747,6 +747,22 @@ describe("a launch whose journal has no room left", () => {
     expect(session.refresh).not.toHaveBeenCalled();
   });
 
+  it("tells of a read-only launch on launch_capacity, offering no new launch (it would be the same)", async () => {
+    writeFaceJournal.mockRejectedValue(
+      new ProductFaceError("launch_capacity", 409),
+    );
+    const { hook, handlers } = launch();
+    await act(async () => {
+      await expect(handlers.journal(begin)).rejects.toMatchObject({
+        code: "launch_capacity",
+      });
+    });
+    expect(hook.result.current.notice).toEqual({
+      kind: "launch_full",
+      reason: "launch_capacity",
+    });
+  });
+
   it("offers nothing for any other refusal", async () => {
     writeFaceJournal.mockRejectedValue(
       new ProductFaceError("operation_conflict", 409),

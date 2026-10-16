@@ -181,7 +181,7 @@ function ProductFaceFrame({
               })
             )}
           </Alert>
-          {notice.kind === "launch_full" ? (
+          {notice.kind === "launch_full" && notice.reason === "journal_full" ? (
             <Button onClick={onRelaunch}>{t("notices.relaunch")}</Button>
           ) : null}
           {notice.kind === "recovery" && notice.moreToCheck ? (

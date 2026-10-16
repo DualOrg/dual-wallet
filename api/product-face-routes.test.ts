@@ -2300,17 +2300,31 @@ describe("launch retention during ordinary result-page navigation (one session)"
     }
   });
 
+  // A begin from the launch the browser currently has open.
+  const beginFrom = (browser: Browser, operationId: string) =>
+    operations(browser, {
+      transition: "begin",
+      kind: "registration",
+      operation: "registration.submit",
+      operation_id: operationId,
+      object_id: UNIT,
+      record_id: "rec-0001",
+      request_hash: REQUEST_HASH,
+    });
+
   // Four launches each holding an unresolved registration fill the budget.
   // However their last writes are ordered (one millisecond or apart), none
-  // is ever dropped: a fifth launch is refused launch_capacity before any
-  // work, and every evidence cookie stays exactly as it was.
+  // is ever dropped: a fifth launch opens read-only (its context, bootstrap
+  // reads and status read answer; nothing of it is kept), its writes are
+  // refused launch_capacity before any work, and every evidence cookie
+  // stays exactly as it was.
   it.each([
     ["all in one millisecond", [0, 0, 0, 0]],
     ["the two oldest in one millisecond", [0, 0, 5, 10]],
     ["the two newest in one millisecond", [0, 5, 10, 10]],
     ["each in its own millisecond", [0, 5, 10, 15]],
   ])(
-    "refuses a fifth launch when the four last writes are %s, and drops no evidence",
+    "opens a fifth launch read-only when the four last writes are %s, refuses its writes and drops no evidence",
     async (_label, offsets) => {
       const ids = [
         "register-op-0601",
@@ -2347,10 +2361,20 @@ describe("launch retention during ordinary result-page navigation (one session)"
           smartObject(UNIT, HOLDER, { state: "Transfer pending" }),
         );
         const sealed = evidence.map((name) => browser.cookies.get(name));
-        // An empty mount: it would need to drop one: refused, nothing kept.
-        await expect(
-          mountResultPage(browser, launchId(400), ids[3]),
-        ).rejects.toMatchObject({ code: "launch_capacity", status: 409 });
+        // An empty mount: it would need to drop one to be kept, so it is
+        // read-only: it opens and reads the registration, keeps nothing.
+        expect(
+          await mountResultPage(browser, launchId(400), ids[3]),
+        ).toMatchObject({ objectId: UNIT });
+        expect(launchCookies(browser).sort()).toEqual([...evidence].sort());
+        expect(evidence.map((name) => browser.cookies.get(name))).toEqual(
+          sealed,
+        );
+        // Its write is refused before any work; still nothing kept or lost.
+        expect(await beginFrom(browser, "register-op-0699")).toMatchObject({
+          status: 409,
+          body: { code: "launch_capacity" },
+        });
         expect(launchCookies(browser).sort()).toEqual([...evidence].sort());
         expect(evidence.map((name) => browser.cookies.get(name))).toEqual(
           sealed,
@@ -2368,7 +2392,7 @@ describe("launch retention during ordinary result-page navigation (one session)"
     },
   );
 
-  it("stays bounded without dropping evidence: a launch beyond four unresolved ones is refused, and another account still clears them", async () => {
+  it("stays bounded without dropping evidence: a launch beyond four unresolved ones is read-only, and another account still clears them", async () => {
     const ids = [
       "register-op-0591",
       "register-op-0592",
@@ -2400,11 +2424,15 @@ describe("launch retention during ordinary result-page navigation (one session)"
         smartObject(UNIT, HOLDER, { state: "Transfer pending" }),
       );
       // Empty mounts: four unresolved launches already fill the budget, so
-      // each is refused launch_capacity and every evidence cookie is kept.
+      // each opens read-only (nothing of it kept), its write is refused
+      // launch_capacity, and every evidence cookie is kept.
       for (const mount of [200, 201]) {
-        await expect(
-          mountResultPage(browser, launchId(mount), ids[3]),
-        ).rejects.toMatchObject({ code: "launch_capacity" });
+        expect(
+          await mountResultPage(browser, launchId(mount), ids[3]),
+        ).toMatchObject({ objectId: UNIT });
+        expect(
+          await beginFrom(browser, `register-op-06${mount}`),
+        ).toMatchObject({ status: 409, body: { code: "launch_capacity" } });
         expect(launchCookies(browser).sort()).toEqual([...evidence].sort());
       }
       // An existing launch of the four still reads its own registration.
