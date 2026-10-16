@@ -152,8 +152,11 @@ export type RegistrationRuntimeStatus =
    * holds no journal for it (it records one before any dispatch).
    */
   | { outcome: "not_found" }
-  /** The runtime's own journal for this operation answered this status. */
-  | { outcome: "answered"; status: string }
+  /**
+   * The runtime's own journal for this operation answered this status; the
+   * answer itself, for the additive r20 proof fields a caller may verify.
+   */
+  | { outcome: "answered"; status: string; body: Record<string, unknown> }
   /** Anything else: unreachable, refused, unreadable. Proves nothing. */
   | { outcome: "unknown" };
 
@@ -208,7 +211,7 @@ export async function readRegistrationStatus(
     typeof body.status === "string" &&
     /^[a-z][a-z0-9_]{0,63}$/.test(body.status)
   ) {
-    return { outcome: "answered", status: body.status };
+    return { outcome: "answered", status: body.status, body };
   }
   return { outcome: "unknown" };
 }
@@ -419,6 +422,26 @@ export function writeStatusRequest(
   };
 }
 
+export type WriteReceipt =
+  | { kind: "case_event"; caseId: string; eventId: string }
+  | { kind: "transfer_offer"; offerId: string; state: string };
+
+/**
+ * A Dual-backed write's minimal bound proof (contract §1): the historical
+ * action the server verified afresh through its Dual action-log resolver,
+ * bound by the server to the original operation and request. The signer is
+ * not assumed to be the holder, nor the object the product target.
+ */
+export interface DualActionProof {
+  actionId: string;
+  objectId: string;
+  signer: string;
+  expectedPayloadHash: string;
+  observedPayloadHash: string;
+  boundTo: { operationId: string; requestHash: string };
+  verifiedAt: string;
+}
+
 /** The runtime's durable record of one write, exactly as it answered it. */
 export interface RecordedWrite extends RuntimeEcho {
   operation: string;
@@ -427,15 +450,17 @@ export interface RecordedWrite extends RuntimeEcho {
   requestHash: string;
   /** The face artifact the original write's assertion carried. */
   recordedArtifact: RuntimeArtifact;
-  receipt:
-    | { kind: "case_event"; caseId: string; eventId: string }
-    | { kind: "transfer_offer"; offerId: string; state: string };
+  /** The committed effect's identifiers; null on a refused write. */
+  receipt: WriteReceipt | null;
   /**
-   * backed:false only (every runtime write today is server-only). "absent"
-   * (the target object was deleted since) is returned and the caller HOLDS
-   * it: it is not the required readback, and it is a decision for Root.
+   * The server's binding of the write's actual effect to its immutable
+   * original record (contract §1), in one of two branches. For a server-only
+   * effect "absent" (the target object was deleted since) is returned and the
+   * caller HOLDS it: it is not the required readback, a decision for Root.
    */
-  dual: { targetReadback: "verified" | "absent" };
+  dual:
+    | { backed: false; targetReadback: "verified" | "absent" }
+    | { backed: true; intendedDualWrites: number; proof: DualActionProof };
   outcomeProof: Record<string, unknown>;
   outcomeHash: string;
   acknowledged: boolean;
@@ -450,13 +475,19 @@ export type WriteStatusResult =
    */
   | { outcome: "applied"; record: RecordedWrite }
   /**
-   * Anything else: not found, refused, unknown, another caller, a runtime
-   * without r20, an incompatible artifact, malformed, oversized, unreachable
-   * or timed out. Proves nothing; the entry stays held, nothing is re-sent.
+   * 200 write_refused under contract r20: a definitive zero-write refusal,
+   * the same record with no receipt. Held by the caller (it frees no slot)
+   * and shown as refused only once the caller checked its binding.
+   */
+  | { outcome: "refused"; record: RecordedWrite }
+  /**
+   * Anything else: not found, unknown, another caller, a runtime without
+   * r20, an incompatible artifact, malformed, oversized, unreachable or
+   * timed out. Proves nothing; the entry stays held, nothing is re-sent.
    */
   | { outcome: "held" };
 
-function receiptOf(value: unknown): RecordedWrite["receipt"] | undefined {
+function receiptOf(value: unknown): WriteReceipt | undefined {
   if (!record(value)) return undefined;
   if (
     value.kind === "case_event" &&
@@ -515,25 +546,103 @@ function runtimeOutcomeOf(
     operation: string;
     objectId: string;
     caseId: string | null;
+    status: "write_applied" | "write_refused";
+    dual: RecordedWrite["dual"];
   },
 ) {
   const verified = verifiedOutcomeProof(body, {
     kind: "runtime",
     operationId: recorded.operationId,
-    status: "write_applied",
+    status: recorded.status,
   });
   if (!verified) return undefined;
   const { proof } = verified;
+  // A Dual-backed write's proof also names the proved effect, so the
+  // acknowledgement binds it; a server-only write's never does.
+  const fields = recorded.dual.backed
+    ? [...RUNTIME_PROOF_FIELDS.split(","), "dual"].sort().join(",")
+    : RUNTIME_PROOF_FIELDS;
   if (
-    Object.keys(proof).sort().join(",") !== RUNTIME_PROOF_FIELDS ||
+    Object.keys(proof).sort().join(",") !== fields ||
     proof.operation !== recorded.operation ||
     proof.object_id !== recorded.objectId ||
     proof.case_id !== recorded.caseId ||
-    !sameJson(proof.receipt, body.receipt)
+    !sameJson(proof.receipt, body.receipt) ||
+    (recorded.dual.backed &&
+      !sameJson(proof.dual, {
+        action_id: recorded.dual.proof.actionId,
+        object_id: recorded.dual.proof.objectId,
+        observed_payload_hash: recorded.dual.proof.observedPayloadHash,
+      }))
   ) {
     return undefined;
   }
   return verified;
+}
+
+/** How far the runtime's verified_at may lie from this host's clock. */
+const PROOF_FRESHNESS_MS = 10 * 60 * 1000;
+
+/**
+ * Contract §1 dual block, either branch, or undefined. A server-only effect
+ * needs zero intended Dual writes, a plain reason and the fresh target
+ * readback; a Dual action needs the server's minimal bound proof: a fresh
+ * historical action-log verification whose expected and observed payload
+ * hashes match, bound to this very operation and request.
+ */
+function dualOf(
+  dual: Record<string, unknown>,
+  body: Record<string, unknown>,
+  now: number,
+): RecordedWrite["dual"] | undefined {
+  if (dual.backed === false) {
+    return dual.intended_dual_writes === 0 &&
+      plainCode(dual.reason) &&
+      (dual.target_readback === "verified" || dual.target_readback === "absent")
+      ? { backed: false, targetReadback: dual.target_readback }
+      : undefined;
+  }
+  if (dual.backed !== true) return undefined;
+  const proof = dual.proof;
+  // One proof names one action: exactly one intended Dual write is proved
+  // here. More than one is held as unsupported (never inferred proved) until
+  // the contract carries one proof per effect (contract §5).
+  if (
+    dual.intended_dual_writes !== 1 ||
+    !record(proof) ||
+    proof.resolver !== "dual_action_log" ||
+    typeof proof.action_id !== "string" ||
+    !RECEIPT_ID.test(proof.action_id) ||
+    !isObjectId(proof.object_id) ||
+    !text(proof.signer) ||
+    !isRequestHash(proof.expected_payload_hash) ||
+    !isRequestHash(proof.observed_payload_hash) ||
+    proof.expected_payload_hash !== proof.observed_payload_hash ||
+    proof.payload_match !== true ||
+    !record(proof.bound_to) ||
+    proof.bound_to.operation_id !== body.operation_id ||
+    proof.bound_to.request_hash !== body.request_hash ||
+    !timestamp(proof.verified_at) ||
+    Math.abs(Date.parse(proof.verified_at) - now) > PROOF_FRESHNESS_MS
+  ) {
+    return undefined;
+  }
+  return {
+    backed: true,
+    intendedDualWrites: 1,
+    proof: {
+      actionId: proof.action_id,
+      objectId: proof.object_id,
+      signer: proof.signer,
+      expectedPayloadHash: proof.expected_payload_hash,
+      observedPayloadHash: proof.observed_payload_hash,
+      boundTo: {
+        operationId: body.operation_id as string,
+        requestHash: body.request_hash as string,
+      },
+      verifiedAt: proof.verified_at,
+    },
+  };
 }
 
 /**
@@ -558,9 +667,13 @@ export async function readWriteStatus(
   const body = jsonRecord(response.body);
   if (!body) return held;
   const echo = echoOf(body);
+  const status =
+    body.status === "write_applied" || body.status === "write_refused"
+      ? body.status
+      : undefined;
   if (
     body.ok !== true ||
-    body.status !== "write_applied" ||
+    !status ||
     body.contract !== "r20" ||
     body.readback !== "verified" ||
     body.artifact_compatible !== true ||
@@ -571,24 +684,25 @@ export async function readWriteStatus(
   ) {
     return held;
   }
-  const { target, dual } = body;
+  const { target } = body;
   const caseId = optionalCaseId(target.case_id);
   const recordedArtifact = artifactOf(body.recorded_artifact);
-  const receipt = receiptOf(body.receipt);
+  // A refused write has no receipt; an applied one exactly one.
+  const receipt =
+    status === "write_refused"
+      ? body.receipt === null
+        ? null
+        : undefined
+      : receiptOf(body.receipt);
+  const dual = dualOf(body.dual, body, Date.now());
   if (
     !text(body.operation, 64) ||
     !isObjectId(target.object_id) ||
     caseId === undefined ||
     !isRequestHash(body.request_hash) ||
     !recordedArtifact ||
-    !receipt ||
-    // A server-only effect, with the required FRESH Dual readback of the
-    // original target. "absent" is reported, never accepted as that proof.
-    dual.backed !== false ||
-    dual.intended_dual_writes !== 0 ||
-    !plainCode(dual.reason) ||
-    (dual.target_readback !== "verified" &&
-      dual.target_readback !== "absent") ||
+    receipt === undefined ||
+    !dual ||
     typeof body.acknowledged !== "boolean"
   ) {
     return held;
@@ -598,10 +712,12 @@ export async function readWriteStatus(
     operation: body.operation,
     objectId: target.object_id,
     caseId,
+    status,
+    dual,
   });
   if (!outcome) return held;
   return {
-    outcome: "applied",
+    outcome: status === "write_applied" ? "applied" : "refused",
     record: {
       ...echo,
       operation: body.operation,
@@ -610,7 +726,7 @@ export async function readWriteStatus(
       requestHash: body.request_hash,
       recordedArtifact,
       receipt,
-      dual: { targetReadback: dual.target_readback },
+      dual,
       outcomeProof: outcome.proof,
       outcomeHash: outcome.hash,
       acknowledged: body.acknowledged,
@@ -1024,6 +1140,43 @@ export async function transferRuntimeCall(
   ) {
     return { ok: false, code: "runtime_refused" };
   }
+  return runtimeOperationCall(binding, request, assertion);
+}
+
+/**
+ * A host-only read-only reconcile the recovery listing resolves a recovered
+ * settle or transfer step with (proposed r20 §2): never a reservation,
+ * verification or execution. Same fixed endpoint and bounds as above.
+ */
+export async function hostRuntimeCall(
+  binding: Pick<ProductFaceBinding, "origin" | "applicationId">,
+  request: {
+    operation: "registration.settle.status" | "transfer.status";
+    operationId: string;
+    target: AssertionTarget;
+    input: Record<string, unknown>;
+  },
+  assertion: string,
+): Promise<TransferRuntimeResult> {
+  if (
+    request.operation !== "registration.settle.status" &&
+    request.operation !== "transfer.status"
+  ) {
+    return { ok: false, code: "runtime_refused" };
+  }
+  return runtimeOperationCall(binding, request, assertion);
+}
+
+async function runtimeOperationCall(
+  binding: Pick<ProductFaceBinding, "origin" | "applicationId">,
+  request: {
+    operation: string;
+    operationId: string;
+    target: AssertionTarget;
+    input: Record<string, unknown>;
+  },
+  assertion: string,
+): Promise<TransferRuntimeResult> {
   let response: Awaited<ReturnType<typeof fetchBounded>>;
   try {
     response = await fetchBounded(

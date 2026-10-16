@@ -198,7 +198,7 @@ describe("readWriteStatus (proposed r20)", () => {
         requestHash: REQUEST_HASH,
         recordedArtifact: RECORDED_ARTIFACT,
         receipt: { kind: "case_event", caseId: CASE_ID, eventId: "evt-1" },
-        dual: { targetReadback: "verified" },
+        dual: { backed: false, targetReadback: "verified" },
         outcomeProof: WRITE_PROOF,
         outcomeHash: outcomeHashOf(WRITE_PROOF),
         acknowledged: false,
@@ -256,7 +256,10 @@ describe("readWriteStatus (proposed r20)", () => {
     const result = await writeStatusOf(200, body);
     expect(result.outcome).toBe("applied");
     if (result.outcome !== "applied") return;
-    expect(result.record.dual).toEqual({ targetReadback: "absent" });
+    expect(result.record.dual).toEqual({
+      backed: false,
+      targetReadback: "absent",
+    });
   });
 
   it.each<[string, (body: Json) => Json]>([
@@ -286,11 +289,11 @@ describe("readWriteStatus (proposed r20)", () => {
       }),
     ],
     [
-      "dual.backed true",
+      "dual.backed true without a proof",
       (body) => ({ ...body, dual: { ...(body.dual as Json), backed: true } }),
     ],
     [
-      "dual.intended_dual_writes 1",
+      "dual.intended_dual_writes 1 on a server-only effect",
       (body) => ({
         ...body,
         dual: { ...(body.dual as Json), intended_dual_writes: 1 },
@@ -1009,5 +1012,258 @@ describe("outcomeHashOf and verifiedOutcomeProof", () => {
     ],
   ])("is undefined for %s", (_label, body) => {
     expect(verifiedOutcomeProof(body, expected)).toBeUndefined();
+  });
+});
+
+// --- write.status: a Dual-backed effect and a refused write ------------------
+
+describe("readWriteStatus: a Dual-backed write's minimal bound proof (proposed r20)", () => {
+  const ACTION_OBJECT = "d".repeat(24);
+  const PAYLOAD_HASH = `sha256:${"e".repeat(64)}`;
+  /** Synthetic: the signer is not the holder, the object not the target. */
+  function dualProof(): Json {
+    return {
+      resolver: "dual_action_log",
+      action_id: "dual-action-77",
+      object_id: ACTION_OBJECT,
+      signer: "0x00000000000000000000000000000000000000f1",
+      expected_payload_hash: PAYLOAD_HASH,
+      observed_payload_hash: PAYLOAD_HASH,
+      payload_match: true,
+      bound_to: { operation_id: OPERATION_ID, request_hash: REQUEST_HASH },
+      verified_at: new Date(Date.now()).toISOString(),
+    };
+  }
+  function writeBacked(proof: Json = dualProof()): Json {
+    const outcome_proof = {
+      ...WRITE_PROOF,
+      dual: {
+        action_id: proof.action_id,
+        object_id: proof.object_id,
+        observed_payload_hash: proof.observed_payload_hash,
+      },
+    };
+    return {
+      ...writeApplied(),
+      dual: { backed: true, intended_dual_writes: 1, proof },
+      outcome_proof,
+      outcome_hash: outcomeHashOf(outcome_proof),
+    };
+  }
+
+  it("parses one intended Dual action proved by its one historical action", async () => {
+    const proof = dualProof();
+    const result = await writeStatusOf(200, writeBacked(proof));
+    expect(result.outcome).toBe("applied");
+    if (result.outcome !== "applied") return;
+    expect(result.record.dual).toEqual({
+      backed: true,
+      intendedDualWrites: 1,
+      proof: {
+        actionId: "dual-action-77",
+        objectId: ACTION_OBJECT,
+        signer: "0x00000000000000000000000000000000000000f1",
+        expectedPayloadHash: PAYLOAD_HASH,
+        observedPayloadHash: PAYLOAD_HASH,
+        boundTo: { operationId: OPERATION_ID, requestHash: REQUEST_HASH },
+        verifiedAt: proof.verified_at,
+      },
+    });
+    expect((result.record.outcomeProof.dual as Json).action_id).toBe(
+      "dual-action-77",
+    );
+  });
+
+  it.each<[string, (body: Json) => Json]>([
+    [
+      "two intended Dual writes with one proof (unsupported, never inferred)",
+      (body) => ({
+        ...body,
+        dual: { ...(body.dual as Json), intended_dual_writes: 2 },
+      }),
+    ],
+    [
+      "zero intended Dual writes but backed",
+      (body) => ({
+        ...body,
+        dual: { ...(body.dual as Json), intended_dual_writes: 0 },
+      }),
+    ],
+    [
+      "expected and observed payload hashes differ",
+      (body) => ({
+        ...body,
+        dual: {
+          ...(body.dual as Json),
+          proof: {
+            ...((body.dual as Json).proof as Json),
+            observed_payload_hash: `sha256:${"f".repeat(64)}`,
+          },
+        },
+      }),
+    ],
+    [
+      "payload_match false",
+      (body) => ({
+        ...body,
+        dual: {
+          ...(body.dual as Json),
+          proof: {
+            ...((body.dual as Json).proof as Json),
+            payload_match: false,
+          },
+        },
+      }),
+    ],
+    [
+      "bound to another operation",
+      (body) => ({
+        ...body,
+        dual: {
+          ...(body.dual as Json),
+          proof: {
+            ...((body.dual as Json).proof as Json),
+            bound_to: {
+              operation_id: "case-write-zz-9999",
+              request_hash: REQUEST_HASH,
+            },
+          },
+        },
+      }),
+    ],
+    [
+      "bound to another request",
+      (body) => ({
+        ...body,
+        dual: {
+          ...(body.dual as Json),
+          proof: {
+            ...((body.dual as Json).proof as Json),
+            bound_to: {
+              operation_id: OPERATION_ID,
+              request_hash: `sha256:${"1".repeat(64)}`,
+            },
+          },
+        },
+      }),
+    ],
+    [
+      "a stale verification (eleven minutes ago)",
+      (body) => ({
+        ...body,
+        dual: {
+          ...(body.dual as Json),
+          proof: {
+            ...((body.dual as Json).proof as Json),
+            verified_at: new Date(Date.now() - 11 * 60_000).toISOString(),
+          },
+        },
+      }),
+    ],
+    [
+      "another resolver",
+      (body) => ({
+        ...body,
+        dual: {
+          ...(body.dual as Json),
+          proof: {
+            ...((body.dual as Json).proof as Json),
+            resolver: "application_db",
+          },
+        },
+      }),
+    ],
+    [
+      "no action id",
+      (body) => ({
+        ...body,
+        dual: {
+          ...(body.dual as Json),
+          proof: without((body.dual as Json).proof as Json, "action_id"),
+        },
+      }),
+    ],
+    [
+      "an outcome_proof without the proved effect",
+      (body) => {
+        const proof = without(body.outcome_proof as Json, "dual");
+        return {
+          ...body,
+          outcome_proof: proof,
+          outcome_hash: outcomeHashOf(proof),
+        };
+      },
+    ],
+    [
+      "an outcome_proof naming another action",
+      (body) => {
+        const proof = {
+          ...(body.outcome_proof as Json),
+          dual: {
+            ...((body.outcome_proof as Json).dual as Json),
+            action_id: "dual-action-78",
+          },
+        };
+        return {
+          ...body,
+          outcome_proof: proof,
+          outcome_hash: outcomeHashOf(proof),
+        };
+      },
+    ],
+  ])("holds a Dual-backed answer with %s", async (_label, change) => {
+    expect(await writeStatusOf(200, change(writeBacked()))).toEqual({
+      outcome: "held",
+    });
+  });
+});
+
+describe("readWriteStatus: a refused write (proposed r20)", () => {
+  function writeRefused(): Json {
+    const outcome_proof = {
+      ...WRITE_PROOF,
+      receipt: null,
+      status: "write_refused",
+    };
+    return {
+      ...writeApplied(),
+      status: "write_refused",
+      receipt: null,
+      outcome_proof,
+      outcome_hash: outcomeHashOf(outcome_proof),
+    };
+  }
+
+  it("parses the refusal as its own outcome with no receipt", async () => {
+    const result = await writeStatusOf(200, writeRefused());
+    expect(result.outcome).toBe("refused");
+    if (result.outcome !== "refused") return;
+    expect(result.record.receipt).toBeNull();
+    expect(result.record.operationId).toBe(OPERATION_ID);
+    expect(result.record.outcomeProof.status).toBe("write_refused");
+  });
+
+  it.each<[string, (body: Json) => Json]>([
+    ["a receipt on a refusal", (body) => ({ ...body, receipt: RECEIPT })],
+    [
+      "a proof that says applied",
+      (body) => {
+        const proof = {
+          ...(body.outcome_proof as Json),
+          status: "write_applied",
+        };
+        return {
+          ...body,
+          outcome_proof: proof,
+          outcome_hash: outcomeHashOf(proof),
+        };
+      },
+    ],
+    ["no contract", (body) => without(body, "contract")],
+    ["a business write counted", (body) => ({ ...body, writesExecuted: 1 })],
+  ])("holds a refusal with %s", async (_label, change) => {
+    expect(await writeStatusOf(200, change(writeRefused()))).toEqual({
+      outcome: "held",
+    });
   });
 });

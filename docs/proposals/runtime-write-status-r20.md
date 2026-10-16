@@ -575,10 +575,26 @@ outcome_hash}` where `original_operation` is the record's operation
   executed. The wallet's cookie-based retained listing stays as a second
   source for runtimes without r20.
 
+## 4a. Explicit limitations of the wallet consumer
+
+- One intended Dual action per write: the wallet accepts `backed: true` only
+  with `intended_dual_writes: 1` and the one proof naming that action. A
+  record intending more than one Dual write is HELD as unsupported; the
+  wallet never infers the remaining effects proved. Supporting multi-effect
+  writes needs the contract to carry one proof per intended effect (a
+  decision for Root, §5).
+- Resolution per listing is bounded (25 items): completed items first, then
+  unresolved, then refused, each class in listing order from a start that
+  rotates per listing, so a held or unknown prefix cannot starve a later
+  completion and a larger queue drains across launches. Scan completeness is
+  unaffected by the bound.
+
 ## 5. Decisions for Root
 
 - Whether a verified `write_refused` may ever free a wallet slot (the wallet
   keeps it held).
+- Whether a write intending more than one Dual action should be provable (one
+  proof per effect); until then such a record is held (§4a).
 - Whether a proved server-only write whose target object has since been
   deleted from Dual (`target_readback: "absent"`) may settle; the wallet holds
   it until decided.

@@ -648,10 +648,12 @@ async function verifyRuntimeWrite(
   if (result.outcome !== "applied") return undefined;
   const recorded = result.record;
   const receiptMatches =
-    recorded.receipt.kind === "case_event"
-      ? isLinkedCaseOperation(operation) &&
-        recorded.receipt.caseId === entry.caseId
-      : !isLinkedCaseOperation(operation);
+    recorded.receipt === null
+      ? false
+      : recorded.receipt.kind === "case_event"
+        ? isLinkedCaseOperation(operation) &&
+          recorded.receipt.caseId === entry.caseId
+        : !isLinkedCaseOperation(operation);
   if (
     recorded.operationId !== entry.operationId ||
     recorded.operation !== entry.operation ||
@@ -668,7 +670,8 @@ async function verifyRuntimeWrite(
     // The §0 echo names the request; a server-only effect is proved only
     // with its fresh Dual target readback ("absent" is held, contract §5).
     recorded.operationId !== entry.operationId ||
-    recorded.dual.targetReadback !== "verified" ||
+    (recorded.dual.backed === false &&
+      recorded.dual.targetReadback !== "verified") ||
     !receiptMatches
   ) {
     return undefined;

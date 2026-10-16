@@ -21,6 +21,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       supported: listing.supported,
       complete: listing.complete,
       withheld: listing.withheld,
+      unchecked: listing.unchecked,
       items: listing.items.map((item) => ({
         operation_id: item.operationId,
         kind: item.kind,
