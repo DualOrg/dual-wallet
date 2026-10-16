@@ -583,11 +583,17 @@ outcome_hash}` where `original_operation` is the record's operation
   wallet never infers the remaining effects proved. Supporting multi-effect
   writes needs the contract to carry one proof per intended effect (a
   decision for Root, §5).
-- Resolution per listing is bounded (25 items): completed items first, then
-  unresolved, then refused, each class in listing order from a start that
-  rotates per listing, so a held or unknown prefix cannot starve a later
-  completion and a larger queue drains across launches. Scan completeness is
-  unaffected by the bound.
+- Resolution per listing page is bounded (25 items) in the contract's stable
+  (`recorded_at`, `operation_id`) order. A page that leaves items unresolved
+  returns a sealed, host-local continuation naming the last key it resolved
+  (bound to the session, wallet, face, programme and launch, valid ten
+  minutes); the next page of the same launch resolves the items after that
+  key. The host follows at most eight pages per launch; a page it cannot read
+  or a follow that stops short makes the whole check incomplete, so nothing is
+  acknowledged. A held or unknown prefix therefore never starves a later
+  completion, every item is reached in a bounded number of pages, and no
+  item is selected at random or by class. Scan completeness is unaffected by
+  the bound; nothing of this touches the runtime wire or any store.
 
 ## 5. Decisions for Root
 
