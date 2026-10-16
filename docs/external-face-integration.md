@@ -436,11 +436,13 @@ confirmed or minted. The face hears `temporarily_unavailable`; the host, in
 its own UI and only while that launch is live, shows a notice offering
 **Restart the application**: the same face launched again with a new launch ID
 and an empty journal, under the same wallet session. Nothing is re-sent for the
-earlier launch: its journal stays sealed under the cookie rules above, and the
-new launch's start-up reconciliation reads its registration and transfer steps
-back as for any relaunch. A full Passport registration, a Warranty & Service
-case with its writes and quote decisions, and a transfer therefore take more
-than one launch.
+earlier launch. Its journal stays sealed only under the cookie rules above
+(it may be dropped). On start-up the new launch reads back only an unsettled
+transfer step the wallet sent from another retained launch; a registration is
+recovered only when the face asks for its id. A Warranty & Service write or
+quote decision is not read back. A full Passport registration, a Warranty &
+Service case with its writes and quote decisions, and a transfer therefore
+take more than one launch.
 
 It holds IDs, hashes and phases only: operation ID, kind (`registration`,
 `runtime`, `settle`), operation or action name, object, case, phase

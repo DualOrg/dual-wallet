@@ -78,7 +78,9 @@ describe("a launch whose journal has no room left", () => {
       "Morrow Home Arc product application",
     );
     expect(
-      screen.getByText(/has as many requests open as it can keep track of/),
+      screen.getByText(
+        /has reached its request limit, so nothing was sent for this request/,
+      ),
     ).toBeTruthy();
     const restart = screen.getByRole("button", {
       name: "Restart the application",

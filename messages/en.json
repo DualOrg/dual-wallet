@@ -555,7 +555,7 @@
       },
       "relaunch": "Restart the application",
       "launch_full": {
-        "journal_full": "The {publisher} application has as many requests open as it can keep track of, so it cannot start another. Nothing was sent for this one. Restart the application to carry on: requests already sent are kept and checked again, never sent twice."
+        "journal_full": "The {publisher} application has reached its request limit, so nothing was sent for this request. Restart the application to continue. A transfer step your wallet already sent is checked again when it restarts and is never sent twice."
       },
       "transfer_step": {
         "transferred": "Your transfer is complete: the product now belongs to the recipient's wallet. Its private details and service requests are no longer shown to you.",
