@@ -582,7 +582,9 @@
           "not_checked": "One earlier request could not be checked this time."
         }
       },
-      "recoveryIncomplete": "Not every earlier request could be checked this time. Nothing was sent again."
+      "recoveryIncomplete": "Not every earlier request could be checked this time. Nothing was sent again.",
+      "recoveryMore": "There are more earlier requests to check.",
+      "recoveryContinue": "Continue checking"
     }
   },
   "host": {
