@@ -35,7 +35,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { ResponseError } from "@/api/web-sdk/runtime";
 import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
 import { canonicalJson } from "@/app/_domain/product-face";
-import { edit, TEMPLATE_A, TEMPLATE_B } from "@/test/product-face-fixtures";
+import {
+  ARTIFACT_HEX,
+  edit,
+  TEMPLATE_A,
+  TEMPLATE_B,
+} from "@/test/product-face-fixtures";
 import {
   applyHostEnvironment,
   clearHostEnvironment,
@@ -1540,6 +1545,18 @@ class BrandRuntime {
     input: Json,
   ) {
     const all = this.buildRecoveryItems(kind, actor);
+    // A runtime with nothing to list cannot carry the violation: answer a
+    // clean empty complete page, so only the runtime that holds this actor's
+    // items injects it.
+    if (all.length === 0) {
+      return this.recoveryPage(kind, claims, opId, {
+        scanId: `scan-${this.brand.tag}-viol`,
+        asOf: Date.now(),
+        items: [],
+        next: null,
+        complete: true,
+      });
+    }
     const first = all[0];
     const second = all[1] ?? all[0];
     const asOf = Date.now();
@@ -4824,6 +4841,114 @@ describe("recovery: the bounded page and its continuation (PROPOSED r20 fixture)
       // The foreign reads resolved nothing; the holder's own re-reads sent no
       // write to a face.
       expect(faceSends(brand)).toBe(sendsBefore);
+    },
+  );
+});
+
+/** The holder's warranty-runtime actor, as the wallet mints it for recovery. */
+const warrantyActor = (brand: Brand): Actor => ({
+  holder: brand.holder.address,
+  sub: brand.holder.walletId,
+  iss: brand.origin,
+  aud: `${brand.warranty.applicationId}@${brand.warranty.origin}`,
+  programme: brand.programmeId,
+  artifact: { version: "1.0.0", artifactHash: `sha256:${ARTIFACT_HEX}` },
+});
+
+/** N completed, compatible warranty write records on this actor, oldest first. */
+function seedCompleted(runtime: BrandRuntime, actor: Actor, count: number) {
+  const now = Date.now();
+  const ids: string[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const operationId = `seed-${runtime.brand.tag}-${String(i).padStart(4, "0")}`;
+    ids.push(operationId);
+    runtime.seedWriteRecord(actor, {
+      operationId,
+      operation: "case.evidence.submit",
+      caseId: runtime.brand.cases[0],
+      recordedAt: new Date(now - (60 - i) * 60_000).toISOString(),
+    });
+  }
+  return ids;
+}
+
+describe("recovery: an incomplete scan acknowledges nothing (PROPOSED r20 fixture)", () => {
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s: a store that could not be read leaves every proved outcome without a ticket",
+    async (_label, brand) => {
+      const { holder, runtime } = await seededHeldWorld(brand);
+      seedCompleted(runtime, warrantyActor(brand), 3);
+      runtime.incompleteScan = true;
+      const listed = await holder.recovery();
+      expect(listed.body).toMatchObject({
+        supported: true,
+        complete: false,
+      });
+      expect(recoveredItems(listed.body).length).toBeGreaterThan(0);
+      expect(
+        recoveredItems(listed.body).every((item) => item.ticket === null),
+      ).toBe(true);
+    },
+  );
+
+  const violations = [
+    "repeat_id",
+    "out_of_order",
+    "cursor_cycle",
+    "change_scan_id",
+    "wrong_echo",
+  ] as const;
+  it.each(
+    BRANDS.flatMap((brand) =>
+      violations.map((violation) => [brand.label, violation, brand]),
+    ) as Array<[string, (typeof violations)[number], Brand]>,
+  )(
+    "%s: a scan with %s is incomplete and nothing it lists carries a ticket",
+    async (_label, violation, brand) => {
+      const { holder, runtime } = await seededHeldWorld(brand);
+      seedCompleted(runtime, warrantyActor(brand), 2);
+      runtime.recoveryPageSize = 1;
+      runtime.recoveryViolation = violation;
+      const listed = await holder.recovery();
+      expect(listed.body).toMatchObject({ supported: true, complete: false });
+      expect(
+        recoveredItems(listed.body).every((item) => item.ticket === null),
+      ).toBe(true);
+    },
+  );
+
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s: a small page size is followed to the end, so a complete scan still lists every item",
+    async (_label, brand) => {
+      const { holder, runtime } = await seededHeldWorld(brand);
+      const ids = seedCompleted(runtime, warrantyActor(brand), 5);
+      runtime.recoveryPageSize = 2;
+      const listed = await holder.recovery();
+      expect(listed.body).toMatchObject({ supported: true, complete: true });
+      for (const operationId of ids) {
+        expect(itemOf(listed.body, operationId)).toMatchObject({
+          outcome: "write_applied",
+        });
+        expect(typeof itemOf(listed.body, operationId)!.ticket).toBe("string");
+      }
+
+      // A ticket from this complete listing cannot be acknowledged from a
+      // different launch: it is sealed to the launch that issued it.
+      const ticket = itemOf(listed.body, ids[0])!.ticket!;
+      const otherLaunch = new Browser(
+        brand,
+        brand.holder,
+        launchOf(brand, "other-launch-e"),
+      );
+      const refused = await otherLaunch.recoveryAck({
+        operation_id: ids[0],
+        ticket,
+      });
+      expect(refused.status).toBe(400);
     },
   );
 });
