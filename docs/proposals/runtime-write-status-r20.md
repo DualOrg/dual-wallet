@@ -255,23 +255,57 @@ After verifying the assertion, a write whose `op_id` is recorded answers:
 - `receipt`: `{kind: "case_event", case_id, event_id}` for a case write;
   `{kind: "transfer_offer", offer_id, state}` for an offer or its
   cancellation (`state` one of `offered`, `cancelled`). Identifiers only.
-- `dual`, for a genuine server-only effect (every runtime write today):
-  `backed: false`, `intended_dual_writes: 0`, a plain-code `reason`, and
-  `target_readback` from a FRESH Dual read of the original target object at
-  this read, through the runtime's existing strict object resolver:
-  `"verified"` means the object reads with the recorded id and template (the
-  owner is neither required nor disclosed). When the object cannot be read
-  at all the runtime answers `409 {status: "write_outcome_unknown", reason:
-"target_readback_unavailable"}`. When the object reads but no longer exists
-  (deleted since) the runtime answers `write_applied` with `target_readback:
-"absent"`; the wallet HOLDS that answer (it is not proof of the required
-  readback) and it is flagged for Root in §5. For a Dual-backed write, if one
-  is ever introduced: `backed: true`, `intended_dual_writes: n`, and
-  `proof: {action_id, object_id, signer, payload_hash, verified_at}` from a
-  fresh read of the historical Dual action log through the runtime's
-  existing strict resolver (the one `transfer.verify` and
-  `registration.settle.status` use); application-store or outbox state alone
-  is never the proof.
+- `dual`: the server's binding of the write's ACTUAL domain effect to its
+  immutable original record, in one of two truthful branches. Nothing is
+  assumed: not that every runtime write is server-only, not that the signer
+  is the holder, not that the effect's canonical object is the product
+  target.
+  - `backed: false` (a genuine server-only effect): `intended_dual_writes:
+0`, a plain-code `reason` (`/^[a-z][a-z0-9_]{0,63}$/`, for example
+    `server_only_effect`), and `target_readback` from a FRESH Dual read of the
+    original target object at this read through the runtime's existing
+    strict object resolver: `"verified"` means the object reads with the
+    recorded id and template (the owner is neither required nor disclosed).
+    When the object cannot be read at all the runtime answers `409 {status:
+"write_outcome_unknown", reason: "target_readback_unavailable"}`. When
+    it reads but no longer exists (deleted since) the runtime answers
+    `write_applied` with `target_readback: "absent"`; the wallet HOLDS that
+    answer (it is not the required readback) and it is flagged for Root in
+    §5.
+  - `backed: true` (an effect that is a Dual action): `intended_dual_writes:
+n` (`n ≥ 1`, the writes the ORIGINAL intended; this read adds none) and
+    `proof`, freshly verified at this read through the runtime's existing
+    strict Dual action-log resolver (the one `transfer.verify` and
+    `registration.settle.status` use):
+
+    ```json
+    "proof": {
+      "resolver": "dual_action_log",
+      "action_id": "<historical action id>",
+      "object_id": "<24 hex: the canonical object the action was applied to>",
+      "signer": "<the account that signed the action>",
+      "expected_payload_hash": "sha256:<hex, from the immutable original record>",
+      "observed_payload_hash": "sha256:<hex, from the historical action log read now>",
+      "payload_match": true,
+      "bound_to": { "operation_id": "<op_id>", "request_hash": "sha256:<recorded write request hash>" },
+      "verified_at": "<RFC 3339 of this read>"
+    }
+    ```
+
+    The server states the binding; the wallet validates the minimal bound
+    proof: `payload_match: true` with `expected_payload_hash ===
+observed_payload_hash`, well-formed `action_id`, `object_id` and
+    `signer`, `bound_to` equal to the answer's `operation_id` and
+    `request_hash`, and `verified_at` within ten minutes of the wallet's
+    own clock. It does not require `signer` to equal the holder or
+    `proof.object_id` to equal `target.object_id`. For a Dual-backed write
+    `outcome_proof` additionally carries `dual: {action_id, object_id,
+observed_payload_hash}`, so the acknowledgement binds the proved effect.
+
+  - Either branch: `unknownWriteOutcomes: 0` and every business counter `0`
+    (this read writes nothing to Dual, a provider or the store). A record
+    whose branch does not pass is `409 write_outcome_unknown`, never
+    `write_applied`.
 - `acknowledged`: whether a `recovery.ack` row exists for this record from
   this `iss`.
 
@@ -294,8 +328,9 @@ Negative and unknown answers (zero writes, never a guess):
 ### What frees a wallet journal slot
 
 Only `200 write_applied` with `contract: "r20"`, `readback: "verified"`,
-`artifact_compatible: true`, `dual.backed: false` with
-`dual.target_readback: "verified"`, every business counter `0`,
+`artifact_compatible: true`, a `dual` block that passes its branch above
+(`backed: false` with `target_readback: "verified"`, or `backed: true` with
+the minimal bound proof validated), every business counter `0`,
 `secretReturned: false`, a well-formed receipt of the right kind, a matching
 `outcome_hash`, and every echoed identity field equal to the wallet's journal
 entry, session, host origin, routed runtime, programme and currently served
