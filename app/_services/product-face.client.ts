@@ -350,6 +350,11 @@ export interface FaceRecovery {
   complete: boolean;
   /** Items the BFF resolved but withheld (a journey disabled on this host). */
   withheld: number;
+  /**
+   * Set when items remain beyond this page's resolution bound: the sealed,
+   * host-local key the next page of the same launch starts after.
+   */
+  continuation: string | null;
   items: FaceRecoveryItem[];
 }
 
@@ -363,13 +368,20 @@ export interface FaceRecovery {
  */
 export async function listFaceRecovery(
   face: FaceLaunch,
+  continuation?: string,
 ): Promise<FaceRecovery> {
   const result = await faceRequest<{
     supported: unknown;
     complete: unknown;
     withheld: unknown;
+    continuation?: unknown;
     items: unknown;
-  }>(face, "/recovery");
+  }>(
+    face,
+    continuation
+      ? `/recovery?continuation=${encodeURIComponent(continuation)}`
+      : "/recovery",
+  );
   // The outcome and kind drive the host's copy and what it may acknowledge:
   // an answer outside the pinned vocabulary is refused whole, as any other
   // malformed read, and the host then falls back to today's behaviour.
@@ -377,6 +389,9 @@ export async function listFaceRecovery(
     typeof result.supported !== "boolean" ||
     typeof result.complete !== "boolean" ||
     typeof result.withheld !== "number" ||
+    (result.continuation !== null &&
+      result.continuation !== undefined &&
+      typeof result.continuation !== "string") ||
     !Array.isArray(result.items) ||
     !result.items.every(isFaceRecoveryItem)
   ) {
@@ -386,6 +401,8 @@ export async function listFaceRecovery(
     supported: result.supported,
     complete: result.complete,
     withheld: result.withheld,
+    continuation:
+      typeof result.continuation === "string" ? result.continuation : null,
     items: result.items,
   };
 }

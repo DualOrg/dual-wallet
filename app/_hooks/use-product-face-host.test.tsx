@@ -879,6 +879,107 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
     listFaceRecovery.mockReset().mockResolvedValue(unsupportedRecovery);
   });
 
+  it("follows the listing's continuation pages deterministically, later pages replacing unchecked items", async () => {
+    const unchecked = {
+      ...transferred,
+      outcome: "not_checked",
+      ticket: null,
+    };
+    listFaceRecovery
+      .mockResolvedValueOnce({
+        supported: true,
+        complete: true,
+        withheld: 0,
+        continuation: "continue-after-held-prefix",
+        items: [heldWrite, unchecked],
+      })
+      .mockResolvedValueOnce({
+        supported: true,
+        complete: true,
+        withheld: 0,
+        continuation: null,
+        items: [transferred],
+      });
+    const { hook } = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
+    expect(listFaceRecovery).toHaveBeenCalledTimes(2);
+    expect(listFaceRecovery).toHaveBeenNthCalledWith(1, face);
+    expect(listFaceRecovery).toHaveBeenNthCalledWith(
+      2,
+      face,
+      "continue-after-held-prefix",
+    );
+    expect(hook.result.current.notice).toMatchObject({
+      kind: "recovery",
+      complete: true,
+      items: [
+        { operationId: "case-0123456789abcdef", outcome: "outcome_unknown" },
+        {
+          operationId: "xfer-f0a31dc6781e57f040c2",
+          outcome: "transferred",
+          acknowledgeable: true,
+        },
+      ],
+    });
+    act(() => hook.result.current.dismissNotice());
+    expect(acknowledgeFaceRecovery).toHaveBeenCalledTimes(1);
+    expect(acknowledgeFaceRecovery).toHaveBeenCalledWith(face, {
+      operation_id: "xfer-f0a31dc6781e57f040c2",
+      ticket: "ack-ticket-f0a31dc6",
+    });
+  });
+
+  it("stops following after the page bound or a failed page, and then acknowledges nothing", async () => {
+    listFaceRecovery.mockImplementation(async () => ({
+      supported: true,
+      complete: true,
+      withheld: 0,
+      continuation: "never-ending",
+      items: [transferred],
+    }));
+    const first = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
+    expect(listFaceRecovery).toHaveBeenCalledTimes(8);
+    expect(first.hook.result.current.notice).toMatchObject({
+      kind: "recovery",
+      complete: false,
+      items: [{ outcome: "transferred", acknowledgeable: false }],
+    });
+    act(() => first.hook.result.current.dismissNotice());
+    expect(acknowledgeFaceRecovery).not.toHaveBeenCalled();
+    first.hook.unmount();
+
+    listFaceRecovery
+      .mockReset()
+      .mockResolvedValueOnce({
+        supported: true,
+        complete: true,
+        withheld: 0,
+        continuation: "page-two",
+        items: [transferred],
+      })
+      .mockRejectedValueOnce(new Error("lost"));
+    const second = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
+    expect(listFaceRecovery).toHaveBeenCalledTimes(2);
+    expect(second.hook.result.current.notice).toMatchObject({
+      complete: false,
+      items: [{ outcome: "transferred", acknowledgeable: false }],
+    });
+    act(() => second.hook.result.current.dismissNotice());
+    expect(acknowledgeFaceRecovery).not.toHaveBeenCalled();
+    expect(listRetainedTransferSteps).not.toHaveBeenCalled();
+  });
+
   it("shows a proved and a held item, acknowledges only the ticketed one on dismiss, once, and skips the retained read", async () => {
     listFaceRecovery.mockResolvedValue({
       supported: true,

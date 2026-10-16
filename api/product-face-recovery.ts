@@ -44,15 +44,19 @@ import { journeyOfJournalEntry } from "@/app/_domain/wallet-host";
 /** Pages followed per runtime scan; more is reported as an incomplete check. */
 const MAX_PAGES = 20;
 /**
- * Items resolved per listing. Completed items first, then unresolved, then
- * refused, each class from a start that rotates per listing, so a prefix of
- * held or unknown items never starves a later completion; the rest are
- * returned as not checked and counted. The bound never makes a complete scan
- * incomplete and never raises a journal or cookie limit.
+ * Items resolved per listing page, in the stable listing order. A listing
+ * that leaves items unresolved returns a sealed continuation naming the last
+ * key it resolved; the next page (the same launch asks for it) resolves the
+ * items after that key, so a held or unknown prefix never starves a later
+ * item and every item is reached in a bounded number of pages. Host-local
+ * and deterministic: no store, no wire change, and the bound never makes a
+ * complete scan incomplete or raises a journal or cookie limit.
  */
 const MAX_RESOLVED = 25;
 /** How long an acknowledgement ticket issued by a listing stays usable. */
 const TICKET_TTL_MS = 60 * 60 * 1000;
+/** How long a continuation stays usable (one launch's follow-up pages). */
+const CONTINUATION_TTL_MS = 10 * 60 * 1000;
 const ACTION_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 
 /** The contract's one outcome vocabulary, plus the host's own two states. */
@@ -85,8 +89,10 @@ export interface RecoveryListing {
   complete: boolean;
   /** Items of a journey this host disables: neither resolved nor returned. */
   withheld: number;
-  /** Items beyond this listing's resolution bound, returned as not checked. */
+  /** Items beyond this page's resolution bound, returned as not checked. */
   unchecked: number;
+  /** Set when items remain beyond this page: the next page starts after them. */
+  continuation: string | null;
   items: RecoveredItem[];
 }
 
@@ -459,6 +465,67 @@ async function resolveItem(
   };
 }
 
+/** The contract's stable order key: (recorded_at, operation_id) ascending. */
+interface ItemKey {
+  recorded_at: string;
+  operation_id: string;
+}
+
+const keyOf = (item: RecoveryItem): ItemKey => ({
+  recorded_at: item.recordedAt,
+  operation_id: item.operationId,
+});
+
+function compareKeys(left: ItemKey, right: ItemKey) {
+  const byTime = Date.parse(left.recorded_at) - Date.parse(right.recorded_at);
+  if (byTime !== 0) return byTime;
+  return left.operation_id < right.operation_id
+    ? -1
+    : left.operation_id > right.operation_id
+      ? 1
+      : 0;
+}
+
+interface Continuation {
+  v: 1;
+  /** The last key this launch resolved; the next page starts after it. */
+  after: ItemKey;
+  exp: number;
+}
+
+/** A continuation is this session's, wallet's, face's and launch's only. */
+const continuationPurpose = (context: FaceRequestContext) =>
+  [
+    "dual-face-recovery-continue",
+    context.owner.sidHash,
+    context.wallet.id,
+    context.binding.slug,
+    context.binding.programmeId,
+    context.scope.launchId,
+  ].join(":");
+
+function parseContinuation(
+  context: FaceRequestContext,
+  value: string,
+): ItemKey | undefined {
+  if (value.length > 2048) return undefined;
+  const opened = unsealForPurpose(continuationPurpose(context), value);
+  if (!record(opened) || opened.v !== 1 || !record(opened.after)) {
+    return undefined;
+  }
+  const { after } = opened;
+  if (
+    typeof opened.exp !== "number" ||
+    opened.exp <= Date.now() ||
+    typeof after.recorded_at !== "string" ||
+    Number.isNaN(Date.parse(after.recorded_at)) ||
+    !isOperationId(after.operation_id)
+  ) {
+    return undefined;
+  }
+  return { recorded_at: after.recorded_at, operation_id: after.operation_id };
+}
+
 interface Ticket {
   v: 1;
   op: string;
@@ -496,6 +563,7 @@ const itemJourney = (item: Pick<RecoveryItem, "kind" | "operation">) =>
 export async function listRecovery(
   context: FaceRequestContext,
   request: NextRequest,
+  continuation?: string,
 ): Promise<RecoveryListing> {
   const journal = context.journal;
   const scans = await Promise.all(
@@ -511,6 +579,7 @@ export async function listRecovery(
       complete: true,
       withheld: 0,
       unchecked: 0,
+      continuation: null,
       items: [],
     };
   }
@@ -530,36 +599,47 @@ export async function listRecovery(
     seen.set(item.operationId, (seen.get(item.operationId) ?? 0) + 1);
   }
   let withheld = 0;
-  const eligible = listed.filter(({ item }) => {
-    const journey = itemJourney(item);
-    if (journey && hostJourneyEnabled(journey)) return true;
-    withheld += 1;
-    return false;
-  });
-  // Which items this listing resolves: completed first, then unresolved,
-  // then refused, each class in listing order from a rotating start. The
-  // same id from two runtimes is conflicting and resolved by neither.
-  const classes = (["completed", "unresolved", "refused"] as const).map(
-    (state) =>
-      eligible.filter(
-        ({ item }) =>
-          item.state === state && (seen.get(item.operationId) ?? 0) === 1,
-      ),
-  );
+  const eligible = listed
+    .filter(({ item }) => {
+      const journey = itemJourney(item);
+      if (journey && hostJourneyEnabled(journey)) return true;
+      withheld += 1;
+      return false;
+    })
+    // The contract's stable total order, across both runtimes.
+    .sort((left, right) => compareKeys(keyOf(left.item), keyOf(right.item)));
+  // This page: the items after the continuation's key, in order; the first
+  // MAX_RESOLVED of them are resolved, the rest returned as not checked.
+  const after = continuation
+    ? parseContinuation(context, continuation)
+    : undefined;
+  if (continuation && !after) {
+    return {
+      supported: true,
+      complete: false,
+      withheld,
+      unchecked: 0,
+      continuation: null,
+      items: [],
+    };
+  }
+  const page = after
+    ? eligible.filter(({ item }) => compareKeys(keyOf(item), after) > 0)
+    : eligible;
   const chosen = new Set<string>();
-  for (const members of classes) {
-    if (members.length === 0 || chosen.size >= MAX_RESOLVED) continue;
-    const start =
-      crypto.getRandomValues(new Uint32Array(1))[0] % members.length;
-    for (let offset = 0; offset < members.length; offset += 1) {
-      if (chosen.size >= MAX_RESOLVED) break;
-      chosen.add(members[(start + offset) % members.length].item.operationId);
-    }
+  let lastKey: ItemKey | undefined;
+  for (const { item } of page) {
+    if (chosen.size >= MAX_RESOLVED) break;
+    // The same id from two runtimes is conflicting and resolved by neither;
+    // it still advances the page so it is never reached again.
+    if ((seen.get(item.operationId) ?? 0) === 1) chosen.add(item.operationId);
+    lastKey = keyOf(item);
   }
   let unchecked = 0;
   const now = Date.now();
   const items: RecoveredItem[] = [];
-  for (const { runtime, item } of eligible) {
+  const conflicting = new Set<string>();
+  for (const { runtime, item } of page) {
     const base = {
       operationId: item.operationId,
       kind: item.kind,
@@ -571,6 +651,8 @@ export async function listRecovery(
     };
     if (!chosen.has(item.operationId)) {
       if ((seen.get(item.operationId) ?? 0) === 1) unchecked += 1;
+      else if (conflicting.has(item.operationId)) continue;
+      else conflicting.add(item.operationId);
       items.push({ ...base, outcome: "not_checked", ticket: null });
       continue;
     }
@@ -609,7 +691,21 @@ export async function listRecovery(
       ticket: ticket ? sealForPurpose(ticketPurpose(context), ticket) : null,
     });
   }
-  return { supported: true, complete, withheld, unchecked, items };
+  return {
+    supported: true,
+    complete,
+    withheld,
+    unchecked,
+    continuation:
+      unchecked > 0 && lastKey
+        ? sealForPurpose(continuationPurpose(context), {
+            v: 1,
+            after: lastKey,
+            exp: now + CONTINUATION_TTL_MS,
+          } satisfies Continuation)
+        : null,
+    items,
+  };
 }
 
 function parseTicket(

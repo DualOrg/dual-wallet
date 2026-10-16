@@ -31,6 +31,7 @@ import {
   executeTransferAction,
   listFaceOperations,
   listFaceRecovery,
+  type FaceRecovery,
   listRetainedTransferSteps,
   listProgrammeProducts,
   mintFaceAssertion,
@@ -50,6 +51,54 @@ import {
   writeFaceJournal,
   type FaceRecoveryOutcome,
 } from "@/app/_services/product-face.client";
+
+/** Follow-up pages of one launch's recovery listing (proposed r20). */
+const MAX_RECOVERY_PAGES = 8;
+
+/**
+ * One launch's complete recovery listing: the BFF resolves a bounded page of
+ * items per request and returns a sealed continuation while items remain, so
+ * the pages are followed here, deterministically, until none remain or the
+ * bound is reached. Later pages replace the earlier pages' not-yet-checked
+ * entries. A page that cannot be read, or a follow that stops short, makes
+ * the whole check incomplete: nothing is then acknowledged.
+ */
+async function collectRecovery(
+  face: Parameters<typeof listFaceRecovery>[0],
+  live: () => boolean,
+): Promise<FaceRecovery> {
+  const first = await listFaceRecovery(face);
+  if (!first.supported) return first;
+  const merged = new Map(first.items.map((item) => [item.operation_id, item]));
+  let complete = first.complete;
+  let continuation: string | null =
+    typeof first.continuation === "string" ? first.continuation : null;
+  let pages = 1;
+  while (continuation !== null && pages < MAX_RECOVERY_PAGES) {
+    if (!live()) return { ...first, complete: false, continuation: null };
+    let page: FaceRecovery;
+    try {
+      page = await listFaceRecovery(face, continuation);
+    } catch {
+      complete = false;
+      break;
+    }
+    pages += 1;
+    for (const item of page.items) merged.set(item.operation_id, item);
+    complete = complete && page.complete;
+    continuation =
+      typeof page.continuation === "string" ? page.continuation : null;
+  }
+  // Items still unchecked when the follow stopped keep the check incomplete.
+  if (continuation !== null) complete = false;
+  return {
+    supported: true,
+    complete,
+    withheld: first.withheld,
+    continuation: null,
+    items: [...merged.values()],
+  };
+}
 
 export type ProductFaceHostState =
   | { status: "loading" }
@@ -409,7 +458,7 @@ export function useProductFaceHost({
           // them (dismissNotice). Nothing listed is ever re-sent. A runtime
           // without r20, or a listing the BFF could not read, fails closed:
           // nothing is acknowledged and today's retained read runs unchanged.
-          void listFaceRecovery(face)
+          void collectRecovery(face, liveHost)
             .then(
               (recovery) => {
                 if (!liveHost()) return;

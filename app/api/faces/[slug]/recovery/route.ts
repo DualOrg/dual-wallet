@@ -16,12 +16,16 @@ export async function GET(request: NextRequest, { params }: Params) {
   });
   if (!("binding" in context)) return context;
   try {
-    const listing = await listRecovery(context, request);
+    // A sealed continuation from this launch's previous page, if any.
+    const continuation =
+      request.nextUrl.searchParams.get("continuation") ?? undefined;
+    const listing = await listRecovery(context, request, continuation);
     return faceResponse(context, {
       supported: listing.supported,
       complete: listing.complete,
       withheld: listing.withheld,
       unchecked: listing.unchecked,
+      continuation: listing.continuation,
       items: listing.items.map((item) => ({
         operation_id: item.operationId,
         kind: item.kind,
