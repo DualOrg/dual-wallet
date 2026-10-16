@@ -13,36 +13,46 @@ header and a normal wallet assertion. A face is never authorised for any of
 them (`hostOnlyRuntimeOperations`); a request carrying an `Origin` header is
 refused. Each has zero business writes.
 
-| operation       | op_id                     | target         | purpose                                                |
-| --------------- | ------------------------- | -------------- | ------------------------------------------------------ |
-| `write.status`  | the ORIGINAL write's id   | the original's | verified outcome of one runtime write                  |
-| `recovery.list` | a fresh wallet-minted id  | `{}`           | this actor's unresolved and unacknowledged operations  |
-| `recovery.ack`  | the ORIGINAL operation id | the original's | idempotent record that this host delivered the outcome |
+| operation       | op_id                     | target         | input                                |
+| --------------- | ------------------------- | -------------- | ------------------------------------ |
+| `write.status`  | the ORIGINAL write's id   | the original's | `{original_operation}`               |
+| `recovery.list` | a fresh wallet-minted id  | `{}`           | `{}` or `{cursor}`                   |
+| `recovery.ack`  | the ORIGINAL operation id | the original's | `{original_operation, outcome_hash}` |
 
 `request_hash` is always `sha256:` hex of the canonical JSON
 `{input, operation, operationId, target}` (the request minus the assertion),
-as `runtimeRequestHash` computes it today.
+as `runtimeRequestHash` computes it today. Canonical JSON throughout this
+contract is: object keys sorted by UTF-16 code unit order, no whitespace,
+strings and numbers as JSON serialises them.
 
 ## 0. Common rules
 
 ### Authenticate, then exact-match, then disclose
 
 The runtime verifies the assertion exactly as any operation
-(`assertion.verifier`) BEFORE any lookup. A record is disclosed, replayed or
-acknowledged only when ALL of the following equal the assertion's claims:
-`holder`, `sub` (wallet id), `iss` (wallet host origin), `aud`
-(`<applicationId>@<origin>`), `programme`, and, for `write.status` and
-`recovery.ack`, the record's `operation` identity and `target`. A mismatch
-answers exactly as "no record" (`404 face_operation_not_found`); nothing is
-disclosed, including whether a record exists.
+(`assertion.verifier`) BEFORE any lookup. The lookup key of `write.status`
+and `recovery.ack` is `(applicationId, op_id)`. A record is disclosed,
+replayed or acknowledged only when ALL hold:
+
+- the record's `holder`, `sub` (wallet id), `iss` (wallet host origin), `aud`
+  (`<applicationId>@<origin>`) and `programme` equal the assertion's claims;
+- the record's original `target` equals the assertion's `target`;
+- the record's original `operation` equals `input.original_operation` (the
+  assertion's own `operation` claim is `write.status` or `recovery.ack`; the
+  original operation is bound through the request, and so through
+  `request_hash`).
+
+A mismatch of any of these answers exactly as "no record"
+(`404 face_operation_not_found`); nothing is disclosed, including whether a
+record exists.
 
 ### Immutable original, append-only outcome
 
 The original request identity (`operation`, `target`, `request_hash`,
 `holder`, `sub`, `iss`, `aud`, `programme`, `artifact`) is written once with
 the record and never changed. Outcome reconciliation and acknowledgements are
-appended beside it; nothing is overwritten or deleted. A record's receipt and
-proof are retained after acknowledgement.
+appended beside it; nothing is overwritten or deleted. A record's receipt,
+proof and `outcome_proof` are retained after acknowledgement.
 
 ### Artifact compatibility
 
@@ -62,11 +72,40 @@ that host).
 Once a Dual-backed effect has been proved from the historical action log
 (holder-signed action id, signer, executed payload hash), a later legitimate
 change of the unit (an onward transfer, a later update) does not change that
-outcome. `transfer.status`, `transfer.verify`, `registration.settle.status`
-and `write.status` answer from the historical record and the historical
-action, and MUST NOT require the current owner or state to still agree with
-the step once the committed outcome is recorded. Current state is reported
-separately as a readback, never used to withdraw a proved outcome.
+outcome. `transfer.status`, `transfer.verify`, `registration.status`,
+`registration.settle.status` and `write.status` answer from the historical
+record and the historical action, and MUST NOT require the current owner or
+state to still agree with the step once the committed outcome is recorded.
+Current state is reported separately as a readback, never used to withdraw a
+proved outcome.
+
+### One canonical outcome vocabulary and `outcome_proof`
+
+Every committed or refused outcome in this contract is one of:
+`registered` (a registration or settle), `transfer_request_committed`,
+`transferred` (a transfer step), `write_applied`, `write_refused` (a runtime
+write). Anything not yet committed or refused is `outcome_unknown`.
+
+Every answer that reports a committed or refused outcome (r20 `write.status`,
+and, as an additive r20 field, the committed answers of `registration.status`,
+`registration.settle.status`, `registration.settle.verify`, `transfer.status`
+and `transfer.verify`) carries `outcome_proof` and `outcome_hash`.
+`outcome_proof` is derived ONLY from the immutable record and its appended
+outcome, never from current state, so two fresh reads of the same outcome
+give the same bytes. Exactly these fields, per kind:
+
+| kind           | `outcome_proof`                                                                                                                                                                                 |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registration` | `{kind:"registration", operation_id, object_id, action_id (string or null), status:"registered"}`                                                                                               |
+| `settle`       | `{kind:"settle", operation_id (the settle operation id), proposal_id, object_id, action_id, status:"registered"}`                                                                               |
+| `transfer`     | `{kind:"transfer", operation_id (the step operation id), offer_id, object_id, step, action_id, status}` with `status` `transfer_request_committed` or `transferred`                             |
+| `runtime`      | `{kind:"runtime", operation_id, operation, object_id, case_id (string or null), receipt, status}` with `status` `write_applied` or `write_refused` and `receipt` as in §1 (`null` when refused) |
+
+`outcome_hash` = `sha256:` hex of the canonical JSON of `outcome_proof`. The
+wallet recomputes it and refuses an answer whose `outcome_hash` does not
+match. A runtime that does not return `outcome_proof` for a committed outcome
+is pre-r20 for that operation: the wallet shows nothing more than it does
+today and acknowledges nothing.
 
 ### Accounting, on every answer
 
@@ -86,6 +125,16 @@ the consumed `jti`, and the acknowledgement row `recovery.ack` appended (`1`
 on its first call, `0` on an idempotent replay). The wallet refuses any answer
 whose business counters are not exactly `0`.
 
+### Echoed binding, validated by the wallet
+
+Every answer echoes `operation_id` (the request's op_id), `holder`, `wallet`
+(`sub`), `issuer` (`iss`), `application_id` (the serving application),
+`programme` and `asserting_artifact`. The wallet compares each against the
+session (holder, wallet id), the host (its origin), the runtime it routed the
+request to (application id), the face binding (programme, version, artifact
+hash) and the request it sent (operation id). Nothing is taken on trust from
+the endpoint having answered; a missing or different echo holds the answer.
+
 ### Disclosure scope
 
 A recovered record exposes only the actor's OWN minimal original correlation
@@ -102,7 +151,7 @@ Served by the runtime that served the ORIGINAL write: the linked Warranty
 runtime (`linkedRuntimes[purpose=claims-warranty]`) for `case.*`, the face's
 own runtime for `transfer.offer` and `transfer.cancel`. `target` is the
 original `{object_id, case_id?}` (quote fields are not part of it); `input`
-is `{}`.
+is `{original_operation: "<the original write operation>"}`.
 
 ### Durable write record (runtime obligation)
 
@@ -129,7 +178,7 @@ After verifying the assertion, a write whose `op_id` is recorded answers:
 - otherwise `409 {status: "face_operation_conflict"}`, zero writes, nothing
   of the record disclosed.
 
-### Result (200 only when the record is this actor's and both artifacts are compatible)
+### Result (200 only when the record is this actor's, the original operation matches, and both artifacts are compatible)
 
 ```json
 {
@@ -160,6 +209,20 @@ After verifying the assertion, a write whose `op_id` is recorded answers:
     "reason": "server_only_effect",
     "target_readback": "verified"
   },
+  "outcome_proof": {
+    "kind": "runtime",
+    "operation_id": "<op_id>",
+    "operation": "<op>",
+    "object_id": "<24 hex>",
+    "case_id": "<case id>",
+    "receipt": {
+      "kind": "case_event",
+      "case_id": "<case id>",
+      "event_id": "<id>"
+    },
+    "status": "write_applied"
+  },
+  "outcome_hash": "sha256:<hex of canonical outcome_proof>",
   "acknowledged": false,
   "writesExecuted": 0,
   "dualWritesExecuted": 0,
@@ -176,31 +239,37 @@ After verifying the assertion, a write whose `op_id` is recorded answers:
 - `receipt`: `{kind: "case_event", case_id, event_id}` for a case write;
   `{kind: "transfer_offer", offer_id, state}` for an offer or its
   cancellation (`state` one of `offered`, `cancelled`). Identifiers only.
-- `dual`: for a genuine server-only effect (every runtime write today):
+- `dual`, for a genuine server-only effect (every runtime write today):
   `backed: false`, `intended_dual_writes: 0`, a plain-code `reason`, and
-  `target_readback` from a fresh Dual read of the original target object:
-  `"verified"` (the object exists with the recorded id and template) or
-  `"absent"` (it no longer reads). Neither value discloses the owner, and
-  `"absent"` does not withdraw `write_applied` (later state never invalidates
-  proved history). For a Dual-backed write, if one is ever introduced:
-  `backed: true`, `intended_dual_writes: n`, and `proof: {action_id,
-object_id, signer, payload_hash, verified_at}` from a fresh read of the
-  historical Dual action log through the runtime's existing strict resolver
-  (the same one `transfer.verify` and `registration.settle.status` use), with
-  `unknownWriteOutcomes: 0`; application-store or outbox state alone is never
-  the proof.
+  `target_readback` from a FRESH Dual read of the original target object at
+  this read, through the runtime's existing strict object resolver:
+  `"verified"` means the object reads with the recorded id and template (the
+  owner is neither required nor disclosed). When the object cannot be read
+  at all the runtime answers `409 {status: "write_outcome_unknown", reason:
+"target_readback_unavailable"}`. When the object reads but no longer exists
+  (deleted since) the runtime answers `write_applied` with `target_readback:
+"absent"`; the wallet HOLDS that answer (it is not proof of the required
+  readback) and it is flagged for Root in §5. For a Dual-backed write, if one
+  is ever introduced: `backed: true`, `intended_dual_writes: n`, and
+  `proof: {action_id, object_id, signer, payload_hash, verified_at}` from a
+  fresh read of the historical Dual action log through the runtime's
+  existing strict resolver (the one `transfer.verify` and
+  `registration.settle.status` use); application-store or outbox state alone
+  is never the proof.
 - `acknowledged`: whether a `recovery.ack` row exists for this record from
   this `iss`.
 
 Negative and unknown answers (zero writes, never a guess):
 
-- `404 {status: "face_operation_not_found"}`: no record for this actor
-  (unknown: in flight, never consumed, lost before the runtime, or another
-  actor's).
-- `200 {status: "write_refused", ...}` same fields, `receipt: null`: a
-  definitive zero-write refusal. HELD by the wallet.
-- `409 {status: "write_outcome_unknown"}`: a record exists but `unresolved`
-  is not `0`, or the Dual proof cannot yet be read.
+- `404 {status: "face_operation_not_found"}`: no record for this actor and
+  original operation (unknown: in flight, never consumed, lost before the
+  runtime, or another actor's).
+- `200 {status: "write_refused", ...}`: same fields, `receipt: null`,
+  `outcome_proof.status: "write_refused"`: a definitive zero-write refusal.
+  HELD by the wallet.
+- `409 {status: "write_outcome_unknown", reason}`: a record exists but
+  `unresolved` is not `0`, the Dual proof cannot yet be read, or
+  `target_readback_unavailable`.
 - `409 {status: "face_operation_artifact_retired"}`: either artifact is
   outside set A.
 - An older runtime answers its refusal for an unknown operation
@@ -209,14 +278,15 @@ Negative and unknown answers (zero writes, never a guess):
 ### What frees a wallet journal slot
 
 Only `200 write_applied` with `contract: "r20"`, `readback: "verified"`,
-`artifact_compatible: true`, every business counter `0`, `secretReturned:
-false`, a well-formed receipt of the right kind, a well-formed `dual` block,
-and every identity field equal to the wallet's journal entry, session, host
-origin, routed runtime, programme and currently served face artifact. The
-wallet also requires `request_hash` to equal the hash it recorded when it
-issued the write's assertion; an entry issued before the wallet recorded one
-is never settled from a read. Everything else is held; nothing is ever
-re-sent.
+`artifact_compatible: true`, `dual.backed: false` with
+`dual.target_readback: "verified"`, every business counter `0`,
+`secretReturned: false`, a well-formed receipt of the right kind, a matching
+`outcome_hash`, and every echoed identity field equal to the wallet's journal
+entry, session, host origin, routed runtime, programme and currently served
+face artifact. The wallet also requires `request_hash` to equal the hash it
+recorded when it issued the write's assertion; an entry issued before the
+wallet recorded one is never settled from a read. Everything else is held;
+nothing is ever re-sent.
 
 ## 2. `recovery.list`
 
@@ -232,7 +302,8 @@ runtime.
 - `op_id`: a fresh wallet-minted listing id (`^[a-z0-9-]{8,64}$`), not a
   business operation; the runtime records nothing for it beyond the `jti`.
 - `target`: `{}`.
-- `input`: `{}` or `{cursor: "<opaque, ≤ 512 chars>"}` from a previous page.
+- `input`: `{}` for the first page, `{cursor: "<opaque, ≤ 512 chars>"}` for a
+  following page.
 
 ### Scope
 
@@ -242,12 +313,33 @@ the assertion's, and whose state is one of:
 - `unresolved`: authority left the wallet and the runtime has no committed
   or refused outcome yet (a registration intent not settled, a won reservation
   without a verified action, a write with `unresolved > 0`);
-- `completed`: a committed or applied outcome exists and no `recovery.ack`
-  row from this `iss` exists for it;
+- `completed`: a committed outcome exists and no `recovery.ack` row from this
+  `iss` exists for it;
 - `refused`: a definitive zero-write refusal exists and no ack row exists.
 
 Acknowledged records are not listed. Nothing is listed for another `iss`,
 `sub`, holder, application or programme.
+
+### Scan, snapshot and cursor semantics
+
+- The first page opens a scan: the runtime fixes `scan_id` (opaque) and
+  `as_of` (RFC 3339). The scan covers exactly the records in scope with
+  `recorded_at <= as_of`; records appended later belong to a later scan.
+- Order is total and stable within a scan: `recorded_at` ascending, then
+  `operation_id` ascending (UTF-16 code unit order). A page holds at most
+  50 items. `next` is an opaque cursor for the following page of the SAME
+  scan, or `null` on the last page. A cursor is bound to the scan and to the
+  actor; any other use is `409 recovery_cursor_invalid`. A scan may be
+  continued for 10 minutes after `as_of`; later, `409 recovery_cursor_expired`.
+- `complete` is `true` on a page only when every store this runtime lists
+  from was read to the end of that page's range for this scan. A store that
+  could not be read makes `complete: false` on that page and on every later
+  page of the same scan. A scan whose last page (`next: null`) carries
+  `complete: true` is a consistent full scan of the snapshot.
+- Within one scan an `operation_id` appears at most once; the wallet treats
+  a repeated id within a scan, or the same id listed by two different
+  runtimes, as conflicting: it resolves nothing for that id, acknowledges
+  nothing, and reports it as not checked.
 
 ### Result
 
@@ -256,8 +348,15 @@ Acknowledged records are not listed. Nothing is listed for another `iss`,
   "ok": true,
   "status": "recovery_listed",
   "contract": "r20",
+  "operation_id": "<the listing op_id>",
+  "holder": "<assertion holder>",
+  "wallet": "<assertion sub>",
+  "issuer": "<assertion iss>",
   "application_id": "<serving applicationId>",
   "programme": "<assertion programme>",
+  "asserting_artifact": { "version": "x.y.z", "artifactHash": "sha256:<hex>" },
+  "scan_id": "<opaque>",
+  "as_of": "<RFC 3339>",
   "items": [
     {
       "kind": "transfer",
@@ -280,7 +379,6 @@ Acknowledged records are not listed. Nothing is listed for another `iss`,
   ],
   "next": null,
   "complete": true,
-  "asserting_artifact": { "version": "x.y.z", "artifactHash": "sha256:<hex>" },
   "writesExecuted": 0,
   "dualWritesExecuted": 0,
   "providerWritesExecuted": 0,
@@ -291,42 +389,29 @@ Acknowledged records are not listed. Nothing is listed for another `iss`,
 ```
 
 - `kind`: `registration` (operation `registration.submit`), `settle`
-  (operation `registration.settle`, with `proposal_id`), `transfer`
-  (`transfer.request` or `transfer.transfer`, with `offer_id`, `step`,
-  `proposal_id`), `runtime` (a write operation, with `case_id` when
-  recorded). Each item carries only the fields of its kind; the rest are
-  `null`.
-- Items are ordered by `recorded_at` ascending, then `operation_id`; a page
-  holds at most 50; `next` is an opaque cursor for the following page or
-  `null` on the last.
-- `complete`: `true` only when every store this runtime lists from was
-  scanned to the end for this page. A store that could not be read makes
-  `complete: false`; the items returned are still exact. The wallet treats an
-  incomplete listing as fail-closed: it may resolve and show the items it
-  received, but reports that not every request could be checked and never
-  concludes that nothing is outstanding.
-
-Item outcomes are NOT in the listing. The wallet resolves each item through
-the existing resolver of its kind, which proves the outcome from the
-historical canonical record:
-
-- `registration` → `registrations/status` (`registration.status`);
-- `settle` → the wallet's own canonical readback plus
-  `registration.settle.status` where the wallet uses it;
-- `transfer` → `transfer.verify` with the recorded `action_id`, else
-  `transfer.status`, both bound to `offer_id` and `step_operation_id`;
-- `runtime` → `write.status` above.
-
-An item whose journey the host disables is neither resolved nor acknowledged
-on that host and stays listed.
+  (operation `registration.settle`, with `proposal_id`; its `operation_id`
+  is the settle operation id), `transfer` (`transfer.request` or
+  `transfer.transfer`, with `offer_id`, `step`, `proposal_id`), `runtime` (a
+  write operation, with `case_id` when recorded). Each item carries only the
+  fields of its kind; the rest are `null`.
+- Item outcomes are NOT in the listing. The wallet resolves each item through
+  the existing resolver of its kind, each of which proves the outcome from
+  the historical canonical record and returns `outcome_proof`:
+  - `registration` → `registrations/status` (`registration.status`);
+  - `settle` → `registration.settle.status` (read-only reconcile through the
+    Dual action logs), with the wallet's own canonical readback beside it;
+  - `transfer` → `transfer.verify` with the recorded `action_id`, else
+    `transfer.status`, both bound to `offer_id` and `step_operation_id`;
+  - `runtime` → `write.status` above.
+- An item whose journey the host disables is neither resolved nor
+  acknowledged on that host and stays listed.
 
 ### Negative answers
 
 - `400 face_request_invalid`: an older runtime; unsupported.
-- `409 {status: "recovery_cursor_invalid"}`: a cursor not issued by this
-  runtime for this actor.
-- `503 {status: "recovery_unavailable"}`: nothing could be scanned; the
-  wallet reports an incomplete check and acknowledges nothing.
+- `409 {status: "recovery_cursor_invalid"}` / `409 {status:
+"recovery_cursor_expired"}`: as above.
+- `503 {status: "recovery_unavailable"}`: nothing could be scanned.
 
 ## 3. `recovery.ack`
 
@@ -334,11 +419,12 @@ Records, idempotently, that this host delivered a record's outcome to its
 actor. It never modifies the business record, its receipt or its proof.
 
 - `op_id`: the ORIGINAL operation id; `target`: the original's
-  (`{object_id, case_id?}`, `{object_id}` for a transfer step or
-  registration); `input`: `{outcome_hash: "sha256:<hex>"}`, the hash of the
-  canonical JSON of the outcome the wallet verified (for a runtime write the
-  `receipt`; for a transfer step `{offer_id, step_operation_id, action_id,
-status}`; for a registration `{operationId, status}`), so a stale or
+  (`{object_id, case_id?}` for a runtime write, `{object_id}` for a
+  registration, settle or transfer step); `input`: `{original_operation,
+outcome_hash}` where `original_operation` is the record's operation
+  (`registration.submit`, `registration.settle`, `transfer.request`,
+  `transfer.transfer`, or the write operation) and `outcome_hash` is exactly
+  the `outcome_hash` the resolving read returned (§0), so a stale or
   different outcome is never acknowledged as delivered.
 
 ### Result
@@ -349,6 +435,13 @@ status}`; for a registration `{operationId, status}`), so a stale or
   "status": "recovery_acknowledged",
   "contract": "r20",
   "operation_id": "<op_id>",
+  "holder": "<assertion holder>",
+  "wallet": "<assertion sub>",
+  "issuer": "<assertion iss>",
+  "application_id": "<serving applicationId>",
+  "programme": "<assertion programme>",
+  "asserting_artifact": { "version": "x.y.z", "artifactHash": "sha256:<hex>" },
+  "outcome_hash": "sha256:<hex>",
   "first": true,
   "acknowledged_at": "<RFC 3339 of the first acknowledgement>",
   "writesExecuted": 0,
@@ -366,36 +459,49 @@ status}`; for a registration `{operationId, status}`), so a stale or
 
 ### Negative answers
 
-- `404 face_operation_not_found`: no record for this actor (as above).
+- `404 face_operation_not_found`: no record for this actor and original
+  operation (as §0).
 - `409 {status: "recovery_unresolved"}`: the record has no committed or
   refused outcome yet; an unresolved record is never acknowledged.
 - `409 {status: "recovery_outcome_mismatch"}`: `outcome_hash` is not the hash
-  of the record's current outcome; nothing is recorded.
+  of the record's `outcome_proof`; nothing is recorded.
 - `400 face_request_invalid`: an older runtime; unsupported.
 
 ## 4. Wallet behaviour against this contract
 
-- A begin that finds no room reads the two oldest held runtime writes with
-  `write.status`; only a proven one makes room. The face's status read of a
-  held write does the same. Otherwise `journal_full`.
-- On each face launch, after the bootstrap, the host lists recovery from the
-  face's runtime and each linked runtime, follows `next` to the end (bounded;
-  an unfinished follow is reported as incomplete), resolves each item of an
-  enabled journey through its kind's resolver, shows the outcomes it proved in
-  its own UI (never face text), and acknowledges an item only after showing a
-  proved outcome, with that outcome's hash. Held and unknown items are shown
-  as still being confirmed and are not acknowledged. Items of a disabled
-  journey are not read.
+- Slots: a begin that finds no room reads the two oldest held runtime writes
+  with `write.status`; only a proven one makes room. The face's status read of
+  a held write does the same. Otherwise `journal_full`. The listing never
+  touches the journal and never frees a slot.
+- Listing: on each face launch, after the bootstrap, the host lists recovery
+  from the face's runtime and each linked runtime, following `next` to the
+  end of each scan (bounded to 20 pages per runtime). Each page's echoed
+  binding is validated (§0). A scan whose last page is `complete: true` is
+  a complete scan; a `complete: false` page, a page follow stopped before
+  `next: null`, a cursor refusal, an unavailable runtime or a runtime without
+  r20 makes the whole check INCOMPLETE.
+- Resolving and showing: each listed item of an enabled journey is resolved
+  through its kind's resolver; a proved outcome is shown in the host's own
+  UI (never face text), a held or unknown one is shown as still being
+  confirmed. Showing never writes anything. A conflicting id (§2) is shown as
+  not checked.
+- Acknowledging: the wallet acknowledges an item only when ALL hold: the
+  check was complete across every scoped runtime; the item's outcome was
+  proved in that same launch with a matching `outcome_hash`; the item's
+  journey is enabled on this host; and the person has seen it (the notice
+  was dismissed). An incomplete check acknowledges nothing, even for items
+  that were proved. Held, unknown, refused and conflicting items are never
+  acknowledged.
 - Nothing recovered is ever re-sent, re-reserved, re-minted for the face, or
   executed. The wallet's cookie-based retained listing stays as a second
   source for runtimes without r20.
-- `write_refused`, any `404`/`409`, an incomplete scan, a mismatched identity,
-  an unhashed legacy entry, a foreign record or a tampered field: held, no
-  slot freed, no acknowledgement.
 
 ## 5. Decisions for Root
 
 - Whether a verified `write_refused` may ever free a wallet slot (the wallet
   keeps it held).
+- Whether a proved server-only write whose target object has since been
+  deleted from Dual (`target_readback: "absent"`) may settle; the wallet holds
+  it until decided.
 - Whether acknowledged records should age out of the runtime store, and when
   (the wallet assumes they are retained with their original evidence).
