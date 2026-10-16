@@ -56,13 +56,18 @@ const executeTransferAction = jest.fn(async () => ({
 }));
 const listRetainedTransferSteps = jest.fn(async (): Promise<unknown[]> => []);
 const readTransferProgress = jest.fn();
+const listFaceOperations = jest.fn(async (): Promise<unknown[]> => []);
+const readFaceOperationStatus = jest.fn();
 jest.mock("@/app/_services/product-face.client", () => ({
   executeSettleAction: (...args: unknown[]) =>
     executeSettleAction(...(args as [])),
   executeTransferAction: (...args: unknown[]) =>
     executeTransferAction(...(args as [])),
   takeFaceHandoverTicket: () => undefined,
-  listFaceOperations: async () => [],
+  listFaceOperations: (...args: unknown[]) =>
+    listFaceOperations(...(args as [])),
+  readFaceOperationStatus: (...args: unknown[]) =>
+    readFaceOperationStatus(...(args as [])),
   listRetainedTransferSteps: (...args: unknown[]) =>
     listRetainedTransferSteps(...(args as [])),
   readTransferProgress: (...args: unknown[]) =>
@@ -524,5 +529,152 @@ describe("a transfer step this wallet sent from another launch", () => {
     });
     expect(readTransferProgress).not.toHaveBeenCalled();
     expect(hook.result.current.notice).toBeNull();
+  });
+});
+
+// The same launch-time resume reconciles this launch's own journalled
+// registrations (listFaceOperations, then each status read) and reports each
+// answer to the face. A late answer must never read on, or report into, a
+// launch that is no longer the live one.
+describe("a journalled registration's late status never reaches a launch that is no longer live", () => {
+  const journalled = (operationId: string) => ({
+    operation_id: operationId,
+    kind: "registration",
+    operation: "registration.submit",
+    object_id: "aaaaaaaaaaaaaaaaaaaaaaaa",
+    case_id: null,
+    phase: "assertion_issued",
+    status: null,
+    action_id: null,
+  });
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((settle) => {
+      resolve = settle;
+    });
+    return { promise, resolve };
+  }
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+  type Launched = ReturnType<typeof launch>;
+  let endSession: () => void;
+  const changes: Array<
+    [string, (launched: Launched, endSession: () => void) => void]
+  > = [
+    ["the launch is torn down", ({ hook }) => hook.unmount()],
+    [
+      "the frame reloads and a new host replaces it",
+      ({ hook }) =>
+        act(() =>
+          hook.result.current.onFrameLoad(document.createElement("iframe")),
+        ),
+    ],
+    ["the account changes", (_launched, end) => act(() => end())],
+  ];
+  beforeEach(() => {
+    captured = undefined;
+    initialized = undefined;
+    fakeHost.session.ended = null;
+    fakeHost.operationUpdated.mockReset();
+    endSession = () => {
+      throw new Error("no session-end listener");
+    };
+    session = {
+      wallet: accountA,
+      authenticationMethod: "email",
+      isAuthenticated: true,
+      isLoading: false,
+      refresh: jest.fn(),
+      logout: jest.fn(),
+      onSessionEnd: (listener) => {
+        endSession = () => listener("account_changed");
+        return () => undefined;
+      },
+    };
+    listRetainedTransferSteps.mockReset().mockResolvedValue([]);
+    readTransferProgress.mockReset();
+    listFaceOperations.mockReset();
+    readFaceOperationStatus.mockReset();
+  });
+  afterAll(() => {
+    listFaceOperations.mockReset().mockResolvedValue([]);
+  });
+
+  it.each(changes)(
+    "%s while the listing is pending: no status is read and nothing is reported",
+    async (_label, change) => {
+      const listing = deferred<unknown[]>();
+      listFaceOperations.mockImplementation(() => listing.promise);
+      readFaceOperationStatus.mockResolvedValue({
+        status: "registered",
+        objectId: "aaaaaaaaaaaaaaaaaaaaaaaa",
+        readback: null,
+      });
+      const launched = launch();
+      const resume = initialized!;
+      await act(async () => {
+        resume(fakeHost);
+        await tick();
+      });
+      change(launched, endSession);
+      await act(async () => {
+        listing.resolve([journalled("register-op-0001")]);
+        await tick();
+      });
+      expect(readFaceOperationStatus).not.toHaveBeenCalled();
+      expect(fakeHost.operationUpdated).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(changes)(
+    "%s while a status read is pending: its answer is dropped and no further read is dispatched",
+    async (_label, change) => {
+      listFaceOperations.mockResolvedValue([
+        journalled("register-op-0001"),
+        journalled("register-op-0002"),
+      ]);
+      const read = deferred<unknown>();
+      readFaceOperationStatus.mockImplementation(() => read.promise);
+      const launched = launch();
+      const resume = initialized!;
+      await act(async () => {
+        resume(fakeHost);
+        await tick();
+      });
+      expect(readFaceOperationStatus).toHaveBeenCalledTimes(1);
+      change(launched, endSession);
+      await act(async () => {
+        read.resolve({
+          status: "registered",
+          objectId: "aaaaaaaaaaaaaaaaaaaaaaaa",
+          readback: null,
+        });
+        await tick();
+      });
+      expect(readFaceOperationStatus).toHaveBeenCalledTimes(1);
+      expect(fakeHost.operationUpdated).not.toHaveBeenCalled();
+    },
+  );
+
+  it("while the launch stays live, each status is read and reported", async () => {
+    listFaceOperations.mockResolvedValue([
+      journalled("register-op-0001"),
+      journalled("register-op-0002"),
+    ]);
+    readFaceOperationStatus.mockResolvedValue({
+      status: "registered",
+      objectId: "aaaaaaaaaaaaaaaaaaaaaaaa",
+      readback: null,
+    });
+    launch();
+    const resume = initialized!;
+    await act(async () => {
+      resume(fakeHost);
+      await tick();
+    });
+    expect(readFaceOperationStatus).toHaveBeenCalledTimes(2);
+    expect(fakeHost.operationUpdated.mock.calls).toEqual([
+      ["register-op-0001", "registered"],
+      ["register-op-0002", "registered"],
+    ]);
   });
 });

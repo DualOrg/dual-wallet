@@ -305,6 +305,7 @@ export function useProductFaceHost({
           dispatch({ type: "live" });
           // After a reload, journalled operations whose authority already left
           // the wallet are reconciled read-only and reported; never re-minted.
+          // As below, only this launch's own live host reads or reports.
           void listFaceOperations(face)
             .then(async (operations) => {
               for (const operation of operations) {
@@ -317,10 +318,12 @@ export function useProductFaceHost({
                 ) {
                   continue;
                 }
+                if (!liveHost()) return;
                 const status = await readFaceOperationStatus(
                   face,
                   operation.operation_id,
                 ).catch(() => undefined);
+                if (!liveHost()) return;
                 if (status) {
                   started.operationUpdated(
                     operation.operation_id,

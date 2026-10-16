@@ -2,7 +2,11 @@
 // the organisations, origins, faces and images are fixtures, not deployments.
 import { createHash } from "node:crypto";
 import { canonicalJson } from "@/app/_domain/product-face";
-import { ARTIFACT_HEX, bindingInput } from "@/test/product-face-fixtures";
+import {
+  ARTIFACT_HEX,
+  bindingInput,
+  TEMPLATE_B,
+} from "@/test/product-face-fixtures";
 
 /** A 2x2 PNG and a 1x1 lossless WebP: different bytes, both under the cap. */
 export const MORROW_LOGO_BASE64 =
@@ -59,6 +63,30 @@ export const tidewellBinding = () =>
 /** One registry holding both faces, as a shared fixture deployment would. */
 export const registryWithBothFaces = () =>
   JSON.stringify([morrowBinding(), tidewellBinding()]);
+
+/** Tidewell's own linked Warranty runtime (never Morrow's). */
+export const TIDEWELL_WARRANTY = {
+  purpose: "claims-warranty",
+  applicationId: "tig.claims.tidewell-warranty",
+  origin: "https://warranty.tidewell.example",
+  instanceId: "tig-app-warranty0002",
+};
+
+/**
+ * Tidewell's face as a complete branded app: its own template, its own linked
+ * Warranty runtime, transfer and handover (every journey backed).
+ */
+export const tidewellFullBinding = () => ({
+  ...tidewellBinding(),
+  templateIds: [TEMPLATE_B],
+  linkedRuntimes: [TIDEWELL_WARRANTY],
+  transferRequest: TRANSFER_REQUEST,
+  handover: { enabled: true },
+});
+
+/** One registry holding both complete faces. */
+export const registryWithBothFullFaces = () =>
+  JSON.stringify([morrowBinding(), tidewellFullBinding()]);
 
 const sha256 = (value: string | Buffer) =>
   createHash("sha256").update(value).digest("hex");
@@ -173,6 +201,30 @@ export function tidewellDocument(): HostDocument {
       configVersion: "2.1.0",
       approvedContentHash: "",
       studioVersionRef: "studio@2026.10.1",
+    },
+  };
+}
+
+/**
+ * Tidewell as a complete branded app (with `tidewellFullBinding` in the
+ * registry): every journey, its own identity, entrance and face.
+ */
+export function tidewellFullDocument(): HostDocument {
+  return {
+    ...tidewellDocument(),
+    home: {
+      headline: "Every Tidewell kettle you own, in one place.",
+      introduction:
+        "Register a kettle, follow its service and pass it on when you sell it.",
+      primaryJourney: "myProducts",
+    },
+    navigation: ["products", "activity", "settings"],
+    journeys: {
+      registration: true,
+      myProducts: true,
+      serviceProgress: true,
+      quoteDecisions: true,
+      transfer: true,
     },
   };
 }

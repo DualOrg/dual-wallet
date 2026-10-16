@@ -432,6 +432,21 @@ describe("branded host entrance and fail-closed mode", () => {
         WALLET_HOST_BUILD_FACE_APPLICATIONS_SHA256: "8".repeat(64),
       }),
     ],
+    [
+      "a brand build whose configuration was removed (never the generic wallet)",
+      () => ({
+        WALLET_HOST_BUILD_CONFIGURATION_SHA256:
+          hostEnvironment(morrowDocument()).WALLET_HOST_CONFIGURATION_SHA256,
+      }),
+    ],
+    [
+      "one brand's build given the other brand's configuration",
+      () => ({
+        ...hostEnvironment(tidewellDocument()),
+        WALLET_HOST_BUILD_CONFIGURATION_SHA256:
+          hostEnvironment(morrowDocument()).WALLET_HOST_CONFIGURATION_SHA256,
+      }),
+    ],
   ] as const) {
     test(`${label}: every page is a neutral 503 and every BFF route refuses`, async () => {
       resetWalletHostCache();
