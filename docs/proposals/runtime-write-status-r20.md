@@ -339,6 +339,127 @@ recorded when it issued the write's assertion; an entry issued before the
 wallet recorded one is never settled from a read. Everything else is held;
 nothing is ever re-sent.
 
+## 1a. Amendment r20.1 (PROPOSED, awaiting Root approval): one proof per intended Dual effect
+
+Status: **PROPOSED AMENDMENT, NOT APPROVED, NOT IMPLEMENTED** on either
+side. Nothing of the approved r20 wire changes; this section adds to §1's
+`dual.backed: true` branch only. Neither the wallet reader nor the fixture
+moves to it before Root approves this exact text.
+
+### Why
+
+A normal linked Warranty write can intend MORE THAN ONE Dual action (a
+`case.open` that mints and then updates: `intended_dual_writes: 2`). r20
+carries one `proof`, and the wallet holds every record whose intended count
+is not `1`; one proof is never taken to stand for a second effect. That
+leaves a required normal journey held. The remedy is a complete, ordered
+list of proofs, one per intended effect, each bound to the immutable
+original request and its position, with the outcome hash covering the whole
+list.
+
+### The `dual` block under r20.1
+
+```json
+"dual": {
+  "backed": true,
+  "intended_dual_writes": 2,
+  "proofs": [
+    {
+      "index": 0,
+      "resolver": "dual_action_log",
+      "action_id": "<historical Dual action id, unique in this list>",
+      "action": "<the Dual action executed, e.g. mint | update | transfer>",
+      "object_id": "<24 hex: the canonical object the action was applied to>",
+      "signer": "<the account that signed the action>",
+      "intended_params_hash": "sha256:<hex>",
+      "observed_params_hash": "sha256:<hex>",
+      "params_match": true,
+      "observed_status": "<Dual's own status word for the executed action>",
+      "affected_objects": ["<24 hex>", "..."],
+      "bound_to": {
+        "operation_id": "<op_id>",
+        "request_hash": "sha256:<recorded write request hash>",
+        "effect_index": 0
+      },
+      "verified_at": "<RFC 3339 of this read>"
+    },
+    { "index": 1, "...": "the second intended effect, same shape" }
+  ]
+}
+```
+
+- `proofs` is ORDERED: position `i` is the `i`-th effect the ORIGINAL
+  request intended, as the server's immutable original domain record fixed
+  it; `index === i` and `bound_to.effect_index === i`.
+- Exact coverage: `proofs.length === intended_dual_writes`. A record whose
+  intended effects are not ALL proved is `409 {status:
+"write_outcome_unknown", reason: "effects_unproved", proved_effects: k}`,
+  never `write_applied` and never partially applied; the wallet infers no
+  remaining effect from the ones proved.
+- Unique `action_id` across the list; a repeated id is malformed.
+- `intended_params_hash`: `sha256:` hex of the canonical JSON of the
+  EXECUTION PARAMETERS the original request intended for this effect (the
+  action and its parameters as the original would execute them), from the
+  immutable original record, fixed when the write was recorded.
+  `observed_params_hash`: the same hash computed over the parameters the
+  action ACTUALLY executed with, read freshly at this status read from the
+  public Dual action log (which exposes the executed params, their hash,
+  the status and the affected objects). `params_match: true` means the two
+  are equal; a domain content hash (a custom map, a record body) is never
+  relabelled as either.
+- `observed_status` and `affected_objects` come from that fresh log read;
+  `affected_objects` lists the objects the action affected and contains
+  `object_id`.
+- `bound_to` names this very operation and request and the effect's index;
+  `verified_at` is this read's time (the wallet accepts ten minutes of
+  skew). Each proof is verified afresh at every read through the runtime's
+  existing strict Dual action-log resolver; application store or outbox
+  state alone is never the proof.
+- Later state never invalidates proved history (§0): a later legitimate
+  action on an affected object does not change an effect already proved
+  from the historical log.
+
+### Outcome hash over the whole effect list
+
+For a Dual-backed write under r20.1, `outcome_proof.dual` is
+`{"effects": [{"index", "action_id", "object_id", "observed_params_hash"}, ...]}`
+in list order, so `outcome_hash` (and therefore `recovery.ack`) binds the
+ENTIRE effect list; an answer whose `outcome_proof.dual.effects` does not
+equal the projection of `proofs` is malformed.
+
+### Compatibility with approved r20
+
+- `intended_dual_writes: 1`: a runtime MAY keep answering the approved r20
+  singular `proof` (its field names unchanged) with `outcome_proof.dual =
+{action_id, object_id, observed_payload_hash}`; or it may answer the r20.1
+  `proofs` list of one. The wallet accepts either for one effect. If both are
+  present they must describe the same action, else malformed.
+- `intended_dual_writes >= 2`: only `proofs`. The singular `proof` alone is
+  malformed for such a record, and the record stays held.
+- `backed: false` is unchanged.
+
+### Wallet validation under r20.1 (what frees a slot or proves a recovered item)
+
+Every §1 gate as approved, and for `backed: true`: `proofs.length ===
+intended_dual_writes >= 1` (or the compatible singular form when the count
+is `1`); indices `0..n-1` in order with `bound_to.effect_index` equal;
+unique, well-formed `action_id`s; per proof: `resolver ===
+"dual_action_log"`, a plain-code `action`, a well-formed `object_id` and
+non-empty `signer`, `intended_params_hash === observed_params_hash` (both
+`sha256:` hashes), `params_match === true`, a plain-code `observed_status`,
+`affected_objects` a non-empty array of object ids containing `object_id`,
+`bound_to.operation_id` and `bound_to.request_hash` equal to the answer's,
+`verified_at` within ten minutes; and `outcome_proof.dual.effects` equal to
+the projection above. The wallet still does not require `signer` to be the
+holder, nor any `object_id` to be the product target. Anything else: held.
+
+### What this amendment does not do
+
+No new operation, store, status word, counter or lifetime; `recovery.list`
+and `recovery.ack` are unchanged (the ack still names one `outcome_hash`,
+which now covers every effect). The resolution bound, continuation,
+ticketing and journey gate are unaffected.
+
 ## 2. `recovery.list`
 
 The durable discovery of this actor's operations whose outcome the wallet may
@@ -577,12 +698,12 @@ outcome_hash}` where `original_operation` is the record's operation
 
 ## 4a. Explicit limitations of the wallet consumer
 
-- One intended Dual action per write: the wallet accepts `backed: true` only
-  with `intended_dual_writes: 1` and the one proof naming that action. A
-  record intending more than one Dual write is HELD as unsupported; the
-  wallet never infers the remaining effects proved. Supporting multi-effect
-  writes needs the contract to carry one proof per intended effect (a
-  decision for Root, §5).
+- One intended Dual action per write, until amendment r20.1 (§1a) is
+  approved: the wallet accepts `backed: true` only with
+  `intended_dual_writes: 1` and the one proof naming that action. A record
+  intending more than one Dual write is HELD as unsupported; the wallet
+  never infers the remaining effects proved. §1a is the proposed remedy: one
+  proof per intended effect, exact count, ordered, hash over the whole list.
 - Resolution per listing page is bounded (25 items) in the contract's stable
   (`recorded_at`, `operation_id`) order. A page that leaves items unresolved
   returns a sealed, host-local continuation naming the last key it resolved
@@ -604,8 +725,9 @@ outcome_hash}` where `original_operation` is the record's operation
 
 - Whether a verified `write_refused` may ever free a wallet slot (the wallet
   keeps it held).
-- Whether a write intending more than one Dual action should be provable (one
-  proof per effect); until then such a record is held (§4a).
+- Approval of amendment r20.1 (§1a): one proof per intended Dual effect, so
+  a normal linked `case.open` intending two Dual actions can be proved;
+  until then such a record is held (§4a).
 - Whether a proved server-only write whose target object has since been
   deleted from Dual (`target_readback: "absent"`) may settle; the wallet holds
   it until decided.
