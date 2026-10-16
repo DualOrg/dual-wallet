@@ -501,6 +501,10 @@ export const runtimeOperationNames = [
   "transfer.status",
   // r19: the recipient's host reads which unit its acceptance is for.
   "transfer.acceptance.read",
+  // PROPOSED r20 (docs/proposals/runtime-write-status-r20.md), not deployed:
+  // the host's read of one runtime write's recorded outcome by its original
+  // operation id. Host-only; an unsupporting runtime leaves the entry held.
+  "write.status",
 ] as const;
 export type RuntimeOperation = (typeof runtimeOperationNames)[number];
 
@@ -575,6 +579,7 @@ export const hostOnlyRuntimeOperations = [
   "transfer.verify",
   "transfer.status",
   "transfer.acceptance.read",
+  "write.status",
 ] as const satisfies readonly RuntimeOperation[];
 
 /**

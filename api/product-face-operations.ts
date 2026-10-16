@@ -21,11 +21,13 @@ import {
   parseCaseQuote,
   parseSettleProposal,
   readRegistrationStatus,
+  readWriteStatus,
   registrationStatusRequestHash,
   reserveSettle,
   runtimeRequestHash,
   transferRuntimeCall,
   trustedRuntimeRead,
+  writeStatusRequest,
   type TrustedReadRequest,
 } from "@/api/face-runtime";
 import {
@@ -198,6 +200,11 @@ interface MintRequest {
   operationId: string;
   target: AssertionTarget;
   requestHash: string;
+  /**
+   * The operation whose runtime the assertion is for, when not its own: a
+   * write.status read goes to the runtime that served the original write.
+   */
+  audienceOf?: RuntimeOperation;
 }
 
 /** The Warranty runtime connected to this programme, if any (r10). */
@@ -221,10 +228,11 @@ export function mint(
   if (!issuer) return fail("invalid_origin", 403);
   // contract r10: a case operation's audience is the linked Warranty runtime;
   // without one, nothing is minted for it.
-  const linked = isLinkedCaseOperation(input.operation)
+  const routed = input.audienceOf ?? input.operation;
+  const linked = isLinkedCaseOperation(routed)
     ? linkedCaseRuntime(context)
     : undefined;
-  if (isLinkedCaseOperation(input.operation) && !linked) {
+  if (isLinkedCaseOperation(routed) && !linked) {
     return fail("case_runtime_not_linked", 409);
   }
   const now = Date.now();
@@ -527,7 +535,15 @@ export async function authorizeAssertion(
       }
       const transition = applyJournalTransition(
         journal.entries,
-        { kind: "issue", operationId, objectId, caseId: entry.caseId },
+        {
+          kind: "issue",
+          operationId,
+          objectId,
+          caseId: entry.caseId,
+          // Proposed r20: the exact request this write's assertion carries,
+          // which its recorded outcome must name before it frees a slot.
+          requestHash,
+        },
         Date.now(),
       );
       if (!transition.ok) {
@@ -559,6 +575,127 @@ export async function authorizeAssertion(
     operationId,
     journal: minted.journal,
   };
+}
+
+// ------------------------------------------- runtime write outcomes (r20)
+
+/** At most this many held writes are read for one request that needs room. */
+const MAX_WRITE_STATUS_READS = 2;
+
+/**
+ * A runtime write of this launch whose outcome a write.status read could
+ * prove: its assertion was issued and it recorded its exact request hash then
+ * (an entry issued before that keeps its slot), for this face and programme.
+ */
+function heldRuntimeWrite(
+  context: FaceRequestContext,
+  entry: FaceJournalEntry,
+) {
+  return (
+    entry.kind === "runtime" &&
+    isRuntimeWriteOperation(entry.operation) &&
+    entry.phase === "assertion_issued" &&
+    Boolean(entry.requestHash) &&
+    entry.slug === context.binding.slug &&
+    entry.programmeId === context.binding.programmeId
+  );
+}
+
+/**
+ * PROPOSED r20 (docs/proposals/runtime-write-status-r20.md), not deployed:
+ * settles ONE held runtime write only from the runtime's own verified record
+ * of exactly that write. Every binding is compared with the journal entry,
+ * the session, this host and the face binding; anything else, an unsupporting
+ * runtime included, leaves the entry held and its slot taken. Read-only: the
+ * write is never re-sent, and the read's assertion is not kept against the
+ * launch's outstanding cap (the host's own server-to-server read).
+ */
+async function verifyRuntimeWrite(
+  context: FaceRequestContext,
+  request: NextRequest,
+  journal: FaceJournal,
+  entry: FaceJournalEntry,
+): Promise<FaceJournal | undefined> {
+  if (!heldRuntimeWrite(context, entry)) return undefined;
+  const operation = entry.operation as RuntimeOperation;
+  const runtime = isLinkedCaseOperation(operation)
+    ? linkedCaseRuntime(context)
+    : context.binding;
+  const issuer = walletIssuerOrigin(request);
+  if (!runtime || !issuer) return undefined;
+  const read = writeStatusRequest(entry.operationId, {
+    object_id: entry.objectId,
+    ...(entry.caseId ? { case_id: entry.caseId } : {}),
+  });
+  const minted = mint(context, request, journal, {
+    operation: "write.status",
+    operationId: entry.operationId,
+    target: read.target,
+    requestHash: runtimeRequestHash(read),
+    audienceOf: operation,
+  });
+  if (!minted.ok) return undefined;
+  const result = await readWriteStatus(
+    { origin: runtime.origin, applicationId: runtime.applicationId },
+    read,
+    minted.assertion,
+  );
+  if (result.outcome !== "applied") return undefined;
+  const recorded = result.record;
+  const receiptMatches =
+    recorded.receipt.kind === "case_event"
+      ? isLinkedCaseOperation(operation) &&
+        recorded.receipt.caseId === entry.caseId
+      : !isLinkedCaseOperation(operation);
+  if (
+    recorded.operationId !== entry.operationId ||
+    recorded.operation !== entry.operation ||
+    recorded.objectId !== entry.objectId ||
+    recorded.caseId !== (entry.caseId ?? null) ||
+    recorded.requestHash !== entry.requestHash ||
+    recorded.holder !== context.holder ||
+    recorded.wallet !== context.wallet.id ||
+    recorded.issuer !== issuer ||
+    recorded.applicationId !== runtime.applicationId ||
+    recorded.programme !== context.binding.programmeId ||
+    recorded.assertingArtifact.version !== context.binding.version ||
+    recorded.assertingArtifact.artifactHash !== context.binding.artifactHash ||
+    !receiptMatches
+  ) {
+    return undefined;
+  }
+  const applied = applyJournalTransition(
+    journal.entries,
+    {
+      kind: "apply",
+      operationId: entry.operationId,
+      requestHash: recorded.requestHash,
+    },
+    Date.now(),
+  );
+  return applied.ok ? { ...journal, entries: applied.entries } : undefined;
+}
+
+/**
+ * When a begin finds no finished entry to make room, the held runtime writes
+ * of this launch are read (oldest issued first, at most
+ * MAX_WRITE_STATUS_READS) until one is proven applied. Nothing unproven is
+ * evicted; without a proof the begin is still refused journal_full.
+ */
+async function reclaimRuntimeWrite(
+  context: FaceRequestContext,
+  request: NextRequest,
+  journal: FaceJournal,
+): Promise<FaceJournal | undefined> {
+  const held = journal.entries
+    .filter((entry) => heldRuntimeWrite(context, entry))
+    .sort((left, right) => (left.issuedAt ?? 0) - (right.issuedAt ?? 0))
+    .slice(0, MAX_WRITE_STATUS_READS);
+  for (const entry of held) {
+    const verified = await verifyRuntimeWrite(context, request, journal, entry);
+    if (verified) return verified;
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------- trusted reads
@@ -764,14 +901,22 @@ export async function transitionOperation(
   if (existing && existing.slug !== context.binding.slug) {
     return fail("operation_conflict", 409);
   }
-  const apply = (
+  const apply = async (
     next: Parameters<typeof applyJournalTransition>[1],
     extra: {
       unit?: ReturnType<typeof publicUnitFacts>;
       quote?: CaseQuote;
     } = {},
   ) => {
-    const result = applyJournalTransition(journal.entries, next, now);
+    let result = applyJournalTransition(journal.entries, next, now);
+    if (!result.ok && result.error === "journal_full") {
+      // Room only from a held runtime write proven applied (proposed r20).
+      const reclaimed = await reclaimRuntimeWrite(context, request, journal);
+      if (reclaimed) {
+        journal = reclaimed;
+        result = applyJournalTransition(journal.entries, next, now);
+      }
+    }
     if (!result.ok) return fail(result.error, journalStatus[result.error]);
     return {
       ok: true as const,
@@ -1363,6 +1508,28 @@ export async function reconcileOperation(
   if (!found) return fail("unknown_operation", 404);
   let entry = found;
   const recovered = !own;
+  if (own && heldRuntimeWrite(context, own)) {
+    // Proposed r20: settled only from the runtime's verified record of
+    // exactly this write; otherwise it stays as it is.
+    const verified = await verifyRuntimeWrite(
+      context,
+      request,
+      context.journal,
+      own,
+    );
+    const settled = verified?.entries.find(
+      (item) => item.operationId === operationId,
+    );
+    if (verified && settled) {
+      return {
+        ok: true as const,
+        entry: settled,
+        status: journalOperationStatus(settled, undefined),
+        readback: undefined,
+        journal: verified,
+      };
+    }
+  }
   let readback: { ownerIsYou: boolean; state: string | null } | undefined;
   let evaluation:
     ReturnType<typeof publicUnitFacts>["registration"] | undefined;

@@ -450,3 +450,145 @@ describe("which registration another launch of the wallet may reconcile", () => 
     }
   });
 });
+
+// Proposed r20 (docs/proposals/runtime-write-status-r20.md): a runtime write
+// frees its slot only from a verified record naming the exact request hash it
+// recorded when its assertion was issued.
+describe("a runtime write settled from its verified outcome", () => {
+  const HASH = `sha256:${"a".repeat(64)}`;
+  const OTHER = `sha256:${"b".repeat(64)}`;
+  const write = {
+    ...base,
+    operationId: "case-write-0001",
+    kind: "runtime" as const,
+    operation: "case.evidence.submit",
+    caseId: "case-0001",
+  };
+  const issued = (requestHash?: string) =>
+    run([
+      { kind: "begin", entry: write },
+      { kind: "confirm", operationId: write.operationId, objectId: OBJECT },
+      {
+        kind: "issue",
+        operationId: write.operationId,
+        objectId: OBJECT,
+        caseId: write.caseId,
+        ...(requestHash ? { requestHash } : {}),
+      },
+    ]);
+
+  it("records the request hash at issue and settles only for that hash", () => {
+    const entries = issued(HASH);
+    expect(entries[0]).toMatchObject({
+      phase: "assertion_issued",
+      requestHash: HASH,
+    });
+    expect(
+      applyJournalTransition(
+        entries,
+        { kind: "apply", operationId: write.operationId, requestHash: OTHER },
+        2_000,
+      ),
+    ).toEqual({ ok: false, error: "operation_conflict" });
+    const applied = applyJournalTransition(
+      entries,
+      { kind: "apply", operationId: write.operationId, requestHash: HASH },
+      2_000,
+    );
+    expect(applied).toMatchObject({
+      ok: true,
+      entry: { phase: "settled", requestHash: HASH },
+    });
+    // Once settled it is never applied again and is a finished entry.
+    expect(
+      applyJournalTransition(
+        applied.ok ? applied.entries : [],
+        { kind: "apply", operationId: write.operationId, requestHash: HASH },
+        3_000,
+      ),
+    ).toEqual({ ok: false, error: "operation_conflict" });
+  });
+
+  it("never settles a write issued without a recorded hash (before r20)", () => {
+    const legacy = issued();
+    expect(legacy[0].requestHash).toBeUndefined();
+    expect(
+      applyJournalTransition(
+        legacy,
+        { kind: "apply", operationId: write.operationId, requestHash: HASH },
+        2_000,
+      ),
+    ).toEqual({ ok: false, error: "operation_conflict" });
+  });
+
+  it("never settles anything but an issued runtime write", () => {
+    const confirmed = run([
+      { kind: "begin", entry: write },
+      { kind: "confirm", operationId: write.operationId, objectId: OBJECT },
+    ]);
+    const registration = run([
+      { kind: "begin", entry: { ...base, requestHash: HASH } },
+      { kind: "confirm", operationId: base.operationId, objectId: OBJECT },
+      { kind: "issue", operationId: base.operationId, objectId: OBJECT },
+    ]);
+    for (const [entries, operationId] of [
+      [confirmed, write.operationId],
+      [registration, base.operationId],
+    ] as const) {
+      expect(
+        applyJournalTransition(
+          entries,
+          { kind: "apply", operationId, requestHash: HASH },
+          2_000,
+        ),
+      ).toEqual({ ok: false, error: "operation_conflict" });
+    }
+    // A hash is recorded at issue only for a runtime write.
+    expect(
+      applyJournalTransition(
+        run([
+          { kind: "begin", entry: { ...base, requestHash: HASH } },
+          { kind: "confirm", operationId: base.operationId, objectId: OBJECT },
+        ]),
+        {
+          kind: "issue",
+          operationId: base.operationId,
+          objectId: OBJECT,
+          requestHash: OTHER,
+        },
+        2_000,
+      ),
+    ).toEqual({ ok: false, error: "operation_conflict" });
+  });
+
+  it("is never aged out while its outcome is unproven, and never makes room", () => {
+    const entries = issued(HASH);
+    expect(pruneJournal(entries, 1_000 + 30 * 24 * 3_600_000)).toEqual(entries);
+    let full = entries;
+    for (let index = 2; index <= 6; index += 1) {
+      const operationId = `case-write-000${index}`;
+      for (const step of [
+        { kind: "begin", entry: { ...write, operationId } },
+        { kind: "confirm", operationId, objectId: OBJECT },
+        {
+          kind: "issue",
+          operationId,
+          objectId: OBJECT,
+          caseId: write.caseId,
+          requestHash: HASH,
+        },
+      ] as const) {
+        const result = applyJournalTransition(full, step, 1_000);
+        if (!result.ok) throw new Error(result.error);
+        full = result.entries;
+      }
+    }
+    expect(
+      applyJournalTransition(
+        full,
+        { kind: "begin", entry: { ...write, operationId: "case-write-0007" } },
+        2_000,
+      ),
+    ).toEqual({ ok: false, error: "journal_full" });
+  });
+});

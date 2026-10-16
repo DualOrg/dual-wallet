@@ -281,6 +281,10 @@ const operationJourneys: Record<RuntimeOperation, HostJourney> = {
   "transfer.verify": "transfer",
   "transfer.status": "transfer",
   "transfer.acceptance.read": "transfer",
+  // Host-only (proposed r20): never minted for a face, so never classified
+  // from a face request; the host reads it only for an entry whose own
+  // journey the request was already admitted for.
+  "write.status": "serviceProgress",
 };
 
 export function journeyOfOperation(operation: RuntimeOperation): HostJourney {

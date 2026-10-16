@@ -212,6 +212,201 @@ export async function readRegistrationStatus(
   return { outcome: "unknown" };
 }
 
+/** The request one write.status read sends, so its hash is the runtime's. */
+export function writeStatusRequest(
+  operationId: string,
+  target: { object_id: string; case_id?: string },
+) {
+  return {
+    operation: "write.status" as const,
+    operationId,
+    target: {
+      object_id: target.object_id,
+      ...(target.case_id ? { case_id: target.case_id } : {}),
+    },
+    input: {},
+  };
+}
+
+/** The runtime's durable record of one write, exactly as it answered it. */
+export interface RecordedWrite {
+  operationId: string;
+  operation: string;
+  objectId: string;
+  caseId: string | null;
+  requestHash: string;
+  holder: string;
+  wallet: string;
+  issuer: string;
+  applicationId: string;
+  programme: string;
+  /** The face artifact the original write's assertion carried. */
+  recordedArtifact: { version: string; artifactHash: string };
+  /** The face artifact this status read's assertion carried. */
+  assertingArtifact: { version: string; artifactHash: string };
+  receipt:
+    | { kind: "case_event"; caseId: string; eventId: string }
+    | { kind: "transfer_offer"; offerId: string; state: string };
+}
+
+export type WriteStatusResult =
+  /**
+   * 200 write_applied under contract r20: the runtime's own readback of its
+   * canonical store shows the original write's effect, with zero unresolved
+   * outcomes, and every field is well formed.
+   */
+  | { outcome: "applied"; record: RecordedWrite }
+  /**
+   * Anything else: not found, refused, unknown, another caller, a runtime
+   * without r20, an incompatible artifact, malformed, oversized, unreachable
+   * or timed out. Proves nothing; the entry stays held, nothing is re-sent.
+   */
+  | { outcome: "held" };
+
+const PLAIN = /^[a-z][a-z0-9_]{0,63}$/;
+const SEMVER_TEXT = /^\d+\.\d+\.\d+$/;
+const ARTIFACT_HASH = /^sha256:[0-9a-f]{64}$/;
+const RECEIPT_ID = /^[A-Za-z0-9._:-]{1,128}$/;
+const OFFER = /^pto-[0-9a-f]{24}$/;
+
+function artifactOf(value: unknown) {
+  return record(value) &&
+    typeof value.version === "string" &&
+    SEMVER_TEXT.test(value.version) &&
+    typeof value.artifactHash === "string" &&
+    ARTIFACT_HASH.test(value.artifactHash)
+    ? { version: value.version, artifactHash: value.artifactHash }
+    : undefined;
+}
+
+function receiptOf(value: unknown): RecordedWrite["receipt"] | undefined {
+  if (!record(value)) return undefined;
+  if (
+    value.kind === "case_event" &&
+    isCaseId(value.case_id) &&
+    typeof value.event_id === "string" &&
+    RECEIPT_ID.test(value.event_id)
+  ) {
+    return {
+      kind: "case_event",
+      caseId: value.case_id,
+      eventId: value.event_id,
+    };
+  }
+  if (
+    value.kind === "transfer_offer" &&
+    typeof value.offer_id === "string" &&
+    OFFER.test(value.offer_id) &&
+    typeof value.state === "string" &&
+    PLAIN.test(value.state)
+  ) {
+    return {
+      kind: "transfer_offer",
+      offerId: value.offer_id,
+      state: value.state,
+    };
+  }
+  return undefined;
+}
+
+/**
+ * PROPOSED r20 (docs/proposals/runtime-write-status-r20.md), NOT deployed by
+ * any runtime: the host's own read of ONE runtime write's verified outcome, by
+ * its original operation id, from the runtime that served that write. Fixed
+ * endpoint, bounded response, timeout, no cookies and no redirects; it reads
+ * and never dispatches. Only an exact r20 write_applied answer with a
+ * verified readback, zero unresolved outcomes, a receipt and the runtime's
+ * artifact-compatibility proof is returned; the caller still compares every
+ * binding with its journal entry, session, host and face binding.
+ */
+export async function readWriteStatus(
+  runtime: Pick<ProductFaceBinding, "origin" | "applicationId">,
+  request: ReturnType<typeof writeStatusRequest>,
+  assertion: string,
+): Promise<WriteStatusResult> {
+  const held = { outcome: "held" } as const;
+  let response: Awaited<ReturnType<typeof fetchBounded>>;
+  try {
+    response = await fetchBounded(
+      `${runtime.origin}${RUNTIME_ENDPOINT}`,
+      MAX_RESPONSE_BYTES,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "x-tig-product-face-application": runtime.applicationId,
+        },
+        body: JSON.stringify({ ...request, assertion }),
+      },
+      TIMEOUT_MS,
+    );
+  } catch {
+    return held;
+  }
+  if (!response || response.status !== 200) return held;
+  let body: unknown;
+  try {
+    body = JSON.parse(response.body.toString("utf8"));
+  } catch {
+    return held;
+  }
+  if (
+    !record(body) ||
+    body.ok !== true ||
+    body.status !== "write_applied" ||
+    body.contract !== "r20" ||
+    body.readback !== "verified" ||
+    body.artifact_compatible !== true ||
+    body.unknownWriteOutcomes !== 0 ||
+    body.secretReturned !== false ||
+    !record(body.target)
+  ) {
+    return held;
+  }
+  const target = body.target;
+  const text = (value: unknown, max = 256): value is string =>
+    typeof value === "string" && value.length > 0 && value.length <= max;
+  const recordedArtifact = artifactOf(body.recorded_artifact);
+  const assertingArtifact = artifactOf(body.asserting_artifact);
+  const receipt = receiptOf(body.receipt);
+  if (
+    !isOperationId(body.operation_id) ||
+    !text(body.operation, 64) ||
+    !isObjectId(target.object_id) ||
+    (target.case_id !== undefined && !isCaseId(target.case_id)) ||
+    !isRequestHash(body.request_hash) ||
+    !text(body.holder) ||
+    !text(body.wallet) ||
+    !text(body.issuer) ||
+    !text(body.application_id) ||
+    !text(body.programme) ||
+    !recordedArtifact ||
+    !assertingArtifact ||
+    !receipt
+  ) {
+    return held;
+  }
+  return {
+    outcome: "applied",
+    record: {
+      operationId: body.operation_id,
+      operation: body.operation,
+      objectId: target.object_id,
+      caseId: (target.case_id as string | undefined) ?? null,
+      requestHash: body.request_hash,
+      holder: body.holder,
+      wallet: body.wallet,
+      issuer: body.issuer,
+      applicationId: body.application_id,
+      programme: body.programme,
+      recordedArtifact,
+      assertingArtifact,
+      receipt,
+    },
+  };
+}
+
 export type SettleReserveResult =
   /** This request alone created the runtime's durable dispatch claim. */
   | { outcome: "won" }

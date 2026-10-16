@@ -426,10 +426,52 @@ interface CaseRecord {
 }
 
 /**
+ * FIXTURE of the PROPOSED, NOT DEPLOYED contract r20
+ * (docs/proposals/runtime-write-status-r20.md): a runtime's durable record of
+ * one face write, keyed by its runtime and original operation id.
+ */
+interface WriteRecord {
+  kind: RuntimeKind;
+  operation: string;
+  target: Json;
+  requestHash: string;
+  holder: string;
+  wallet: string;
+  issuer: string;
+  audience: string;
+  programme: string;
+  artifact: { version: string; artifactHash: string };
+  applied: boolean;
+  receipt: Json | null;
+  answer: { status: number; body: Json };
+}
+
+const WRITE_OPERATIONS = new Set([
+  "case.open",
+  "case.evidence.submit",
+  "case.information.provide",
+  "case.quote.approve",
+  "case.quote.decline",
+  "transfer.offer",
+  "transfer.cancel",
+]);
+
+/**
  * LOCAL FAKE of one brand's Passport runtime and its linked Warranty runtime
  * (the same brand's state, two audiences).
  */
 class BrandRuntime {
+  /**
+   * Off: the runtimes as deployed today (no write record, write.status
+   * unknown). On: the labelled fixture of the PROPOSED r20 contract.
+   */
+  r20 = false;
+  /** r20 fixture: rewrites a write.status answer (negative tests). */
+  tamper: ((body: Json) => Json) | undefined;
+  /** r20 fixture: artifacts the runtime treats as compatible (its set A). */
+  compatible: Set<string> | undefined;
+  readonly writes = new Map<string, WriteRecord>();
+  private events = 0;
   readonly calls: Array<{
     by: "wallet" | "face";
     kind: RuntimeKind;
@@ -591,11 +633,11 @@ class BrandRuntime {
 
   /** The face frame's own runtime request. */
   async fromFace(kind: RuntimeKind, body: Json) {
-    const response = this.handle(kind, "face", body);
+    const response = await this.handle(kind, "face", body);
     return { status: response.status, body: (await response.json()) as Json };
   }
 
-  private handle(kind: RuntimeKind, by: "wallet" | "face", body: Json) {
+  private async handle(kind: RuntimeKind, by: "wallet" | "face", body: Json) {
     const operation = String(body.operation);
     const operationId = String(body.operationId);
     const target = (body.target ?? {}) as Json;
@@ -617,7 +659,162 @@ class BrandRuntime {
       requestHash,
     });
     if (!claims) this.refused.push(operation);
-    const answer = !claims
+    const key = `${kind}:${operationId}`;
+    const recorded = this.writes.get(key);
+    let answer: Response;
+    if (claims && this.r20 && operation === "write.status") {
+      answer = this.writeStatus(kind, target, claims, recorded);
+    } else if (
+      claims &&
+      this.r20 &&
+      WRITE_OPERATIONS.has(operation) &&
+      recorded
+    ) {
+      // r20: a recorded op id answers its recorded result only to the same
+      // caller for the same request; any other reuse is refused, undisclosed.
+      answer =
+        recorded.holder === claims.holder &&
+        recorded.wallet === claims.sub &&
+        recorded.audience === claims.aud &&
+        recorded.issuer === claims.iss &&
+        recorded.programme === claims.programme &&
+        recorded.operation === operation &&
+        canonicalJson(recorded.target) ===
+          canonicalJson({
+            object_id: target.object_id,
+            ...(target.case_id ? { case_id: target.case_id } : {}),
+          }) &&
+        recorded.requestHash === requestHash
+          ? json(recorded.answer.status, recorded.answer.body)
+          : json(409, { ok: false, status: "face_operation_conflict" });
+    } else {
+      answer = this.dispatch(
+        kind,
+        operation,
+        operationId,
+        target,
+        input,
+        claims,
+      );
+      if (claims && this.r20 && WRITE_OPERATIONS.has(operation)) {
+        const answered = (await answer.clone().json()) as Json;
+        this.events += 1;
+        const applied = answer.status === 200;
+        this.writes.set(key, {
+          kind,
+          operation,
+          target: {
+            object_id: target.object_id,
+            ...(target.case_id ? { case_id: target.case_id } : {}),
+          },
+          requestHash,
+          holder: String(claims.holder),
+          wallet: String(claims.sub),
+          issuer: String(claims.iss),
+          audience: String(claims.aud),
+          programme: String(claims.programme),
+          artifact: {
+            version: String(claims.app_version),
+            artifactHash: String(claims.artifact),
+          },
+          applied,
+          receipt: !applied
+            ? null
+            : kind === "warranty"
+              ? {
+                  kind: "case_event",
+                  case_id: target.case_id,
+                  event_id: `case-event-${this.events}`,
+                }
+              : {
+                  kind: "transfer_offer",
+                  offer_id: answered.offer_id,
+                  state:
+                    operation === "transfer.cancel" ? "cancelled" : "offered",
+                },
+          answer: { status: answer.status, body: answered },
+        });
+      }
+    }
+    this.calls.push({
+      by,
+      kind,
+      operation,
+      operationId,
+      status: answer.status,
+    });
+    return answer;
+  }
+
+  /** r20 fixture: the verified record of one write, to its own caller only. */
+  private writeStatus(
+    kind: RuntimeKind,
+    target: Json,
+    claims: Json,
+    recorded: WriteRecord | undefined,
+  ) {
+    if (
+      !recorded ||
+      recorded.kind !== kind ||
+      recorded.holder !== claims.holder ||
+      recorded.wallet !== claims.sub ||
+      recorded.audience !== claims.aud ||
+      recorded.issuer !== claims.iss ||
+      canonicalJson(recorded.target) !== canonicalJson(target)
+    ) {
+      return json(404, { ok: false, status: "face_operation_not_found" });
+    }
+    const accepted = this.compatible ?? new Set([String(claims.artifact)]);
+    if (
+      !accepted.has(recorded.artifact.artifactHash) ||
+      !accepted.has(String(claims.artifact))
+    ) {
+      return json(409, {
+        ok: false,
+        status: "face_operation_artifact_retired",
+      });
+    }
+    const body: Json = {
+      ok: true,
+      status: recorded.applied ? "write_applied" : "write_refused",
+      contract: "r20",
+      readback: "verified",
+      artifact_compatible: true,
+      operation_id: claims.op_id,
+      operation: recorded.operation,
+      target: recorded.target,
+      request_hash: recorded.requestHash,
+      holder: recorded.holder,
+      wallet: recorded.wallet,
+      issuer: recorded.issuer,
+      application_id:
+        kind === "passport"
+          ? this.brand.applicationId
+          : this.brand.warranty.applicationId,
+      programme: recorded.programme,
+      recorded_artifact: recorded.artifact,
+      asserting_artifact: {
+        version: String(claims.app_version),
+        artifactHash: String(claims.artifact),
+      },
+      receipt: recorded.receipt,
+      writesExecuted: 0,
+      dualWritesExecuted: 0,
+      unknownWriteOutcomes: 0,
+      secretReturned: false,
+    };
+    return json(200, this.tamper ? this.tamper(body) : body);
+  }
+
+  private dispatch(
+    kind: RuntimeKind,
+    operation: string,
+    operationId: string,
+    target: Json,
+    input: Json,
+    claims: Json | undefined,
+  ) {
+    return !claims
       ? json(403, { ok: false, status: "face_assertion_mismatch" })
       : kind === "passport"
         ? this.passport(
@@ -628,14 +825,6 @@ class BrandRuntime {
             String(claims.holder),
           )
         : this.warrantyCase(operation, target, String(claims.holder));
-    this.calls.push({
-      by,
-      kind,
-      operation,
-      operationId,
-      status: answer.status,
-    });
-    return answer;
   }
 
   private registrationStatus(body: Json) {
@@ -1791,11 +1980,20 @@ afterEach(() => {
 
 describe("two complete branded apps on one engine", () => {
   it.each([
-    [MORROW.label, MORROW, TIDEWELL],
-    [TIDEWELL.label, TIDEWELL, MORROW],
-  ] as Array<[string, Brand, Brand]>)(
-    "%s: registration, private details, Warranty & Service, transfer and the recipient's registration, all on its own host; nothing crosses to the other brand's",
-    async (_label, brand, other) => {
+    [MORROW.label, "the deployed runtimes", MORROW, TIDEWELL, false],
+    [TIDEWELL.label, "the deployed runtimes", TIDEWELL, MORROW, false],
+    [MORROW.label, "the PROPOSED r20 runtime fixture", MORROW, TIDEWELL, true],
+    [
+      TIDEWELL.label,
+      "the PROPOSED r20 runtime fixture",
+      TIDEWELL,
+      MORROW,
+      true,
+    ],
+  ] as Array<[string, string, Brand, Brand, boolean]>)(
+    "%s with %s: registration, private details, Warranty & Service, transfer and the recipient's registration, all on its own host; nothing crosses to the other brand's",
+    async (_label, _mode, brand, other, r20) => {
+      runtimeOf(brand).r20 = r20;
       const { unit } = brand;
       const product = { object_id: unit.id };
       deploy(brand);
@@ -1959,11 +2157,7 @@ describe("two complete branded apps on one engine", () => {
       // reserved and executed once.
       // This launch's journal now holds its bound (JOURNAL_MAX_ENTRIES): one
       // settled step and five Warranty & Service writes whose authority left
-      // the wallet, which are kept and never make room. One more step can
-      // begin (the settled one makes room); the next is refused journal_full
-      // before anything is minted, and the host offers "Restart the
-      // application": the face launched again, with the same session, under
-      // a journal of its own. That is how the transfer continues here.
+      // the wallet, which are kept and never make room unproven.
       advance();
       expect(
         (await holder.list()).body.operations.map(
@@ -1973,6 +2167,15 @@ describe("two complete branded apps on one engine", () => {
         ["settle", "settled"],
         ...Array(5).fill(["runtime", "assertion_issued"]),
       ]);
+      // The deployed runtimes record no write outcome: one more step can
+      // begin (the settled one makes room); the next is refused journal_full.
+      // The wallet asks the runtime for the two oldest held writes'
+      // outcomes (write.status, proposed r20); the deployed runtime does not
+      // know that read, so nothing is proven, nothing is evicted and no write
+      // is sent again. The host offers "Restart the application", and the
+      // transfer continues in a new launch. Under the r20 fixture the same
+      // launch continues: a begin that finds no room reads the oldest held
+      // writes, and only an exact verified record of one frees its slot.
       const room = (operationId: string) =>
         holder.operations({
           transition: "begin",
@@ -1983,14 +2186,42 @@ describe("two complete branded apps on one engine", () => {
           operation_id: operationId,
           context_id: contextId,
         });
-      expect((await room(`case-write-${brand.tag}-0004`)).status).toBe(200);
-      const mintsBeforeFull = minted.mock.calls.length;
-      expect(await room(`case-write-${brand.tag}-0005`)).toMatchObject({
-        status: 409,
-        body: { code: "journal_full" },
-      });
-      expect(minted.mock.calls.length).toBe(mintsBeforeFull);
-      const seller = holder.relaunch(launchOf(brand, "seller"));
+      const writesSent = () =>
+        runtimeOf(brand)
+          .calls.filter(
+            (call) =>
+              call.by === "face" && WRITE_OPERATIONS.has(call.operation),
+          )
+          .map((call) => call.operationId);
+      const sentBefore = writesSent();
+      if (!r20) {
+        expect((await room(`case-write-${brand.tag}-0004`)).status).toBe(200);
+        const mintsBeforeFull = minted.mock.calls.length;
+        const callsBeforeFull = runtimeOf(brand).calls.length;
+        expect(await room(`case-write-${brand.tag}-0005`)).toMatchObject({
+          status: 409,
+          body: { code: "journal_full" },
+        });
+        expect(
+          minted.mock.calls
+            .slice(mintsBeforeFull)
+            .map(([input]) => (input as { operation: string }).operation),
+        ).toEqual(["write.status", "write.status"]);
+        expect(
+          runtimeOf(brand)
+            .calls.slice(callsBeforeFull)
+            .map((call) => [call.by, call.operation, call.status]),
+        ).toEqual([
+          ["wallet", "write.status", 400],
+          ["wallet", "write.status", 400],
+        ]);
+        expect(
+          (await holder.list()).body.operations.filter(
+            (item: { phase: string }) => item.phase === "assertion_issued",
+          ),
+        ).toHaveLength(5);
+      }
+      const seller = r20 ? holder : holder.relaunch(launchOf(brand, "seller"));
       const saleContext = await seller.select(unit.id);
       const recipient = new Browser(
         brand,
@@ -2040,6 +2271,46 @@ describe("two complete branded apps on one engine", () => {
         owner: brand.recipient.address,
         custom: { state: "Transfer pending" },
       });
+      if (r20) {
+        // One launch carried the whole journey. Every face write was sent
+        // exactly once (none by the wallet, none twice); slots were freed
+        // only by the runtime's verified write.status answers, and every
+        // write still unproven is held in this launch's journal.
+        const sent = writesSent();
+        expect(new Set(sent).size).toBe(sent.length);
+        expect(sent.slice(0, sentBefore.length)).toEqual(sentBefore);
+        expect(sent).toContain(`offer-${brand.tag}-0001`);
+        const reads = runtimeOf(brand).calls.filter(
+          (call) => call.operation === "write.status",
+        );
+        expect(reads.length).toBeGreaterThan(0);
+        expect(
+          reads.every((call) => call.by === "wallet" && call.status === 200),
+        ).toBe(true);
+        const journal = (await seller.list()).body.operations as Array<{
+          operation_id: string;
+          kind: string;
+          phase: string;
+        }>;
+        expect(journal).toHaveLength(6);
+        // A settled step is a finished entry: it may already have made room.
+        const steps = journal.filter((item) => item.kind === "transfer");
+        expect(steps.every((item) => item.phase === "settled")).toBe(true);
+        expect(steps.map((item) => item.operation_id)).toContain(
+          custodyOperation,
+        );
+        for (const item of journal.filter(
+          (entry) => entry.kind === "runtime",
+        )) {
+          // Each runtime write left in the journal is either still held
+          // or was settled by a verified read of exactly that write.
+          expect(
+            item.phase === "assertion_issued" ||
+              (item.phase === "settled" &&
+                reads.some((call) => call.operationId === item.operation_id)),
+          ).toBe(true);
+        }
+      }
 
       // The recipient settles on its own wallet: registered.
       advance();
@@ -2442,6 +2713,344 @@ describe("one engine, a host's configuration updated and rolled back", () => {
         status: 200,
         body: { status: "registered" },
       });
+    },
+  );
+});
+
+// ------------------------------------------- runtime write outcomes (r20)
+
+// The wallet's consumer of the PROPOSED, NOT DEPLOYED runtime contract r20
+// (docs/proposals/runtime-write-status-r20.md), against the labelled fixture
+// above: a held Warranty & Service write frees its journal slot only from the
+// runtime's verified record of exactly that write. Nothing else does, and no
+// write is ever sent again by the wallet.
+
+async function heldWrite(
+  holder: Browser,
+  contextId: string,
+  n: number,
+  {
+    dispatch,
+    operation = "case.evidence.submit",
+    caseIndex = 0,
+  }: {
+    dispatch: boolean;
+    operation?: string;
+    caseIndex?: number;
+  },
+) {
+  const { brand } = holder;
+  const operationId = `case-write-${brand.tag}-${String(n).padStart(4, "0")}`;
+  const caseId = brand.cases[caseIndex];
+  const target = { object_id: brand.unit.id, case_id: caseId };
+  const input =
+    operation === "case.evidence.submit"
+      ? { evidence_ref: `upload-${brand.tag}-${n}` }
+      : {};
+  await confirmedWrite(holder, contextId, operation, operationId, caseId);
+  if (dispatch) {
+    // The face sends it; its answer is lost to the wallet either way.
+    const sent = await faceCall(holder, "warranty", {
+      operation,
+      operationId,
+      target,
+      input,
+      contextId,
+    });
+    return { operationId, answer: sent.answer };
+  }
+  // Interrupted before dispatch: the assertion was issued, never used.
+  const minted = await holder.mint({
+    operation,
+    operation_id: operationId,
+    target,
+    request_hash: hashOf(operation, operationId, target, input),
+    context_id: contextId,
+  });
+  expect(minted.status).toBe(200);
+  return { operationId, answer: undefined };
+}
+
+async function r20Holder(brand: Brand) {
+  deploy(brand);
+  runtimeOf(brand).r20 = true;
+  const holder = new Browser(brand, brand.holder, launchOf(brand, "holder"));
+  await issueRegistration(holder);
+  const contextId = await holder.select(brand.unit.id);
+  return { holder, contextId };
+}
+
+const faceWrites = (brand: Brand, operationId: string) =>
+  runtimeOf(brand).calls.filter(
+    (call) => call.by === "face" && call.operationId === operationId,
+  ).length;
+const statusReads = (brand: Brand, operationId: string) =>
+  runtimeOf(brand)
+    .calls.filter(
+      (call) =>
+        call.operation === "write.status" && call.operationId === operationId,
+    )
+    .map((call) => [call.by, call.status]);
+
+describe("a runtime write's slot, freed only by its verified outcome (PROPOSED r20 fixture)", () => {
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s: interrupted before or after dispatch, refused, or reused: only the applied write settles, and nothing is sent again",
+    async (_label, brand) => {
+      const { holder, contextId } = await r20Holder(brand);
+
+      // Before dispatch: the runtime has no record; held, nothing sent.
+      const before = await heldWrite(holder, contextId, 1, { dispatch: false });
+      expect(await holder.status(before.operationId)).toMatchObject({
+        status: 200,
+        body: { kind: "runtime", phase: "assertion_issued" },
+      });
+      expect(statusReads(brand, before.operationId)).toEqual([["wallet", 404]]);
+      expect(faceWrites(brand, before.operationId)).toBe(0);
+
+      // After dispatch, its answer lost: the runtime's verified record
+      // settles it, read once, and it was sent once.
+      const after = await heldWrite(holder, contextId, 2, { dispatch: true });
+      expect(after.answer).toMatchObject({ status: 200 });
+      expect(await holder.status(after.operationId)).toMatchObject({
+        status: 200,
+        body: { kind: "runtime", phase: "settled" },
+      });
+      expect(await holder.status(after.operationId)).toMatchObject({
+        status: 200,
+        body: { phase: "settled" },
+      });
+      expect(statusReads(brand, after.operationId)).toEqual([["wallet", 200]]);
+      expect(faceWrites(brand, after.operationId)).toBe(1);
+
+      // Refused by the runtime (unapplied): its record says so; held.
+      const refused = await heldWrite(holder, contextId, 3, {
+        dispatch: true,
+        operation: "case.open",
+        caseIndex: 1,
+      });
+      expect(refused.answer).toMatchObject({ status: 409 });
+      expect(await holder.status(refused.operationId)).toMatchObject({
+        status: 200,
+        body: { phase: "assertion_issued" },
+      });
+      expect(statusReads(brand, refused.operationId)).toEqual([
+        ["wallet", 200],
+      ]);
+
+      // Reuse of an issued operation id: the wallet mints nothing for it.
+      const reused = await holder.mint({
+        operation: "case.evidence.submit",
+        operation_id: after.operationId,
+        target: { object_id: brand.unit.id, case_id: brand.cases[0] },
+        request_hash: hashOf(
+          "case.evidence.submit",
+          after.operationId,
+          { object_id: brand.unit.id, case_id: brand.cases[0] },
+          { evidence_ref: "another" },
+        ),
+        context_id: contextId,
+      });
+      expect(reused.status).toBe(409);
+      expect(faceWrites(brand, after.operationId)).toBe(1);
+      expect(runtimeOf(brand).cases.get(brand.cases[0])!.evidence).toBe(1);
+    },
+  );
+
+  type Tamper = [string, (runtime: BrandRuntime, body: Json) => Json];
+  const field =
+    (name: string, value: unknown): Tamper[1] =>
+    (_runtime, body) => ({ ...body, [name]: value });
+  const tampers: Tamper[] = [
+    ["write_refused", field("status", "write_refused")],
+    ["no r20 contract", field("contract", undefined)],
+    ["a readback not verified", field("readback", "accepted")],
+    ["an unresolved outcome", field("unknownWriteOutcomes", 1)],
+    ["no artifact compatibility proof", field("artifact_compatible", false)],
+    ["another operation id", field("operation_id", "case-write-zz-9999")],
+    ["another operation", field("operation", "case.information.provide")],
+    [
+      "another unit",
+      (_runtime, body) => ({
+        ...body,
+        target: { ...(body.target as Json), object_id: "c".repeat(24) },
+      }),
+    ],
+    [
+      "another case",
+      (runtime, body) => ({
+        ...body,
+        target: {
+          ...(body.target as Json),
+          case_id: runtime.brand.cases[1],
+        },
+      }),
+    ],
+    ["another request", field("request_hash", `sha256:${"d".repeat(64)}`)],
+    ["another holder", field("holder", "0x" + "e".repeat(40))],
+    ["another wallet", field("wallet", "wallet-foreign")],
+    ["another host", field("issuer", "https://wallet.foreign.example")],
+    ["another application", field("application_id", "tig.claims.foreign")],
+    ["another programme", field("programme", "foreign-programme")],
+    [
+      "another asserting artifact",
+      field("asserting_artifact", {
+        version: "9.9.9",
+        artifactHash: `sha256:${"f".repeat(64)}`,
+      }),
+    ],
+    [
+      "a transfer receipt for a case write",
+      field("receipt", {
+        kind: "transfer_offer",
+        offer_id: `pto-${"0".repeat(24)}`,
+        state: "offered",
+      }),
+    ],
+    [
+      "another case's receipt",
+      (runtime, body) => ({
+        ...body,
+        receipt: {
+          kind: "case_event",
+          case_id: runtime.brand.cases[1],
+          event_id: "case-event-1",
+        },
+      }),
+    ],
+    ["no receipt", field("receipt", null)],
+  ];
+
+  it.each(
+    BRANDS.flatMap((brand) =>
+      tampers.map(([label, tamper]) => [brand.label, label, brand, tamper]),
+    ) as Array<[string, string, Brand, Tamper[1]]>,
+  )(
+    "%s: an applied write whose answer names %s stays held",
+    async (_brand, _label, brand, tamper) => {
+      const { holder, contextId } = await r20Holder(brand);
+      const runtime = runtimeOf(brand);
+      runtime.tamper = (body) => tamper(runtime, body);
+      const write = await heldWrite(holder, contextId, 1, { dispatch: true });
+      expect(await holder.status(write.operationId)).toMatchObject({
+        status: 200,
+        body: { phase: "assertion_issued" },
+      });
+      expect(statusReads(brand, write.operationId)).toEqual([["wallet", 200]]);
+      expect(faceWrites(brand, write.operationId)).toBe(1);
+    },
+  );
+
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s: another holder's record, an incompatible artifact or a runtime without r20 never settles it",
+    async (_label, brand) => {
+      const { holder, contextId } = await r20Holder(brand);
+      const runtime = runtimeOf(brand);
+      const write = await heldWrite(holder, contextId, 1, { dispatch: true });
+      const record = runtime.writes.get(`warranty:${write.operationId}`)!;
+      const states: Array<[string, () => void, number]> = [
+        [
+          "another holder's record",
+          () =>
+            runtime.writes.set(`warranty:${write.operationId}`, {
+              ...record,
+              holder: brand.recipient.address,
+            }),
+          404,
+        ],
+        [
+          "an artifact outside the runtime's compatible set",
+          () => {
+            runtime.writes.set(`warranty:${write.operationId}`, record);
+            runtime.compatible = new Set([`sha256:${"0".repeat(64)}`]);
+          },
+          409,
+        ],
+        [
+          "a runtime without r20",
+          () => {
+            runtime.compatible = undefined;
+            runtime.r20 = false;
+          },
+          400,
+        ],
+      ];
+      for (const [label, arrange, answered] of states) {
+        arrange();
+        expect([
+          label,
+          (await holder.status(write.operationId)).body.phase,
+        ]).toEqual([label, "assertion_issued"]);
+        expect(statusReads(brand, write.operationId).at(-1)).toEqual([
+          "wallet",
+          answered,
+        ]);
+      }
+      expect(faceWrites(brand, write.operationId)).toBe(1);
+    },
+  );
+
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s: a full journal makes room only from a write proven applied; without one it stays full",
+    async (_label, brand) => {
+      const { holder, contextId } = await r20Holder(brand);
+      // The registration and five held writes: only the second was applied.
+      const writes = [];
+      for (const n of [1, 2, 3, 4, 5]) {
+        writes.push(
+          (await heldWrite(holder, contextId, n, { dispatch: n === 2 }))
+            .operationId,
+        );
+      }
+      const listed = async () =>
+        (
+          (await holder.list()).body.operations as Array<{
+            operation_id: string;
+            phase: string;
+          }>
+        ).map((item) => [item.operation_id, item.phase]);
+      expect(await listed()).toHaveLength(6);
+      const begin = (n: number) =>
+        holder.operations({
+          transition: "begin",
+          kind: "runtime",
+          operation: "case.evidence.submit",
+          object_id: brand.unit.id,
+          case_id: brand.cases[0],
+          operation_id: `case-write-${brand.tag}-000${n}`,
+          context_id: contextId,
+        });
+      // The two oldest held writes are read: the first is unknown (held),
+      // the second proven applied, settled and so the room made.
+      expect((await begin(6)).status).toBe(200);
+      expect(statusReads(brand, writes[0])).toEqual([["wallet", 404]]);
+      expect(statusReads(brand, writes[1])).toEqual([["wallet", 200]]);
+      const journal = await listed();
+      expect(journal).toHaveLength(6);
+      expect(journal).toContainEqual([writes[0], "assertion_issued"]);
+      expect(journal.map(([id]) => id)).not.toContain(writes[1]);
+      // Nothing left is proven: the next begin is refused, nothing evicted.
+      const mints = minted.mock.calls.length;
+      expect(await begin(7)).toMatchObject({
+        status: 409,
+        body: { code: "journal_full" },
+      });
+      expect(
+        minted.mock.calls
+          .slice(mints)
+          .map(([input]) => (input as { operation: string }).operation),
+      ).toEqual(["write.status", "write.status"]);
+      expect(await listed()).toEqual(journal);
+      for (const operationId of writes) {
+        expect(faceWrites(brand, operationId)).toBe(
+          operationId === writes[1] ? 1 : 0,
+        );
+      }
     },
   );
 });

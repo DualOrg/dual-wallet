@@ -337,10 +337,14 @@ function oldestFinished(entries: FaceJournalEntry[]) {
 
 export function pruneJournal(entries: FaceJournalEntry[], now: number) {
   return entries.filter((entry) =>
-    // A closed registration is kept as long as it would have been open.
-    terminal(entry.phase) && !entry.closure
-      ? now - entry.updatedAt < DAY_MS
-      : now - entry.updatedAt < 7 * DAY_MS,
+    // Authority left and no outcome proven: never aged out here (the launch
+    // cookie that holds it still expires 24 hours after its last write).
+    entry.phase === "assertion_issued" || entry.phase === "submitted"
+      ? true
+      : // A closed registration is kept as long as it would have been open.
+        terminal(entry.phase) && !entry.closure
+        ? now - entry.updatedAt < DAY_MS
+        : now - entry.updatedAt < 7 * DAY_MS,
   );
 }
 
@@ -360,7 +364,17 @@ export type JournalTransition =
     }
   | { kind: "confirm"; operationId: string; objectId: string }
   | { kind: "cancel"; operationId: string }
-  | { kind: "issue"; operationId: string; objectId: string; caseId?: string }
+  | {
+      kind: "issue";
+      operationId: string;
+      objectId: string;
+      caseId?: string;
+      /**
+       * A runtime write's exact request hash, carried unchanged into its
+       * assertion: what a later recorded outcome must name (proposed r20).
+       */
+      requestHash?: string;
+    }
   | { kind: "submit"; operationId: string; objectId: string }
   | { kind: "record_action"; operationId: string; actionId: string }
   | {
@@ -371,6 +385,17 @@ export type JournalTransition =
       programmeId: string;
     }
   | { kind: "settle"; operationId: string; status: RegistrationStatus }
+  | {
+      /**
+       * Proposed r20: the runtime's own durable record says this runtime
+       * write was applied, for exactly the request hash recorded at issue.
+       * The caller has verified every other binding (operation, target,
+       * holder, wallet, application, programme).
+       */
+      kind: "apply";
+      operationId: string;
+      requestHash: string;
+    }
   | {
       kind: "close";
       operationId: string;
@@ -508,9 +533,18 @@ export function applyJournalTransition(
       ) {
         return { ok: false, error: "operation_conflict" };
       }
+      if (
+        transition.requestHash !== undefined &&
+        (existing.kind !== "runtime" || !isRequestHash(transition.requestHash))
+      ) {
+        return { ok: false, error: "operation_conflict" };
+      }
       return replace({
         ...existing,
         phase: "assertion_issued",
+        ...(transition.requestHash
+          ? { requestHash: transition.requestHash }
+          : {}),
         issuedAt: now,
         updatedAt: now,
       });
@@ -555,6 +589,19 @@ export function applyJournalTransition(
         status: transition.status,
         updatedAt: now,
       });
+    case "apply":
+      // Only a runtime write whose assertion was issued, that recorded its
+      // request hash then (an entry issued before r20 recorded none and is
+      // never settled from a read), and only for that exact hash.
+      if (
+        existing.kind !== "runtime" ||
+        existing.phase !== "assertion_issued" ||
+        !existing.requestHash ||
+        existing.requestHash !== transition.requestHash
+      ) {
+        return { ok: false, error: "operation_conflict" };
+      }
+      return replace({ ...existing, phase: "settled", updatedAt: now });
     case "close":
       // Only on the runtime's own face_operation_not_found for exactly this
       // operation (the caller's proof); the history stays, nothing is deleted.
