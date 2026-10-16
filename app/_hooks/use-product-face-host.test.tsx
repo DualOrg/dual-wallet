@@ -915,6 +915,7 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
     expect(hook.result.current.notice).toMatchObject({
       kind: "recovery",
       complete: true,
+      moreToCheck: false,
       items: [
         { operationId: "case-0123456789abcdef", outcome: "outcome_unknown" },
         {
@@ -932,31 +933,93 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
     });
   });
 
-  it("stops following after the page bound or a failed page, and then acknowledges nothing", async () => {
-    listFaceRecovery.mockImplementation(async () => ({
-      supported: true,
-      complete: true,
-      withheld: 0,
-      continuation: "never-ending",
-      items: [transferred],
-    }));
-    const first = launch();
+  it("keeps the continuation when the page bound is reached: proved items stay acknowledgeable, and Continue checking resolves the rest", async () => {
+    // A queue of 225 items: nine pages of 25, the first 200 a held prefix,
+    // the one valid completion on the ninth page. The caps stay as they are.
+    const heldItem = (page: number, index: number) => ({
+      ...heldWrite,
+      operation_id: `case-${String(page).padStart(2, "0")}${String(index).padStart(4, "0")}aaaaaaaaaa`,
+    });
+    listFaceRecovery.mockImplementation(async (...args: unknown[]) => {
+      const continuation = args[1] as string | undefined;
+      const page = continuation
+        ? Number(continuation.slice("page-".length)) + 1
+        : 1;
+      if (page === 9) {
+        return {
+          supported: true,
+          complete: true,
+          withheld: 0,
+          continuation: null,
+          items: [transferred],
+        };
+      }
+      return {
+        supported: true,
+        complete: true,
+        withheld: 0,
+        continuation: `page-${page}`,
+        items: Array.from({ length: 25 }, (_, index) => heldItem(page, index)),
+      };
+    });
+    const { hook } = launch();
     await act(async () => {
       initialized?.(fakeHost);
       await tick();
     });
+    // Eight pages followed: 200 held items, scans complete, more to check.
     expect(listFaceRecovery).toHaveBeenCalledTimes(8);
-    expect(first.hook.result.current.notice).toMatchObject({
+    expect(listFaceRecovery).toHaveBeenNthCalledWith(8, face, "page-7");
+    const shown = hook.result.current.notice;
+    expect(shown).toMatchObject({
       kind: "recovery",
-      complete: false,
-      items: [{ outcome: "transferred", acknowledgeable: false }],
+      complete: true,
+      moreToCheck: true,
     });
-    act(() => first.hook.result.current.dismissNotice());
-    expect(acknowledgeFaceRecovery).not.toHaveBeenCalled();
-    first.hook.unmount();
+    expect(shown?.kind === "recovery" ? shown.items : []).toHaveLength(200);
+    expect(
+      (shown?.kind === "recovery" ? shown.items : []).every(
+        (item) => item.outcome === "outcome_unknown" && !item.acknowledgeable,
+      ),
+    ).toBe(true);
+    // Continue checking: the ninth page, from the kept continuation.
+    await act(async () => {
+      hook.result.current.continueRecovery();
+      await tick();
+    });
+    expect(listFaceRecovery).toHaveBeenCalledTimes(9);
+    expect(listFaceRecovery).toHaveBeenNthCalledWith(9, face, "page-8");
+    const continued = hook.result.current.notice;
+    expect(continued).toMatchObject({
+      kind: "recovery",
+      complete: true,
+      moreToCheck: false,
+    });
+    const items = continued?.kind === "recovery" ? continued.items : [];
+    expect(items).toHaveLength(201);
+    expect(items.at(-1)).toMatchObject({
+      operationId: "xfer-f0a31dc6781e57f040c2",
+      outcome: "transferred",
+      acknowledgeable: true,
+    });
+    // Nothing left to continue: a further request is a no-op.
+    await act(async () => {
+      hook.result.current.continueRecovery();
+      await tick();
+    });
+    expect(listFaceRecovery).toHaveBeenCalledTimes(9);
+    // Seeing it acknowledges exactly the proved item, once.
+    act(() => hook.result.current.dismissNotice());
+    expect(acknowledgeFaceRecovery).toHaveBeenCalledTimes(1);
+    expect(acknowledgeFaceRecovery).toHaveBeenCalledWith(face, {
+      operation_id: "xfer-f0a31dc6781e57f040c2",
+      ticket: "ack-ticket-f0a31dc6",
+    });
+    expect(listRetainedTransferSteps).not.toHaveBeenCalled();
+  });
 
+  it("a page that cannot be read makes the check incomplete until it is re-read; a genuinely incomplete scan stays incomplete", async () => {
     listFaceRecovery
-      .mockReset()
       .mockResolvedValueOnce({
         supported: true,
         complete: true,
@@ -965,19 +1028,64 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
         items: [transferred],
       })
       .mockRejectedValueOnce(new Error("lost"));
-    const second = launch();
+    const { hook } = launch();
     await act(async () => {
       initialized?.(fakeHost);
       await tick();
     });
     expect(listFaceRecovery).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.notice).toMatchObject({
+      kind: "recovery",
+      complete: false,
+      moreToCheck: true,
+      items: [{ outcome: "transferred", acknowledgeable: false }],
+    });
+    // Re-read from the kept continuation: the page now answers, complete.
+    listFaceRecovery.mockResolvedValueOnce({
+      supported: true,
+      complete: true,
+      withheld: 0,
+      continuation: null,
+      items: [heldWrite],
+    });
+    await act(async () => {
+      hook.result.current.continueRecovery();
+      await tick();
+    });
+    expect(listFaceRecovery).toHaveBeenNthCalledWith(3, face, "page-two");
+    expect(hook.result.current.notice).toMatchObject({
+      complete: true,
+      moreToCheck: false,
+      items: [
+        { outcome: "transferred", acknowledgeable: true },
+        { outcome: "outcome_unknown", acknowledgeable: false },
+      ],
+    });
+    act(() => hook.result.current.dismissNotice());
+    expect(acknowledgeFaceRecovery).toHaveBeenCalledTimes(1);
+    acknowledgeFaceRecovery.mockClear();
+
+    // A runtime scan the BFF reports incomplete: nothing is acknowledgeable,
+    // however many pages, and dismissing acknowledges nothing.
+    listFaceRecovery.mockReset().mockResolvedValue({
+      supported: true,
+      complete: false,
+      withheld: 0,
+      continuation: null,
+      items: [transferred],
+    });
+    const second = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await tick();
+    });
     expect(second.hook.result.current.notice).toMatchObject({
       complete: false,
+      moreToCheck: false,
       items: [{ outcome: "transferred", acknowledgeable: false }],
     });
     act(() => second.hook.result.current.dismissNotice());
     expect(acknowledgeFaceRecovery).not.toHaveBeenCalled();
-    expect(listRetainedTransferSteps).not.toHaveBeenCalled();
   });
 
   it("shows a proved and a held item, acknowledges only the ticketed one on dismiss, once, and skips the retained read", async () => {
@@ -997,6 +1105,7 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
     expect(hook.result.current.notice).toEqual({
       kind: "recovery",
       complete: true,
+      moreToCheck: false,
       items: [
         {
           operationId: "xfer-f0a31dc6781e57f040c2",
@@ -1081,6 +1190,7 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
     expect(hook.result.current.notice).toMatchObject({
       kind: "recovery",
       complete: false,
+      moreToCheck: false,
       items: [
         { operationId: transferred.operation_id, acknowledgeable: false },
         { operationId: heldWrite.operation_id, acknowledgeable: false },
@@ -1132,6 +1242,7 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
     expect(hook.result.current.notice).toEqual({
       kind: "recovery",
       complete: false,
+      moreToCheck: false,
       items: [],
     });
     act(() => hook.result.current.dismissNotice());

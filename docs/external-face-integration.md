@@ -545,8 +545,10 @@ What the host does on each face launch, after the bootstrap
   endpoint having answered.
 - Each listed item of a journey this host enables is resolved read-only, in
   the contract's stable order and at most 25 per page, the host following the
-  listing's sealed continuation to the next page within the same launch (at
-  most eight pages; a page it cannot read makes the check incomplete),
+  listing's sealed continuation to the next page within the same launch (up
+  to eight pages per collection; when items remain the notice says so and
+  offers **Continue checking**, which resumes from the kept continuation; a
+  page it cannot read makes the check incomplete until it is re-read),
   through the existing resolver of its kind: `registration.status` for a
   registration, `registration.settle.status` for a settle,
   `transfer.verify` or `transfer.status` for a transfer step, `write.status`

@@ -52,50 +52,93 @@ import {
   type FaceRecoveryOutcome,
 } from "@/app/_services/product-face.client";
 
-/** Follow-up pages of one launch's recovery listing (proposed r20). */
+/** Pages of one launch's recovery listing followed per collection (r20). */
 const MAX_RECOVERY_PAGES = 8;
 
 /**
- * One launch's complete recovery listing: the BFF resolves a bounded page of
- * items per request and returns a sealed continuation while items remain, so
- * the pages are followed here, deterministically, until none remain or the
- * bound is reached. Later pages replace the earlier pages' not-yet-checked
- * entries. A page that cannot be read, or a follow that stops short, makes
- * the whole check incomplete: nothing is then acknowledged.
+ * What one collection of recovery pages established. Scan completeness (the
+ * runtimes' own full scans, and every page read) is kept apart from
+ * resolution progress (a continuation remaining): only the former decides
+ * whether anything may be acknowledged; the latter is continued on request.
+ */
+interface RecoveryCollection {
+  supported: boolean;
+  /** Every page's runtime scans were complete. */
+  scanComplete: boolean;
+  /** A page could not be read: the check's state is unknown until re-read. */
+  readFailed: boolean;
+  /** The sealed key to continue from, when items remain beyond the pages. */
+  continuation: string | null;
+  withheld: number;
+  items: FaceRecovery["items"];
+}
+
+/**
+ * Follows a bounded number of pages of the BFF's recovery listing, from the
+ * start or from a continuation, deterministically: the BFF resolves a page of
+ * items in the contract's stable order and returns a sealed continuation
+ * while items remain. Later pages replace earlier pages' unchecked entries.
+ * Reaching the page bound with a continuation left is progress to continue,
+ * never an incomplete scan.
  */
 async function collectRecovery(
   face: Parameters<typeof listFaceRecovery>[0],
   live: () => boolean,
-): Promise<FaceRecovery> {
-  const first = await listFaceRecovery(face);
-  if (!first.supported) return first;
-  const merged = new Map(first.items.map((item) => [item.operation_id, item]));
-  let complete = first.complete;
-  let continuation: string | null =
-    typeof first.continuation === "string" ? first.continuation : null;
-  let pages = 1;
-  while (continuation !== null && pages < MAX_RECOVERY_PAGES) {
-    if (!live()) return { ...first, complete: false, continuation: null };
+  from: string | null = null,
+): Promise<RecoveryCollection> {
+  const merged = new Map<string, FaceRecovery["items"][number]>();
+  let scanComplete = true;
+  let readFailed = false;
+  let withheld = 0;
+  let continuation = from;
+  let pages = 0;
+  do {
+    if (!live()) {
+      return {
+        supported: true,
+        scanComplete,
+        readFailed: true,
+        continuation,
+        withheld,
+        items: [...merged.values()],
+      };
+    }
     let page: FaceRecovery;
     try {
-      page = await listFaceRecovery(face, continuation);
-    } catch {
-      complete = false;
+      page =
+        continuation === null
+          ? await listFaceRecovery(face)
+          : await listFaceRecovery(face, continuation);
+    } catch (error) {
+      // The first page failing is the listing failing; a later one is kept
+      // as a continuation to re-read.
+      if (pages === 0 && from === null) throw error;
+      readFailed = true;
       break;
     }
+    if (!page.supported) {
+      return {
+        supported: false,
+        scanComplete: true,
+        readFailed: false,
+        continuation: null,
+        withheld: 0,
+        items: [],
+      };
+    }
     pages += 1;
+    if (pages === 1) withheld = page.withheld;
     for (const item of page.items) merged.set(item.operation_id, item);
-    complete = complete && page.complete;
+    scanComplete = scanComplete && page.complete;
     continuation =
       typeof page.continuation === "string" ? page.continuation : null;
-  }
-  // Items still unchecked when the follow stopped keep the check incomplete.
-  if (continuation !== null) complete = false;
+  } while (continuation !== null && pages < MAX_RECOVERY_PAGES);
   return {
     supported: true,
-    complete,
-    withheld: first.withheld,
-    continuation: null,
+    scanComplete,
+    readFailed,
+    continuation,
+    withheld,
     items: [...merged.values()],
   };
 }
@@ -184,7 +227,21 @@ export function useProductFaceHost({
   // recovery items this launch's live host listed, by operation id. Taken
   // once when the person dismisses the notice; never rendered, never kept
   // past the host that listed them.
-  const recoveryTickets = useRef<Map<string, string> | undefined>(undefined);
+  /**
+   * This launch's recovery so far (proposed r20): the merged items, the
+   * tickets of the items that may be acknowledged, the scan completeness and
+   * the continuation to check further from. Cleared with the launch.
+   */
+  const recoveryState = useRef<
+    | {
+        face: { slug: string; launchId: string };
+        items: Map<string, FaceRecovery["items"][number]>;
+        scanComplete: boolean;
+        readFailed: boolean;
+        continuation: string | null;
+      }
+    | undefined
+  >(undefined);
   const lastTask = useRef<string | undefined>(undefined);
   const sessionRef = useRef(session);
   useEffect(() => {
@@ -205,7 +262,7 @@ export function useProductFaceHost({
     (reason: SessionEndReason) => {
       host.current?.end(reason);
       host.current = undefined;
-      recoveryTickets.current = undefined;
+      recoveryState.current = undefined;
       answerConfirmation(false);
       dispatch({ type: "ended", reason });
       onEnded(reason);
@@ -222,7 +279,7 @@ export function useProductFaceHost({
     () => () => {
       host.current?.close();
       host.current = undefined;
-      recoveryTickets.current = undefined;
+      recoveryState.current = undefined;
       const pending = pendingConfirmation.current;
       pendingConfirmation.current = undefined;
       pending?.resolve(false);
@@ -241,6 +298,31 @@ export function useProductFaceHost({
     host.current?.restoreTask(task);
   }, [task]);
 
+  /** The recovery notice from this launch's merged state. */
+  const showRecovery = useCallback(() => {
+    const current = recoveryState.current;
+    if (!current) return;
+    const complete = current.scanComplete && !current.readFailed;
+    const moreToCheck = current.continuation !== null;
+    if (current.items.size === 0 && complete && !moreToCheck) return;
+    setNotice({
+      kind: "recovery",
+      complete,
+      moreToCheck,
+      items: [...current.items.values()].map((item) => ({
+        operationId: item.operation_id,
+        kind: item.kind,
+        operation: item.operation,
+        step: item.step,
+        outcome: item.outcome,
+        acknowledgeable:
+          complete &&
+          item.ticket !== null &&
+          provedRecoveryOutcomes.has(item.outcome),
+      })),
+    });
+  }, []);
+
   const onFrameLoad = useCallback(
     (frame: HTMLIFrameElement) => {
       const current = sessionRef.current;
@@ -249,7 +331,7 @@ export function useProductFaceHost({
       host.current?.close();
       // A new host lists recovery afresh; the replaced host's tickets never
       // acknowledge anything.
-      recoveryTickets.current = undefined;
+      recoveryState.current = undefined;
       const face = { slug, launchId };
       // This launch's own host, live: not ended, not replaced, not torn down.
       const launched: { host?: ProductFaceBridgeHost } = {};
@@ -466,34 +548,16 @@ export function useProductFaceHost({
                   readRetainedTransferSteps();
                   return;
                 }
-                // Defence in depth beside the BFF's ticketing: a ticket is
-                // kept only for a proved outcome of a complete check. Held,
-                // unknown, refused and unchecked items are never acknowledged,
-                // and an incomplete check acknowledges nothing at all.
-                const acknowledgeable = (item: (typeof recovery.items)[0]) =>
-                  item.ticket !== null &&
-                  recovery.complete &&
-                  provedRecoveryOutcomes.has(item.outcome);
-                recoveryTickets.current = new Map(
-                  recovery.items.flatMap((item) =>
-                    acknowledgeable(item) && item.ticket !== null
-                      ? [[item.operation_id, item.ticket] as const]
-                      : [],
+                recoveryState.current = {
+                  face,
+                  items: new Map(
+                    recovery.items.map((item) => [item.operation_id, item]),
                   ),
-                );
-                if (recovery.items.length === 0 && recovery.complete) return;
-                setNotice({
-                  kind: "recovery",
-                  complete: recovery.complete,
-                  items: recovery.items.map((item) => ({
-                    operationId: item.operation_id,
-                    kind: item.kind,
-                    operation: item.operation,
-                    step: item.step,
-                    outcome: item.outcome,
-                    acknowledgeable: acknowledgeable(item),
-                  })),
-                });
+                  scanComplete: recovery.scanComplete,
+                  readFailed: recovery.readFailed,
+                  continuation: recovery.continuation,
+                };
+                showRecovery();
               },
               () => {
                 if (liveHost()) readRetainedTransferSteps();
@@ -504,7 +568,16 @@ export function useProductFaceHost({
       });
       host.current = launched.host;
     },
-    [application, frameUrl, launchId, router, slug, state.status, task],
+    [
+      application,
+      frameUrl,
+      launchId,
+      router,
+      showRecovery,
+      slug,
+      state.status,
+      task,
+    ],
   );
 
   // Proposed contract r20: dismissing the recovery notice is the person
@@ -514,15 +587,52 @@ export function useProductFaceHost({
   // not replaced, not torn down. Each acknowledgement is fire-and-forget and
   // read-only for the business record; its failure changes nothing here.
   const acknowledgeRecovery = () => {
-    const tickets = recoveryTickets.current;
-    recoveryTickets.current = undefined;
-    if (!tickets || host.current?.session.ended !== null) return;
-    for (const [operationId, ticket] of tickets) {
-      void acknowledgeFaceRecovery(
-        { slug, launchId },
-        { operation_id: operationId, ticket },
-      ).catch(() => undefined);
+    const current = recoveryState.current;
+    if (!current || host.current?.session.ended !== null) return;
+    // Defence in depth beside the BFF's ticketing: only a proved outcome,
+    // and only when every scan was complete and every page was read. The
+    // tickets are taken once: an acknowledged item is dropped from the state
+    // (the runtime no longer lists it either).
+    if (!current.scanComplete || current.readFailed) return;
+    for (const [operationId, item] of current.items) {
+      if (item.ticket === null || !provedRecoveryOutcomes.has(item.outcome)) {
+        continue;
+      }
+      current.items.delete(operationId);
+      void acknowledgeFaceRecovery(current.face, {
+        operation_id: operationId,
+        ticket: item.ticket,
+      }).catch(() => undefined);
     }
+  };
+
+  /**
+   * Continue checking from this launch's continuation: the next pages of the
+   * same listing, deterministically, merged into what is shown. Only this
+   * live launch's own state; a check with nothing left to continue is a no-op.
+   */
+  const continueRecovery = () => {
+    const current = recoveryState.current;
+    if (
+      !current ||
+      current.continuation === null ||
+      host.current?.session.ended !== null
+    ) {
+      return;
+    }
+    const live = () =>
+      recoveryState.current === current && host.current?.session.ended === null;
+    void collectRecovery(current.face, live, current.continuation)
+      .then((more) => {
+        if (!live() || !more.supported) return;
+        for (const item of more.items)
+          current.items.set(item.operation_id, item);
+        current.scanComplete = current.scanComplete && more.scanComplete;
+        current.readFailed = more.readFailed;
+        current.continuation = more.continuation;
+        showRecovery();
+      })
+      .catch(() => undefined);
   };
 
   return {
@@ -535,5 +645,6 @@ export function useProductFaceHost({
       if (notice?.kind === "recovery") acknowledgeRecovery();
       setNotice(null);
     },
+    continueRecovery,
   };
 }

@@ -146,6 +146,7 @@ function ProductFaceFrame({
     onFrameLoad,
     notice,
     dismissNotice,
+    continueRecovery,
   } = useProductFaceHost({ slug, launchId, application, frameUrl, onEnded });
 
   if (state.status === "ended") return null;
@@ -169,6 +170,7 @@ function ProductFaceFrame({
                 {notice.complete ? null : (
                   <p>{t("notices.recoveryIncomplete")}</p>
                 )}
+                {notice.moreToCheck ? <p>{t("notices.recoveryMore")}</p> : null}
               </div>
             ) : (
               t(`notices.${notice.kind}.${notice.reason}`, {
@@ -178,6 +180,11 @@ function ProductFaceFrame({
           </Alert>
           {notice.kind === "launch_full" ? (
             <Button onClick={onRelaunch}>{t("notices.relaunch")}</Button>
+          ) : null}
+          {notice.kind === "recovery" && notice.moreToCheck ? (
+            <Button onClick={continueRecovery}>
+              {t("notices.recoveryContinue")}
+            </Button>
           ) : null}
           <Button variant="secondary" onClick={dismissNotice}>
             {t("notices.dismiss")}

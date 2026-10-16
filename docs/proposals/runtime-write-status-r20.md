@@ -588,12 +588,17 @@ outcome_hash}` where `original_operation` is the record's operation
   returns a sealed, host-local continuation naming the last key it resolved
   (bound to the session, wallet, face, programme and launch, valid ten
   minutes); the next page of the same launch resolves the items after that
-  key. The host follows at most eight pages per launch; a page it cannot read
-  or a follow that stops short makes the whole check incomplete, so nothing is
-  acknowledged. A held or unknown prefix therefore never starves a later
-  completion, every item is reached in a bounded number of pages, and no
-  item is selected at random or by class. Scan completeness is unaffected by
-  the bound; nothing of this touches the runtime wire or any store.
+  key. The host follows up to eight pages per collection and keeps the
+  continuation it stopped at: scan completeness (the runtimes' own full scans,
+  every page read) stays separate from resolution progress, so items proved on
+  complete scans remain acknowledgeable however many items remain, and the
+  notice offers **Continue checking**, which resolves the next pages from the
+  kept key within the same launch. Only a runtime scan reported incomplete, or
+  a page the host could not read (until it is re-read), prohibits
+  acknowledgement. A held or unknown prefix therefore never starves a later
+  completion, every item is reached in a bounded number of continued pages,
+  and no item is selected at random or by class. Nothing of this touches the
+  runtime wire or any store, and no cap is raised.
 
 ## 5. Decisions for Root
 

@@ -36,6 +36,7 @@ jest.mock("@/app/_services/product-face.client", () => ({
 
 let notice: ProductFaceHostNotice | null = null;
 const dismissNotice = jest.fn();
+const continueRecovery = jest.fn();
 jest.mock("@/app/_hooks/use-product-face-host", () => ({
   useProductFaceHost: () => ({
     state: { status: "live" },
@@ -44,6 +45,7 @@ jest.mock("@/app/_hooks/use-product-face-host", () => ({
     onFrameLoad: jest.fn(),
     notice,
     dismissNotice,
+    continueRecovery,
   }),
 }));
 
@@ -93,13 +95,58 @@ describe("the recovery notice (proposed contract r20)", () => {
     loadProductFaceContext.mockReset();
     loadProductFaceContext.mockResolvedValue({ application, frameUrl });
     dismissNotice.mockReset();
+    continueRecovery.mockReset();
     notice = null;
+  });
+
+  it("offers Continue checking while items remain, and says so, without calling it incomplete", async () => {
+    notice = {
+      kind: "recovery",
+      complete: true,
+      moreToCheck: true,
+      items: [item("case-3", "runtime", "outcome_unknown")],
+    };
+    renderHost();
+    await screen.findByTitle("Morrow Home Arc product application");
+    expect(
+      screen.getByText("There are more earlier requests to check.").tagName,
+    ).toBe("P");
+    expect(
+      screen.queryByText(
+        "Not every earlier request could be checked this time. Nothing was sent again.",
+      ),
+    ).toBeNull();
+    const button = screen.getByRole("button", { name: "Continue checking" });
+    expect(continueRecovery).not.toHaveBeenCalled();
+    act(() => button.click());
+    expect(continueRecovery).toHaveBeenCalledTimes(1);
+    expect(dismissNotice).not.toHaveBeenCalled();
+  });
+
+  it("offers no Continue checking when nothing remains", async () => {
+    notice = {
+      kind: "recovery",
+      complete: false,
+      moreToCheck: false,
+      items: [item("case-3", "runtime", "outcome_unknown")],
+    };
+    renderHost();
+    await screen.findByTitle("Morrow Home Arc product application");
+    expect(
+      screen.queryByRole("button", { name: "Continue checking" }),
+    ).toBeNull();
+    expect(
+      screen.getByText(
+        "Not every earlier request could be checked this time. Nothing was sent again.",
+      ),
+    ).toBeTruthy();
   });
 
   it("renders one plain line per listed outcome, in the host's own words", async () => {
     notice = {
       kind: "recovery",
       complete: true,
+      moreToCheck: false,
       items: [
         item("reg-1", "registration", "registered", true),
         item("settle-1", "settle", "registered", true),
@@ -143,6 +190,7 @@ describe("the recovery notice (proposed contract r20)", () => {
     notice = {
       kind: "recovery",
       complete: false,
+      moreToCheck: false,
       items: [item("xfer-2", "transfer", "transferred")],
     };
     renderHost();
@@ -160,7 +208,12 @@ describe("the recovery notice (proposed contract r20)", () => {
   });
 
   it("reports an incomplete check even when nothing was listed", async () => {
-    notice = { kind: "recovery", complete: false, items: [] };
+    notice = {
+      kind: "recovery",
+      complete: false,
+      moreToCheck: false,
+      items: [],
+    };
     renderHost();
     await screen.findByTitle("Morrow Home Arc product application");
     expect(
@@ -174,6 +227,7 @@ describe("the recovery notice (proposed contract r20)", () => {
     notice = {
       kind: "recovery",
       complete: true,
+      moreToCheck: false,
       items: [item("xfer-2", "transfer", "transferred", true)],
     };
     renderHost();
