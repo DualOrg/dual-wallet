@@ -80,6 +80,8 @@ export type ProductFaceHostNotice =
       complete: boolean;
       /** Items remain beyond the pages followed so far: continue checking. */
       moreToCheck: boolean;
+      /** Items of a journey this host disables: neither shown nor acknowledged. */
+      withheld: number;
       items: Array<{
         operationId: string;
         kind: "registration" | "settle" | "transfer" | "runtime";

@@ -104,6 +104,7 @@ describe("the recovery notice (proposed contract r20)", () => {
       kind: "recovery",
       complete: true,
       moreToCheck: true,
+      withheld: 0,
       items: [item("case-3", "runtime", "outcome_unknown")],
     };
     renderHost();
@@ -123,11 +124,32 @@ describe("the recovery notice (proposed contract r20)", () => {
     expect(dismissNotice).not.toHaveBeenCalled();
   });
 
+  it("says when earlier requests were withheld as a feature this wallet does not offer", async () => {
+    notice = {
+      kind: "recovery",
+      complete: true,
+      moreToCheck: false,
+      withheld: 2,
+      items: [],
+    };
+    renderHost();
+    await screen.findByTitle("Morrow Home Arc product application");
+    expect(
+      screen.getByText(
+        "Some earlier requests belong to a feature this wallet does not offer, so they are not shown here.",
+      ).tagName,
+    ).toBe("P");
+    expect(
+      screen.queryByRole("button", { name: "Continue checking" }),
+    ).toBeNull();
+  });
+
   it("offers no Continue checking when nothing remains", async () => {
     notice = {
       kind: "recovery",
       complete: false,
       moreToCheck: false,
+      withheld: 0,
       items: [item("case-3", "runtime", "outcome_unknown")],
     };
     renderHost();
@@ -147,6 +169,7 @@ describe("the recovery notice (proposed contract r20)", () => {
       kind: "recovery",
       complete: true,
       moreToCheck: false,
+      withheld: 0,
       items: [
         item("reg-1", "registration", "registered", true),
         item("settle-1", "settle", "registered", true),
@@ -191,6 +214,7 @@ describe("the recovery notice (proposed contract r20)", () => {
       kind: "recovery",
       complete: false,
       moreToCheck: false,
+      withheld: 0,
       items: [item("xfer-2", "transfer", "transferred")],
     };
     renderHost();
@@ -212,6 +236,7 @@ describe("the recovery notice (proposed contract r20)", () => {
       kind: "recovery",
       complete: false,
       moreToCheck: false,
+      withheld: 0,
       items: [],
     };
     renderHost();
@@ -228,6 +253,7 @@ describe("the recovery notice (proposed contract r20)", () => {
       kind: "recovery",
       complete: true,
       moreToCheck: false,
+      withheld: 0,
       items: [item("xfer-2", "transfer", "transferred", true)],
     };
     renderHost();

@@ -273,7 +273,7 @@ function artifactOf(value: unknown): RuntimeArtifact | undefined {
     : undefined;
 }
 
-function echoOf(body: Record<string, unknown>): RuntimeEcho | undefined {
+export function echoOf(body: Record<string, unknown>): RuntimeEcho | undefined {
   const assertingArtifact = artifactOf(body.asserting_artifact);
   if (
     !isOperationId(body.operation_id) ||
@@ -303,7 +303,7 @@ function echoOf(body: Record<string, unknown>): RuntimeEcho | undefined {
  * assertion and the expected acknowledgement rows. Missing, null or "0"
  * proves nothing.
  */
-function accountedReadOnly(
+export function accountedReadOnly(
   body: Record<string, unknown>,
   acknowledgementsRecorded: 0 | 1,
 ) {

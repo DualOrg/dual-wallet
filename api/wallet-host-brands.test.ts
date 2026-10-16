@@ -4821,10 +4821,9 @@ describe("recovery: the bounded page and its continuation (PROPOSED r20 fixture)
         launchOf(brand, "other-launch"),
       );
       const foreignLaunch = await otherLaunch.recovery(continuation);
-      expect(foreignLaunch.body).toMatchObject({
-        supported: true,
-        complete: false,
-        items: [],
+      expect(foreignLaunch).toMatchObject({
+        status: 409,
+        body: { code: "continuation_invalid" },
       });
 
       // A different session (new sign-in) cannot use it either.
@@ -4834,10 +4833,9 @@ describe("recovery: the bounded page and its continuation (PROPOSED r20 fixture)
         launchOf(brand, "new-session"),
       );
       const foreignSession = await newSession.recovery(continuation);
-      expect(foreignSession.body).toMatchObject({
-        supported: true,
-        complete: false,
-        items: [],
+      expect(foreignSession).toMatchObject({
+        status: 409,
+        body: { code: "continuation_invalid" },
       });
 
       // Reused twice within the TTL, the same page comes back (idempotent).
@@ -5053,16 +5051,12 @@ describe("recovery: another actor, host, programme or artifact gets nothing (PRO
       ).toMatchObject({ status: 404, body: { code: "unknown_application" } });
 
       // The face slug naming another programme: the host's assertions now
-      // name a programme the runtimes do not serve, so they refuse them; the
-      // wallet reports an incomplete, empty check and nothing is
-      // acknowledgeable (the records stay sealed to their own programme).
+      // name a programme the runtimes do not serve, so they refuse the first
+      // page; nothing is listed, the host keeps today's behaviour, and nothing
+      // is acknowledgeable (the records stay sealed to their own programme).
       deploy(brand, { registry: registryWithProgrammeChanged(brand) });
       const moved = await fresh.recovery();
-      expect(moved.body).toMatchObject({
-        supported: true,
-        complete: false,
-        items: [],
-      });
+      expect(moved.body).toMatchObject({ supported: false, items: [] });
       for (const operationId of [
         world0.registration,
         world0.settleOperation,

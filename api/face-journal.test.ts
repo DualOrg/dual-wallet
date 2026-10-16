@@ -615,13 +615,40 @@ describe("unresolved evidence is never dropped by the launch budget", () => {
     ]);
   });
 
-  it(`refuses, and never drops, when ${MAX_FACE_LAUNCHES} kept launches all hold unresolved evidence`, () => {
+  it("drops the oldest launch holding only a held runtime write before refusing: its outcome is the runtime's to tell, never this cookie's", () => {
     const jar: Record<string, string> = {};
     const kinds: FaceJournalEntry[][] = [
       [runtimeWrite],
       [sentStep],
       [entry],
       [{ ...runtimeWrite, operationId: "runtime-op-0009" }],
+    ];
+    const names = kinds.map((entries, index) => {
+      const cookie = sealedFor(
+        index % 2 ? laterSession : earlierSession,
+        launch(index),
+        entries,
+        1_000 + index,
+      );
+      jar[cookie.name] = cookie.value;
+      return cookie.name;
+    });
+    // Two launches hold signed evidence (never dropped), two hold only a
+    // runtime write (dropped last, but droppable): a fifth launch is not
+    // refused, and the oldest runtime-write launch makes room.
+    expect(
+      launchWouldDropUnresolved(requestWith(jar), freshScope(), 9_999),
+    ).toBe(false);
+    expect(writeFresh(jar)).toEqual([names[0]]);
+  });
+
+  it(`refuses, and never drops, when ${MAX_FACE_LAUNCHES} kept launches all hold signed evidence`, () => {
+    const jar: Record<string, string> = {};
+    const kinds: FaceJournalEntry[][] = [
+      [{ ...sentStep, operationId: "xfer-0123456789abcde2" }],
+      [sentStep],
+      [entry],
+      [{ ...entry, operationId: "register-op-0009" }],
     ];
     const names = kinds.map((entries, index) => {
       // Two from an earlier session of the same wallet, two from this one.
@@ -723,10 +750,11 @@ describe("a new launch refused launch_capacity (route level)", () => {
   const earlierSession = { sidHash: "sid-earlier", walletId: "wallet-1" };
   const fresh = "launch-newnewnewnewnewnewnewnewnewnew";
   const kept = `launch-${"0".repeat(28)}`;
-  const runtimeWrite = (operationId: string): FaceJournalEntry => ({
+  /** An issued, unsettled registration: signed evidence, never dropped. */
+  const issuedRegistration = (operationId: string): FaceJournalEntry => ({
     operationId,
-    kind: "runtime",
-    operation: "case.open",
+    kind: "registration",
+    operation: "registration.submit",
     slug: SLUG,
     programmeId: "morrow-home-arc",
     objectId: "aaaaaaaaaaaaaaaaaaaaaaaa",
@@ -773,7 +801,7 @@ describe("a new launch refused launch_capacity (route level)", () => {
     delete process.env.FACE_ASSERTION_SIGNING_KEY;
   });
 
-  /** A signed-in browser holding four launches of issued runtime writes. */
+  /** A signed-in browser holding four launches of issued registrations. */
   function browserJar() {
     const cookies: Record<string, string> = {};
     const session = NextResponse.json({});
@@ -803,7 +831,7 @@ describe("a new launch refused launch_capacity (route level)", () => {
         emptyRequest(),
         { ...scope(launchId), owner: earlierSession },
         {
-          entries: [runtimeWrite(`runtime-op-000${index}`)],
+          entries: [issuedRegistration(`register-op-000${index}`)],
           selections: [],
           mints: [],
         },

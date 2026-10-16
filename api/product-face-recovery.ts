@@ -4,7 +4,9 @@ import type { NextRequest } from "next/server";
 import { walletIssuerOrigin } from "@/api/face-assertion";
 import type { FaceJournal } from "@/api/face-journal";
 import {
+  accountedReadOnly,
   acknowledgeRecovery,
+  echoOf,
   hostRuntimeCall,
   readRecoveryList,
   readRegistrationStatus,
@@ -21,6 +23,7 @@ import {
 import {
   fail,
   mint,
+  type FaceOperationFailure,
   type FaceOperationResult,
 } from "@/api/product-face-operations";
 import type { FaceRequestContext } from "@/api/product-face-server";
@@ -28,6 +31,7 @@ import { sealForPurpose, unsealForPurpose } from "@/api/server-session";
 import { hostJourneyEnabled } from "@/api/wallet-host";
 import {
   isCaseId,
+  isLinkedCaseOperation,
   isObjectId,
   isOperationId,
   type RuntimeOperation,
@@ -128,9 +132,6 @@ function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-const text = (value: unknown, max = 256): value is string =>
-  typeof value === "string" && value.length > 0 && value.length <= max;
-
 /**
  * The §0 echoed binding of one answer against the session, this host, the
  * runtime the request was routed to, the face binding and the request sent.
@@ -157,51 +158,20 @@ function echoMatches(
 
 /**
  * The additive r20 fields of an existing resolver's committed answer
- * (contract §0): the echo and the business counters at zero. Without them
- * the answer is pre-r20 for that operation and proves nothing here.
+ * (contract §0): the echo and the business counters at zero, checked by the
+ * same validators the r20 readers use. Without them the answer is pre-r20
+ * for that operation and proves nothing here.
  */
 function committedAnswerEcho(body: Record<string, unknown>) {
-  const artifact = body.asserting_artifact;
-  const bookkeeping = body.bookkeeping;
-  if (
-    body.contract !== "r20" ||
-    body.writesExecuted !== 0 ||
-    body.dualWritesExecuted !== 0 ||
-    body.providerWritesExecuted !== 0 ||
-    body.unknownWriteOutcomes !== 0 ||
-    body.secretReturned !== false ||
-    !record(bookkeeping) ||
-    bookkeeping.assertionsConsumed !== 1 ||
-    bookkeeping.acknowledgementsRecorded !== 0 ||
-    !isOperationId(body.operation_id) ||
-    !text(body.holder) ||
-    !text(body.wallet) ||
-    !text(body.issuer) ||
-    !text(body.application_id) ||
-    !text(body.programme) ||
-    !record(artifact) ||
-    !text(artifact.version, 64) ||
-    !text(artifact.artifactHash, 80)
-  ) {
-    return undefined;
-  }
-  const echo: RuntimeEcho = {
-    operationId: body.operation_id,
-    holder: body.holder,
-    wallet: body.wallet,
-    issuer: body.issuer,
-    applicationId: body.application_id,
-    programme: body.programme,
-    assertingArtifact: {
-      version: artifact.version,
-      artifactHash: artifact.artifactHash,
-    },
-  };
-  return echo;
+  if (body.contract !== "r20" || !accountedReadOnly(body, 0)) return undefined;
+  return echoOf(body);
 }
 
 type Scan =
+  /** An older runtime: 400 face_request_invalid on the first page. */
   | { status: "unsupported" }
+  /** Nothing listed: the first page could not be minted or read. */
+  | { status: "unavailable" }
   | { status: "listed"; items: RecoveryItem[]; complete: boolean };
 
 const incomplete = (items: RecoveryItem[]): Scan => ({
@@ -245,13 +215,20 @@ async function scanRuntime(
       requestHash: runtimeRequestHash(read),
       ...(runtime.audienceOf ? { audienceOf: runtime.audienceOf } : {}),
     });
-    if (!minted.ok) return incomplete(items);
+    if (!minted.ok) {
+      return page === 0 ? { status: "unavailable" } : incomplete(items);
+    }
     const result = await readRecoveryList(runtime, read, minted.assertion);
     if (result.outcome === "unsupported") {
       // Only a first page says the runtime has no r20; later it is a failure.
       return page === 0 ? { status: "unsupported" } : incomplete(items);
     }
-    if (result.outcome !== "listed") return incomplete(items);
+    if (result.outcome !== "listed") {
+      // A first page that cannot be read lists nothing: the host falls back
+      // to today's cookie-based retained steps rather than showing an empty
+      // incomplete check as if the runtime had answered.
+      return page === 0 ? { status: "unavailable" } : incomplete(items);
+    }
     const { page: listed } = result;
     const asOf = Date.parse(listed.asOf);
     if (
@@ -555,6 +532,21 @@ const itemJourney = (item: Pick<RecoveryItem, "kind" | "operation">) =>
   journeyOfJournalEntry({ kind: item.kind, operation: item.operation });
 
 /**
+ * Whether the runtime that listed an item is the one that serves it: case
+ * writes belong to the linked Warranty runtime, everything else (a
+ * registration, settle or transfer step, a transfer offer or cancellation)
+ * to the face's own. An item listed elsewhere is malformed: resolving it
+ * would mint for one runtime and ask another, so it is reported as not
+ * checked instead of as an unknown outcome.
+ */
+function belongsTo(runtime: ScopedRuntime, item: RecoveryItem) {
+  const linked = runtime.audienceOf !== undefined;
+  return item.kind === "runtime"
+    ? isLinkedCaseOperation(item.operation as RuntimeOperation) === linked
+    : !linked;
+}
+
+/**
  * GET /api/faces/[slug]/recovery: this wallet's unresolved and unacknowledged
  * operations from the face's runtime and its linked runtime, each resolved
  * through its kind's resolver, with an acknowledgement ticket only for a
@@ -564,7 +556,7 @@ export async function listRecovery(
   context: FaceRequestContext,
   request: NextRequest,
   continuation?: string,
-): Promise<RecoveryListing> {
+): Promise<RecoveryListing | FaceOperationFailure> {
   const journal = context.journal;
   const scans = await Promise.all(
     scopedRuntimes(context).map(async (runtime) => ({
@@ -572,7 +564,9 @@ export async function listRecovery(
       scan: await scanRuntime(context, request, journal, runtime),
     })),
   );
-  const supported = scans.some(({ scan }) => scan.status !== "unsupported");
+  // Supported only when some runtime answered a page; a first page that
+  // could not be read is not an answer, so the host keeps today's behaviour.
+  const supported = scans.some(({ scan }) => scan.status === "listed");
   if (!supported) {
     return {
       supported: false,
@@ -583,7 +577,8 @@ export async function listRecovery(
       items: [],
     };
   }
-  // A runtime without r20 beside one with it: the check cannot be complete.
+  // A runtime without r20 beside one with it, or one that could not be
+  // read: the check cannot be complete.
   const complete = scans.every(
     ({ scan }) => scan.status === "listed" && scan.complete,
   );
@@ -599,12 +594,16 @@ export async function listRecovery(
     seen.set(item.operationId, (seen.get(item.operationId) ?? 0) + 1);
   }
   let withheld = 0;
+  const misrouted = new Set<string>();
   const eligible = listed
-    .filter(({ item }) => {
+    .filter(({ runtime, item }) => {
       const journey = itemJourney(item);
-      if (journey && hostJourneyEnabled(journey)) return true;
-      withheld += 1;
-      return false;
+      if (!journey || !hostJourneyEnabled(journey)) {
+        withheld += 1;
+        return false;
+      }
+      if (!belongsTo(runtime, item)) misrouted.add(item.operationId);
+      return true;
     })
     // The contract's stable total order, across both runtimes.
     .sort((left, right) => compareKeys(keyOf(left.item), keyOf(right.item)));
@@ -613,16 +612,10 @@ export async function listRecovery(
   const after = continuation
     ? parseContinuation(context, continuation)
     : undefined;
-  if (continuation && !after) {
-    return {
-      supported: true,
-      complete: false,
-      withheld,
-      unchecked: 0,
-      continuation: null,
-      items: [],
-    };
-  }
+  // An expired, foreign or forged continuation is refused as such, so the
+  // host restarts from the beginning instead of taking it for an incomplete
+  // scan (nothing proved so far is lost).
+  if (continuation && !after) return fail("continuation_invalid", 409);
   const page = after
     ? eligible.filter(({ item }) => compareKeys(keyOf(item), after) > 0)
     : eligible;
@@ -630,9 +623,15 @@ export async function listRecovery(
   let lastKey: ItemKey | undefined;
   for (const { item } of page) {
     if (chosen.size >= MAX_RESOLVED) break;
-    // The same id from two runtimes is conflicting and resolved by neither;
-    // it still advances the page so it is never reached again.
-    if ((seen.get(item.operationId) ?? 0) === 1) chosen.add(item.operationId);
+    // The same id from two runtimes is conflicting, and an item listed by a
+    // runtime that does not serve it is malformed: neither is resolved, but
+    // both advance the page so they are never reached again.
+    if (
+      (seen.get(item.operationId) ?? 0) === 1 &&
+      !misrouted.has(item.operationId)
+    ) {
+      chosen.add(item.operationId);
+    }
     lastKey = keyOf(item);
   }
   let unchecked = 0;
@@ -650,9 +649,12 @@ export async function listRecovery(
       step: item.step,
     };
     if (!chosen.has(item.operationId)) {
-      if ((seen.get(item.operationId) ?? 0) === 1) unchecked += 1;
-      else if (conflicting.has(item.operationId)) continue;
-      else conflicting.add(item.operationId);
+      if ((seen.get(item.operationId) ?? 0) > 1) {
+        if (conflicting.has(item.operationId)) continue;
+        conflicting.add(item.operationId);
+      } else if (!misrouted.has(item.operationId)) {
+        unchecked += 1;
+      }
       items.push({ ...base, outcome: "not_checked", ticket: null });
       continue;
     }

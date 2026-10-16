@@ -279,14 +279,36 @@ function historyEntries(
  * it is the wallet's only record of it.
  */
 function unresolvedEvidence(entry: FaceJournalEntry) {
+  return signedEvidence(entry) || heldRuntimeWrite(entry);
+}
+
+/**
+ * (a) and (b): the wallet's only record that a holder-signed Dual action may
+ * have been issued or sent. Never dropped by the budget: a cookie-based
+ * recovery reads it back, and nothing else can.
+ */
+function signedEvidence(entry: FaceJournalEntry) {
   return (
     (recoverableRegistration(entry) && entry.phase !== "settled") ||
-    sentTransferStep(entry) ||
-    (entry.kind === "runtime" && entry.phase === "assertion_issued")
+    sentTransferStep(entry)
   );
 }
 
-const UNRESOLVED_RANK = 2;
+/**
+ * (c): a runtime write whose assertion was issued. Kept ahead of anything
+ * else, but it may be dropped to stay within the budget: its outcome is only
+ * ever learned from the runtime's own record (write.status, recovery.list),
+ * never from this cookie, so keeping it must never lock the wallet out of
+ * every face (launch_capacity) on a runtime that cannot answer for it.
+ */
+function heldRuntimeWrite(entry: FaceJournalEntry) {
+  return entry.kind === "runtime" && entry.phase === "assertion_issued";
+}
+
+/** Rank of a launch holding signed evidence: never dropped. */
+const SIGNED_RANK = 3;
+/** Rank of a launch holding only held runtime writes: dropped last. */
+const RUNTIME_WRITE_RANK = 2;
 
 /** A sealed journal's entries, re-validated for the face it was sealed for. */
 function ownEntries(sealed: Partial<SealedJournal>, now: number) {
@@ -315,12 +337,14 @@ function holdsUnresolvedHistory(sealed: Partial<SealedJournal>, now: number) {
  * wallet first (2: unresolvedEvidence), then any other unfinished work (1),
  * then an empty or finished launch (0). Every face-host mount persists a new,
  * usually empty, launch; recency alone would let those evict the evidence a
- * result page or a progress read is still reading. Rank 2 is never dropped
- * (launchWouldDropUnresolved).
+ * result page or a progress read is still reading. A launch holding signed
+ * evidence (rank 3) is never dropped (launchWouldDropUnresolved); one holding
+ * only held runtime writes (rank 2) goes after every other kind.
  */
 function retentionRank(sealed: Partial<SealedJournal>, now: number) {
   const entries = ownEntries(sealed, now);
-  if (entries.some(unresolvedEvidence)) return UNRESOLVED_RANK;
+  if (entries.some(signedEvidence)) return SIGNED_RANK;
+  if (entries.some(heldRuntimeWrite)) return RUNTIME_WRITE_RANK;
   return entries.some(
     (entry) => entry.phase !== "settled" && entry.phase !== "cancelled",
   )
@@ -379,9 +403,9 @@ function otherLaunches(
 const overBudget = (other: LaunchRetention, index: number) =>
   other.at < 0 || index >= MAX_FACE_LAUNCHES - 1;
 
-/** This wallet's launch holding unresolved evidence: never dropped. */
+/** This wallet's launch holding signed evidence: never dropped. */
 const holdsUnresolved = (other: LaunchRetention) =>
-  other.at >= 0 && other.rank === UNRESOLVED_RANK;
+  other.at >= 0 && other.rank === SIGNED_RANK;
 
 /**
  * Whether writing this launch's journal would need to drop another launch of

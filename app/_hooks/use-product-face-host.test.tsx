@@ -916,6 +916,7 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
       kind: "recovery",
       complete: true,
       moreToCheck: false,
+      withheld: 0,
       items: [
         { operationId: "case-0123456789abcdef", outcome: "outcome_unknown" },
         {
@@ -975,6 +976,7 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
       kind: "recovery",
       complete: true,
       moreToCheck: true,
+      withheld: 0,
     });
     expect(shown?.kind === "recovery" ? shown.items : []).toHaveLength(200);
     expect(
@@ -994,6 +996,7 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
       kind: "recovery",
       complete: true,
       moreToCheck: false,
+      withheld: 0,
     });
     const items = continued?.kind === "recovery" ? continued.items : [];
     expect(items).toHaveLength(201);
@@ -1038,6 +1041,7 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
       kind: "recovery",
       complete: false,
       moreToCheck: true,
+      withheld: 0,
       items: [{ outcome: "transferred", acknowledgeable: false }],
     });
     // Re-read from the kept continuation: the page now answers, complete.
@@ -1056,6 +1060,7 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
     expect(hook.result.current.notice).toMatchObject({
       complete: true,
       moreToCheck: false,
+      withheld: 0,
       items: [
         { outcome: "transferred", acknowledgeable: true },
         { outcome: "outcome_unknown", acknowledgeable: false },
@@ -1082,6 +1087,7 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
     expect(second.hook.result.current.notice).toMatchObject({
       complete: false,
       moreToCheck: false,
+      withheld: 0,
       items: [{ outcome: "transferred", acknowledgeable: false }],
     });
     act(() => second.hook.result.current.dismissNotice());
@@ -1106,6 +1112,7 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
       kind: "recovery",
       complete: true,
       moreToCheck: false,
+      withheld: 0,
       items: [
         {
           operationId: "xfer-f0a31dc6781e57f040c2",
@@ -1191,6 +1198,7 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
       kind: "recovery",
       complete: false,
       moreToCheck: false,
+      withheld: 1,
       items: [
         { operationId: transferred.operation_id, acknowledgeable: false },
         { operationId: heldWrite.operation_id, acknowledgeable: false },
@@ -1243,6 +1251,7 @@ describe("the runtime's durable recovery listing (proposed contract r20)", () =>
       kind: "recovery",
       complete: false,
       moreToCheck: false,
+      withheld: 0,
       items: [],
     });
     act(() => hook.result.current.dismissNotice());

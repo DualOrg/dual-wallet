@@ -450,8 +450,10 @@ function isFaceRecoveryItem(value: unknown): value is FaceRecoveryItem {
  * delivered one listed outcome to its actor. `ticket` is the BFF's one-time
  * proof that the item was proved in this launch from a complete check; the
  * runtime answer is never changed by it. Errors arrive as ProductFaceError
- * codes `invalid_request` (400), `outcome_unknown` (409) and
- * `recovery_unsupported` (409).
+ * codes `invalid_request` (400: a malformed, expired or foreign ticket, or a
+ * runtime or artifact no longer bound), `capability_not_granted` (403: the
+ * item's journey is disabled on this host) and `outcome_unknown` (409: the
+ * runtime did not acknowledge).
  */
 export async function acknowledgeFaceRecovery(
   face: FaceLaunch,

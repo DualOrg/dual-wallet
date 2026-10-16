@@ -1,6 +1,10 @@
 import type { NextRequest } from "next/server";
 import { listRecovery } from "@/api/product-face-recovery";
-import { faceResponse, resolveFaceRequest } from "@/api/product-face-server";
+import {
+  faceContextError,
+  faceResponse,
+  resolveFaceRequest,
+} from "@/api/product-face-server";
 
 type Params = { params: Promise<{ slug: string }> };
 
@@ -20,6 +24,9 @@ export async function GET(request: NextRequest, { params }: Params) {
     const continuation =
       request.nextUrl.searchParams.get("continuation") ?? undefined;
     const listing = await listRecovery(context, request, continuation);
+    if ("ok" in listing) {
+      return faceContextError(context, listing.code, listing.status);
+    }
     return faceResponse(context, {
       supported: listing.supported,
       complete: listing.complete,
@@ -39,10 +46,6 @@ export async function GET(request: NextRequest, { params }: Params) {
       })),
     });
   } catch {
-    return faceResponse(
-      context,
-      { code: "upstream_unavailable", message: "upstream unavailable" },
-      { status: 502 },
-    );
+    return faceContextError(context, "upstream_unavailable", 502);
   }
 }

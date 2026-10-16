@@ -667,9 +667,8 @@ async function verifyRuntimeWrite(
     recorded.programme !== context.binding.programmeId ||
     recorded.assertingArtifact.version !== context.binding.version ||
     recorded.assertingArtifact.artifactHash !== context.binding.artifactHash ||
-    // The §0 echo names the request; a server-only effect is proved only
-    // with its fresh Dual target readback ("absent" is held, contract §5).
-    recorded.operationId !== entry.operationId ||
+    // A server-only effect is proved only with its fresh Dual target
+    // readback ("absent" is held, contract §5).
     (recorded.dual.backed === false &&
       recorded.dual.targetReadback !== "verified") ||
     !receiptMatches

@@ -223,10 +223,6 @@ export function useProductFaceHost({
     { id: number; resolve: (confirmed: boolean) => void } | undefined
   >(undefined);
   const confirmationId = useRef(0);
-  // Proposed contract r20 (not deployed): the acknowledgement tickets of the
-  // recovery items this launch's live host listed, by operation id. Taken
-  // once when the person dismisses the notice; never rendered, never kept
-  // past the host that listed them.
   /**
    * This launch's recovery so far (proposed r20): the merged items, the
    * tickets of the items that may be acknowledged, the scan completeness and
@@ -239,6 +235,7 @@ export function useProductFaceHost({
         scanComplete: boolean;
         readFailed: boolean;
         continuation: string | null;
+        withheld: number;
       }
     | undefined
   >(undefined);
@@ -304,11 +301,19 @@ export function useProductFaceHost({
     if (!current) return;
     const complete = current.scanComplete && !current.readFailed;
     const moreToCheck = current.continuation !== null;
-    if (current.items.size === 0 && complete && !moreToCheck) return;
+    if (
+      current.items.size === 0 &&
+      complete &&
+      !moreToCheck &&
+      current.withheld === 0
+    ) {
+      return;
+    }
     setNotice({
       kind: "recovery",
       complete,
       moreToCheck,
+      withheld: current.withheld,
       items: [...current.items.values()].map((item) => ({
         operationId: item.operation_id,
         kind: item.kind,
@@ -556,6 +561,7 @@ export function useProductFaceHost({
                   scanComplete: recovery.scanComplete,
                   readFailed: recovery.readFailed,
                   continuation: recovery.continuation,
+                  withheld: recovery.withheld,
                 };
                 showRecovery();
               },
@@ -622,16 +628,40 @@ export function useProductFaceHost({
     }
     const live = () =>
       recoveryState.current === current && host.current?.session.ended === null;
+    const merge = (more: RecoveryCollection, restarted: boolean) => {
+      for (const item of more.items) current.items.set(item.operation_id, item);
+      current.scanComplete = restarted
+        ? more.scanComplete
+        : current.scanComplete && more.scanComplete;
+      current.readFailed = more.readFailed;
+      current.continuation = more.continuation;
+      if (restarted) current.withheld = more.withheld;
+      showRecovery();
+    };
     void collectRecovery(current.face, live, current.continuation)
-      .then((more) => {
-        if (!live() || !more.supported) return;
-        for (const item of more.items)
-          current.items.set(item.operation_id, item);
-        current.scanComplete = current.scanComplete && more.scanComplete;
-        current.readFailed = more.readFailed;
-        current.continuation = more.continuation;
-        showRecovery();
-      })
+      .then(
+        (more) => {
+          if (live() && more.supported) merge(more, false);
+        },
+        async (error: unknown) => {
+          if (!live()) return;
+          // An expired or foreign continuation: the listing starts again from
+          // the beginning (acknowledged items have dropped out) and what was
+          // proved is kept. Any other failure leaves the check to re-read.
+          if (
+            !(error instanceof ProductFaceError) ||
+            error.code !== "continuation_invalid"
+          ) {
+            current.readFailed = true;
+            showRecovery();
+            return;
+          }
+          const again = await collectRecovery(current.face, live).catch(
+            () => undefined,
+          );
+          if (live() && again?.supported) merge(again, true);
+        },
+      )
       .catch(() => undefined);
   };
 

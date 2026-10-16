@@ -584,6 +584,7 @@
       },
       "recoveryIncomplete": "Not every earlier request could be checked this time. Nothing was sent again.",
       "recoveryMore": "There are more earlier requests to check.",
+      "recoveryWithheld": "Some earlier requests belong to a feature this wallet does not offer, so they are not shown here.",
       "recoveryContinue": "Continue checking"
     }
   },

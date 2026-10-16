@@ -171,6 +171,9 @@ function ProductFaceFrame({
                   <p>{t("notices.recoveryIncomplete")}</p>
                 )}
                 {notice.moreToCheck ? <p>{t("notices.recoveryMore")}</p> : null}
+                {notice.withheld > 0 ? (
+                  <p>{t("notices.recoveryWithheld")}</p>
+                ) : null}
               </div>
             ) : (
               t(`notices.${notice.kind}.${notice.reason}`, {
