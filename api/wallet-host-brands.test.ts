@@ -99,6 +99,8 @@ import { POST as acceptOfferPOST } from "@/app/api/faces/[slug]/accept-offer/rou
 import { POST as assertionsPOST } from "@/app/api/faces/[slug]/assertions/route";
 import { GET as contextGET } from "@/app/api/faces/[slug]/context/route";
 import { POST as handoverPOST } from "@/app/api/faces/[slug]/handover/route";
+import { GET as recoveryGET } from "@/app/api/faces/[slug]/recovery/route";
+import { POST as recoveryAckPOST } from "@/app/api/faces/[slug]/recovery/ack/route";
 import { GET as statusGET } from "@/app/api/faces/[slug]/operations/[operationId]/route";
 import {
   GET as operationsGET,
@@ -1276,16 +1278,15 @@ class BrandRuntime {
       };
     }
     if (rec.kind === "settle") {
+      // Proved from the historical settle action, not current ownership: a
+      // later onward transfer never invalidates a committed settle (§0).
       const action = this.holderAction(
         rec.objectId,
         rec.actor.holder,
         "update",
       );
       return {
-        state:
-          this.dual.settled(rec.objectId, rec.actor.holder) && action
-            ? "completed"
-            : "unresolved",
+        state: action ? "completed" : "unresolved",
         actionId: action?.actionId ?? null,
       };
     }
@@ -1647,8 +1648,9 @@ class BrandRuntime {
     const settleOp = String(input.settle_operation_id ?? "");
     const proposalId = String(input.proposal_id ?? "");
     const holder = String(claims.holder);
+    // Proved from the historical settle action, never current ownership (§0).
     const action = this.holderAction(objectId, holder, "update");
-    if (!this.dual.settled(objectId, holder) || !action) {
+    if (!action) {
       return json(202, { ok: false, status: "outcome_unknown" });
     }
     const proof = this.settleProof(
@@ -2518,6 +2520,27 @@ class Browser {
   acceptOffer(delivery: Delivery = {}) {
     return this.send(acceptOfferPOST, this.route("/accept-offer"), {
       body: {},
+      params: this.params,
+      ...delivery,
+    });
+  }
+
+  /** GET /recovery (proposed r20), with an optional sealed continuation. */
+  recovery(continuation?: string, delivery: Delivery = {}) {
+    const query = continuation
+      ? `?continuation=${encodeURIComponent(continuation)}`
+      : "";
+    return this.send(recoveryGET, this.route(`/recovery${query}`), {
+      method: "GET",
+      params: this.params,
+      ...delivery,
+    });
+  }
+
+  /** POST /recovery/ack (proposed r20): acknowledge one proved outcome. */
+  recoveryAck(body: Json, delivery: Delivery = {}) {
+    return this.send(recoveryAckPOST, this.route("/recovery/ack"), {
+      body,
       params: this.params,
       ...delivery,
     });
@@ -4087,6 +4110,287 @@ describe("a runtime write's slot, freed only by its verified outcome (PROPOSED r
           operationId === writes[1] ? 1 : 0,
         );
       }
+    },
+  );
+});
+
+// ----------------------------------------- recovery journeys (PROPOSED r20)
+
+// The wallet's durable recovery consumer against the labelled r20 fixture: a
+// listing from the face's runtime and its linked runtime, resolved read-only
+// through each kind's resolver, acknowledged once, and failing closed for
+// every wrong actor, programme, artifact or runtime without r20. Nothing is
+// ever re-sent to a face, and no business write happens for any recovery call.
+
+type RecoveredWire = {
+  operation_id: string;
+  kind: string;
+  operation: string;
+  object_id: string;
+  case_id: string | null;
+  offer_id: string | null;
+  step: string | null;
+  outcome: string;
+  ticket: string | null;
+};
+const recoveredItems = (body: Json) => (body.items ?? []) as RecoveredWire[];
+const itemOf = (body: Json, operationId: string) =>
+  recoveredItems(body).find((item) => item.operation_id === operationId);
+
+/** The fake's runtime calls a face made (`by:"face"`). */
+const faceSends = (brand: Brand) =>
+  runtimeOf(brand).calls.filter((call) => call.by === "face").length;
+/** A snapshot of all business effects, to prove recovery makes none. */
+const businessOf = () => ({
+  executed: world.dual.executed.map((action) => action.actionId).join(","),
+  ebus: world.dual.ebus.length,
+});
+
+/**
+ * The won-but-unseen custody world: the holder registers, settles, offers;
+ * the recipient accepts on the same host; the holder executes the request
+ * step (committed) and the custody step through the real executor, but the
+ * wallet never learns the custody outcome (no transfer-progress read for it).
+ * Custody then moved to the recipient in Dual.
+ */
+async function custodyRecoveryWorld(brand: Brand) {
+  deploy(brand);
+  runtimeOf(brand).r20 = true;
+  const holder = new Browser(brand, brand.holder, launchOf(brand, "holder"));
+  const registration = await issueRegistration(holder);
+  const settleOperation = `settle-${brand.tag}-0001`;
+  const settle = await settleWon(
+    holder,
+    registration.operationId,
+    settleOperation,
+  );
+  await executeStep(holder, settleOperation, settle.action);
+  const recipient = new Browser(
+    brand,
+    brand.recipient,
+    launchOf(brand, "recipient"),
+  );
+  const offer = await offerAccepted(holder, recipient, settle.contextId);
+  // The request step: executed and its outcome read, so it commits and the
+  // custody step can be proposed.
+  const requestOperation = `xfer-request-${brand.tag}-0001`;
+  await executeStep(
+    holder,
+    requestOperation,
+    await transferStepWon(
+      holder,
+      settle.contextId,
+      offer.offerId,
+      requestOperation,
+      "request",
+    ),
+  );
+  expect(
+    (await holder.transferProgress({ operation_id: requestOperation })).status,
+  ).toBe(200);
+  // The custody step: executed through the real executor, its outcome NEVER
+  // read by the wallet (no transferProgress). Custody moves in Dual.
+  const custodyOperation = `xfer-custody-${brand.tag}-0001`;
+  await executeStep(
+    holder,
+    custodyOperation,
+    await transferStepWon(
+      holder,
+      settle.contextId,
+      offer.offerId,
+      custodyOperation,
+      "transfer",
+    ),
+  );
+  expect(world.dual.units.get(brand.unit.id)).toMatchObject({
+    owner: brand.recipient.address,
+  });
+  return {
+    holder,
+    recipient,
+    contextId: settle.contextId,
+    registration: registration.operationId,
+    settleOperation,
+    offer,
+    requestOperation,
+    custodyOperation,
+    session: holder.cookies.get(SESSION_COOKIE)!,
+  };
+}
+
+/** A browser with only the session cookie: the launch journals are lost. */
+const afterLostCookies = (
+  brand: Brand,
+  party: Party,
+  session: string,
+  who: string,
+) =>
+  new Browser(
+    brand,
+    party,
+    launchOf(brand, who),
+    new Map([[SESSION_COOKIE, session]]),
+  );
+
+describe("recovery: won-but-unseen custody completion (PROPOSED r20 fixture)", () => {
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s: the custody step is recovered and acknowledged once, then no longer listed; former-owner reads still refuse",
+    async (_label, brand) => {
+      const world0 = await custodyRecoveryWorld(brand);
+      const runtime = runtimeOf(brand);
+      const sendsBefore = faceSends(brand);
+      const business = businessOf();
+
+      const fresh = afterLostCookies(
+        brand,
+        brand.holder,
+        world0.session,
+        "recover",
+      );
+      const listed = await fresh.recovery();
+      expect(listed.status).toBe(200);
+      expect(listed.body).toMatchObject({ supported: true, complete: true });
+      const custody = recoveredItems(listed.body).find(
+        (item) => item.kind === "transfer" && item.step === "transfer",
+      );
+      expect(custody).toMatchObject({
+        operation_id: world0.custodyOperation,
+        outcome: "transferred",
+      });
+      expect(typeof custody!.ticket).toBe("string");
+
+      // Acknowledge once; a replay records nothing more.
+      const ack = await fresh.recoveryAck({
+        operation_id: world0.custodyOperation,
+        ticket: custody!.ticket,
+      });
+      expect(ack).toMatchObject({
+        status: 200,
+        body: { acknowledged: true, first: true },
+      });
+      const replay = await fresh.recoveryAck({
+        operation_id: world0.custodyOperation,
+        ticket: custody!.ticket,
+      });
+      expect(replay).toMatchObject({
+        status: 200,
+        body: { acknowledged: true, first: false },
+      });
+
+      // A second listing no longer carries the acknowledged custody step.
+      const again = await fresh.recovery();
+      expect(
+        recoveredItems(again.body).some(
+          (item) => item.operation_id === world0.custodyOperation,
+        ),
+      ).toBe(false);
+
+      // Former-owner reads still refuse: the unit left the holder, so the
+      // wallet refuses the private read at mint and a fresh selection fails.
+      const denied = await world0.holder.mint({
+        operation: "products.private.read",
+        operation_id: `private-${brand.tag}-0001`,
+        target: { object_id: brand.unit.id },
+        request_hash: hashOf(
+          "products.private.read",
+          `private-${brand.tag}-0001`,
+          { object_id: brand.unit.id },
+          {},
+        ),
+        context_id: world0.contextId,
+      });
+      // The wallet refuses the former owner before the runtime: its own
+      // ownership gate fails (not_owned, 403), so no not_holder assertion is
+      // even minted.
+      expect(denied.status).toBe(403);
+      expect(
+        (
+          await fresh.send(
+            selectionPOST,
+            `/api/faces/${brand.slug}/selection`,
+            {
+              body: { object_id: brand.unit.id },
+              params: { slug: brand.slug },
+            },
+          )
+        ).status,
+      ).toBe(403);
+
+      // No face re-send and no business write happened for any recovery call.
+      expect(faceSends(brand)).toBe(sendsBefore);
+      expect(businessOf()).toEqual(business);
+      expect(
+        runtime.calls.every(
+          (call) =>
+            call.operation !== "write.status" ||
+            (call.by === "wallet" && [200, 404].includes(call.status)),
+        ),
+      ).toBe(true);
+    },
+  );
+});
+
+describe("recovery: logout, sign-in again and account switch (PROPOSED r20 fixture)", () => {
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s: a new session of the same wallet recovers its own items; another wallet recovers none of them, and neither acknowledges the other's",
+    async (_label, brand) => {
+      const world0 = await custodyRecoveryWorld(brand);
+      const sendsBefore = faceSends(brand);
+      const business = businessOf();
+
+      // A new session of the SAME wallet (logout then sign-in) with no launch
+      // cookies lists this wallet's completed-but-unacknowledged items.
+      const holderAgain = new Browser(
+        brand,
+        brand.holder,
+        launchOf(brand, "holder-2"),
+      );
+      const listed = await holderAgain.recovery();
+      expect(listed.body).toMatchObject({ supported: true, complete: true });
+      const custody = itemOf(listed.body, world0.custodyOperation);
+      expect(custody).toMatchObject({ outcome: "transferred" });
+      expect(itemOf(listed.body, world0.settleOperation)).toMatchObject({
+        outcome: "registered",
+      });
+
+      // A DIFFERENT wallet lists nothing of the holder's.
+      const recipient = new Browser(
+        brand,
+        brand.recipient,
+        launchOf(brand, "recipient-2"),
+      );
+      const recipientList = await recipient.recovery();
+      expect(recipientList.body).toMatchObject({ supported: true });
+      for (const operationId of [
+        world0.registration,
+        world0.settleOperation,
+        world0.custodyOperation,
+      ]) {
+        expect(itemOf(recipientList.body, operationId)).toBeUndefined();
+      }
+
+      // Account switch: the recipient cannot acknowledge a holder ticket (it
+      // is sealed to the holder's session and launch), and the holder can.
+      const recipientAck = await recipient.recoveryAck({
+        operation_id: world0.custodyOperation,
+        ticket: custody!.ticket,
+      });
+      expect(recipientAck.status).toBe(400);
+      const ack = await holderAgain.recoveryAck({
+        operation_id: world0.custodyOperation,
+        ticket: custody!.ticket,
+      });
+      expect(ack).toMatchObject({
+        status: 200,
+        body: { acknowledged: true, first: true },
+      });
+
+      expect(faceSends(brand)).toBe(sendsBefore);
+      expect(businessOf()).toEqual(business);
     },
   );
 });
