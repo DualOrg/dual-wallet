@@ -521,11 +521,16 @@ registration and `registration.settle.status` reconciles a settle.
 
 ### Durable recovery of unresolved and unseen outcomes (proposed r20)
 
-**Status: the runtime side is a PROPOSED contract
-(`docs/proposals/runtime-write-status-r20.md`), not deployed by any Studio
-runtime.** The wallet consumer is in place and fails closed: against today's
-runtimes nothing below is listed or acknowledged, and the cookie-based
-retained listing (`retained` on the operations list) keeps working as before.
+**Status: the runtime side is contract r20 with amendment r20.1
+(`docs/proposals/runtime-write-status-r20.md`), agreed with Root for source
+implementation and not yet deployed by any Studio runtime; source agreement
+is not hosted acceptance.** The wallet consumer is in place and fails closed:
+against today's runtimes nothing below is listed or acknowledged, and the
+cookie-based retained listing (`retained` on the operations list) keeps
+working as before. A Dual-backed write (a linked `case.open` that mints and
+updates) is proved only by the r20.1 receipt chain, one verified effect per
+intended Dual action; a record intending effects the chain does not prove is
+held.
 
 Why: the launch cookies are the wallet's only record of what authority left
 it. Each expires 24 hours after its last write, sign-out clears them, and
