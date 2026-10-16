@@ -1505,7 +1505,10 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
     input: { to: RECIPIENT },
   };
 
-  async function transferRuntime(overrides: Partial<ProductFaceHandlers> = {}) {
+  async function transferRuntime(
+    overrides: Partial<ProductFaceHandlers> = {},
+    { journalled = [] as string[] } = {},
+  ) {
     const order: string[] = [];
     const handlerSet = handlers({
       selectProduct: jest.fn(async () => ({
@@ -1533,6 +1536,22 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
       }),
       ...overrides,
     });
+    // As the BFF answers it: a step's progress is read only once its submit
+    // was journalled; before that the operation is unknown (never a runtime read).
+    const submitted = new Set<string>(journalled);
+    const journal = handlerSet.journal;
+    handlerSet.journal = jest.fn(async (request) => {
+      const result = await journal(request);
+      if (request.transition === "submit")
+        submitted.add(String(request.operation_id));
+      return result;
+    }) as unknown as typeof handlerSet.journal;
+    const progress = handlerSet.transferProgress;
+    handlerSet.transferProgress = jest.fn(async (operationId: string) => {
+      if (!submitted.has(operationId))
+        throw new ProductFaceError("unknown_operation", 404);
+      return progress(operationId);
+    }) as unknown as typeof handlerSet.transferProgress;
     const runtime = runtimeFor(handlerSet);
     const { context_id } = (await runtime.call("programme.product.select", {
       object_id: UNIT_A,
@@ -1796,6 +1815,95 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
       run.call("programme.product.transfer.sign", run.request),
     ).rejects.toMatchObject({ code: "session_ended" });
     expect(run.handlers.executeTransfer).toHaveBeenCalledTimes(0);
+  });
+
+  // Hosted acceptance: the holder's custody step was sent (Dual's owner is
+  // now the recipient) while its progress stayed outcome_unknown; "Check
+  // again" read the object as the sender (404 now: no longer the owner) and
+  // the face was told nothing was sent, offering the step again.
+  it("a sent custody step is read back from its retained journal before any ownership read: the sender's 404 never reads as not sent, and nothing is signed again", async () => {
+    const outcomes = [
+      { status: "outcome_unknown" as const, step: "transfer" as const },
+      { status: "outcome_unknown" as const, step: "transfer" as const },
+      { status: "transferred" as const, step: "transfer" as const },
+    ];
+    const run = await transferRuntime({
+      readTransferProposal: jest.fn(async () => transferStep),
+      transferProgress: jest.fn(async () => outcomes.shift()!),
+    });
+    // The step is signed and sent; its first read back is unknown.
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).rejects.toMatchObject({ code: "outcome_unknown" });
+    expect(run.handlers.executeTransfer).toHaveBeenCalledTimes(1);
+    // Custody moved: the sender can no longer read the object.
+    (run.handlers.readProduct as jest.Mock).mockImplementation(async () => {
+      throw new ProductFaceError("not_found", 404);
+    });
+    const reads = (run.handlers.readProduct as jest.Mock).mock.calls.length;
+    // "Check again": still unknown, never not_found, nothing read or signed.
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).rejects.toMatchObject({ code: "outcome_unknown" });
+    // Then the runtime reconciles it: transferred.
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).resolves.toEqual({ status: "transferred", step: "transfer" });
+    expect((run.handlers.readProduct as jest.Mock).mock.calls.length).toBe(
+      reads,
+    );
+    expect(run.handlers.executeTransfer).toHaveBeenCalledTimes(1);
+    expect(run.handlers.confirm).toHaveBeenCalledTimes(1);
+    expect(
+      (run.handlers.journal as jest.Mock).mock.calls.filter(
+        ([request]) => request.transition === "begin",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("after a relaunch or a new sign-in, the retained journal still decides: a submitted step is only read back, even when the sender's object read is 404", async () => {
+    const run = await transferRuntime(
+      {
+        readTransferProposal: jest.fn(async () => transferStep),
+        readProduct: jest.fn(async () => {
+          throw new ProductFaceError("not_found", 404);
+        }),
+        transferProgress: jest.fn(async () => ({
+          status: "outcome_unknown" as const,
+          step: "transfer" as const,
+        })),
+      },
+      { journalled: ["xfer-step-0001"] },
+    );
+    await expect(
+      run.call("programme.product.transfer.sign", run.request),
+    ).rejects.toMatchObject({ code: "outcome_unknown" });
+    expect(run.handlers.readProduct).not.toHaveBeenCalled();
+    expect(run.handlers.readTransferProposal).not.toHaveBeenCalled();
+    expect(run.handlers.journal).not.toHaveBeenCalled();
+    expect(run.handlers.executeTransfer).not.toHaveBeenCalled();
+  });
+
+  it("a step never journalled (or journalled but not submitted) is signed as before; a journal that cannot be read signs nothing", async () => {
+    const fresh = await transferRuntime();
+    await expect(
+      fresh.call("programme.product.transfer.sign", fresh.request),
+    ).resolves.toEqual({
+      status: "transfer_request_committed",
+      step: "request",
+    });
+    expect(fresh.handlers.executeTransfer).toHaveBeenCalledTimes(1);
+    const unread = await transferRuntime();
+    (unread.handlers.transferProgress as jest.Mock).mockImplementation(
+      async () => {
+        throw new ProductFaceError("temporarily_unavailable", 502);
+      },
+    );
+    await expect(
+      unread.call("programme.product.transfer.sign", unread.request),
+    ).rejects.toMatchObject({ code: expect.any(String) });
+    expect(unread.handlers.journal).not.toHaveBeenCalled();
+    expect(unread.handlers.executeTransfer).not.toHaveBeenCalled();
   });
 
   describe.each([

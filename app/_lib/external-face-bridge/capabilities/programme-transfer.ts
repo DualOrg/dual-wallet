@@ -87,9 +87,48 @@ export function transferCapabilities(): ProductFaceCapability[] {
           return { status: progress.status, step: progress.step };
         };
         try {
-          const fresh = await call(() =>
-            handlers.readProduct(selection.objectId),
+          // A step that already left this wallet (its retained journal entry,
+          // across reloads, relaunches and sign-ins) is only ever read back,
+          // before any ownership read: once its custody has moved, the sender
+          // no longer sees the object, and that is not "nothing was sent".
+          // The BFF answers unknown_operation (never journalled) or
+          // operation_conflict (journalled, not submitted) without the
+          // runtime; only then is the step signed here.
+          const retained = await handlers.transferProgress(stepId).then(
+            (progress) => ({ progress }),
+            (error: unknown) => ({ error }),
           );
+          if ("progress" in retained) {
+            if (retained.progress.status === "outcome_unknown") {
+              throw faceError("outcome_unknown");
+            }
+            return {
+              status: retained.progress.status,
+              step: retained.progress.step,
+            };
+          }
+          if (!(
+            retained.error instanceof ProductFaceError &&
+            ["unknown_operation", "operation_conflict"].includes(
+              retained.error.code,
+            )
+          )) {
+            // The journal could not be read: a step this launch issued stays
+            // unknown; anything else is refused as the read failed.
+            if (session.issuedOperations.has(stepId)) {
+              throw faceError("outcome_unknown");
+            }
+            throw toBridgeError(retained.error);
+          }
+          let fresh: Awaited<ReturnType<typeof handlers.readProduct>>;
+          try {
+            fresh = await call(() => handlers.readProduct(selection.objectId));
+          } catch (error) {
+            // Defence in depth: a step this launch issued is never reported
+            // as not sent because its object is no longer visible.
+            if (session.issuedOperations.has(stepId)) return await readBack();
+            throw error;
+          }
           assertStillCurrent(session, selection);
           if (!session.application.templateIds.includes(fresh.templateId)) {
             throw faceError("not_in_programme");
