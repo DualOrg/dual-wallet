@@ -3,7 +3,11 @@ import "server-only";
 import type { NextRequest } from "next/server";
 import { readFaceAcceptance, type FaceAcceptance } from "@/api/face-acceptance";
 import { sha256Hash } from "@/api/face-assertion";
-import { readFaceHistory, type FaceJournal } from "@/api/face-journal";
+import {
+  readFaceHistory,
+  readFaceTransferHistory,
+  type FaceJournal,
+} from "@/api/face-journal";
 import {
   runtimeRequestHash,
   transferRuntimeCall,
@@ -26,6 +30,7 @@ import {
 import {
   applyJournalTransition,
   authorityLeft,
+  type FaceJournalEntry,
 } from "@/app/_domain/product-face-journal";
 import {
   isObjectId,
@@ -316,24 +321,74 @@ function recoveredTransferStep(
   return consistent ? step : undefined;
 }
 
+/**
+ * The transfer steps that already left this wallet and are not settled yet:
+ * this launch's own submitted steps, then those this wallet's sealed history
+ * holds for this face and programme (readFaceTransferHistory), each resolved
+ * exactly as its own operation id reads (recoveredTransferStep). The step's
+ * original operation id, offer and recorded action stay as they are; this is
+ * only ever read.
+ */
+export function retainedTransferSteps(
+  context: FaceRequestContext,
+  request: NextRequest,
+) {
+  const sent = (entry: FaceJournalEntry) =>
+    entry.kind === "transfer" &&
+    entry.slug === context.binding.slug &&
+    entry.phase === "submitted" &&
+    Boolean(entry.offerId) &&
+    transferStepOfOperation(entry.operation) !== undefined;
+  const own = context.journal.entries.filter(sent);
+  const known = new Set(
+    context.journal.entries.map((entry) => entry.operationId),
+  );
+  const historical = [
+    ...new Set(
+      readFaceTransferHistory(request, context.scope).map(
+        (entry) => entry.operationId,
+      ),
+    ),
+  ]
+    .filter((operationId) => !known.has(operationId))
+    .map((operationId) => recoveredTransferStep(context, request, operationId))
+    .filter((entry): entry is FaceJournalEntry => !!entry && sent(entry));
+  return { own, historical };
+}
+
 export async function transferStepProgress(
   context: FaceRequestContext,
   request: NextRequest,
   body: Record<string, unknown>,
 ): Promise<FaceOperationResult<{ progress: TransferProgress }>> {
+  const keys = Object.keys(body).sort().join(",");
   if (
-    Object.keys(body).join(",") !== "operation_id" ||
-    !isOperationId(body.operation_id)
+    !["operation_id", "offer_id,operation_id"].includes(keys) ||
+    !isOperationId(body.operation_id) ||
+    (body.offer_id !== undefined && !isOfferId(body.offer_id))
   ) {
     return fail("invalid_request", 400);
   }
-  const own = context.journal.entries.find(
-    (item) =>
-      item.operationId === body.operation_id &&
-      item.slug === context.binding.slug,
-  );
-  const entry =
-    own ?? recoveredTransferStep(context, request, body.operation_id);
+  let entry =
+    context.journal.entries.find(
+      (item) =>
+        item.operationId === body.operation_id &&
+        item.slug === context.binding.slug,
+    ) ?? recoveredTransferStep(context, request, body.operation_id);
+  if (!entry && typeof body.offer_id === "string") {
+    // A step of this offer already left this wallet under another operation
+    // id (a relaunch or sign-in gave the face a new one, and the sender can no
+    // longer read the moved object): that original step is read, never a new
+    // one signed. More than one such step is never guessed between.
+    const { own, historical } = retainedTransferSteps(context, request);
+    const sent = [...own, ...historical].filter(
+      (item) => item.offerId === body.offer_id,
+    );
+    if (sent.length > 1) return fail("outcome_unknown", 409);
+    entry = sent[0];
+  }
+  const own =
+    entry && context.journal.entries.includes(entry) ? entry : undefined;
   const step = entry ? transferStepOfOperation(entry.operation) : undefined;
   if (!entry || entry.kind !== "transfer" || !step || !entry.offerId) {
     return fail("unknown_operation", 404);

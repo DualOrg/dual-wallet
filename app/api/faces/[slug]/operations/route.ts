@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { readJsonRecord } from "@/api/request";
 import { transitionOperation } from "@/api/product-face-operations";
+import { retainedTransferSteps } from "@/api/product-face-transfer";
 import {
   faceContextError,
   faceResponse,
@@ -31,6 +32,10 @@ export async function GET(request: NextRequest, { params }: Params) {
     operations: context.journal.entries
       .filter((entry) => entry.slug === slug)
       .map(wireEntry),
+    // Transfer steps this wallet submitted from another launch (a reload, a
+    // sign-in since) and not settled: listed read-only so the host can read
+    // their status. Never joined to this launch's journal.
+    retained: retainedTransferSteps(context, request).historical.map(wireEntry),
   });
 }
 

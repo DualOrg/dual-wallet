@@ -29,6 +29,7 @@ import {
   executeSettleAction,
   executeTransferAction,
   listFaceOperations,
+  listRetainedTransferSteps,
   listProgrammeProducts,
   mintFaceAssertion,
   readFaceOperationStatus,
@@ -269,8 +270,8 @@ export function useProductFaceHost({
                 face: execution(operationId, as),
               }),
           ),
-        transferProgress: (operationId) =>
-          guard(() => readTransferProgress(face, operationId)),
+        transferProgress: (operationId, offerId) =>
+          guard(() => readTransferProgress(face, operationId, offerId)),
         confirm: (request) =>
           new Promise<boolean>((resolve) => {
             // One native confirmation per face; the capability enforces it too.
@@ -307,8 +308,8 @@ export function useProductFaceHost({
           void listFaceOperations(face)
             .then(async (operations) => {
               for (const operation of operations) {
-                // A transfer step's status is the runtime's (the face asks
-                // through transfer.sign again); it is not a registration.
+                // A transfer step's status is the runtime's, read below; it is
+                // not a registration.
                 if (
                   operation.kind === "transfer" ||
                   (operation.phase !== "assertion_issued" &&
@@ -325,6 +326,31 @@ export function useProductFaceHost({
                     operation.operation_id,
                     status.status,
                   );
+                }
+              }
+            })
+            .catch(() => undefined);
+          // A transfer step this wallet sent from another launch (a sign-in
+          // since, a relaunch) and not settled: the sender can no longer list
+          // or select the moved product, so the face cannot ask. Its ORIGINAL
+          // correlation is read once here, read-only (the runtime verifies the
+          // recorded action, signer, recipient and proof); nothing is signed,
+          // reserved or sent again, and only the runtime's answer is reported.
+          void listRetainedTransferSteps(face)
+            .then(async (steps) => {
+              for (const step of steps) {
+                if (step.kind !== "transfer" || step.phase !== "submitted") {
+                  continue;
+                }
+                const progress = await readTransferProgress(
+                  face,
+                  step.operation_id,
+                ).catch(() => undefined);
+                if (
+                  progress?.status === "transferred" ||
+                  progress?.status === "outcome_unknown"
+                ) {
+                  setNotice({ kind: "transfer_step", reason: progress.status });
                 }
               }
             })

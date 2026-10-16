@@ -295,6 +295,19 @@ export async function listFaceOperations(face: FaceLaunch) {
   return operations;
 }
 
+/**
+ * Transfer steps this wallet submitted from another launch (a reload, a
+ * sign-in since) that are not settled: their original operation ids, for a
+ * read-only status read.
+ */
+export async function listRetainedTransferSteps(face: FaceLaunch) {
+  const { retained } = await faceRequest<{ retained?: WireOperation[] }>(
+    face,
+    "/operations",
+  );
+  return Array.isArray(retained) ? retained : [];
+}
+
 export async function readFaceOperationStatus(
   face: FaceLaunch,
   operationId: string,
@@ -565,12 +578,23 @@ export function readAcceptOffer(face: FaceLaunch) {
 }
 
 /** G8: verify or read the status of one submitted step (read-only). */
-export function readTransferProgress(face: FaceLaunch, operationId: string) {
+export function readTransferProgress(
+  face: FaceLaunch,
+  operationId: string,
+  /** The step's offer: a step of it this wallet already sent is read instead. */
+  offerId?: string,
+) {
   return serialized(async () => {
     const result = await faceRequest<{ status: unknown; step: unknown }>(
       face,
       "/transfer-progress",
-      { method: "POST", json: { operation_id: operationId } },
+      {
+        method: "POST",
+        json: {
+          operation_id: operationId,
+          ...(offerId ? { offer_id: offerId } : {}),
+        },
+      },
     );
     const status = result.status;
     const step = result.step;

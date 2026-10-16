@@ -1507,7 +1507,7 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
 
   async function transferRuntime(
     overrides: Partial<ProductFaceHandlers> = {},
-    { journalled = [] as string[] } = {},
+    { journalled = [] as string[], sentOffers = [] as string[] } = {},
   ) {
     const order: string[] = [];
     const handlerSet = handlers({
@@ -1546,12 +1546,20 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
         submitted.add(String(request.operation_id));
       return result;
     }) as unknown as typeof handlerSet.journal;
+    // And, given the sign request's offer, a step of that offer this wallet
+    // already sent under another id (api/product-face-transfer.test.ts proves
+    // it on real sealed journals) is read instead.
     const progress = handlerSet.transferProgress;
-    handlerSet.transferProgress = jest.fn(async (operationId: string) => {
-      if (!submitted.has(operationId))
-        throw new ProductFaceError("unknown_operation", 404);
-      return progress(operationId);
-    }) as unknown as typeof handlerSet.transferProgress;
+    handlerSet.transferProgress = jest.fn(
+      async (operationId: string, offerId?: string) => {
+        if (
+          !submitted.has(operationId) &&
+          !(offerId && sentOffers.includes(offerId))
+        )
+          throw new ProductFaceError("unknown_operation", 404);
+        return progress(operationId, offerId);
+      },
+    ) as unknown as typeof handlerSet.transferProgress;
     const runtime = runtimeFor(handlerSet);
     const { context_id } = (await runtime.call("programme.product.select", {
       object_id: UNIT_A,
@@ -1887,6 +1895,39 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
     expect(run.handlers.executeTransfer).not.toHaveBeenCalled();
   });
 
+  // Root's next journey: after a sign-in and a relaunch the pinned face has
+  // a NEW step id for the same offer (it keeps ids in memory only). The
+  // wallet asks with the offer: the step of it this wallet already sent is
+  // read, and nothing is read, confirmed or executed for the new id.
+  it("a NEW step id for an offer whose step this wallet already sent reads that step back: no ownership read, confirmation or execution", async () => {
+    const run = await transferRuntime(
+      {
+        readTransferProposal: jest.fn(async () => transferStep),
+        readProduct: jest.fn(async () => {
+          throw new ProductFaceError("not_found", 404);
+        }),
+        transferProgress: jest.fn(async () => ({
+          status: "transferred" as const,
+          step: "transfer" as const,
+        })),
+      },
+      { sentOffers: [OFFER] },
+    );
+    const request = { ...run.request, step_operation_id: "xfer-step-0002" };
+    await expect(
+      run.call("programme.product.transfer.sign", request),
+    ).resolves.toEqual({ status: "transferred", step: "transfer" });
+    expect(run.handlers.transferProgress).toHaveBeenCalledWith(
+      "xfer-step-0002",
+      OFFER,
+    );
+    expect(run.handlers.readProduct).not.toHaveBeenCalled();
+    expect(run.handlers.readTransferProposal).not.toHaveBeenCalled();
+    expect(run.handlers.confirm).not.toHaveBeenCalled();
+    expect(run.handlers.journal).not.toHaveBeenCalled();
+    expect(run.handlers.executeTransfer).not.toHaveBeenCalled();
+  });
+
   it("a step never journalled (or journalled but not submitted) is signed as before; a journal that cannot be read signs nothing", async () => {
     const fresh = await transferRuntime();
     await expect(
@@ -1961,7 +2002,11 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
             context_id,
           }),
         ).rejects.toMatchObject({ code: "outcome_unknown" });
-        expect(progress).toHaveBeenCalledWith(run.request.step_operation_id);
+        // The later read is the retained-first read: this step, with its offer.
+        expect(progress).toHaveBeenCalledWith(
+          run.request.step_operation_id,
+          OFFER,
+        );
         expect(store.submits()).toBe(1);
         expect(run.handlers.executeTransfer).toHaveBeenCalledTimes(0);
         expect(

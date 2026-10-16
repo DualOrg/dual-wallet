@@ -53,14 +53,22 @@ type StatusHandler = (
   context: { params: Promise<{ slug: string; operationId: string }> },
 ) => Promise<Response>;
 
+type ListHandler = (
+  request: NextRequest,
+  context: { params: Promise<{ slug: string }> },
+) => Promise<Response>;
+
 interface Instance {
   selection: Handler;
   operations: Handler;
+  list: ListHandler;
   proposal: Handler;
   progress: Handler;
   status: StatusHandler;
   backend: BackendHandler;
   establishSession: typeof import("@/api/server-session").establishSession;
+  /** This instance's own SDK error class (its own module registry). */
+  ResponseError: typeof import("@/api/web-sdk/runtime").ResponseError;
   unsealForPurpose: typeof import("@/api/server-session").unsealForPurpose;
 }
 
@@ -73,12 +81,14 @@ function loadInstance(): Instance {
     instance = {
       selection: require("@/app/api/faces/[slug]/selection/route").POST,
       operations: require("@/app/api/faces/[slug]/operations/route").POST,
+      list: require("@/app/api/faces/[slug]/operations/route").GET,
       proposal: require("@/app/api/faces/[slug]/transfer-proposal/route").POST,
       progress: require("@/app/api/faces/[slug]/transfer-progress/route").POST,
       status: require("@/app/api/faces/[slug]/operations/[operationId]/route")
         .GET,
       backend: require("@/app/api/backend/[...path]/route").POST,
       establishSession: session.establishSession,
+      ResponseError: require("@/api/web-sdk/runtime").ResponseError,
       unsealForPurpose: session.unsealForPurpose,
     };
     /* eslint-enable @typescript-eslint/no-require-imports */
@@ -930,6 +940,174 @@ describe("G8 transfer step, the holder's host (contract r16 transfer.sign)", () 
         instance.progress,
         path,
         { operation_id: STEP_OP },
+        new Map([...other.cookies, ...oldLaunch]),
+        false,
+      ),
+    ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+  });
+
+  // Root's next user journey: the sender signs in again and the pinned face
+  // relaunches. The face keeps step ids in memory only, so it has a NEW step
+  // id; the moved object reads 404 for the sender, so the sender can neither
+  // list nor select it. The ORIGINAL step is found from this wallet's own
+  // sealed history (the host's launch listing, and the sign request's own
+  // offer) and read only: verified with its recorded action, never signed,
+  // reserved or rebound. Real sealed launch journals and two sessions.
+  it("after a sign-in and a relaunch with a NEW step id for the same offer and the moved object's 404, the original sent step is found and read only; nothing is signed, reserved or rebound", async () => {
+    const runtime = fakeTransferRuntime();
+    global.fetch = runtime.fetchImpl as unknown as typeof fetch;
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    const contextId = await selected(instance, browser);
+    const submit = await confirmedStep(instance, browser, contextId);
+    expect((await submit()).body.reservation).toBe("won");
+    expect(
+      (
+        await browser.call(
+          instance.operations,
+          `/api/faces/${SLUG}/operations`,
+          {
+            transition: "record_action",
+            operation_id: STEP_OP,
+            action_id: "action-transfer-1",
+          },
+        )
+      ).status,
+    ).toBe(200);
+    const oldLaunch = [...browser.cookies].filter(([name]) =>
+      name.startsWith("dual_face_launch_"),
+    );
+    const [[oldName, oldSealed]] = oldLaunch;
+    // Custody moved: the sender's object read is 404.
+    getObjectById.mockRejectedValue(
+      new instance.ResponseError(
+        new Response(null, { status: 404 }),
+        "not found",
+      ),
+    );
+    // Signed in again; the face relaunched (a new session and a new launch).
+    const relaunched = new Browser(instance, `launch-${"t".repeat(28)}`);
+    const cookies = new Map([...relaunched.cookies, ...oldLaunch]);
+    // The sender cannot select the moved product any more.
+    expect(
+      (
+        await relaunched.call(
+          instance.selection,
+          `/api/faces/${SLUG}/selection`,
+          { object_id: UNIT },
+          cookies,
+          false,
+        )
+      ).status,
+    ).toBe(404);
+    // The host's launch listing names the ORIGINAL step, read-only.
+    const listed = await instance.list(
+      new NextRequest(`http://localhost/api/faces/${SLUG}/operations`, {
+        method: "GET",
+        headers: {
+          host: "localhost",
+          "x-dual-face-launch": relaunched.launchId,
+          cookie: Array.from(cookies, ([k, v]) => `${k}=${v}`).join("; "),
+        },
+      }),
+      { params: Promise.resolve({ slug: SLUG }) },
+    );
+    const body = await listed.json();
+    expect(body.operations).toEqual([]);
+    expect(body.retained).toMatchObject([
+      {
+        operation_id: STEP_OP,
+        kind: "transfer",
+        phase: "submitted",
+        object_id: UNIT,
+        action_id: "action-transfer-1",
+      },
+    ]);
+    // The face's NEW step id with the same offer: the original step is read.
+    const NEW_STEP = "xfer-fedcba9876543210";
+    const reserves = () =>
+      runtime.calls.filter((call) => call.operation === "transfer.reserve")
+        .length;
+    const reserved = reserves();
+    const progress = (extra: Record<string, unknown> = { offer_id: OFFER }) =>
+      relaunched.call(
+        instance.progress,
+        `/api/faces/${SLUG}/transfer-progress`,
+        { operation_id: NEW_STEP, ...extra },
+        cookies,
+        false,
+      );
+    expect(await progress()).toMatchObject({
+      status: 200,
+      body: { status: "outcome_unknown", step: "request" },
+    });
+    expect(runtime.calls.at(-1)).toMatchObject({
+      operation: "transfer.verify",
+      body: {
+        input: {
+          offer_id: OFFER,
+          action_id: "action-transfer-1",
+          step_operation_id: STEP_OP,
+        },
+      },
+    });
+    // Only the runtime's committed answer (its exact action, signer,
+    // recipient and proof) reports it done; never the 404 alone.
+    runtime.executed(STEP_OP);
+    expect(await progress()).toMatchObject({
+      status: 200,
+      body: { status: "transfer_request_committed", step: "request" },
+    });
+    // Without the offer, a new id is still unknown (never guessed).
+    expect(await progress({})).toMatchObject({
+      status: 404,
+      body: { code: "unknown_operation" },
+    });
+    // Another offer's sign request finds nothing of it.
+    expect(
+      await progress({ offer_id: "pto-ffffffffffffffffffffffff" }),
+    ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+    // Read only: nothing reserved again, the old launch untouched, and the
+    // new launch holds neither id.
+    expect(reserves()).toBe(reserved);
+    expect(cookies.get(oldName)).toBe(oldSealed);
+    await relaunched.call(
+      instance.progress,
+      `/api/faces/${SLUG}/transfer-progress`,
+      { operation_id: NEW_STEP, offer_id: OFFER },
+      cookies,
+      true,
+    );
+    for (const id of [STEP_OP, NEW_STEP]) {
+      expect(
+        await relaunched.call(
+          instance.progress,
+          `/api/faces/${SLUG}/transfer-progress`,
+          { operation_id: id },
+          relaunched.cookies,
+          false,
+        ),
+      ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+    }
+    // Another wallet in the same browser: nothing listed, nothing read.
+    getWallet.mockResolvedValue({
+      id: "wallet-2",
+      account: {
+        address: "0x00000000000000000000000000000000000000d4",
+        type: "SMART_WALLET",
+        controller: { address: "0xcontroller2" },
+        smartAccount: {},
+      },
+      whenCreated: new Date(),
+      whenModified: new Date(),
+      emailVerified: true,
+    });
+    const other = new Browser(instance, `launch-${"u".repeat(28)}`);
+    expect(
+      await other.call(
+        instance.progress,
+        `/api/faces/${SLUG}/transfer-progress`,
+        { operation_id: NEW_STEP, offer_id: OFFER },
         new Map([...other.cookies, ...oldLaunch]),
         false,
       ),

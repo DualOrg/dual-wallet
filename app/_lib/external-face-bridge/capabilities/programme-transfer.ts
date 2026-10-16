@@ -88,16 +88,19 @@ export function transferCapabilities(): ProductFaceCapability[] {
         };
         try {
           // A step that already left this wallet (its retained journal entry,
-          // across reloads, relaunches and sign-ins) is only ever read back,
-          // before any ownership read: once its custody has moved, the sender
-          // no longer sees the object, and that is not "nothing was sent".
+          // across reloads, relaunches and sign-ins, under this operation id or,
+          // for this offer, under the one it was sent with) is only ever read
+          // back, before any ownership read: once its custody has moved, the
+          // sender no longer sees the object, and that is not "nothing was sent".
           // The BFF answers unknown_operation (never journalled) or
           // operation_conflict (journalled, not submitted) without the
           // runtime; only then is the step signed here.
-          const retained = await handlers.transferProgress(stepId).then(
-            (progress) => ({ progress }),
-            (error: unknown) => ({ error }),
-          );
+          const retained = await handlers
+            .transferProgress(stepId, offerId)
+            .then(
+              (progress) => ({ progress }),
+              (error: unknown) => ({ error }),
+            );
           if ("progress" in retained) {
             if (retained.progress.status === "outcome_unknown") {
               throw faceError("outcome_unknown");

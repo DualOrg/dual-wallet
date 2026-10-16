@@ -552,6 +552,10 @@
         "issuer_settle_policy_absent": "{publisher} has not published an authorisation to confirm this product automatically, so there is nothing to confirm on your wallet. Their team needs to send the confirmation; nothing was changed.",
         "face_settle_proposal_stale": "{publisher}'s confirmation was prepared for an earlier version of this product's record. Their team needs to send a new one; nothing was changed.",
         "face_settle_proposal_release_changed": "{publisher}'s confirmation was prepared for an earlier version of their app. Their team needs to send a new one; nothing was changed."
+      },
+      "transfer_step": {
+        "transferred": "Your transfer is complete: the product now belongs to the recipient's wallet. Its private details and service requests are no longer shown to you.",
+        "outcome_unknown": "Your wallet already sent a transfer step for a product you offered. It is still being confirmed and will not be sent again. Check back later."
       }
     }
   },

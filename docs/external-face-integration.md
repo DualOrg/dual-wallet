@@ -729,10 +729,19 @@ submitted (a reload, another tab, a sign-in since) is read the same way from
 that wallet's own sealed history for this face and programme
 (`readFaceHistory`), read-only: it never joins, re-seals or settles the
 current launch's journal, and another wallet's journals give nothing. The
-host's `programme.product.transfer.sign` asks this first, before any
-ownership read: a submitted step is only ever read back, even when the sender
-can no longer read the moved object, and only a step the BFF reports
-`unknown_operation` or `operation_conflict` is signed. `transfer.offer` and `transfer.cancel` are
+host's `programme.product.transfer.sign` asks this first, with the request's
+`offer_id`, before any ownership read: a submitted step is only ever read
+back, even when the sender can no longer read the moved object, and the face
+keeping its step ids in memory only (a relaunch gives it a new one) changes
+nothing, because the one step of that offer this wallet already sent (under
+its original operation id and recorded action) is read instead. Only a step
+the BFF reports `unknown_operation` or `operation_conflict` is signed; more
+than one sent step for the offer is `outcome_unknown`, never guessed. Since
+the sender can no longer list or select a product whose custody moved, the
+host also reads such a step once when the face launches: `GET
+/api/faces/[slug]/operations` lists it under `retained`, and only the
+runtime's answer (its exact action, signer, recipient and proof) is reported,
+as a native notice. `transfer.offer` and `transfer.cancel` are
 host-confirmed runtime writes for the selected product; the recipient's
 `transfer.offer.read` (target `{}`) and `transfer.accept` (target
 `{object_id}`, r19) and either party's `transfer.read` need no

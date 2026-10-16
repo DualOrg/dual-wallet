@@ -54,6 +54,8 @@ const executeSettleAction = jest.fn(async () => ({
 const executeTransferAction = jest.fn(async () => ({
   actionId: "action-transfer",
 }));
+const listRetainedTransferSteps = jest.fn(async (): Promise<unknown[]> => []);
+const readTransferProgress = jest.fn();
 jest.mock("@/app/_services/product-face.client", () => ({
   executeSettleAction: (...args: unknown[]) =>
     executeSettleAction(...(args as [])),
@@ -61,9 +63,14 @@ jest.mock("@/app/_services/product-face.client", () => ({
     executeTransferAction(...(args as [])),
   takeFaceHandoverTicket: () => undefined,
   listFaceOperations: async () => [],
+  listRetainedTransferSteps: (...args: unknown[]) =>
+    listRetainedTransferSteps(...(args as [])),
+  readTransferProgress: (...args: unknown[]) =>
+    readTransferProgress(...(args as [])),
 }));
 
 let captured: ProductFaceHandlers | undefined;
+let initialized: ((host: unknown) => void) | undefined;
 const fakeHost = {
   session: { ended: null as SessionEndReason | null },
   end: jest.fn(),
@@ -72,8 +79,12 @@ const fakeHost = {
   operationUpdated: jest.fn(),
 };
 jest.mock("@/app/_lib/external-face-bridge", () => ({
-  startProductFaceBridge: (options: { handlers: ProductFaceHandlers }) => {
+  startProductFaceBridge: (options: {
+    handlers: ProductFaceHandlers;
+    onInitialized?: (host: unknown) => void;
+  }) => {
     captured = options.handlers;
+    initialized = options.onInitialized;
     return fakeHost;
   },
 }));
@@ -310,5 +321,75 @@ describe("the host executors sign only as the identity that began the operation"
       first.handlers.executeTransfer(transferStep, began),
     ).rejects.toMatchObject({ code: "session_ended" });
     expect(executeTransferAction).not.toHaveBeenCalled();
+  });
+});
+
+// Root's next journey: the sender signs in again and the face relaunches. The
+// sender can no longer list or select the moved product, so the face cannot
+// ask; the host finds the step its wallet already sent (the BFF's launch
+// listing from this wallet's own sealed history) and reads its ORIGINAL
+// correlation once, read-only, reporting only the runtime's answer.
+describe("a transfer step this wallet sent from another launch", () => {
+  beforeEach(() => {
+    captured = undefined;
+    initialized = undefined;
+    fakeHost.session.ended = null;
+    session = {
+      wallet: accountA,
+      authenticationMethod: "email",
+      isAuthenticated: true,
+      isLoading: false,
+      refresh: jest.fn(),
+      logout: jest.fn(),
+      onSessionEnd: () => () => undefined,
+    };
+    listRetainedTransferSteps.mockReset();
+    readTransferProgress.mockReset();
+    executeTransferAction.mockClear();
+  });
+
+  it.each([
+    ["transferred", { kind: "transfer_step", reason: "transferred" }],
+    ["outcome_unknown", { kind: "transfer_step", reason: "outcome_unknown" }],
+  ] as const)(
+    "is read back on launch by its original id (%s), and nothing is signed or executed",
+    async (status, notice) => {
+      listRetainedTransferSteps.mockResolvedValue([
+        {
+          operation_id: "xfer-f0a31dc6781e57f040c2",
+          kind: "transfer",
+          operation: "transfer.transfer",
+          object_id: "aaaaaaaaaaaaaaaaaaaaaaaa",
+          case_id: null,
+          phase: "submitted",
+          status: null,
+          action_id: "6ad178a32880577b1a494932",
+        },
+      ]);
+      readTransferProgress.mockResolvedValue({ status, step: "transfer" });
+      const { hook } = launch();
+      await act(async () => {
+        initialized?.(fakeHost);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(readTransferProgress).toHaveBeenCalledTimes(1);
+      expect(readTransferProgress.mock.calls[0][1]).toBe(
+        "xfer-f0a31dc6781e57f040c2",
+      );
+      expect(readTransferProgress.mock.calls[0]).toHaveLength(2);
+      expect(hook.result.current.notice).toEqual(notice);
+      expect(executeTransferAction).not.toHaveBeenCalled();
+    },
+  );
+
+  it("reports nothing when no retained step is listed or its read fails", async () => {
+    listRetainedTransferSteps.mockResolvedValue([]);
+    const { hook } = launch();
+    await act(async () => {
+      initialized?.(fakeHost);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(readTransferProgress).not.toHaveBeenCalled();
+    expect(hook.result.current.notice).toBeNull();
   });
 });

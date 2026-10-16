@@ -224,6 +224,34 @@ export function readFaceHistory(
   operationId: string,
   now = Date.now(),
 ): FaceJournalEntry[] {
+  return historyEntries(request, scope, now).filter(
+    (entry) => entry.operationId === operationId,
+  );
+}
+
+/**
+ * The transfer steps this same wallet submitted from its OTHER launch
+ * journals for this face and programme (a reload, another tab, a sign-in
+ * since), under the same seal and wallet checks as readFaceHistory. A
+ * sender whose step moved custody can no longer select or list that product,
+ * so this is how the host finds the step again: read-only, never rebound,
+ * re-sealed or rewritten, and never a basis to reserve, submit or execute.
+ */
+export function readFaceTransferHistory(
+  request: NextRequest,
+  scope: FaceJournalScope,
+  now = Date.now(),
+): FaceJournalEntry[] {
+  return historyEntries(request, scope, now).filter(
+    (entry) => entry.kind === "transfer",
+  );
+}
+
+function historyEntries(
+  request: NextRequest,
+  scope: FaceJournalScope,
+  now: number,
+): FaceJournalEntry[] {
   return launchCookies(request)
     .filter(([launchId]) => launchId !== scope.launchId)
     .flatMap(([launchId, value]) => {
@@ -236,9 +264,7 @@ export function readFaceHistory(
       ) {
         return [];
       }
-      return sealedEntries(sealed, scope.slug, scope.programmeId, now).filter(
-        (entry) => entry.operationId === operationId,
-      );
+      return sealedEntries(sealed, scope.slug, scope.programmeId, now);
     });
 }
 

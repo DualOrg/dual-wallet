@@ -48,10 +48,16 @@ export interface JournalTransitionResponse {
 }
 
 /** Notices the host shows in its own UI, never face-supplied text. */
-export type ProductFaceHostNotice = {
-  kind: "settle_proposal_unavailable";
-  reason: SettleProposalUnavailableReason;
-};
+export type ProductFaceHostNotice =
+  | {
+      kind: "settle_proposal_unavailable";
+      reason: SettleProposalUnavailableReason;
+    }
+  | {
+      /** A transfer step this wallet already sent, read back by the host. */
+      kind: "transfer_step";
+      reason: "transferred" | "outcome_unknown";
+    };
 
 export interface OperationStatusResponse {
   status: RegistrationStatus;
@@ -140,7 +146,11 @@ export interface ProductFaceHandlers {
     as: ExecutorIdentity,
   ): Promise<{ actionId: string }>;
   /** G8: verify or read the status of a submitted step; never executes. */
-  transferProgress(operationId: string): Promise<{
+  transferProgress(
+    operationId: string,
+    /** A step of this offer already sent from this wallet is read instead. */
+    offerId?: string,
+  ): Promise<{
     status: "transfer_request_committed" | "transferred" | "outcome_unknown";
     step: "request" | "transfer";
   }>;
