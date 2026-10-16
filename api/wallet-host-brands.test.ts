@@ -232,11 +232,53 @@ const TIDEWELL: Brand = {
 
 const BRANDS = [MORROW, TIDEWELL];
 
-// FIXTURE (PROPOSED r20): the account that signs a synthetic Dual-backed
+// FIXTURE (r20.1): the service account that signs a synthetic Dual-backed
 // action. It is not any brand's holder, recipient or issuer: the contract
 // assumes neither that the signer is the holder nor that the object is the
 // product target.
 const SERVICE_ACCOUNT = `0x${"f".repeat(40)}`;
+// FIXTURE (r20.1): the controller declared for the product update of a
+// Dual-backed case.open; its mint is signed directly (controller null).
+const FIXTURE_CONTROLLER = `0x${"c2".repeat(20)}`;
+
+/** FIXTURE (r20.1): one intended Dual effect of a Dual-backed write. */
+interface IntendedEffect {
+  kind: "mint" | "update";
+  /** The fixture object (minted) or the product object (updated). */
+  objectId: "fixture" | "product";
+  /** The declared controller address, or null: the account signs directly. */
+  controller: string | null;
+}
+
+/**
+ * FIXTURE knobs (r20.1), each off by default: one named way a runtime's
+ * write.status answer falls short of the receipt chain, which the wallet must
+ * hold. `dualFailedEffect` alone changes the write itself: FakeDual records
+ * the second action as failed, so the runtime's own corroboration fails and
+ * it answers 409 write_outcome_unknown (effects_unproved), never write_applied.
+ */
+interface DualKnobs {
+  dualShortEffects?: boolean;
+  dualStaleRead?: boolean;
+  dualVerifiedAfterRead?: boolean;
+  dualControllerUnrecorded?: boolean;
+  dualControllerMismatch?: boolean;
+  dualHistoryOtherObject?: boolean;
+  dualExecutionPending?: boolean;
+  dualWithdrawnField?: boolean;
+  dualSha256Hash?: boolean;
+  dualFailedEffect?: boolean;
+}
+
+/**
+ * FIXTURE (r20.1): the normal linked Warranty case.open intends TWO Dual
+ * effects: the mint of the fixture object, signed directly, then the update
+ * of the product object through the declared controller.
+ */
+const CASE_OPEN_EFFECTS: IntendedEffect[] = [
+  { kind: "mint", objectId: "fixture", controller: null },
+  { kind: "update", objectId: "product", controller: FIXTURE_CONTROLLER },
+];
 
 // ---------------------------------------------------------------- helpers
 
@@ -317,11 +359,28 @@ class FakeDual {
     actionId: string;
     account: string;
     objectId: string;
-    name: "update" | "transfer";
+    name: "mint" | "update" | "transfer";
     to?: string;
-    /** FIXTURE ONLY: the executed payload of a synthetic r20 Dual-backed action. */
-    payload?: Json;
+    /**
+     * FIXTURE ONLY (r20.1), on a synthetic Dual-backed action: the controller
+     * it was signed through (null: the account signed directly), the objects
+     * it affected and Dual's own status word for it.
+     */
+    controller?: string | null;
+    affectedObjects?: string[];
+    status?: "COMPLETED" | "FAILED";
   }> = [];
+  /**
+   * FIXTURE ONLY (r20.1): state-change history entries per object, one per
+   * succeeded synthetic Dual-backed action, each belonging to the object it
+   * changed. `contentHashRaw` is a FIXTURE value in provider form (`0x` +
+   * 64 lower-case hex): it stands in for the provider's raw content hash and
+   * claims nothing about how the provider derives it.
+   */
+  readonly history = new Map<
+    string,
+    Array<{ entryId: string; actionId: string; contentHashRaw: string }>
+  >();
   readonly ebus: Array<{ path: string; account: string }> = [];
   private readonly parties = new Map<string, Party>();
   private readonly nonces = new Map<string, number>();
@@ -353,22 +412,44 @@ class FakeDual {
   }
 
   /**
-   * FIXTURE ONLY (PROPOSED r20): one synthetic Dual action log entry, so a
+   * FIXTURE ONLY (r20.1): one synthetic Dual action log entry and, when it
+   * succeeded, ONE state-change history entry of the object it changed, so a
    * runtime write can be recorded as a genuine Dual-backed effect. The
    * contract assumes nothing: the signer need not be the holder and the
    * object need not be the product target. Never part of Dual's business
-   * semantics; only the r20 Dual-backed write fixture records one.
+   * semantics; only the r20.1 Dual-backed write fixture records one.
    */
-  recordDualBackedAction(objectId: string, signer: string, payload: Json) {
+  recordDualBackedAction(
+    objectId: string,
+    signer: string,
+    controller: string | null,
+    kind: "mint" | "update",
+    payload: Json,
+    status: "COMPLETED" | "FAILED" = "COMPLETED",
+  ) {
     const actionId = `dual-action-${this.executed.length + 1}`;
     this.executed.push({
       actionId,
       account: signer,
+      controller,
       objectId,
-      name: "update",
-      payload: clone(payload),
+      name: kind,
+      affectedObjects: [objectId],
+      status,
     });
-    return actionId;
+    // FIXTURE: the provider's raw content hash of this change, in provider
+    // form; derived deterministically here, never a claim about the provider.
+    const contentHashRaw = `0x${sha256Hex(canonicalJson(payload))}`;
+    if (status === "COMPLETED") {
+      const entries = this.history.get(objectId) ?? [];
+      entries.push({
+        entryId: `hist-${objectId.slice(0, 8)}-${entries.length + 1}`,
+        actionId,
+        contentHashRaw,
+      });
+      this.history.set(objectId, entries);
+    }
+    return { actionId, contentHashRaw };
   }
 
   object(objectId: string) {
@@ -494,23 +575,35 @@ interface WriteRecord {
   /** The runtime's record time (RFC 3339, the mocked clock). */
   recordedAt: string;
   /**
-   * FIXTURE knob: a Dual-backed effect proved from the Dual action log. The
-   * synthetic action is recorded once; write.status re-reads its executed
-   * payload for the observed hash each time.
+   * FIXTURE (r20.1): the write's intended Dual effects, each with what the
+   * runtime retained before and at dispatch (the intent commitment preimage,
+   * the original verifier's receipt, the action it produced). write.status
+   * RE-READS FakeDual for each effect's fresh corroboration every time.
    */
   dualBacked?: {
-    actionId: string;
-    objectId: string;
-    signer: string;
-    expectedPayloadHash: string;
-    /** The ORIGINAL write's intended Dual writes (the wallet holds more than 1). */
     intendedDualWrites: number;
-    /** FIXTURE knob: answer a verified_at 11 minutes old (the wallet holds it). */
-    stale?: boolean;
+    effects: RecordedEffect[];
   };
   /** FIXTURE knob: the target object cannot be read at all (409 unknown). */
   dualUnavailable?: boolean;
   answer: { status: number; body: Json };
+}
+
+/** FIXTURE (r20.1): what the runtime retained for one dispatched effect. */
+interface RecordedEffect {
+  index: number;
+  kind: "mint" | "update";
+  objectId: string;
+  actionId: string;
+  templateId: string;
+  authority: { account: string; controller: string | null };
+  /** The domain commitment the original verifier observed (= the intent). */
+  intentHash: string;
+  scope: { event_id: string; outbox_id: string; installation_id: string };
+  /** When the original verifier qualified the effect: the write time. */
+  verifiedAt: string;
+  /** The provider's raw content hash the original verifier observed. */
+  contentHashRaw: string;
 }
 
 /** PROPOSED r20: a non-write durable record a runtime can recover and ack. */
@@ -564,11 +657,17 @@ class BrandRuntime {
   readonly recoverables = new Map<string, Recoverable>();
   /** r20 fixture: acknowledgement rows, keyed `${kind}:${operationId}`. */
   readonly acks = new Map<string, AckRow[]>();
-  /** r20 fixture: operations recorded as Dual-backed, and how. */
+  /**
+   * r20.1 fixture: operations whose write intends Dual effects, in order,
+   * with this runtime instance's knobs. By default a case.open is the
+   * two-effect journey (CASE_OPEN_EFFECTS); every other write is server-only.
+   */
   readonly dualBackedOps = new Map<
     string,
-    { intendedDualWrites: number; stale?: boolean }
-  >();
+    { effects: IntendedEffect[]; knobs?: DualKnobs }
+  >([["case.open", { effects: CASE_OPEN_EFFECTS }]]);
+  /** r20.1 fixture: the refusal bodies write.status answered, in order. */
+  readonly writeStatusRefusals: Json[] = [];
   /** r20 fixture: a recovery.list page holds at most this many items. */
   recoveryPageSize = 50;
   /** r20 fixture: force an incomplete scan (a store could not be read). */
@@ -832,32 +931,13 @@ class BrandRuntime {
         const answered = (await answer.clone().json()) as Json;
         this.events += 1;
         const applied = answer.status === 200;
-        // FIXTURE: a chosen warranty write is a genuine Dual-backed effect:
-        // one synthetic Dual action, signed by a service account (NOT the
-        // holder), on a fixture object (NOT the product target).
+        // FIXTURE (r20.1): a Dual-backed warranty write performs its intended
+        // Dual actions IN ORDER, each signed by the service account (NOT the
+        // holder); its mint is of a fixture object (NOT the product target).
         const backing = applied ? this.dualBackedOps.get(operation) : undefined;
-        let dualBacked: WriteRecord["dualBacked"];
-        if (backing) {
-          const dualObject = this.dualBackedObjectId;
-          const payload = {
-            action: "update",
-            object_id: dualObject,
-            operation_id: operationId,
-          };
-          const actionId = this.dual.recordDualBackedAction(
-            dualObject,
-            SERVICE_ACCOUNT,
-            payload,
-          );
-          dualBacked = {
-            actionId,
-            objectId: dualObject,
-            signer: SERVICE_ACCOUNT,
-            expectedPayloadHash: sha(canonicalJson(payload)),
-            intendedDualWrites: backing.intendedDualWrites,
-            ...(backing.stale ? { stale: true } : {}),
-          };
-        }
+        const dualBacked = backing
+          ? this.dispatchDualEffects(operationId, requestHash, backing)
+          : undefined;
         this.writes.set(key, {
           kind,
           operationId,
@@ -980,10 +1060,7 @@ class BrandRuntime {
    * immutable record and its appended outcome; a Dual-backed write names the
    * proved effect so the acknowledgement binds it.
    */
-  private runtimeOutcomeProof(
-    recorded: WriteRecord,
-    observedPayloadHash: string | null,
-  ) {
+  private runtimeOutcomeProof(recorded: WriteRecord, dual: Json | null) {
     const proof: Json = {
       kind: "runtime",
       operation_id: recorded.operationId,
@@ -993,14 +1070,227 @@ class BrandRuntime {
       receipt: recorded.receipt,
       status: recorded.applied ? "write_applied" : "write_refused",
     };
-    if (recorded.dualBacked && observedPayloadHash !== null) {
-      proof.dual = {
-        action_id: recorded.dualBacked.actionId,
-        object_id: recorded.dualBacked.objectId,
-        observed_payload_hash: observedPayloadHash,
-      };
-    }
+    // r20.1: the whole ordered effect list and the original request.
+    if (dual) proof.dual = dual;
     return proof;
+  }
+
+  /** FIXTURE (r20.1): a refused write.status, logged for the tests to read. */
+  private writeStatusRefusal(status: number, body: Json) {
+    this.writeStatusRefusals.push(body);
+    return json(status, body);
+  }
+
+  /** FIXTURE (r20.1): the intent commitment, recomputed from its retained preimage. */
+  private intentCommitment(
+    operationId: string,
+    requestHash: string,
+    index: number,
+    kind: "mint" | "update",
+    objectId: string,
+  ) {
+    return sha(
+      canonicalJson({
+        operation_id: operationId,
+        request_hash: requestHash,
+        effect_index: index,
+        kind,
+        object_id: objectId,
+      }),
+    );
+  }
+
+  /**
+   * FIXTURE (r20.1): dispatch each intended Dual effect of one applied write,
+   * in order, retaining per effect what the contract's server obligations
+   * name: the pre-dispatch intent commitment over a retained preimage and
+   * the original verifier's receipt of the action it produced, with the
+   * provider's raw content hash as that action's history entry carries it.
+   */
+  private dispatchDualEffects(
+    operationId: string,
+    requestHash: string,
+    backing: { effects: IntendedEffect[]; knobs?: DualKnobs },
+  ): NonNullable<WriteRecord["dualBacked"]> {
+    const verifiedAt = new Date(Date.now()).toISOString();
+    const effects = backing.effects.map((intent, index): RecordedEffect => {
+      const objectId =
+        intent.objectId === "fixture"
+          ? this.dualBackedObjectId
+          : this.brand.unit.id;
+      const action = this.dual.recordDualBackedAction(
+        objectId,
+        SERVICE_ACCOUNT,
+        intent.controller,
+        intent.kind,
+        {
+          operation_id: operationId,
+          effect_index: index,
+          kind: intent.kind,
+          object_id: objectId,
+        },
+        // The knob: FakeDual records the second action as failed.
+        backing.knobs?.dualFailedEffect && index === 1 ? "FAILED" : "COMPLETED",
+      );
+      return {
+        index,
+        kind: intent.kind,
+        objectId,
+        actionId: action.actionId,
+        templateId: this.brand.templateId,
+        authority: { account: SERVICE_ACCOUNT, controller: intent.controller },
+        intentHash: this.intentCommitment(
+          operationId,
+          requestHash,
+          index,
+          intent.kind,
+          objectId,
+        ),
+        scope: {
+          event_id: `evt-${index}`,
+          outbox_id: `outbox-${index}`,
+          installation_id: `inst-${this.brand.tag}`,
+        },
+        verifiedAt,
+        contentHashRaw: action.contentHashRaw,
+      };
+    });
+    return { intendedDualWrites: backing.effects.length, effects };
+  }
+
+  /**
+   * FIXTURE (r20.1): the dual block of a Dual-backed write and its
+   * outcome_proof projection. Each effect's historical corroboration is taken
+   * by RE-READING FakeDual at this read: the executed action and that
+   * object's own state-change history entry. This runtime instance's knobs
+   * each degrade the answer in one named way (the wallet holds it); only an
+   * action FakeDual did not complete is the runtime's own refusal.
+   */
+  private dualChain(
+    recorded: WriteRecord,
+  ): { dual: Json; projection: Json } | { unproved: number } {
+    const backed = recorded.dualBacked!;
+    const knobs = this.dualBackedOps.get(recorded.operation)?.knobs ?? {};
+    const readAt = new Date(
+      Date.now() - (knobs.dualStaleRead ? 11 * 60_000 : 0),
+    ).toISOString();
+    const rawHash = (value: string) =>
+      knobs.dualSha256Hash ? `sha256:${value.slice(2)}` : value;
+    const effects: Json[] = [];
+    for (const effect of backed.effects) {
+      const second = effect.index === 1;
+      const action = this.dual.executed.find(
+        (entry) => entry.actionId === effect.actionId,
+      );
+      // The knob: effect 1's entry is the fixture object's, not its own.
+      const historyObjectId =
+        knobs.dualHistoryOtherObject && second
+          ? this.dualBackedObjectId
+          : effect.objectId;
+      const entries = this.dual.history.get(historyObjectId) ?? [];
+      const entry =
+        historyObjectId === effect.objectId
+          ? entries.find((item) => item.actionId === effect.actionId)
+          : entries.at(-1);
+      if (!action || action.status !== "COMPLETED" || !entry) {
+        return { unproved: effects.length };
+      }
+      effects.push({
+        index: effect.index,
+        action_id: effect.actionId,
+        action_kind: effect.kind,
+        object_id: effect.objectId,
+        bound_to: {
+          operation_id: recorded.operationId,
+          request_hash: recorded.requestHash,
+          effect_index: effect.index,
+        },
+        intent_commitment: {
+          version: "v1",
+          scheme: `dual_${recorded.operation.replace(/\./g, "_")}_v1`,
+          hash: this.intentCommitment(
+            recorded.operationId,
+            recorded.requestHash,
+            effect.index,
+            effect.kind,
+            effect.objectId,
+          ),
+          preimage_retained: true,
+          scope: effect.scope,
+        },
+        original_receipt: {
+          verifier: "runtime_original_verifier",
+          verified_at: knobs.dualVerifiedAfterRead
+            ? new Date(Date.parse(readAt) + 120_000).toISOString()
+            : effect.verifiedAt,
+          action_kind: effect.kind,
+          action_id: effect.actionId,
+          object_id: effect.objectId,
+          network: "dual_main",
+          api_scope: "api_v3",
+          template_id: effect.templateId,
+          authority:
+            knobs.dualControllerUnrecorded && second
+              ? { account: effect.authority.account }
+              : effect.authority,
+          domain_commitment: effect.intentHash,
+          projection: "full_declared",
+          content_hash_format: "provider_raw_hex_v1",
+          content_hash_raw: rawHash(effect.contentHashRaw),
+          content_hash_source: "raw_original_content",
+        },
+        historical_corroboration: {
+          read_at: readAt,
+          resolver: "dual_action_log",
+          action_id: action.actionId,
+          action_kind: action.name,
+          object_id: action.objectId,
+          network: "dual_main",
+          api_scope: "api_v3",
+          template_id: effect.templateId,
+          execution: knobs.dualExecutionPending ? "pending" : "succeeded",
+          status_raw: knobs.dualExecutionPending ? "PENDING" : action.status,
+          authority: {
+            account: action.account,
+            controller:
+              knobs.dualControllerMismatch && second
+                ? null
+                : (action.controller ?? null),
+          },
+          affected_objects: action.affectedObjects ?? [action.objectId],
+          history_entry_id: entry.entryId,
+          history_entry_object_id: historyObjectId,
+          content_hash_format: "provider_raw_hex_v1",
+          content_hash_raw: rawHash(entry.contentHashRaw),
+          content_hash_match: entry.contentHashRaw === effect.contentHashRaw,
+        },
+        effect_verdict: "verified",
+      });
+    }
+    const answered = knobs.dualShortEffects ? effects.slice(0, 1) : effects;
+    return {
+      dual: {
+        backed: true,
+        proof_kind: "original_verified_effect_receipt_v1",
+        intended_dual_writes: backed.intendedDualWrites,
+        effects: answered,
+        ...(knobs.dualWithdrawnField ? { payload_match: true } : {}),
+      },
+      projection: {
+        proof_kind: "original_verified_effect_receipt_v1",
+        request: {
+          operation_id: recorded.operationId,
+          request_hash: recorded.requestHash,
+        },
+        effects: answered.map((item) => ({
+          index: item.index,
+          action_id: item.action_id,
+          object_id: item.object_id,
+          intent_commitment_hash: (item.intent_commitment as Json).hash,
+          content_hash_raw: (item.original_receipt as Json).content_hash_raw,
+        })),
+      },
+    };
   }
 
   /** r20 fixture: the verified record of one write, to its own caller only. */
@@ -1024,14 +1314,17 @@ class BrandRuntime {
       canonicalJson(recorded.target) !== canonicalJson(target) ||
       recorded.operation !== input.original_operation
     ) {
-      return json(404, { ok: false, status: "face_operation_not_found" });
+      return this.writeStatusRefusal(404, {
+        ok: false,
+        status: "face_operation_not_found",
+      });
     }
     const accepted = this.compatible ?? new Set([String(claims.artifact)]);
     if (
       !accepted.has(recorded.artifact.artifactHash) ||
       !accepted.has(String(claims.artifact))
     ) {
-      return json(409, {
+      return this.writeStatusRefusal(409, {
         ok: false,
         status: "face_operation_artifact_retired",
       });
@@ -1039,43 +1332,34 @@ class BrandRuntime {
     // An outcome the runtime cannot yet decide (a provider or Dual write in
     // flight) is 409 write_outcome_unknown, never a guess.
     if (recorded.unresolved > 0) {
-      return json(409, { ok: false, status: "write_outcome_unknown" });
+      return this.writeStatusRefusal(409, {
+        ok: false,
+        status: "write_outcome_unknown",
+      });
     }
     // §1 dual: the server's binding of the write's ACTUAL effect to its
     // record, in one of two truthful branches.
     let dual: Json;
-    let observedPayloadHash: string | null = null;
+    let dualProjection: Json | null = null;
     if (recorded.dualBacked) {
-      const action = this.dual.executed.find(
-        (entry) => entry.actionId === recorded.dualBacked!.actionId,
-      );
-      observedPayloadHash = sha(canonicalJson(action?.payload ?? {}));
-      const verifiedAt = recorded.dualBacked.stale
-        ? new Date(Date.now() - 11 * 60_000).toISOString()
-        : new Date(Date.now()).toISOString();
-      dual = {
-        backed: true,
-        intended_dual_writes: recorded.dualBacked.intendedDualWrites,
-        proof: {
-          resolver: "dual_action_log",
-          action_id: recorded.dualBacked.actionId,
-          object_id: recorded.dualBacked.objectId,
-          signer: recorded.dualBacked.signer,
-          expected_payload_hash: recorded.dualBacked.expectedPayloadHash,
-          observed_payload_hash: observedPayloadHash,
-          payload_match:
-            recorded.dualBacked.expectedPayloadHash === observedPayloadHash,
-          bound_to: {
-            operation_id: recorded.operationId,
-            request_hash: recorded.requestHash,
-          },
-          verified_at: verifiedAt,
-        },
-      };
+      // §1a: one receipt chain per intended effect, each corroborated by
+      // re-reading FakeDual now; a chain the runtime itself cannot corroborate
+      // is 409 effects_unproved with the count proved, never write_applied.
+      const chain = this.dualChain(recorded);
+      if ("unproved" in chain) {
+        return this.writeStatusRefusal(409, {
+          ok: false,
+          status: "write_outcome_unknown",
+          reason: "effects_unproved",
+          proved_effects: chain.unproved,
+        });
+      }
+      dual = chain.dual;
+      dualProjection = chain.projection;
     } else {
       // A server-only effect: a FRESH Dual read of the original target object.
       if (recorded.dualUnavailable) {
-        return json(409, {
+        return this.writeStatusRefusal(409, {
           ok: false,
           status: "write_outcome_unknown",
           reason: "target_readback_unavailable",
@@ -1089,10 +1373,7 @@ class BrandRuntime {
         target_readback: present ? "verified" : "absent",
       };
     }
-    const outcomeProof = this.runtimeOutcomeProof(
-      recorded,
-      observedPayloadHash,
-    );
+    const outcomeProof = this.runtimeOutcomeProof(recorded, dualProjection);
     const body: Json = {
       ok: true,
       status: recorded.applied ? "write_applied" : "write_refused",
@@ -1758,14 +2039,15 @@ class BrandRuntime {
         return "not_found";
       }
       if (write.unresolved > 0) return "unresolved";
-      let observed: string | null = null;
+      let dual: Json | null = null;
       if (write.dualBacked) {
-        const action = this.dual.executed.find(
-          (entry) => entry.actionId === write.dualBacked!.actionId,
-        );
-        observed = sha(canonicalJson(action?.payload ?? {}));
+        // r20.1: the ack binds the same chain write.status answered; an
+        // effect the runtime cannot corroborate now is not acknowledgeable.
+        const chain = this.dualChain(write);
+        if ("unproved" in chain) return "unresolved";
+        dual = chain.projection;
       }
-      const proof = this.runtimeOutcomeProof(write, observed);
+      const proof = this.runtimeOutcomeProof(write, dual);
       return { hash: sha(canonicalJson(proof)) };
     }
     if (kind !== "passport") return "not_found";
@@ -3426,14 +3708,20 @@ describe("two complete branded apps on one engine", () => {
           ["passport", confirmed.assertion],
         ],
       });
-      // Each step ran once; this brand's runtimes refused nothing of its own
-      // host, and the other brand's runtimes and unit were never touched.
-      expect(world.dual.executed.map((action) => action.name)).toEqual([
-        "update",
-        "update",
-        "transfer",
-        "update",
-      ]);
+      // Each step ran once (under the r20.1 fixture the case.open also made
+      // its two intended Dual actions, the service account's, never the
+      // holder's); this brand's runtimes refused nothing of its own host,
+      // and the other brand's runtimes and unit were never touched.
+      expect(world.dual.executed.map((action) => action.name)).toEqual(
+        r20
+          ? ["update", "mint", "update", "update", "transfer", "update"]
+          : ["update", "update", "transfer", "update"],
+      );
+      expect(
+        world.dual.executed
+          .filter((action) => action.account === SERVICE_ACCOUNT)
+          .map((action) => action.name),
+      ).toEqual(r20 ? ["mint", "update"] : []);
       expect(runtimeOf(brand).refused).toEqual([]);
       expect(runtimeOf(brand).violations).toEqual([]);
       expect(runtimeOf(other).calls).toEqual([]);
@@ -4423,53 +4711,152 @@ describe("recovery: logout, sign-in again and account switch (PROPOSED r20 fixtu
   );
 });
 
-describe("recovery: mixed proofs, only the one-action Dual-backed write settles (PROPOSED r20 fixture)", () => {
+// FIXTURE (r20.1): each knob degrades the runtime's write.status answer in
+// one named way the wallet must hold (the runtime still answers 200); only
+// the failed second action is the runtime's own refusal (409).
+const DUAL_KNOB_ROWS: Array<[string, DualKnobs, number]> = [
+  ["one effect answered for two intended", { dualShortEffects: true }, 200],
+  ["a corroboration read eleven minutes ago", { dualStaleRead: true }, 200],
+  ["a receipt verified after the read", { dualVerifiedAfterRead: true }, 200],
+  [
+    "a receipt without a recorded controller",
+    { dualControllerUnrecorded: true },
+    200,
+  ],
+  [
+    "a controller declared but observed null",
+    { dualControllerMismatch: true },
+    200,
+  ],
+  ["a history entry of another object", { dualHistoryOtherObject: true }, 200],
+  ["an execution still pending", { dualExecutionPending: true }, 200],
+  ["the withdrawn payload_match field", { dualWithdrawnField: true }, 200],
+  ["a sha256-prefixed content hash", { dualSha256Hash: true }, 200],
+  ["a second Dual action that failed", { dualFailedEffect: true }, 409],
+];
+
+describe("recovery: the two-effect case.open is proved by its receipt chain, anything less is held (r20.1 fixture)", () => {
+  /** The holder's real case.open on the prepared case, sent by the face. */
+  async function openedCase(holder: Browser, contextId: string, n: number) {
+    const executedBefore = world.dual.executed.length;
+    const opened = await heldWrite(holder, contextId, n, {
+      dispatch: true,
+      operation: "case.open",
+      caseIndex: 0,
+    });
+    return { ...opened, actions: world.dual.executed.slice(executedBefore) };
+  }
+  const actionRows = (actions: FakeDual["executed"]) =>
+    actions.map((action) => [
+      action.name,
+      action.objectId,
+      action.account,
+      action.controller,
+      action.status,
+    ]);
+  /** FakeDual's two actions of a case.open: the mint, then the update. */
+  const twoEffects = (brand: Brand) => [
+    [
+      "mint",
+      runtimeOf(brand).dualBackedObjectId,
+      SERVICE_ACCOUNT,
+      null,
+      "COMPLETED",
+    ],
+    ["update", brand.unit.id, SERVICE_ACCOUNT, FIXTURE_CONTROLLER, "COMPLETED"],
+  ];
+  const historyOf = () =>
+    JSON.stringify([...world.dual.history.entries()].sort());
+
+  /**
+   * The held shape of one case.open: listed outcome_unknown without a
+   * ticket after exactly one write.status read answered `answered`, no ack
+   * row, Dual's actions and history unchanged, and the write sent once.
+   */
+  async function expectHeld(
+    brand: Brand,
+    holder: Browser,
+    operationId: string,
+    answered: number,
+  ) {
+    const sendsBefore = faceSends(brand);
+    const business = businessOf();
+    const history = historyOf();
+    const listed = await holder.recovery();
+    expect(listed.body).toMatchObject({ supported: true, complete: true });
+    expect(itemOf(listed.body, operationId)).toMatchObject({
+      outcome: "outcome_unknown",
+      ticket: null,
+    });
+    expect(statusReads(brand, operationId)).toEqual([["wallet", answered]]);
+    expect(runtimeOf(brand).acks.get(`warranty:${operationId}`)).toBe(
+      undefined,
+    );
+    expect(faceSends(brand)).toBe(sendsBefore);
+    expect(faceWrites(brand, operationId)).toBe(1);
+    expect(businessOf()).toEqual(business);
+    expect(historyOf()).toBe(history);
+  }
+
   it.each(
     BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
   )(
-    "%s: intended_dual_writes 2, a stale proof, an unresolved outcome and an unavailable readback stay held; the one proved write is acknowledged",
+    "%s: the holder's case.open mints then updates as the service account; its receipt chain lists it write_applied, acknowledged once, while the refused, unresolved and unavailable writes stay held",
     async (_label, brand) => {
       const { holder, contextId } = await r20Holder(brand);
       const runtime = runtimeOf(brand);
-      // One warranty write is a genuine single-action Dual-backed effect; the
-      // other Dual-backed writes intend two actions or carry a stale proof.
-      runtime.dualBackedOps.set("case.evidence.submit", {
-        intendedDualWrites: 1,
-      });
-      runtime.dualBackedOps.set("case.information.provide", {
-        intendedDualWrites: 2,
-      });
-      runtime.dualBackedOps.set("case.open", {
-        intendedDualWrites: 1,
-        stale: true,
-      });
 
-      const positive = await heldWrite(holder, contextId, 1, {
-        dispatch: true,
-        operation: "case.evidence.submit",
-        caseIndex: 0,
+      const opened = await openedCase(holder, contextId, 1);
+      expect(opened.answer).toMatchObject({
+        status: 200,
+        body: { status: "case_opened", case_id: brand.cases[0] },
       });
-      const intended2 = await heldWrite(holder, contextId, 2, {
-        dispatch: true,
-        operation: "case.information.provide",
-        caseIndex: 0,
-      });
-      const stale = await heldWrite(holder, contextId, 3, {
-        dispatch: true,
-        operation: "case.open",
-        caseIndex: 0,
-      });
-      // A definitive zero-write refusal (case.open on an already-open case).
-      const refused = await heldWrite(holder, contextId, 4, {
+      // Exactly two Dual actions, in order, signed by the service account
+      // (never the holder): the fixture object minted directly, then the
+      // product object updated through the declared controller. Each left
+      // ONE history entry, belonging to its own object.
+      expect(actionRows(opened.actions)).toEqual(twoEffects(brand));
+      expect(
+        opened.actions.every(
+          (action) => action.account !== brand.holder.address,
+        ),
+      ).toBe(true);
+      expect(
+        world.dual.history
+          .get(runtime.dualBackedObjectId)!
+          .map((entry) => entry.actionId),
+      ).toEqual([opened.actions[0].actionId]);
+      expect(
+        world.dual.history.get(brand.unit.id)!.map((entry) => entry.actionId),
+      ).toEqual([opened.actions[1].actionId]);
+      expect(
+        world.dual.history
+          .get(brand.unit.id)!
+          .every((entry) => /^0x[0-9a-f]{64}$/.test(entry.contentHashRaw)),
+      ).toBe(true);
+
+      // A definitive zero-write refusal (case.open on an already-open case):
+      // no Dual action at all.
+      const executed = world.dual.executed.length;
+      const refused = await heldWrite(holder, contextId, 2, {
         dispatch: true,
         operation: "case.open",
         caseIndex: 1,
       });
       expect(refused.answer).toMatchObject({ status: 409 });
+      expect(world.dual.executed).toHaveLength(executed);
+
+      // A server-only write beside it, proved by its fresh target readback.
+      const evidence = await heldWrite(holder, contextId, 3, {
+        dispatch: true,
+        operation: "case.evidence.submit",
+        caseIndex: 0,
+      });
+      expect(evidence.answer).toMatchObject({ status: 200 });
 
       // Two server-only held variants, seeded on this holder's warranty actor:
       // one with an unresolved outcome, one whose target cannot be read.
-      const captured = runtime.writes.get(`warranty:${positive.operationId}`)!;
+      const captured = runtime.writes.get(`warranty:${opened.operationId}`)!;
       const actor: Actor = {
         holder: captured.holder,
         sub: captured.wallet,
@@ -4478,8 +4865,8 @@ describe("recovery: mixed proofs, only the one-action Dual-backed write settles 
         programme: captured.programme,
         artifact: captured.artifact,
       };
-      const unresolvedOp = `case-write-${brand.tag}-0005`;
-      const unavailableOp = `case-write-${brand.tag}-0006`;
+      const unresolvedOp = `case-write-${brand.tag}-0004`;
+      const unavailableOp = `case-write-${brand.tag}-0005`;
       runtime.seedWriteRecord(actor, {
         operationId: unresolvedOp,
         operation: "case.evidence.submit",
@@ -4497,20 +4884,24 @@ describe("recovery: mixed proofs, only the one-action Dual-backed write settles 
 
       const sendsBefore = faceSends(brand);
       const business = businessOf();
+      const history = historyOf();
       const listed = await holder.recovery();
       expect(listed.body).toMatchObject({ supported: true, complete: true });
 
-      // Only the single-action Dual-backed write is proved and ticketed.
-      const positiveItem = itemOf(listed.body, positive.operationId);
-      expect(positiveItem).toMatchObject({ outcome: "write_applied" });
-      expect(typeof positiveItem!.ticket).toBe("string");
-      // Every other proof is held: nothing proved, no ticket.
-      for (const operationId of [
-        intended2.operationId,
-        stale.operationId,
-        unresolvedOp,
-        unavailableOp,
-      ]) {
+      // The two-effect write is proved by its receipt chain and ticketed...
+      const openedItem = itemOf(listed.body, opened.operationId);
+      expect(openedItem).toMatchObject({
+        outcome: "write_applied",
+        operation: "case.open",
+        case_id: brand.cases[0],
+      });
+      expect(typeof openedItem!.ticket).toBe("string");
+      // ...as is the server-only write by its target readback.
+      const evidenceItem = itemOf(listed.body, evidence.operationId);
+      expect(evidenceItem).toMatchObject({ outcome: "write_applied" });
+      expect(typeof evidenceItem!.ticket).toBe("string");
+      // Every unproved outcome is held: no ticket.
+      for (const operationId of [unresolvedOp, unavailableOp]) {
         expect(itemOf(listed.body, operationId)).toMatchObject({
           outcome: "outcome_unknown",
           ticket: null,
@@ -4523,18 +4914,180 @@ describe("recovery: mixed proofs, only the one-action Dual-backed write settles 
         ticket: null,
       });
 
+      // Acknowledged once; a replay records nothing more; then unlisted.
       const ack = await holder.recoveryAck({
-        operation_id: positive.operationId,
-        ticket: positiveItem!.ticket,
+        operation_id: opened.operationId,
+        ticket: openedItem!.ticket,
       });
       expect(ack).toMatchObject({
         status: 200,
         body: { acknowledged: true, first: true },
       });
+      expect(
+        await holder.recoveryAck({
+          operation_id: opened.operationId,
+          ticket: openedItem!.ticket,
+        }),
+      ).toMatchObject({ status: 200, body: { first: false } });
+      expect(runtime.acks.get(`warranty:${opened.operationId}`)).toHaveLength(
+        1,
+      );
+      expect(
+        await holder.recoveryAck({
+          operation_id: evidence.operationId,
+          ticket: evidenceItem!.ticket,
+        }),
+      ).toMatchObject({ status: 200, body: { first: true } });
+      const again = await holder.recovery();
+      expect(itemOf(again.body, opened.operationId)).toBeUndefined();
 
-      // No recovery call re-sent a write or touched Dual or the bus.
+      // Every write.status read was the wallet's and read-only; no recovery
+      // call re-sent a write or touched Dual's actions, history or bus.
+      expect(
+        statusReads(brand, opened.operationId).every(
+          ([by, status]) => by === "wallet" && status === 200,
+        ),
+      ).toBe(true);
+      expect(faceWrites(brand, opened.operationId)).toBe(1);
       expect(faceSends(brand)).toBe(sendsBefore);
       expect(businessOf()).toEqual(business);
+      expect(historyOf()).toBe(history);
+    },
+  );
+
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s: a full journal makes room from the case.open proven by its receipt chain, read once by write.status, nothing re-sent",
+    async (_label, brand) => {
+      const { holder, contextId } = await r20Holder(brand);
+      // The registration and five held writes: only the second was sent,
+      // the two-effect case.open.
+      const writes: string[] = [];
+      for (const n of [1, 2, 3, 4, 5]) {
+        if (n === 2) {
+          const opened = await openedCase(holder, contextId, n);
+          expect(opened.answer).toMatchObject({ status: 200 });
+          expect(actionRows(opened.actions)).toEqual(twoEffects(brand));
+          writes.push(opened.operationId);
+        } else {
+          writes.push(
+            (await heldWrite(holder, contextId, n, { dispatch: false }))
+              .operationId,
+          );
+        }
+      }
+      const listed = async () =>
+        (
+          (await holder.list()).body.operations as Array<{
+            operation_id: string;
+            phase: string;
+          }>
+        ).map((item) => [item.operation_id, item.phase]);
+      expect(await listed()).toHaveLength(6);
+      const business = businessOf();
+      const history = historyOf();
+      const begin = (n: number) =>
+        holder.operations({
+          transition: "begin",
+          kind: "runtime",
+          operation: "case.evidence.submit",
+          object_id: brand.unit.id,
+          case_id: brand.cases[0],
+          operation_id: `case-write-${brand.tag}-000${n}`,
+          context_id: contextId,
+        });
+      // The two oldest held writes are read: the first is unknown (held),
+      // the second proven applied by its two-effect chain, so the room made.
+      expect((await begin(6)).status).toBe(200);
+      expect(statusReads(brand, writes[0])).toEqual([["wallet", 404]]);
+      expect(statusReads(brand, writes[1])).toEqual([["wallet", 200]]);
+      const journal = await listed();
+      expect(journal).toHaveLength(6);
+      expect(journal).toContainEqual([writes[0], "assertion_issued"]);
+      expect(journal.map(([id]) => id)).not.toContain(writes[1]);
+      // Nothing left is proven: the next begin is refused, nothing evicted.
+      expect(await begin(7)).toMatchObject({
+        status: 409,
+        body: { code: "journal_full" },
+      });
+      expect(await listed()).toEqual(journal);
+      // The reads changed nothing in Dual, and each write was sent at most once.
+      expect(businessOf()).toEqual(business);
+      expect(historyOf()).toBe(history);
+      for (const operationId of writes) {
+        expect(faceWrites(brand, operationId)).toBe(
+          operationId === writes[1] ? 1 : 0,
+        );
+      }
+    },
+  );
+
+  it.each(
+    BRANDS.flatMap((brand) =>
+      DUAL_KNOB_ROWS.map(([label, knobs, answered]) => [
+        brand.label,
+        label,
+        brand,
+        knobs,
+        answered,
+      ]),
+    ) as Array<[string, string, Brand, DualKnobs, number]>,
+  )(
+    "%s: a case.open whose chain carries %s stays held: no ticket, no ack row, Dual unchanged, sent once",
+    async (_brand, _label, brand, knobs, answered) => {
+      const { holder, contextId } = await r20Holder(brand);
+      const runtime = runtimeOf(brand);
+      runtime.dualBackedOps.set("case.open", {
+        effects: CASE_OPEN_EFFECTS,
+        knobs,
+      });
+      const opened = await openedCase(holder, contextId, 1);
+      expect(opened.answer).toMatchObject({ status: 200 });
+      expect(opened.actions).toHaveLength(2);
+      if (knobs.dualFailedEffect) {
+        // FakeDual recorded the update as failed: no history entry of it.
+        expect(actionRows(opened.actions)[1]).toEqual([
+          "update",
+          brand.unit.id,
+          SERVICE_ACCOUNT,
+          FIXTURE_CONTROLLER,
+          "FAILED",
+        ]);
+        expect(world.dual.history.get(brand.unit.id)).toBeUndefined();
+      } else {
+        expect(actionRows(opened.actions)).toEqual(twoEffects(brand));
+      }
+
+      await expectHeld(brand, holder, opened.operationId, answered);
+      if (knobs.dualFailedEffect) {
+        // The runtime's own refusal: one effect proved, never write_applied.
+        expect(runtime.writeStatusRefusals.at(-1)).toEqual({
+          ok: false,
+          status: "write_outcome_unknown",
+          reason: "effects_unproved",
+          proved_effects: 1,
+        });
+      } else {
+        expect(runtime.writeStatusRefusals).toEqual([]);
+      }
+    },
+  );
+
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s: a case.open whose artifact the runtime retired after the write is refused (409 artifact retired) and stays held",
+    async (_label, brand) => {
+      const { holder, contextId } = await r20Holder(brand);
+      const runtime = runtimeOf(brand);
+      const opened = await openedCase(holder, contextId, 1);
+      expect(actionRows(opened.actions)).toEqual(twoEffects(brand));
+      runtime.compatible = new Set([`sha256:${"0".repeat(64)}`]);
+      await expectHeld(brand, holder, opened.operationId, 409);
+      expect(runtime.writeStatusRefusals).toEqual([
+        { ok: false, status: "face_operation_artifact_retired" },
+      ]);
     },
   );
 
