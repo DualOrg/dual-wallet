@@ -26,7 +26,14 @@ export type FaceRoute =
   | "transfer-progress"
   | "accept-offer"
   /** A face's holder-signed step through /api/backend (contract r18). */
-  | "execution";
+  | "execution"
+  /**
+   * The host's durable recovery listing and acknowledgement (proposed r20).
+   * Shared here: each listed item is gated by its own journey in the
+   * recovery module, and an acknowledgement re-checks that journey.
+   */
+  | "recovery"
+  | "recovery-ack";
 
 type Classification =
   | { kind: "shared" }
@@ -105,6 +112,8 @@ export async function classifyFaceRequest(
   switch (route) {
     case "context":
     case "selection":
+    case "recovery":
+    case "recovery-ack":
       return SHARED;
     case "units":
     case "settle-proposal":

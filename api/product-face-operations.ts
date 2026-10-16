@@ -623,10 +623,14 @@ async function verifyRuntimeWrite(
     : context.binding;
   const issuer = walletIssuerOrigin(request);
   if (!runtime || !issuer) return undefined;
-  const read = writeStatusRequest(entry.operationId, {
-    object_id: entry.objectId,
-    ...(entry.caseId ? { case_id: entry.caseId } : {}),
-  });
+  const read = writeStatusRequest(
+    entry.operationId,
+    {
+      object_id: entry.objectId,
+      ...(entry.caseId ? { case_id: entry.caseId } : {}),
+    },
+    operation,
+  );
   const minted = mint(context, request, journal, {
     operation: "write.status",
     operationId: entry.operationId,
@@ -640,6 +644,7 @@ async function verifyRuntimeWrite(
     read,
     minted.assertion,
   );
+  // A refused write (zero writes) stays held, as every unproven outcome.
   if (result.outcome !== "applied") return undefined;
   const recorded = result.record;
   const receiptMatches =
@@ -660,6 +665,10 @@ async function verifyRuntimeWrite(
     recorded.programme !== context.binding.programmeId ||
     recorded.assertingArtifact.version !== context.binding.version ||
     recorded.assertingArtifact.artifactHash !== context.binding.artifactHash ||
+    // The §0 echo names the request; a server-only effect is proved only
+    // with its fresh Dual target readback ("absent" is held, contract §5).
+    recorded.operationId !== entry.operationId ||
+    recorded.dual.targetReadback !== "verified" ||
     !receiptMatches
   ) {
     return undefined;

@@ -519,6 +519,58 @@ per-version quote decisions. Recovery after a reload or a fresh sign-in, with
 no journal, is read-only: `registration.pending.read` resumes the original
 registration and `registration.settle.status` reconciles a settle.
 
+### Durable recovery of unresolved and unseen outcomes (proposed r20)
+
+**Status: the runtime side is a PROPOSED contract
+(`docs/proposals/runtime-write-status-r20.md`), not deployed by any Studio
+runtime.** The wallet consumer is in place and fails closed: against today's
+runtimes nothing below is listed or acknowledged, and the cookie-based
+retained listing (`retained` on the operations list) keeps working as before.
+
+Why: the launch cookies are the wallet's only record of what authority left
+it. Each expires 24 hours after its last write, sign-out clears them, and
+another account's sign-in on the same browser drops them. A holder whose
+transfer step was won and executed but whose answer was lost, and whose unit
+has since left their inventory, could not learn the outcome from this wallet
+once that cookie was gone.
+
+What the host does on each face launch, after the bootstrap
+(`GET /api/faces/[slug]/recovery`):
+
+- It asks the face's own runtime and its linked Warranty runtime for this
+  wallet's own unresolved and unacknowledged operations (`recovery.list`),
+  following each scan's pages to the end. Every page's echoed holder, wallet,
+  issuer, application, programme, artifact and request id is compared with
+  the session, this host and the face binding; nothing is taken from the
+  endpoint having answered.
+- Each listed item of a journey this host enables is resolved read-only
+  through the existing resolver of its kind: `registration.status` for a
+  registration, `registration.settle.status` for a settle,
+  `transfer.verify` or `transfer.status` for a transfer step, `write.status`
+  for a Warranty & Service write or a transfer offer. A proved outcome
+  carries the contract's `outcome_proof`, whose hash the wallet recomputes.
+  Items of a disabled journey are neither resolved nor acknowledged
+  (`withheld`). An id listed twice is not checked.
+- The host shows what it proved in its own notice (never face text), with held
+  and unknown items as still being confirmed. Nothing recovered is re-sent,
+  re-reserved, re-minted for the face or executed, and this launch's journal
+  is never written by the listing.
+- When the person dismisses the notice, the host acknowledges
+  (`POST /api/faces/[slug]/recovery/ack`, `recovery.ack`) only the items whose
+  outcome was proved in this launch, whose journey is enabled, and only when
+  every scoped runtime's scan was complete. The acknowledgement names the
+  outcome's hash through a sealed ticket the listing issued to this session
+  and launch; it records delivery beside the runtime's immutable record and
+  modifies nothing. An incomplete check (`complete: false`) acknowledges
+  nothing, and the notice says that not every request could be checked.
+- When no runtime of the face answers r20 (`supported: false`), the host
+  behaves exactly as before: the cookie-based retained steps are read.
+
+What this does not do: it never frees a journal slot (only a `begin` or a
+status read of a held write does, through `write.status`), never treats a
+refused, unknown, foreign or mismatched answer as an outcome, and never
+raises the cookie, launch or journal limits.
+
 ### Application-variant bridge
 
 `core/product-transport.ts` starts the channel only for a frame at the exact
