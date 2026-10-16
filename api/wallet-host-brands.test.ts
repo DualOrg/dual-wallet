@@ -4165,7 +4165,7 @@ describe("a runtime write's slot, freed only by its verified outcome (PROPOSED r
   it.each(
     BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
   )(
-    "%s: four launches of writes interrupted before dispatch make a fifth read-only; one becomes expendable only when the runtime confirms it holds that record (409 write_outcome_unknown), and nothing is sent again",
+    "%s: four launches of writes interrupted before dispatch make a fifth read-only; one becomes expendable only when the runtime's actor-scoped listing names exactly that record (a 409 proves nothing), and nothing is sent again",
     async (_label, brand) => {
       const runtime = runtimeOf(brand);
       const { holder, contextId } = await r20Holder(brand);
@@ -4224,16 +4224,16 @@ describe("a runtime write's slot, freed only by its verified outcome (PROPOSED r
         false,
       );
       expect(await fifth.status(held[1])).toMatchObject({ status: 404 });
-      // FIXTURE: the runtime now holds a record of the second launch's write
-      // whose outcome it cannot yet decide (the dispatch reached it, its
-      // answer was lost). The second launch's own status read learns only
-      // that (409 write_outcome_unknown): still held, read once, never sent
-      // by the wallet.
+      // FIXTURE: the runtime now holds a record under the second launch's
+      // operation id whose outcome it cannot yet decide, but for ANOTHER
+      // case. The second launch's own status read of its exact write finds
+      // no such record (404): held, read once, never sent by the wallet.
+      const recordedAt = new Date(Date.now()).toISOString();
       runtime.seedWriteRecord(actor, {
         operationId: held[1],
         operation: "case.evidence.submit",
-        caseId: brand.cases[0],
-        recordedAt: new Date(Date.now()).toISOString(),
+        caseId: brand.cases[1],
+        recordedAt,
         unresolved: 1,
       });
       const second = fifth.relaunch(launches[1].launchId);
@@ -4241,18 +4241,79 @@ describe("a runtime write's slot, freed only by its verified outcome (PROPOSED r
         status: 200,
         body: { kind: "runtime", phase: "assertion_issued" },
       });
-      expect(statusReads(brand, held[1])).toEqual([["wallet", 409]]);
+      expect(statusReads(brand, held[1])).toEqual([["wallet", 404]]);
       expect(faceWrites(brand, held[1])).toBe(0);
-      // That record is now the runtime's to list for this actor, so its
-      // cookie is expendable: the fifth launch takes its place, exactly that
-      // one cookie goes, the other three stay, and nothing else changed.
-      const again = second.relaunch(fifth.launchId);
-      expect(
-        await again.send(selectionPOST, `/api/faces/${brand.slug}/selection`, {
+      const select = (launch: Browser) =>
+        launch.send(selectionPOST, `/api/faces/${brand.slug}/selection`, {
           body: { object_id: brand.unit.id },
           params: { slug: brand.slug },
-        }),
-      ).toMatchObject({ status: 200 });
+        });
+      expect(await select(second.relaunch(fifth.launchId))).toMatchObject({
+        status: 409,
+        body: { code: "launch_capacity" },
+      });
+      // The runtime's durable discovery names the id, but as a record of
+      // another case: not this write's record, so the scan marks nothing.
+      const mismatched = await second.recovery();
+      expect(mismatched).toMatchObject({
+        status: 200,
+        body: { supported: true },
+      });
+      expect(
+        (mismatched.body.items as Json[]).map((item) => item.operation_id),
+      ).toContain(held[1]);
+      expect(await select(second.relaunch(fifth.launchId))).toMatchObject({
+        status: 409,
+        body: { code: "launch_capacity" },
+      });
+      // The record exactly as issued (FIXTURE: seeded again under the same
+      // id, replacing the other). The second launch's own status read now
+      // learns a 409 write_outcome_unknown: unbound (no echo), it proves
+      // nothing, so the cookie stays undroppable.
+      runtime.seedWriteRecord(actor, {
+        operationId: held[1],
+        operation: "case.evidence.submit",
+        caseId: brand.cases[0],
+        recordedAt,
+        unresolved: 1,
+      });
+      expect(await second.status(held[1])).toMatchObject({
+        status: 200,
+        body: { kind: "runtime", phase: "assertion_issued" },
+      });
+      expect(statusReads(brand, held[1]).at(-1)).toEqual(["wallet", 409]);
+      expect(await select(second.relaunch(fifth.launchId))).toMatchObject({
+        status: 409,
+        body: { code: "launch_capacity" },
+      });
+      // FIXTURE: the runtime calls its scan incomplete (a store it could not
+      // read to the end). Its page names the write exactly, yet an incomplete
+      // discovery guarantees nothing: the cookie stays undroppable.
+      runtime.incompleteScan = true;
+      expect(await second.recovery()).toMatchObject({
+        status: 200,
+        body: { supported: true, complete: false },
+      });
+      runtime.incompleteScan = false;
+      expect(await select(second.relaunch(fifth.launchId))).toMatchObject({
+        status: 409,
+        body: { code: "launch_capacity" },
+      });
+      // The second launch's own complete scan of the runtime's actor-scoped
+      // listing names its write exactly: only now is that one cookie
+      // expendable. The fifth launch takes its place, exactly that cookie
+      // goes, the other three stay, and nothing was sent again.
+      const listed = await second.recovery();
+      expect(listed.body.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            operation_id: held[1],
+            outcome: "outcome_unknown",
+          }),
+        ]),
+      );
+      const again = second.relaunch(fifth.launchId);
+      expect(await select(again)).toMatchObject({ status: 200 });
       expect(again.cookies.has(names[1])).toBe(false);
       for (const name of [names[0], names[2], names[3]]) {
         expect(again.cookies.has(name)).toBe(true);

@@ -460,6 +460,8 @@ describe("readWriteStatus (proposed r20)", () => {
 
   it.each([
     [404, { status: "face_operation_not_found" }],
+    // Unbound (no §0 echo): proves nothing about any record.
+    [409, { status: "write_outcome_unknown", reason: "unresolved" }],
     [409, { status: "face_operation_artifact_retired" }],
     [400, { status: "face_request_invalid" }],
     [202, writeApplied()],
@@ -475,29 +477,6 @@ describe("readWriteStatus (proposed r20)", () => {
     ["null", "null"],
   ])("holds a 200 whose body is %s", async (_label, body) => {
     expect(await writeStatusOf(200, body)).toEqual({ outcome: "held" });
-  });
-
-  it("holds a 409 write_outcome_unknown, noting only that the exact runtime holds the record", async () => {
-    expect(
-      await writeStatusOf(409, {
-        ok: false,
-        status: "write_outcome_unknown",
-        reason: "target_readback_unavailable",
-      }),
-    ).toEqual({ outcome: "held", recorded: true });
-    // Any other 409, or that status under another code, proves no record.
-    expect(
-      await writeStatusOf(409, {
-        ok: false,
-        status: "face_operation_artifact_retired",
-      }),
-    ).toEqual({ outcome: "held" });
-    expect(
-      await writeStatusOf(404, { ok: false, status: "write_outcome_unknown" }),
-    ).toEqual({ outcome: "held" });
-    expect(await writeStatusOf(409, "write_outcome_unknown")).toEqual({
-      outcome: "held",
-    });
   });
 
   it("holds a lost, oversized or timed-out answer and a thrown fetch", async () => {

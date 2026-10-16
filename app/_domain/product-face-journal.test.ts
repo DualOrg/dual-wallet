@@ -597,7 +597,12 @@ describe("a runtime write settled from its verified outcome", () => {
 // r20: a write.status answer about it, or its recovery.list naming it): the
 // entry is marked discoverable, and only then may the launch budget drop its
 // cookie (api/face-journal.ts). Nothing else about the entry changes.
-describe("a runtime write the exact runtime confirmed it holds", () => {
+// Contract r20 §2: an echo-bound recovery.list page of this actor, from the
+// runtime that serves the operation, named exactly this runtime write: the
+// entry is marked discoverable, and only then may the launch budget drop its
+// cookie (api/face-journal.ts). Nothing else about the entry changes, and a
+// listed record whose identity differs marks nothing.
+describe("a runtime write named by the runtime's durable discovery", () => {
   const HASH = `sha256:${"a".repeat(64)}`;
   const write = {
     ...base,
@@ -618,13 +623,20 @@ describe("a runtime write the exact runtime confirmed it holds", () => {
         requestHash: HASH,
       },
     ]);
+  /** The listed record's identity (contract r20 §2 item fields). */
+  const identity = {
+    operationId: write.operationId,
+    operation: write.operation,
+    objectId: OBJECT,
+    caseId: write.caseId,
+  };
 
   it("marks an issued runtime write discoverable, once, and keeps it held", () => {
     const entries = issued();
     expect(entries[0].discoverable).toBeUndefined();
     const marked = applyJournalTransition(
       entries,
-      { kind: "discover", operationId: write.operationId },
+      { kind: "discover", ...identity },
       1_005,
     );
     expect(marked).toMatchObject({
@@ -640,7 +652,7 @@ describe("a runtime write the exact runtime confirmed it holds", () => {
     // Idempotent: the same entries, untouched.
     const again = applyJournalTransition(
       marked.entries,
-      { kind: "discover", operationId: write.operationId },
+      { kind: "discover", ...identity },
       1_009,
     );
     expect(again).toEqual({
@@ -670,12 +682,22 @@ describe("a runtime write the exact runtime confirmed it holds", () => {
     });
   });
 
-  it("marks nothing that is not a runtime write whose authority left", () => {
+  it("marks nothing whose identity differs from the listed record, nothing that is not a runtime write whose authority left", () => {
+    for (const other of [
+      { ...identity, operation: "case.evidence.submit" },
+      { ...identity, objectId: "b".repeat(24) },
+      { ...identity, caseId: "case-0009" },
+      { ...identity, caseId: null },
+    ]) {
+      expect(
+        applyJournalTransition(issued(), { kind: "discover", ...other }, 1_000),
+      ).toEqual({ ok: false, error: "operation_conflict" });
+    }
     const confirming = run([{ kind: "begin", entry: write }]);
     expect(
       applyJournalTransition(
         confirming,
-        { kind: "discover", operationId: write.operationId },
+        { kind: "discover", ...identity },
         1_000,
       ),
     ).toEqual({ ok: false, error: "operation_conflict" });
@@ -687,14 +709,20 @@ describe("a runtime write the exact runtime confirmed it holds", () => {
     expect(
       applyJournalTransition(
         registration,
-        { kind: "discover", operationId: base.operationId },
+        {
+          kind: "discover",
+          operationId: base.operationId,
+          operation: base.operation,
+          objectId: OBJECT,
+          caseId: null,
+        },
         1_000,
       ),
     ).toEqual({ ok: false, error: "operation_conflict" });
     expect(
       applyJournalTransition(
         issued(),
-        { kind: "discover", operationId: "case-write-9999" },
+        { kind: "discover", ...identity, operationId: "case-write-9999" },
         1_000,
       ),
     ).toEqual({ ok: false, error: "unknown_operation" });

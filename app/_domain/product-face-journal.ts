@@ -84,10 +84,10 @@ export interface FaceJournalEntry {
    */
   closure?: JournalClosure;
   /**
-   * A runtime write whose record the exact runtime has confirmed it holds
-   * durably (an r20 write.status answer about it, or its recovery.list
-   * naming it for this actor): this cookie is no longer its only known
-   * correlation, so the launch holding it may make room (never before).
+   * A runtime write that the exact runtime's durable, actor-scoped
+   * discovery (an echo-bound r20 recovery.list page) has named: this cookie
+   * is no longer its only known correlation, so the launch holding it may
+   * make room (never before).
    */
   discoverable?: true;
 }
@@ -396,12 +396,18 @@ export type JournalTransition =
   | { kind: "settle"; operationId: string; status: RegistrationStatus }
   | {
       /**
-       * The exact runtime confirmed it durably holds this runtime write's
-       * record (contract r20): the entry is marked discoverable, nothing else
-       * about it changes.
+       * Contract r20 §2: an echo-bound recovery.list page of this actor,
+       * from the runtime that serves the operation, named exactly this
+       * runtime write (id, operation, object and case): its record is in the
+       * runtime's durable, actor-scoped discovery, so the entry is marked
+       * discoverable. Nothing else about it changes, and any identity that
+       * differs marks nothing.
        */
       kind: "discover";
       operationId: string;
+      operation: string;
+      objectId: string;
+      caseId: string | null;
     }
   | {
       /**
@@ -621,7 +627,13 @@ export function applyJournalTransition(
       }
       return replace({ ...existing, phase: "settled", updatedAt: now });
     case "discover":
-      if (existing.kind !== "runtime" || !authorityLeft(existing.phase)) {
+      if (
+        existing.kind !== "runtime" ||
+        !authorityLeft(existing.phase) ||
+        existing.operation !== transition.operation ||
+        existing.objectId !== transition.objectId ||
+        (existing.caseId ?? null) !== transition.caseId
+      ) {
         return { ok: false, error: "operation_conflict" };
       }
       if (existing.discoverable) return { ok: true, entries, entry: existing };

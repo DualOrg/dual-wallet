@@ -502,12 +502,12 @@ export type WriteStatusResult =
   /**
    * Anything else: not found, unknown, another caller, a runtime without
    * r20, an incompatible artifact, malformed, oversized, unreachable or
-   * timed out. Proves nothing; the entry stays held, nothing is re-sent.
-   * `recorded` is set only for 409 write_outcome_unknown: the exact runtime
-   * holds the record (its outcome undecided), so the cookie is no longer
-   * the only known correlation.
+   * timed out. Proves nothing; the entry stays held, nothing is re-sent. A
+   * 409 write_outcome_unknown is among these: it carries no §0 echo, so it
+   * is not a bound answer about any record (the durable discovery of a held
+   * write is its echo-bound recovery.list page, api/product-face-recovery.ts).
    */
-  | { outcome: "held"; recorded?: true };
+  | { outcome: "held" };
 
 function receiptOf(value: unknown): WriteReceipt | undefined {
   if (!record(value)) return undefined;
@@ -842,15 +842,9 @@ export async function readWriteStatus(
 ): Promise<WriteStatusResult> {
   const held = { outcome: "held" } as const;
   const response = await postRuntimeOperation(runtime, request, assertion);
-  if (!response) return held;
+  if (!response || response.status !== 200) return held;
   const body = jsonRecord(response.body);
-  // 409 write_outcome_unknown (contract §4, §5): the exact runtime holds the
-  // record of this operation but cannot prove its outcome. Still held, and
-  // nothing is re-sent; the caller learns only that the record exists.
-  if (response.status === 409 && body?.status === "write_outcome_unknown") {
-    return { outcome: "held", recorded: true };
-  }
-  if (response.status !== 200 || !body) return held;
+  if (!body) return held;
   const echo = echoOf(body);
   const status =
     body.status === "write_applied" || body.status === "write_refused"

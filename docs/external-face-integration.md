@@ -445,17 +445,23 @@ resolves, is confirmed as below, or expires. Face-driven runtime reads need
 an assertion and so a launch slot; they are not available read-only.
 
 A launch holding only (c) becomes expendable in exactly one way: when the
-exact runtime has confirmed that it holds the write's record for this actor,
-the entry is marked `discoverable` (journal transition `discover`) and that
-launch ranks below (a), (b) and unconfirmed (c), dropped only after every
-finished, unfinished and empty launch. The confirmation is the runtime's own
-(contract r20): a `write.status` answer about exactly that operation
-(`write_applied`, `write_refused`, or `409 write_outcome_unknown`, which the
-runtime gives only for an existing record of this actor), or its
-`recovery.list` page, echo-bound to this actor, naming the operation from the
-runtime that serves it. A planned or presumed recovery never marks anything;
-a runtime without r20 never confirms, so against it every (c) launch stays
-undroppable for its own 24 hours. Other launches go first, the oldest within a
+exact runtime's durable, actor-scoped discovery has actually named the
+write's record, the entry is marked `discoverable` (journal transition
+`discover`) and that launch ranks below (a), (b) and unconfirmed (c), dropped
+only after every finished, unfinished and empty launch. The confirmation is
+the discovery itself (contract r20 §2): a complete, validated, echo-bound
+`recovery.list` scan of this actor, from the runtime that serves the
+operation, naming exactly that record (same operation id, operation, object
+and case, listed by one runtime only), read by the launch that holds the
+write (on its open or **Continue checking**). A scan the wallet found
+violated, or one the runtime calls incomplete, marks nothing even for the
+records it named. Nothing else marks anything: a
+`write_applied` answer settles the entry instead, a `write_refused` answer
+leaves it held and unmarked, and a `409 write_outcome_unknown` carries no
+echo, so it is not a bound answer about any record and proves nothing. A
+planned or presumed recovery never marks anything; a runtime without r20
+never confirms, so against it every (c) launch stays undroppable for its own
+24 hours. Other launches go first, the oldest within a
 rank; any unreadable one, another wallet's and an earlier session's without
 such history are dropped on the next write. Each cookie still expires 24
 hours after its own last write:

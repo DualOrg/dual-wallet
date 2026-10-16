@@ -16,6 +16,10 @@
   isolation, fail-closed mode and readback
 - Specs:
   - [Wallet branding contract](./specs/2026-08-20-wallet-branding-design.md)
+- Evidence (development, local fakes only):
+  - [Interoperability with Studio's actual generated runtime, 2026-10-16](./evidence/2026-10-16-studio-runtime-interoperability.md):
+    the exact version pair, commands and verbatim results of the settle check
+    and the r20 probe, and the Studio dependencies they surfaced
 - Proposals (not deployed):
   - [Runtime write outcome, recovery listing and acknowledgement, r20](./proposals/runtime-write-status-r20.md):
     the pinned Studio runtime wire schema the wallet needs to free a journal

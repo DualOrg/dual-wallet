@@ -21,7 +21,6 @@ import {
   type RuntimeEcho,
 } from "@/api/face-runtime";
 import {
-  discoverRuntimeWrite,
   fail,
   mint,
   type FaceOperationFailure,
@@ -37,6 +36,7 @@ import {
   isOperationId,
   type RuntimeOperation,
 } from "@/app/_domain/product-face";
+import { applyJournalTransition } from "@/app/_domain/product-face-journal";
 import { journeyOfJournalEntry } from "@/app/_domain/wallet-host";
 
 // PROPOSED contract r20 (docs/proposals/runtime-write-status-r20.md), not
@@ -595,21 +595,36 @@ export async function listRecovery(
       ? scan.items.map((item) => ({ runtime, item }))
       : [],
   );
-  // A held runtime write of this launch that the runtime serving it lists
-  // (an echo-bound page of this actor's records): the runtime holds it
-  // durably, so the entry is marked discoverable (contract r20) and its
-  // cookie is no longer the write's only known correlation.
-  let discovered = journal;
-  for (const { runtime, item } of listed) {
-    if (belongsTo(runtime, item)) {
-      discovered = discoverRuntimeWrite(discovered, item.operationId);
-    }
-  }
   // An id listed by two runtimes (a scan itself never repeats one) is
   // conflicting: nothing is resolved or acknowledged for it.
   const seen = new Map<string, number>();
   for (const { item } of listed) {
     seen.set(item.operationId, (seen.get(item.operationId) ?? 0) + 1);
+  }
+  // Durable discovery, actually observed (contract §2): a complete scan
+  // (every page validated and echo-bound, the runtime declaring every store
+  // read to its end) of this actor's records, from the runtime that serves
+  // the operation, naming exactly one of this launch's held runtime writes
+  // (same id, operation, object and case, listed by one runtime only). That
+  // entry is marked discoverable: its cookie is no longer the write's only
+  // known correlation (api/face-journal.ts). Nothing else marks anything: a
+  // scan the wallet found violated, or one the runtime calls incomplete,
+  // marks nothing even for the items it did name.
+  const trusted = new Set(
+    scans
+      .filter(({ scan }) => scan.status === "listed" && scan.complete)
+      .map(({ runtime }) => runtime),
+  );
+  let discovered = journal;
+  for (const { runtime, item } of listed) {
+    if (
+      trusted.has(runtime) &&
+      item.kind === "runtime" &&
+      belongsTo(runtime, item) &&
+      seen.get(item.operationId) === 1
+    ) {
+      discovered = discoverRuntimeWrite(context, discovered, item);
+    }
   }
   let withheld = 0;
   const misrouted = new Set<string>();
@@ -727,6 +742,38 @@ export async function listRecovery(
     items,
     journal: discovered,
   };
+}
+
+/**
+ * Marks one of this launch's held runtime writes discoverable from the
+ * listing item that named it; unchanged for anything else (another slug,
+ * another identity, a write not held, an unknown id).
+ */
+function discoverRuntimeWrite(
+  context: FaceRequestContext,
+  journal: FaceJournal,
+  item: RecoveryItem,
+): FaceJournal {
+  const own = journal.entries.find(
+    (entry) =>
+      entry.operationId === item.operationId &&
+      entry.slug === context.binding.slug,
+  );
+  if (!own) return journal;
+  const result = applyJournalTransition(
+    journal.entries,
+    {
+      kind: "discover",
+      operationId: item.operationId,
+      operation: item.operation,
+      objectId: item.objectId,
+      caseId: item.caseId,
+    },
+    Date.now(),
+  );
+  return result.ok && result.entries !== journal.entries
+    ? { ...journal, entries: result.entries }
+    : journal;
 }
 
 function parseTicket(

@@ -609,26 +609,20 @@ function heldRuntimeWrite(
  * runtime included, leaves the entry held and its slot taken. Read-only: the
  * write is never re-sent, and the read's assertion is not kept against the
  * launch's outstanding cap (the host's own server-to-server read).
- *
- * Whatever the outcome, an answer from the exact runtime about this record
- * (applied, refused, or 409 write_outcome_unknown) proves the runtime holds
- * it for this actor: the entry is marked discoverable, and only then may the
- * launch budget drop its cookie (api/face-journal.ts). Nothing else marks it.
  */
 async function verifyRuntimeWrite(
   context: FaceRequestContext,
   request: NextRequest,
   journal: FaceJournal,
   entry: FaceJournalEntry,
-): Promise<{ journal: FaceJournal; settled: boolean }> {
-  const unchanged = { journal, settled: false };
-  if (!heldRuntimeWrite(context, entry)) return unchanged;
+): Promise<FaceJournal | undefined> {
+  if (!heldRuntimeWrite(context, entry)) return undefined;
   const operation = entry.operation as RuntimeOperation;
   const runtime = isLinkedCaseOperation(operation)
     ? linkedCaseRuntime(context)
     : context.binding;
   const issuer = walletIssuerOrigin(request);
-  if (!runtime || !issuer) return unchanged;
+  if (!runtime || !issuer) return undefined;
   const read = writeStatusRequest(
     entry.operationId,
     {
@@ -644,31 +638,14 @@ async function verifyRuntimeWrite(
     requestHash: runtimeRequestHash(read),
     audienceOf: operation,
   });
-  if (!minted.ok) return unchanged;
+  if (!minted.ok) return undefined;
   const result = await readWriteStatus(
     { origin: runtime.origin, applicationId: runtime.applicationId },
     read,
     minted.assertion,
   );
-  // The record's identity, where the answer carries one: this operation,
-  // from this wallet and holder, at this runtime, through this issuer.
-  const identified =
-    result.outcome === "held"
-      ? // A 409 write_outcome_unknown carries no echo (the runtime refused
-        // to answer the outcome); it is bound by the read itself: this
-        // host's assertion naming the operation, sent to the exact runtime.
-        result.recorded === true
-      : result.record.operationId === entry.operationId &&
-        result.record.holder === context.holder &&
-        result.record.wallet === context.wallet.id &&
-        result.record.issuer === issuer &&
-        result.record.applicationId === runtime.applicationId;
-  const discovered = identified
-    ? discoverRuntimeWrite(journal, entry.operationId)
-    : journal;
-  const held = { journal: discovered, settled: false };
   // A refused write (zero writes) stays held, as every unproven outcome.
-  if (result.outcome !== "applied") return held;
+  if (result.outcome !== "applied") return undefined;
   const recorded = result.record;
   const receiptMatches =
     recorded.receipt === null
@@ -678,11 +655,15 @@ async function verifyRuntimeWrite(
           recorded.receipt.caseId === entry.caseId
         : !isLinkedCaseOperation(operation);
   if (
-    !identified ||
+    recorded.operationId !== entry.operationId ||
     recorded.operation !== entry.operation ||
     recorded.objectId !== entry.objectId ||
     recorded.caseId !== (entry.caseId ?? null) ||
     recorded.requestHash !== entry.requestHash ||
+    recorded.holder !== context.holder ||
+    recorded.wallet !== context.wallet.id ||
+    recorded.issuer !== issuer ||
+    recorded.applicationId !== runtime.applicationId ||
     recorded.programme !== context.binding.programmeId ||
     recorded.assertingArtifact.version !== context.binding.version ||
     recorded.assertingArtifact.artifactHash !== context.binding.artifactHash ||
@@ -692,10 +673,10 @@ async function verifyRuntimeWrite(
       recorded.dual.targetReadback !== "verified") ||
     !receiptMatches
   ) {
-    return held;
+    return undefined;
   }
   const applied = applyJournalTransition(
-    discovered.entries,
+    journal.entries,
     {
       kind: "apply",
       operationId: entry.operationId,
@@ -703,53 +684,29 @@ async function verifyRuntimeWrite(
     },
     Date.now(),
   );
-  return applied.ok
-    ? { journal: { ...discovered, entries: applied.entries }, settled: true }
-    : held;
-}
-
-/**
- * Marks one of this launch's held runtime writes discoverable: the exact
- * runtime confirmed it holds the record (a write.status answer about it, or
- * its recovery.list naming it for this actor). Unchanged for anything else.
- */
-export function discoverRuntimeWrite(
-  journal: FaceJournal,
-  operationId: string,
-): FaceJournal {
-  const result = applyJournalTransition(
-    journal.entries,
-    { kind: "discover", operationId },
-    Date.now(),
-  );
-  return result.ok && result.entries !== journal.entries
-    ? { ...journal, entries: result.entries }
-    : journal;
+  return applied.ok ? { ...journal, entries: applied.entries } : undefined;
 }
 
 /**
  * When a begin finds no finished entry to make room, the held runtime writes
  * of this launch are read (oldest issued first, at most
  * MAX_WRITE_STATUS_READS) until one is proven applied. Nothing unproven is
- * evicted; without a proof the begin is still refused journal_full. What the
- * reads discovered is kept either way.
+ * evicted; without a proof the begin is still refused journal_full.
  */
 async function reclaimRuntimeWrite(
   context: FaceRequestContext,
   request: NextRequest,
   journal: FaceJournal,
-): Promise<{ journal: FaceJournal; reclaimed: boolean }> {
+): Promise<FaceJournal | undefined> {
   const held = journal.entries
     .filter((entry) => heldRuntimeWrite(context, entry))
     .sort((left, right) => (left.issuedAt ?? 0) - (right.issuedAt ?? 0))
     .slice(0, MAX_WRITE_STATUS_READS);
-  let current = journal;
   for (const entry of held) {
-    const verified = await verifyRuntimeWrite(context, request, current, entry);
-    current = verified.journal;
-    if (verified.settled) return { journal: current, reclaimed: true };
+    const verified = await verifyRuntimeWrite(context, request, journal, entry);
+    if (verified) return verified;
   }
-  return { journal: current, reclaimed: false };
+  return undefined;
 }
 
 // ---------------------------------------------------------- trusted reads
@@ -965,16 +922,13 @@ export async function transitionOperation(
     let result = applyJournalTransition(journal.entries, next, now);
     if (!result.ok && result.error === "journal_full") {
       // Room only from a held runtime write proven applied (proposed r20).
-      // What the reads discovered is kept even when nothing is reclaimed.
       const reclaimed = await reclaimRuntimeWrite(context, request, journal);
-      journal = reclaimed.journal;
-      if (reclaimed.reclaimed) {
+      if (reclaimed) {
+        journal = reclaimed;
         result = applyJournalTransition(journal.entries, next, now);
       }
     }
-    if (!result.ok) {
-      return { ...fail(result.error, journalStatus[result.error]), journal };
-    }
+    if (!result.ok) return fail(result.error, journalStatus[result.error]);
     return {
       ok: true as const,
       entry: result.entry,
@@ -1565,36 +1519,26 @@ export async function reconcileOperation(
   if (!found) return fail("unknown_operation", 404);
   let entry = found;
   const recovered = !own;
-  let journal: FaceJournal | undefined;
   if (own && heldRuntimeWrite(context, own)) {
     // Proposed r20: settled only from the runtime's verified record of
-    // exactly this write; otherwise it stays as it is, discoverable when
-    // the runtime confirmed it holds the record.
+    // exactly this write; otherwise it stays as it is.
     const verified = await verifyRuntimeWrite(
       context,
       request,
       context.journal,
       own,
     );
-    const settled = verified.settled
-      ? verified.journal.entries.find(
-          (item) => item.operationId === operationId,
-        )
-      : undefined;
-    if (settled) {
+    const settled = verified?.entries.find(
+      (item) => item.operationId === operationId,
+    );
+    if (verified && settled) {
       return {
         ok: true as const,
         entry: settled,
         status: journalOperationStatus(settled, undefined),
         readback: undefined,
-        journal: verified.journal,
+        journal: verified,
       };
-    }
-    if (verified.journal !== context.journal) {
-      journal = verified.journal;
-      entry =
-        journal.entries.find((item) => item.operationId === operationId) ??
-        entry;
     }
   }
   let readback: { ownerIsYou: boolean; state: string | null } | undefined;
@@ -1616,6 +1560,7 @@ export async function reconcileOperation(
     }
   }
   let status = journalOperationStatus(entry, evaluation);
+  let journal: FaceJournal | undefined;
   const now = Date.now();
   const closable = registrationClosable(entry, now);
   if (
