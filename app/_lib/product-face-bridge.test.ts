@@ -1861,6 +1861,9 @@ describe("holder transfer (G8, contract r16 transfer.sign)", () => {
     ).toHaveLength(1);
   });
 
+  // The BFF answers a step another launch of this wallet submitted from that
+  // wallet's own sealed history (api/product-face-transfer.test.ts proves it on
+  // real sealed journals); this models that answer at the bridge.
   it("after a relaunch or a new sign-in, the retained journal still decides: a submitted step is only read back, even when the sender's object read is 404", async () => {
     const run = await transferRuntime(
       {

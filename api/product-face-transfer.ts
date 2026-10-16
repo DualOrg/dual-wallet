@@ -3,7 +3,7 @@ import "server-only";
 import type { NextRequest } from "next/server";
 import { readFaceAcceptance, type FaceAcceptance } from "@/api/face-acceptance";
 import { sha256Hash } from "@/api/face-assertion";
-import type { FaceJournal } from "@/api/face-journal";
+import { readFaceHistory, type FaceJournal } from "@/api/face-journal";
 import {
   runtimeRequestHash,
   transferRuntimeCall,
@@ -279,6 +279,43 @@ const committedStatus = (step: TransferStep) =>
  * else the runtime's read-only transfer.status. Never an execution; a
  * committed step settles the journal entry.
  */
+/**
+ * A transfer step this wallet already submitted from another launch (a
+ * reload, another tab, a sign-in since): exactly this operation in this
+ * wallet's own sealed history for this face and programme (readFaceHistory;
+ * another wallet's journals give nothing), when exactly one kept launch
+ * submitted it and every other entry under the id names the same step of the
+ * same unit and offer. Read-only, derived each time: never added to this
+ * journal, re-sealed or rewritten, and nothing is reserved, submitted,
+ * executed or settled for it here; only its status is read.
+ */
+function recoveredTransferStep(
+  context: FaceRequestContext,
+  request: NextRequest,
+  operationId: string,
+) {
+  const history = readFaceHistory(request, context.scope, operationId);
+  const submitted = history.filter(
+    (entry) =>
+      entry.kind === "transfer" &&
+      entry.slug === context.binding.slug &&
+      Boolean(entry.offerId) &&
+      transferStepOfOperation(entry.operation) !== undefined &&
+      authorityLeft(entry.phase),
+  );
+  if (submitted.length !== 1) return undefined;
+  const [step] = submitted;
+  const consistent = history.every(
+    (other) =>
+      other === step ||
+      (other.kind === "transfer" &&
+        other.operation === step.operation &&
+        other.objectId === step.objectId &&
+        other.offerId === step.offerId),
+  );
+  return consistent ? step : undefined;
+}
+
 export async function transferStepProgress(
   context: FaceRequestContext,
   request: NextRequest,
@@ -290,11 +327,13 @@ export async function transferStepProgress(
   ) {
     return fail("invalid_request", 400);
   }
-  const entry = context.journal.entries.find(
+  const own = context.journal.entries.find(
     (item) =>
       item.operationId === body.operation_id &&
       item.slug === context.binding.slug,
   );
+  const entry =
+    own ?? recoveredTransferStep(context, request, body.operation_id);
   const step = entry ? transferStepOfOperation(entry.operation) : undefined;
   if (!entry || entry.kind !== "transfer" || !step || !entry.offerId) {
     return fail("unknown_operation", 404);
@@ -325,6 +364,14 @@ export async function transferStepProgress(
     return {
       ok: true,
       progress: { status: "outcome_unknown", step },
+      journal,
+    };
+  }
+  // Another launch's step is only read: its journal is never settled here.
+  if (!own) {
+    return {
+      ok: true,
+      progress: { status: committedStatus(step), step },
       journal,
     };
   }

@@ -168,7 +168,8 @@ function sealedEntries(
  * A journal sealed for another session, wallet, face or launch — after
  * logout, expiry or an account change — reads as empty and is replaced on the
  * next write. (Only readFaceHistory looks at another launch's journal, for
- * one registration of the same wallet, read-only.)
+ * one registration or one submitted transfer step of the same wallet,
+ * read-only.)
  */
 export function readFaceJournal(
   request: NextRequest,
@@ -205,7 +206,8 @@ export function readFaceJournal(
 }
 
 /**
- * Registration history, read-only and for exactly one operation: the entries
+ * Registration (and submitted transfer step) history, read-only and for
+ * exactly one operation: the entries
  * for `operationId` in this browser's OTHER launch journals that were sealed
  * for this same wallet, face and programme, by any session of that wallet
  * (a reload, another tab, or a sign-in since). The seal is authenticated

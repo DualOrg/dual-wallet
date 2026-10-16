@@ -724,7 +724,15 @@ existing executor only on that request's own `dispatch: "won"` with
 `transfer_cancelled` (nothing executed); anything else is `outcome_unknown`.
 Afterwards `POST /api/faces/[slug]/transfer-progress` verifies the step with
 the recorded action, or reads `transfer.status`; asking again with the same
-step operation id only reads. `transfer.offer` and `transfer.cancel` are
+step operation id only reads. A step another launch of the same wallet
+submitted (a reload, another tab, a sign-in since) is read the same way from
+that wallet's own sealed history for this face and programme
+(`readFaceHistory`), read-only: it never joins, re-seals or settles the
+current launch's journal, and another wallet's journals give nothing. The
+host's `programme.product.transfer.sign` asks this first, before any
+ownership read: a submitted step is only ever read back, even when the sender
+can no longer read the moved object, and only a step the BFF reports
+`unknown_operation` or `operation_conflict` is signed. `transfer.offer` and `transfer.cancel` are
 host-confirmed runtime writes for the selected product; the recipient's
 `transfer.offer.read` (target `{}`) and `transfer.accept` (target
 `{object_id}`, r19) and either party's `transfer.read` need no

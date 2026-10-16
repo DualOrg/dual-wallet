@@ -812,6 +812,130 @@ describe("G8 transfer step, the holder's host (contract r16 transfer.sign)", () 
     ).toHaveLength(1);
   });
 
+  // Hosted acceptance: the holder's step was sent (custody moved, so the
+  // sender no longer sees the object), the holder signed out and in again and
+  // the face relaunched. Its progress must still be read, from this wallet's
+  // own sealed history, never answered unknown_operation (which the face
+  // treats as "nothing was sent"). Real sealed launch journals, two sessions.
+  it("after a sign-out, a new sign-in and a new launch, a submitted step's progress is read from this wallet's own sealed history, read-only; another wallet reads nothing", async () => {
+    const runtime = fakeTransferRuntime();
+    global.fetch = runtime.fetchImpl as unknown as typeof fetch;
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    const contextId = await selected(instance, browser);
+    const submit = await confirmedStep(instance, browser, contextId);
+    expect((await submit()).body.reservation).toBe("won");
+    // The holder's action, recorded under the launch and session that won it.
+    expect(
+      (
+        await browser.call(
+          instance.operations,
+          `/api/faces/${SLUG}/operations`,
+          {
+            transition: "record_action",
+            operation_id: STEP_OP,
+            action_id: "action-transfer-1",
+          },
+        )
+      ).status,
+    ).toBe(200);
+    const oldLaunch = [...browser.cookies].filter(([name]) =>
+      name.startsWith("dual_face_launch_"),
+    );
+    expect(oldLaunch).toHaveLength(1);
+    const [[oldName, oldSealed]] = oldLaunch;
+    // Signed out and in again, the face relaunched: a new session cookie and
+    // a new launch; the old launch's sealed journal is still in the browser.
+    const relaunched = new Browser(instance, `launch-${"r".repeat(28)}`);
+    const cookies = new Map([...relaunched.cookies, ...oldLaunch]);
+    const path = `/api/faces/${SLUG}/transfer-progress`;
+    const progress = () =>
+      relaunched.call(
+        instance.progress,
+        path,
+        { operation_id: STEP_OP },
+        cookies,
+        false,
+      );
+    const reserves = () =>
+      runtime.calls.filter((call) => call.operation === "transfer.reserve")
+        .length;
+    const reserved = reserves();
+    // Not yet seen executed by the runtime: unknown, never unknown_operation.
+    expect(await progress()).toMatchObject({
+      status: 200,
+      body: { status: "outcome_unknown", step: "request" },
+    });
+    expect(runtime.calls.at(-1)).toMatchObject({
+      operation: "transfer.verify",
+      body: {
+        input: {
+          offer_id: OFFER,
+          action_id: "action-transfer-1",
+          step_operation_id: STEP_OP,
+        },
+      },
+    });
+    runtime.executed(STEP_OP);
+    const answer = await relaunched.call(
+      instance.progress,
+      path,
+      { operation_id: STEP_OP },
+      cookies,
+      false,
+    );
+    expect(answer).toMatchObject({
+      status: 200,
+      body: { status: "transfer_request_committed", step: "request" },
+    });
+    // Read only: nothing reserved, submitted or executed again; the old
+    // launch's sealed journal is untouched; the new launch never holds it.
+    expect(reserves()).toBe(reserved);
+    expect(cookies.get(oldName)).toBe(oldSealed);
+    // Whatever the new launch wrote, without the old launch's journal the step
+    // is unknown there: it was never added to the new launch's journal.
+    await relaunched.call(
+      instance.progress,
+      path,
+      { operation_id: STEP_OP },
+      cookies,
+      true,
+    );
+    expect(relaunched.cookies.get(oldName)).toBeUndefined();
+    expect(
+      await relaunched.call(
+        instance.progress,
+        path,
+        { operation_id: STEP_OP },
+        relaunched.cookies,
+        false,
+      ),
+    ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+    // Another wallet in the same browser reads nothing of it.
+    getWallet.mockResolvedValue({
+      id: "wallet-2",
+      account: {
+        address: "0x00000000000000000000000000000000000000d4",
+        type: "SMART_WALLET",
+        controller: { address: "0xcontroller2" },
+        smartAccount: {},
+      },
+      whenCreated: new Date(),
+      whenModified: new Date(),
+      emailVerified: true,
+    });
+    const other = new Browser(instance, `launch-${"s".repeat(28)}`);
+    expect(
+      await other.call(
+        instance.progress,
+        path,
+        { operation_id: STEP_OP },
+        new Map([...other.cookies, ...oldLaunch]),
+        false,
+      ),
+    ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+  });
+
   it("refuses a transfer journal entry without its offer and proposal, or for an unselected product", async () => {
     const runtime = fakeTransferRuntime();
     global.fetch = runtime.fetchImpl as unknown as typeof fetch;
