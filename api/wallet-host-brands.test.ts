@@ -2211,6 +2211,14 @@ class BrandRuntime {
   }
 
   private warrantyCase(operation: string, target: Json, holder: string) {
+    // As the passport side: an operation this runtime does not know is
+    // refused before any holder check (a legacy runtime asked for r20).
+    if (
+      !["cases.list", "case.read"].includes(operation) &&
+      !WRITE_OPERATIONS.has(operation)
+    ) {
+      return json(400, { ok: false, status: "face_request_invalid" });
+    }
     const unit = this.dual.units.get(String(target.object_id ?? ""));
     if (unit?.owner !== holder) {
       return json(403, { ok: false, status: "not_holder" });
@@ -4949,6 +4957,466 @@ describe("recovery: an incomplete scan acknowledges nothing (PROPOSED r20 fixtur
         ticket,
       });
       expect(refused.status).toBe(400);
+    },
+  );
+});
+
+// ------------------------------- recovery: actor, host, ticket, preservation
+
+/** The brand's binding with its linked Warranty runtime at another origin. */
+const registryWithWarrantyMoved = (brand: Brand) =>
+  JSON.stringify(
+    ([morrowBinding(), tidewellFullBinding()] as Json[]).map((binding) =>
+      binding.slug === brand.slug
+        ? {
+            ...binding,
+            linkedRuntimes: (binding.linkedRuntimes as Json[]).map(
+              (runtime) => ({
+                ...runtime,
+                origin: String(runtime.origin).replace(
+                  "://warranty",
+                  "://warranty-next",
+                ),
+              }),
+            ),
+          }
+        : binding,
+    ),
+  );
+
+/** The brand's binding serving another face artifact (version and hash). */
+const registryWithArtifactChanged = (brand: Brand) =>
+  JSON.stringify(
+    [morrowBinding(), tidewellFullBinding()].map((binding) =>
+      binding.slug === brand.slug
+        ? {
+            ...binding,
+            version: "1.0.1",
+            artifactHash: `sha256:${"b".repeat(64)}`,
+            path: `/face/${String(binding.applicationId)}/1.0.1/${"b".repeat(64)}/`,
+          }
+        : binding,
+    ),
+  );
+
+/** The brand's binding naming another programme (as a changed publication). */
+const registryWithProgrammeChanged = (brand: Brand) =>
+  JSON.stringify(
+    [morrowBinding(), tidewellFullBinding()].map((binding) =>
+      binding.slug === brand.slug
+        ? { ...binding, programmeId: `${brand.programmeId}-next` }
+        : binding,
+    ),
+  );
+
+/** The brand's host document with journeys disabled (a compatible update). */
+function documentWithout(brand: Brand, ...journeys: string[]) {
+  const document = brand.document();
+  for (const journey of journeys) edit(document, `journeys.${journey}`, false);
+  return document;
+}
+
+describe("recovery: another actor, host, programme or artifact gets nothing (PROPOSED r20 fixture)", () => {
+  it.each([
+    [MORROW.label, MORROW, TIDEWELL],
+    [TIDEWELL.label, TIDEWELL, MORROW],
+  ] as Array<[string, Brand, Brand]>)(
+    "%s (c): the other brand's host, a changed programme and an incompatible artifact recover nothing of this holder's",
+    async (_label, brand, other) => {
+      const world0 = await custodyRecoveryWorld(brand);
+      const runtime = runtimeOf(brand);
+      const sendsBefore = faceSends(brand);
+      const business = businessOf();
+      const fresh = afterLostCookies(
+        brand,
+        brand.holder,
+        world0.session,
+        "recover-c",
+      );
+      const listed = await fresh.recovery();
+      const custody = itemOf(listed.body, world0.custodyOperation)!;
+      expect(custody).toMatchObject({ outcome: "transferred" });
+
+      // The other brand's host serves no face of this slug: refused before
+      // the session is even looked at, for the listing and the ticket alike.
+      deploy(other);
+      const delivery = { at: other, keep: false };
+      expect(await fresh.recovery(undefined, delivery)).toMatchObject({
+        status: 404,
+        body: { code: "unknown_application" },
+      });
+      expect(
+        await fresh.recoveryAck(
+          { operation_id: world0.custodyOperation, ticket: custody.ticket },
+          delivery,
+        ),
+      ).toMatchObject({ status: 404, body: { code: "unknown_application" } });
+
+      // The face slug naming another programme: the host's assertions now
+      // name a programme the runtimes do not serve, so they refuse them; the
+      // wallet reports an incomplete, empty check and nothing is
+      // acknowledgeable (the records stay sealed to their own programme).
+      deploy(brand, { registry: registryWithProgrammeChanged(brand) });
+      const moved = await fresh.recovery();
+      expect(moved.body).toMatchObject({
+        supported: true,
+        complete: false,
+        items: [],
+      });
+      for (const operationId of [
+        world0.registration,
+        world0.settleOperation,
+        world0.requestOperation,
+        world0.custodyOperation,
+      ]) {
+        expect(itemOf(moved.body, operationId)).toBeUndefined();
+      }
+      expect(
+        await fresh.recoveryAck({
+          operation_id: world0.custodyOperation,
+          ticket: custody.ticket,
+        }),
+      ).toMatchObject({ status: 400, body: { code: "invalid_request" } });
+
+      // Back on its own host: a Warranty & Service write whose artifact the
+      // runtime no longer counts as compatible answers 409 to write.status,
+      // so the item is unknown and carries no ticket; nothing is re-sent.
+      deploy(brand);
+      const contextId = await world0.recipient.select(brand.unit.id);
+      const write = await heldWrite(world0.recipient, contextId, 7, {
+        dispatch: true,
+        caseIndex: 1,
+      });
+      expect(write.answer).toMatchObject({ status: 200 });
+      runtime.compatible = new Set([`sha256:${"0".repeat(64)}`]);
+      const recipientFresh = afterLostCookies(
+        brand,
+        brand.recipient,
+        world0.recipient.cookies.get(SESSION_COOKIE)!,
+        "recover-c-recipient",
+      );
+      const incompatible = await recipientFresh.recovery();
+      expect(itemOf(incompatible.body, write.operationId)).toMatchObject({
+        outcome: "outcome_unknown",
+        ticket: null,
+      });
+      runtime.compatible = undefined;
+      const compatible = await recipientFresh.recovery();
+      expect(itemOf(compatible.body, write.operationId)).toMatchObject({
+        outcome: "write_applied",
+      });
+      expect(typeof itemOf(compatible.body, write.operationId)!.ticket).toBe(
+        "string",
+      );
+
+      expect(faceSends(brand)).toBe(sendsBefore + 1);
+      expect(businessOf()).toEqual(business);
+    },
+  );
+});
+
+describe("recovery: a journey this host disables is withheld and never acknowledged (PROPOSED r20 fixture)", () => {
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s (h): transfer disabled withholds the transfer steps and refuses their ticket; service progress disabled withholds the case write",
+    async (_label, brand) => {
+      const world0 = await custodyRecoveryWorld(brand);
+      const sendsBefore = faceSends(brand);
+      const business = businessOf();
+      const fresh = afterLostCookies(
+        brand,
+        brand.holder,
+        world0.session,
+        "recover-h",
+      );
+      const enabled = await fresh.recovery();
+      const custody = itemOf(enabled.body, world0.custodyOperation)!;
+      expect(typeof custody.ticket).toBe("string");
+
+      // A compatible host update that disables the transfer journey: the
+      // steps stay listed at the runtime but this host neither resolves nor
+      // acknowledges them, and a ticket from before is refused.
+      deploy(brand, { document: documentWithout(brand, "transfer") });
+      const withheld = await fresh.recovery();
+      expect(withheld.body).toMatchObject({ supported: true, complete: true });
+      expect(
+        recoveredItems(withheld.body).some((item) => item.kind === "transfer"),
+      ).toBe(false);
+      expect(Number(withheld.body.withheld)).toBeGreaterThanOrEqual(1);
+      expect(
+        await fresh.recoveryAck({
+          operation_id: world0.custodyOperation,
+          ticket: custody.ticket,
+        }),
+      ).toMatchObject({
+        status: 403,
+        body: { code: "capability_not_granted" },
+      });
+      // Re-enabled: the same ticket (same session, launch, runtime and
+      // artifact) acknowledges once.
+      deploy(brand);
+      expect(
+        await fresh.recoveryAck({
+          operation_id: world0.custodyOperation,
+          ticket: custody.ticket,
+        }),
+      ).toMatchObject({
+        status: 200,
+        body: { acknowledged: true, first: true },
+      });
+
+      // A Warranty & Service write of the new holder, then service progress
+      // disabled: withheld, not listed, not acknowledged.
+      const contextId = await world0.recipient.select(brand.unit.id);
+      const write = await heldWrite(world0.recipient, contextId, 8, {
+        dispatch: true,
+        caseIndex: 1,
+      });
+      const recipientFresh = afterLostCookies(
+        brand,
+        brand.recipient,
+        world0.recipient.cookies.get(SESSION_COOKIE)!,
+        "recover-h-recipient",
+      );
+      const listedWrite = itemOf(
+        (await recipientFresh.recovery()).body,
+        write.operationId,
+      )!;
+      expect(listedWrite).toMatchObject({ outcome: "write_applied" });
+      // Quote decisions belong to service progress: both go together.
+      deploy(brand, {
+        document: documentWithout(brand, "serviceProgress", "quoteDecisions"),
+      });
+      const serviceOff = await recipientFresh.recovery();
+      expect([serviceOff.status, serviceOff.body.code]).toEqual([
+        200,
+        undefined,
+      ]);
+      expect(itemOf(serviceOff.body, write.operationId)).toBeUndefined();
+      expect(Number(serviceOff.body.withheld)).toBeGreaterThanOrEqual(1);
+      expect(
+        await recipientFresh.recoveryAck({
+          operation_id: write.operationId,
+          ticket: listedWrite.ticket,
+        }),
+      ).toMatchObject({ status: 403 });
+      expect(runtimeOf(brand).acks.get(`warranty:${write.operationId}`)).toBe(
+        undefined,
+      );
+      expect(faceSends(brand)).toBe(sendsBefore + 1);
+      expect(businessOf()).toEqual(business);
+    },
+  );
+});
+
+describe("recovery: an acknowledgement ticket binds its runtime, artifact, launch and session (PROPOSED r20 fixture)", () => {
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s (j): a moved linked origin, a changed face artifact, another launch or another session make the ticket invalid",
+    async (_label, brand) => {
+      const world0 = await custodyRecoveryWorld(brand);
+      const sendsBefore = faceSends(brand);
+      const business = businessOf();
+      // A Warranty write of the new holder: its ticket names the warranty
+      // runtime's application AND origin.
+      const contextId = await world0.recipient.select(brand.unit.id);
+      const write = await heldWrite(world0.recipient, contextId, 9, {
+        dispatch: true,
+        caseIndex: 1,
+      });
+      const recipientSession = world0.recipient.cookies.get(SESSION_COOKIE)!;
+      const recipientFresh = afterLostCookies(
+        brand,
+        brand.recipient,
+        recipientSession,
+        "recover-j",
+      );
+      const listed = await recipientFresh.recovery();
+      const writeItem = itemOf(listed.body, write.operationId)!;
+      expect(typeof writeItem.ticket).toBe("string");
+      const ack = (browser: Browser, operationId: string, ticket: unknown) =>
+        browser.recoveryAck({ operation_id: operationId, ticket });
+
+      // The linked Warranty runtime moved to another origin: refused before
+      // anything is minted or sent.
+      const mints = minted.mock.calls.length;
+      deploy(brand, { registry: registryWithWarrantyMoved(brand) });
+      expect(
+        await ack(recipientFresh, write.operationId, writeItem.ticket),
+      ).toMatchObject({ status: 400, body: { code: "invalid_request" } });
+      // Another face artifact served: the same.
+      deploy(brand, { registry: registryWithArtifactChanged(brand) });
+      expect(
+        await ack(recipientFresh, write.operationId, writeItem.ticket),
+      ).toMatchObject({ status: 400, body: { code: "invalid_request" } });
+      expect(minted.mock.calls.length).toBe(mints);
+      deploy(brand);
+
+      // Another launch of the same session, and another session of the same
+      // wallet: the ticket is this launch's and this session's only.
+      const otherLaunch = afterLostCookies(
+        brand,
+        brand.recipient,
+        recipientSession,
+        "recover-j-other-launch",
+      );
+      expect(
+        await ack(otherLaunch, write.operationId, writeItem.ticket),
+      ).toMatchObject({ status: 400 });
+      const otherSession = new Browser(
+        brand,
+        brand.recipient,
+        launchOf(brand, "recover-j"),
+      );
+      expect(
+        await ack(otherSession, write.operationId, writeItem.ticket),
+      ).toMatchObject({ status: 400 });
+      // A ticket for another operation id, and a forged one: refused.
+      expect(
+        await ack(
+          recipientFresh,
+          `case-write-${brand.tag}-0099`,
+          writeItem.ticket,
+        ),
+      ).toMatchObject({ status: 400 });
+      expect(
+        await ack(recipientFresh, write.operationId, "not-a-ticket"),
+      ).toMatchObject({ status: 400 });
+      expect(runtimeOf(brand).acks.get(`warranty:${write.operationId}`)).toBe(
+        undefined,
+      );
+      // The ticket itself still works where it was issued.
+      expect(
+        await ack(recipientFresh, write.operationId, writeItem.ticket),
+      ).toMatchObject({
+        status: 200,
+        body: { acknowledged: true, first: true },
+      });
+      expect(faceSends(brand)).toBe(sendsBefore + 1);
+      expect(businessOf()).toEqual(business);
+    },
+  );
+});
+
+describe("recovery: nothing is re-sent and every original record is preserved (PROPOSED r20 fixture)", () => {
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s (g): after listing, acknowledging and replaying, each record is byte-identical and each face write was sent once",
+    async (_label, brand) => {
+      const world0 = await custodyRecoveryWorld(brand);
+      const runtime = runtimeOf(brand);
+      const contextId = await world0.recipient.select(brand.unit.id);
+      const write = await heldWrite(world0.recipient, contextId, 10, {
+        dispatch: true,
+        caseIndex: 1,
+      });
+      const snapshot = () =>
+        JSON.stringify({
+          writes: [...runtime.writes.entries()],
+          recoverables: [...runtime.recoverables.entries()],
+          executed: world.dual.executed,
+        });
+      const before = snapshot();
+      const business = businessOf();
+      const sendsBefore = faceSends(brand);
+
+      for (const [party, who] of [
+        [brand.holder, "recover-g-holder"],
+        [brand.recipient, "recover-g-recipient"],
+      ] as const) {
+        const session = (
+          party === brand.holder ? world0.holder : world0.recipient
+        ).cookies.get(SESSION_COOKIE)!;
+        const fresh = afterLostCookies(brand, party, session, who);
+        const listed = await fresh.recovery();
+        expect(listed.body).toMatchObject({ supported: true, complete: true });
+        for (const item of recoveredItems(listed.body)) {
+          if (!item.ticket) continue;
+          const first = await fresh.recoveryAck({
+            operation_id: item.operation_id,
+            ticket: item.ticket,
+          });
+          expect(first).toMatchObject({ status: 200, body: { first: true } });
+          const replay = await fresh.recoveryAck({
+            operation_id: item.operation_id,
+            ticket: item.ticket,
+          });
+          expect(replay).toMatchObject({ status: 200, body: { first: false } });
+        }
+        // Everything acknowledged is gone from the next listing.
+        const again = await fresh.recovery();
+        expect(
+          recoveredItems(again.body).filter((item) => item.ticket !== null),
+        ).toEqual([]);
+      }
+      // The records, their receipts and Dual's history are as they were;
+      // acknowledgements live beside them, one row per record.
+      expect(snapshot()).toBe(before);
+      expect(businessOf()).toEqual(business);
+      for (const rows of runtime.acks.values()) expect(rows).toHaveLength(1);
+      expect(faceSends(brand)).toBe(sendsBefore);
+      // Each face write was sent exactly once in the whole journey.
+      const sentWrites = runtime.calls
+        .filter(
+          (call) => call.by === "face" && WRITE_OPERATIONS.has(call.operation),
+        )
+        .map((call) => call.operationId);
+      expect(new Set(sentWrites).size).toBe(sentWrites.length);
+      expect(sentWrites).toContain(write.operationId);
+    },
+  );
+});
+
+describe("recovery: a runtime without r20 fails closed (PROPOSED r20 fixture off)", () => {
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s (i): the listing says unsupported, nothing is acknowledged, and today's retained path still answers",
+    async (_label, brand) => {
+      const world0 = await custodyRecoveryWorld(brand);
+      const runtime = runtimeOf(brand);
+      const fresh = afterLostCookies(
+        brand,
+        brand.holder,
+        world0.session,
+        "recover-i",
+      );
+      const ticketed = itemOf(
+        (await fresh.recovery()).body,
+        world0.custodyOperation,
+      )!;
+      runtime.r20 = false;
+      const calls = runtime.calls.length;
+      expect(await fresh.recovery()).toMatchObject({
+        status: 200,
+        body: { supported: false, items: [] },
+      });
+      // Legacy runtimes answered the two listing reads with their refusal;
+      // nothing else was asked and nothing was acknowledged.
+      expect(
+        runtime.calls
+          .slice(calls)
+          .map((call) => [call.by, call.operation, call.status]),
+      ).toEqual([
+        ["wallet", "recovery.list", 400],
+        ["wallet", "recovery.list", 400],
+      ]);
+      expect(
+        await fresh.recoveryAck({
+          operation_id: world0.custodyOperation,
+          ticket: ticketed.ticket,
+        }),
+      ).toMatchObject({ status: 409, body: { code: "outcome_unknown" } });
+      expect(runtime.acks.size).toBe(0);
+      // The cookie-based retained listing is what this launch still has.
+      expect(await fresh.list()).toMatchObject({
+        status: 200,
+        body: { operations: [], retained: [] },
+      });
+      expect(await world0.holder.list()).toMatchObject({ status: 200 });
     },
   );
 });
