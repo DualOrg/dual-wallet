@@ -358,6 +358,10 @@ export async function readWriteStatus(
     body.contract !== "r20" ||
     body.readback !== "verified" ||
     body.artifact_compatible !== true ||
+    // A read-only answer: exactly zero writes of any kind, and nothing left
+    // unresolved. Missing, null or any other value proves nothing.
+    body.writesExecuted !== 0 ||
+    body.dualWritesExecuted !== 0 ||
     body.unknownWriteOutcomes !== 0 ||
     body.secretReturned !== false ||
     !record(body.target)

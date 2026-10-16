@@ -2867,6 +2867,17 @@ describe("a runtime write's slot, freed only by its verified outcome (PROPOSED r
     ["no r20 contract", field("contract", undefined)],
     ["a readback not verified", field("readback", "accepted")],
     ["an unresolved outcome", field("unknownWriteOutcomes", 1)],
+    ...(
+      ["writesExecuted", "dualWritesExecuted", "unknownWriteOutcomes"] as const
+    ).flatMap((name): Tamper[] => [
+      [`${name} 1`, field(name, 1)],
+      [`${name} missing`, field(name, undefined)],
+      [`${name} null`, field(name, null)],
+      [`${name} "0"`, field(name, "0")],
+      [`${name} -0.5`, field(name, -0.5)],
+    ]),
+    ["secretReturned true", field("secretReturned", true)],
+    ["secretReturned missing", field("secretReturned", undefined)],
     ["no artifact compatibility proof", field("artifact_compatible", false)],
     ["another operation id", field("operation_id", "case-write-zz-9999")],
     ["another operation", field("operation", "case.information.provide")],
