@@ -4537,3 +4537,293 @@ describe("recovery: mixed proofs, only the one-action Dual-backed write settles 
     },
   );
 });
+
+// A retired (incompatible) artifact hash, well formed but outside set A.
+const RETIRED_ARTIFACT = {
+  version: "0.9.0",
+  artifactHash: `sha256:${"a9".repeat(32)}`,
+};
+
+/**
+ * A holder who already owns a settled unit (no registration record), so a
+ * listing holds only the write records a test seeds plus one real write.
+ */
+async function seededHeldWorld(brand: Brand) {
+  deploy(brand);
+  const runtime = runtimeOf(brand);
+  runtime.r20 = true;
+  const unit = world.dual.units.get(brand.unit.id)!;
+  unit.owner = brand.holder.address;
+  unit.custom = {
+    recordId: brand.unit.recordId,
+    state: "Authenticity verified",
+    lifecycle: { target_state: "Authenticity verified" },
+  };
+  const holder = new Browser(brand, brand.holder, launchOf(brand, "holder"));
+  const contextId = await holder.select(brand.unit.id);
+  return { holder, contextId, runtime };
+}
+
+const outcomeItems = (body: Json) =>
+  recoveredItems(body).filter((item) => item.outcome !== "not_checked");
+const notCheckedItems = (body: Json) =>
+  recoveredItems(body).filter((item) => item.outcome === "not_checked");
+const statusReadCount = (brand: Brand) =>
+  runtimeOf(brand).calls.filter((call) => call.operation === "write.status")
+    .length;
+
+describe("recovery: the bounded page and its continuation (PROPOSED r20 fixture)", () => {
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s (f1): a >25 held-completed prefix does not starve a later valid completion reached on page 2",
+    async (_label, brand) => {
+      const { holder, contextId, runtime } = await seededHeldWorld(brand);
+      // One genuinely applied real write, last in order.
+      const real = await heldWrite(holder, contextId, 100, {
+        dispatch: true,
+        operation: "case.evidence.submit",
+        caseIndex: 0,
+      });
+      expect(real.answer).toMatchObject({ status: 200 });
+      const captured = runtime.writes.get(`warranty:${real.operationId}`)!;
+      const actor: Actor = {
+        holder: captured.holder,
+        sub: captured.wallet,
+        iss: captured.issuer,
+        aud: captured.audience,
+        programme: captured.programme,
+        artifact: captured.artifact,
+      };
+      // Only the real write's artifact is in set A; the 27 seeded completed
+      // writes carry a retired artifact, so write.status answers 409 for each.
+      runtime.compatible = new Set([captured.artifact.artifactHash]);
+      const now = Date.now();
+      const seeded: string[] = [];
+      for (let i = 0; i < 27; i += 1) {
+        const operationId = `seed-${brand.tag}-${String(i).padStart(4, "0")}`;
+        seeded.push(operationId);
+        runtime.seedWriteRecord(actor, {
+          operationId,
+          operation: "case.evidence.submit",
+          caseId: brand.cases[0],
+          recordedAt: new Date(now - (30 - i) * 60_000).toISOString(),
+          recordedArtifact: RETIRED_ARTIFACT,
+        });
+      }
+
+      const sendsBefore = faceSends(brand);
+      const readsBefore = statusReadCount(brand);
+
+      // Page 1: 25 resolved (all held → outcome_unknown, ticket null), the
+      // remaining 2 held and the real write returned as not checked.
+      const page1 = await holder.recovery();
+      expect(page1.body).toMatchObject({
+        supported: true,
+        complete: true,
+        unchecked: 3,
+      });
+      expect(typeof page1.body.continuation).toBe("string");
+      expect(outcomeItems(page1.body)).toHaveLength(25);
+      expect(
+        outcomeItems(page1.body).every(
+          (item) => item.outcome === "outcome_unknown" && item.ticket === null,
+        ),
+      ).toBe(true);
+      expect(notCheckedItems(page1.body)).toHaveLength(3);
+      const page1Resolved = outcomeItems(page1.body).map(
+        (item) => item.operation_id,
+      );
+
+      // Page 2: the 2 held resolve to outcome_unknown and the real write to
+      // write_applied with a ticket; the page does not repeat the first 25.
+      const page2 = await holder.recovery(String(page1.body.continuation));
+      expect(page2.body).toMatchObject({ complete: true, continuation: null });
+      expect(
+        recoveredItems(page2.body).some((item) =>
+          page1Resolved.includes(item.operation_id),
+        ),
+      ).toBe(false);
+      const realItem = itemOf(page2.body, real.operationId);
+      expect(realItem).toMatchObject({ outcome: "write_applied" });
+      expect(typeof realItem!.ticket).toBe("string");
+      expect(
+        recoveredItems(page2.body)
+          .filter((item) => item.operation_id !== real.operationId)
+          .every((item) => item.outcome === "outcome_unknown"),
+      ).toBe(true);
+
+      // Exactly 25 + 3 write.status reads, and nothing re-sent to a face.
+      expect(statusReadCount(brand) - readsBefore).toBe(28);
+      expect(faceSends(brand)).toBe(sendsBefore);
+
+      const ack = await holder.recoveryAck({
+        operation_id: real.operationId,
+        ticket: realItem!.ticket,
+      });
+      expect(ack).toMatchObject({
+        status: 200,
+        body: { acknowledged: true, first: true },
+      });
+      void seeded;
+    },
+  );
+
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s (f2): an unresolved row under a non-acknowledgeable completed prefix is reached and acknowledged on page 2",
+    async (_label, brand) => {
+      const { holder, contextId, runtime } = await seededHeldWorld(brand);
+      const real = await heldWrite(holder, contextId, 100, {
+        dispatch: true,
+        operation: "case.evidence.submit",
+        caseIndex: 0,
+      });
+      const captured = runtime.writes.get(`warranty:${real.operationId}`)!;
+      const actor: Actor = {
+        holder: captured.holder,
+        sub: captured.wallet,
+        iss: captured.issuer,
+        aud: captured.audience,
+        programme: captured.programme,
+        artifact: captured.artifact,
+      };
+      // The real write's record is only a vehicle to capture the actor; mark
+      // it already acknowledged so the listing holds just the seeded rows.
+      runtime.acks.set(`warranty:${real.operationId}`, [
+        {
+          iss: actor.iss,
+          sub: actor.sub,
+          holder: actor.holder,
+          outcomeHash: "sha256:x",
+          at: new Date(Date.now()).toISOString(),
+        },
+      ]);
+      runtime.compatible = new Set([captured.artifact.artifactHash]);
+      const now = Date.now();
+      // 26 completed-but-held records (retired artifact) recorded first.
+      for (let i = 0; i < 26; i += 1) {
+        runtime.seedWriteRecord(actor, {
+          operationId: `seed-${brand.tag}-${String(i).padStart(4, "0")}`,
+          operation: "case.evidence.submit",
+          caseId: brand.cases[0],
+          recordedAt: new Date(now - (30 - i) * 60_000).toISOString(),
+          recordedArtifact: RETIRED_ARTIFACT,
+        });
+      }
+      // One record listed unresolved now (409), compatible, recorded last.
+      const unresolvedOp = `seed-${brand.tag}-unresolved`;
+      runtime.seedWriteRecord(actor, {
+        operationId: unresolvedOp,
+        operation: "case.evidence.submit",
+        caseId: brand.cases[0],
+        recordedAt: new Date(now).toISOString(),
+        unresolved: 1,
+      });
+
+      const readsBefore = statusReadCount(brand);
+      const sendsBefore = faceSends(brand);
+      const page1 = await holder.recovery();
+      expect(page1.body).toMatchObject({ complete: true, unchecked: 2 });
+      expect(outcomeItems(page1.body)).toHaveLength(25);
+      expect(typeof page1.body.continuation).toBe("string");
+
+      // The provider outcome settles between the pages: a new scan may show it.
+      runtime.writes.get(`warranty:${unresolvedOp}`)!.unresolved = 0;
+
+      const page2 = await holder.recovery(String(page1.body.continuation));
+      const resolved = itemOf(page2.body, unresolvedOp);
+      expect(resolved).toMatchObject({ outcome: "write_applied" });
+      expect(typeof resolved!.ticket).toBe("string");
+      // No page resolved more than 25.
+      expect(outcomeItems(page1.body).length).toBeLessThanOrEqual(25);
+      expect(outcomeItems(page2.body).length).toBeLessThanOrEqual(25);
+
+      const ack = await holder.recoveryAck({
+        operation_id: unresolvedOp,
+        ticket: resolved!.ticket,
+      });
+      expect(ack).toMatchObject({
+        status: 200,
+        body: { acknowledged: true, first: true },
+      });
+      expect(faceSends(brand)).toBe(sendsBefore);
+      void readsBefore;
+    },
+  );
+
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s (f3): a continuation is this launch's and session's only, and is idempotent within its TTL",
+    async (_label, brand) => {
+      const { holder, contextId, runtime } = await seededHeldWorld(brand);
+      const real = await heldWrite(holder, contextId, 100, {
+        dispatch: true,
+        operation: "case.evidence.submit",
+        caseIndex: 0,
+      });
+      const captured = runtime.writes.get(`warranty:${real.operationId}`)!;
+      const actor: Actor = {
+        holder: captured.holder,
+        sub: captured.wallet,
+        iss: captured.issuer,
+        aud: captured.audience,
+        programme: captured.programme,
+        artifact: captured.artifact,
+      };
+      runtime.compatible = new Set([captured.artifact.artifactHash]);
+      const now = Date.now();
+      for (let i = 0; i < 27; i += 1) {
+        runtime.seedWriteRecord(actor, {
+          operationId: `seed-${brand.tag}-${String(i).padStart(4, "0")}`,
+          operation: "case.evidence.submit",
+          caseId: brand.cases[0],
+          recordedAt: new Date(now - (30 - i) * 60_000).toISOString(),
+          recordedArtifact: RETIRED_ARTIFACT,
+        });
+      }
+      const page1 = await holder.recovery();
+      const continuation = String(page1.body.continuation);
+      expect(continuation).not.toBe("null");
+      const sendsBefore = faceSends(brand);
+
+      // Another launch of the same wallet cannot use the continuation.
+      const otherLaunch = new Browser(
+        brand,
+        brand.holder,
+        launchOf(brand, "other-launch"),
+      );
+      const foreignLaunch = await otherLaunch.recovery(continuation);
+      expect(foreignLaunch.body).toMatchObject({
+        supported: true,
+        complete: false,
+        items: [],
+      });
+
+      // A different session (new sign-in) cannot use it either.
+      const newSession = new Browser(
+        brand,
+        brand.holder,
+        launchOf(brand, "new-session"),
+      );
+      const foreignSession = await newSession.recovery(continuation);
+      expect(foreignSession.body).toMatchObject({
+        supported: true,
+        complete: false,
+        items: [],
+      });
+
+      // Reused twice within the TTL, the same page comes back (idempotent).
+      const again1 = await holder.recovery(continuation);
+      const again2 = await holder.recovery(continuation);
+      expect(
+        recoveredItems(again1.body).map((item) => item.operation_id),
+      ).toEqual(recoveredItems(again2.body).map((item) => item.operation_id));
+      // The foreign reads resolved nothing; the holder's own re-reads sent no
+      // write to a face.
+      expect(faceSends(brand)).toBe(sendsBefore);
+    },
+  );
+});
