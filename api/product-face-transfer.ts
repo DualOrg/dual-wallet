@@ -354,6 +354,27 @@ export function retainedTransferSteps(
   return { own, historical };
 }
 
+/** The runtime's answer that exactly this step was released by the brand's reviewed decision. */
+function releasedExactly(
+  result: { ok: boolean; status?: number; body?: Record<string, unknown> },
+  entry: FaceJournalEntry,
+  step: string,
+) {
+  const body = result.ok ? result.body : undefined;
+  const correlation = body?.correlation as Record<string, unknown> | undefined;
+  return (
+    result.status === 200 &&
+    body?.ok === true &&
+    body.status === "transfer_reservation_released" &&
+    body.step === step &&
+    !!correlation &&
+    typeof correlation === "object" &&
+    correlation.offer_id === entry.offerId &&
+    correlation.step === step &&
+    correlation.step_operation_id === entry.operationId
+  );
+}
+
 export async function transferStepProgress(
   context: FaceRequestContext,
   request: NextRequest,
@@ -422,6 +443,17 @@ export async function transferStepProgress(
     result.status === 200 &&
     result.body.status === committedStatus(step);
   if (!committed) {
+    // A step of this offer found by its offer for a NEW id, which the runtime
+    // says the brand released by its reviewed recovery decision (exactly this
+    // offer, step and step operation, after the runtime's own readback found
+    // no holder action for it): it is finished and was never executed, so the
+    // new id is not that step. unknown_operation, as for a committed request
+    // step: the successor is proposed, confirmed and signed through the normal
+    // flow under its own reservation. The released id itself still reads
+    // outcome_unknown, and nothing is released, re-sent or cleared here.
+    if (byOffer && releasedExactly(result, entry, step)) {
+      return { ...fail("unknown_operation", 404), journal };
+    }
     return {
       ok: true,
       progress: { status: "outcome_unknown", step },

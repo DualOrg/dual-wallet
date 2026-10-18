@@ -310,6 +310,8 @@ function fakeTransferRuntime({
   }> = [];
   const reservations = new Map<string, string>();
   const executed = new Set<string>();
+  /** Steps the brand released by its reviewed recovery decision (never executed). */
+  const released = new Set<string>();
   /** The step each reserved step operation is. */
   const stepOf = new Map<string, Step>();
   const current = (): Step =>
@@ -422,6 +424,20 @@ function fakeTransferRuntime({
       });
     }
     if (operation === "transfer.verify" || operation === "transfer.status") {
+      if (released.has(input.step_operation_id)) {
+        const step = stepOf.get(input.step_operation_id) ?? firstStep;
+        return json(200, {
+          ok: true,
+          status: "transfer_reservation_released",
+          step,
+          correlation: {
+            offer_id: input.offer_id,
+            step,
+            step_operation_id: input.step_operation_id,
+          },
+          nextStep: "propose_again",
+        });
+      }
       if (!executed.has(input.step_operation_id)) {
         return json(202, {
           ok: false,
@@ -445,6 +461,13 @@ function fakeTransferRuntime({
     reservations,
     /** The holder's wallet executed the step (the test's host, on won only). */
     executed: (stepOperationId: string) => executed.add(stepOperationId),
+    /** The brand's reviewed decision released this won, never-executed step. */
+    release: (stepOperationId: string) => {
+      released.add(stepOperationId);
+      for (const [key, value] of reservations) {
+        if (value === stepOperationId) reservations.delete(key);
+      }
+    },
   };
 }
 
@@ -1270,6 +1293,72 @@ describe("G8 transfer step, the holder's host (contract r16 transfer.sign)", () 
         false,
       ),
     ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+  });
+
+  // A won step the holder never signed, released by the brand's reviewed
+  // recovery decision (the runtime's own release, after its readback found no
+  // holder action): finished for its offer. A new launch's new id is answered
+  // unknown_operation, so the successor is proposed and signed through the
+  // normal flow; the released id still reads unknown and is never re-sent.
+  it("a step the brand released by its reviewed recovery decision lets a new launch sign its successor; the released id stays unknown and nothing is sent again", async () => {
+    const runtime = fakeTransferRuntime();
+    global.fetch = runtime.fetchImpl as unknown as typeof fetch;
+    const instance = loadInstance();
+    const browser = new Browser(instance);
+    const contextId = await selected(instance, browser);
+    const submit = await confirmedStep(instance, browser, contextId);
+    expect((await submit()).body.reservation).toBe("won");
+    const [[oldName, oldSealed]] = [...browser.cookies].filter(([name]) =>
+      name.startsWith("dual_face_launch_"),
+    );
+    const relaunched = new Browser(instance, `launch-${"r".repeat(28)}`);
+    relaunched.cookies.set(oldName, oldSealed);
+    const progress = (body: Record<string, unknown>) =>
+      relaunched.post(
+        instance.progress,
+        `/api/faces/${SLUG}/transfer-progress`,
+        body,
+      );
+    const SUCCESSOR = "xfer-5a5a5a5a5a5a5a5a";
+    // Before the decision: the won step is open, so a new id is never signed.
+    expect(
+      await progress({ operation_id: SUCCESSOR, offer_id: OFFER }),
+    ).toMatchObject({
+      status: 200,
+      body: { status: "outcome_unknown", step: "request" },
+    });
+    runtime.release(STEP_OP);
+    // Released exactly: the new id is not that step.
+    expect(
+      await progress({ operation_id: SUCCESSOR, offer_id: OFFER }),
+    ).toMatchObject({ status: 404, body: { code: "unknown_operation" } });
+    // The released id itself is only ever read: still unknown, never settled.
+    expect(await progress({ operation_id: STEP_OP })).toMatchObject({
+      status: 200,
+      body: { status: "outcome_unknown", step: "request" },
+    });
+    // The successor goes through the normal flow: the runtime's proposal, the
+    // journal begin, the confirmation and its own reservation, which wins.
+    const select = await relaunched.post(
+      instance.selection,
+      `/api/faces/${SLUG}/selection`,
+      { object_id: UNIT },
+    );
+    expect(select.status).toBe(200);
+    const proposal = await relaunched.post(
+      instance.proposal,
+      `/api/faces/${SLUG}/transfer-proposal`,
+      { context_id: select.body.context_id, offer_id: OFFER, object_id: UNIT },
+    );
+    expect(proposal.status).toBe(200);
+    // The original step was never executed and is never reserved again.
+    expect(
+      runtime.calls.filter(
+        (call) =>
+          call.operation === "transfer.reserve" &&
+          call.body.operationId === STEP_OP,
+      ).length,
+    ).toBe(1);
   });
 
   // The review's journey for the same-offer fallback. A request step another
