@@ -420,7 +420,7 @@ export function useProductFaceHost({
         readAttributes: (objectId) =>
           guard(() => readProgrammeProductAttributes(objectId)),
         readHistory: (objectId) =>
-          guard(() => readProgrammeProductHistory(objectId)),
+          guard(() => readProgrammeProductHistory(face, objectId)),
         readUnit: (objectId) => guard(() => readProgrammeUnit(face, objectId)),
         journal: (request) =>
           guard(() =>

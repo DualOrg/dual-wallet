@@ -21,9 +21,16 @@ import {
 const getWallet = jest.fn();
 const getObjectById = jest.fn();
 const getObjectByIdPublic = jest.fn();
+const listStateChangesPublic = jest.fn();
+const listActionLogsPublic = jest.fn();
 jest.mock("@/api/web-sdk-client", () => ({
   getWalletsApi: () => ({ getWallet, logout: jest.fn() }),
-  getObjectsApi: () => ({ getObjectById, getObjectByIdPublic }),
+  getObjectsApi: () => ({
+    getObjectById,
+    getObjectByIdPublic,
+    listStateChangesPublic,
+  }),
+  getEbusApi: () => ({ listActionLogsPublic }),
 }));
 // The pinned artifact itself is verified in api/face-artifact.test.ts.
 jest.mock("@/api/face-artifact", () => ({
@@ -72,6 +79,7 @@ import { POST as settlePOST } from "@/app/api/faces/[slug]/settle-proposal/route
 import { POST as transferProgressPOST } from "@/app/api/faces/[slug]/transfer-progress/route";
 import { POST as transferProposalPOST } from "@/app/api/faces/[slug]/transfer-proposal/route";
 import { GET as unitsGET } from "@/app/api/faces/[slug]/units/[objectId]/route";
+import { GET as historyGET } from "@/app/api/faces/[slug]/units/[objectId]/history/route";
 
 const SLUG = "morrow-home";
 const UNIT = "aaaaaaaaaaaaaaaaaaaaaaaa";
@@ -487,6 +495,105 @@ describe("disabled journeys in the face BFF", () => {
     expect(
       await browser.call(operationsGET, face("/operations"), slug),
     ).toEqual({ status: 200, body: { operations: [], retained: [] } });
+  });
+
+  it("a programme unit's public history is shared: served with registration and transfer off, and only for this face's programme", async () => {
+    configure({ registration: false, transfer: false });
+    const when = new Date("2026-10-18T04:01:00.000Z");
+    listStateChangesPublic.mockReset().mockResolvedValue({
+      stateChanges: [
+        {
+          id: "sc-act-update",
+          objectId: UNIT,
+          actionId: "act-update",
+          actionName: "update",
+          changeType: "update",
+          prevNonce: 1,
+          nextNonce: 2,
+          whenCreated: when,
+        },
+        {
+          id: "sc-act-mint",
+          objectId: UNIT,
+          actionId: "act-mint",
+          actionName: "mint",
+          changeType: "create",
+          prevNonce: 0,
+          nextNonce: 1,
+          whenCreated: when,
+        },
+      ],
+    });
+    listActionLogsPublic.mockReset().mockResolvedValue({
+      actionLogs: [
+        {
+          id: "act-update",
+          name: "update",
+          status: "pending",
+          whenCreated: when,
+          affectedObjects: [{ id: UNIT }],
+        },
+        {
+          id: "act-mint",
+          name: "mint",
+          status: "completed",
+          whenCreated: when,
+          affectedObjects: [{ id: UNIT }],
+        },
+      ],
+    });
+    const browser = new Browser();
+    const history = () =>
+      browser.call(historyGET, face(`/units/${UNIT}/history`), {
+        slug: SLUG,
+        objectId: UNIT,
+      });
+    expect(await history()).toEqual({
+      status: 200,
+      body: {
+        entries: [
+          {
+            action_id: "act-update",
+            action: "update",
+            status: "pending",
+            when: when.toISOString(),
+          },
+          {
+            action_id: "act-mint",
+            action: "mint",
+            status: "completed",
+            when: when.toISOString(),
+          },
+        ],
+      },
+    });
+    getObjectByIdPublic.mockResolvedValueOnce({
+      id: UNIT,
+      templateId: "6".repeat(24),
+      nonce: 2,
+    });
+    expect(await history()).toEqual({
+      status: 404,
+      body: expect.objectContaining({ code: "not_in_programme" }),
+    });
+    listStateChangesPublic.mockResolvedValueOnce({
+      stateChanges: [
+        {
+          id: "sc-act-update",
+          objectId: UNIT,
+          actionId: "act-update",
+          actionName: "update",
+          changeType: "update",
+          prevNonce: 1,
+          nextNonce: 2,
+          whenCreated: when,
+        },
+      ],
+    });
+    expect(await history()).toEqual({
+      status: 502,
+      body: expect.objectContaining({ code: "history_unavailable" }),
+    });
   });
 
   it("a face that is not this host's is unknown, even when the registry has it", async () => {

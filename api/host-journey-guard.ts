@@ -21,6 +21,8 @@ export type FaceRoute =
   | "context"
   | "selection"
   | "units"
+  /** The selected product's public history: a shared read. */
+  | "history"
   | "settle-proposal"
   | "transfer-proposal"
   | "transfer-progress"
@@ -114,6 +116,7 @@ export async function classifyFaceRequest(
     case "selection":
     case "recovery":
     case "recovery-ack":
+    case "history":
       return SHARED;
     case "units":
     case "settle-proposal":

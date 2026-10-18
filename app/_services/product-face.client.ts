@@ -1,11 +1,9 @@
 import "client-only";
 
-import { getEbusApi, getObjectsApi } from "@/api/web-sdk-client";
+import { getObjectsApi } from "@/api/web-sdk-client";
 import {
   toProductAttribute,
-  toProductHistoryEntry,
   toProgrammeProduct,
-  touchesObject,
 } from "@/app/_adapters/product-face";
 import {
   isRegistrationStatus,
@@ -697,46 +695,42 @@ export function readProgrammeProductAttributes(
   });
 }
 
-/** One product's history: at most this many entries, from at most this many pages. */
-const HISTORY_ENTRIES = 25;
-const HISTORY_PAGES = 8;
+const HISTORY_STATUSES = new Set(["pending", "completed", "failed", "unknown"]);
 
 /**
- * The exact product's own history, newest first: only actions whose own
- * affected objects name this object. The list's object_id filter narrows the
- * read but is never trusted alone (a live list answered with the account's
- * other actions), so every entry is checked. Pages are read until 25 entries
- * are found, the list ends, or HISTORY_PAGES pages were checked; what was
- * found by then is exactly this object's newest actions. If none was found
- * and the list had not ended, the history is not known, so it is refused as
- * unavailable, never shown as empty.
+ * The selected product's own public history across every owner, newest
+ * first, read by the host (api/product-history.ts). An answer that is not
+ * exactly that shape is unavailable, never shown in part.
  */
-export function readProgrammeProductHistory(
+export async function readProgrammeProductHistory(
+  face: FaceLaunch,
   objectId: string,
 ): Promise<ProductHistoryEntry[]> {
-  return sdkCall(async () => {
-    const entries: ProductHistoryEntry[] = [];
-    const seen = new Set<string>();
-    let next: string | undefined;
-    for (let page = 0; page < HISTORY_PAGES; page += 1) {
-      const result = await getEbusApi().listActionLogs({
-        objectId,
-        limit: 25,
-        order: "desc",
-        sortBy: "when_created",
-        next,
-      });
-      for (const log of result.actionLogs) {
-        if (seen.has(log.id) || !touchesObject(log, objectId)) continue;
-        seen.add(log.id);
-        entries.push(toProductHistoryEntry(log));
-        if (entries.length === HISTORY_ENTRIES) return entries;
-      }
-      next = result.next || undefined;
-      if (!next) return entries;
+  const { entries } = await faceRequest<{ entries: unknown }>(
+    face,
+    `/units/${encodeURIComponent(objectId)}/history`,
+  );
+  if (!Array.isArray(entries)) {
+    throw new ProductFaceError("temporarily_unavailable");
+  }
+  return entries.map((entry: unknown) => {
+    const item = entry as Record<string, unknown>;
+    const when = new Date(typeof item?.when === "string" ? item.when : NaN);
+    if (
+      typeof item?.action_id !== "string" ||
+      typeof item.action !== "string" ||
+      typeof item.status !== "string" ||
+      !HISTORY_STATUSES.has(item.status) ||
+      Number.isNaN(when.getTime())
+    ) {
+      throw new ProductFaceError("temporarily_unavailable");
     }
-    if (!entries.length) throw new ProductFaceError("temporarily_unavailable");
-    return entries;
+    return {
+      actionId: item.action_id,
+      action: item.action,
+      status: item.status as ProductHistoryEntry["status"],
+      when,
+    };
   });
 }
 

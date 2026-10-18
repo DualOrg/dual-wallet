@@ -378,7 +378,8 @@ export interface ProductAttribute {
 export interface ProductHistoryEntry {
   actionId: string;
   action: string;
-  status: "pending" | "completed" | "failed";
+  /** The action log's own status; "unknown" when it could not be read. */
+  status: "pending" | "completed" | "failed" | "unknown";
   when: Date;
 }
 

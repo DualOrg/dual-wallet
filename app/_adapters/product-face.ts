@@ -9,7 +9,6 @@ import {
   registrationReadback,
   type CanonicalRegistrationRules,
   type ProductAttribute,
-  type ProductHistoryEntry,
   type ProgrammeProduct,
   type ProgrammeUnitFacts,
   type ProjectionField,
@@ -78,18 +77,6 @@ export function touchesObject(log: ActionLog, objectId: string) {
     Array.isArray(log.affectedObjects) &&
     log.affectedObjects.some((affected) => affected?.id === objectId)
   );
-}
-
-export function toProductHistoryEntry(log: ActionLog): ProductHistoryEntry {
-  return {
-    actionId: log.id,
-    action: log.alias || log.name,
-    status:
-      log.status === "pending" || log.status === "failed"
-        ? log.status
-        : "completed",
-    when: log.whenCreated,
-  };
 }
 
 export function toProductAttribute(
