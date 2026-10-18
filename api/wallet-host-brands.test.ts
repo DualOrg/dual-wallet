@@ -4424,6 +4424,158 @@ describe("a runtime write's slot, freed only by its verified outcome (PROPOSED r
     },
   );
 
+  // A customer's Claims journey: each visit to the service page is a new
+  // launch, and each sends one case write whose answer only the face sees.
+  // The runtime holds every one durably, but only the launch that issued a
+  // write could mark it discoverable, and that page is gone: four visits
+  // pinned the budget, so the fifth opened read-only, its product selection
+  // was refused launch_capacity, and the face reported the product as not
+  // available. The next launch now asks the runtime first.
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s: after four visits that each sent one case write, the next visit's context finds them in the runtime's complete listing, keeps its own cookie, makes room with only the oldest such launch, opens the product, and sends nothing again",
+    async (_label, brand) => {
+      const runtime = runtimeOf(brand);
+      const { holder, contextId } = await r20Holder(brand);
+      const launches: Browser[] = [holder];
+      const sent = [
+        (await heldWrite(holder, contextId, 41, { dispatch: true }))
+          .operationId,
+      ];
+      for (const n of [42, 43, 44]) {
+        const launch = launches.at(-1)!.relaunch(launchOf(brand, `visit${n}`));
+        const selected = await launch.select(brand.unit.id);
+        sent.push(
+          (await heldWrite(launch, selected, n, { dispatch: true }))
+            .operationId,
+        );
+        launches.push(launch);
+      }
+      const names = launches.map((launch) =>
+        faceJournalCookieName(launch.launchId),
+      );
+      const select = (launch: Browser) =>
+        launch.send(selectionPOST, `/api/faces/${brand.slug}/selection`, {
+          body: { object_id: brand.unit.id },
+          params: { slug: brand.slug },
+        });
+      // FIXTURE: while the runtime calls its scan incomplete, nothing is
+      // discovered: the next visit stays read-only exactly as before, and
+      // no cookie is written or dropped.
+      runtime.incompleteScan = true;
+      const pinned = launches.at(-1)!.relaunch(launchOf(brand, "visit45"));
+      expect((await pinned.context("/")).status).toBe(200);
+      expect(await select(pinned)).toMatchObject({
+        status: 409,
+        body: { code: "launch_capacity" },
+      });
+      expect(pinned.cookies.has(faceJournalCookieName(pinned.launchId))).toBe(
+        false,
+      );
+      for (const name of names) expect(pinned.cookies.has(name)).toBe(true);
+      runtime.incompleteScan = false;
+      // The complete listing names the three writes the other launches
+      // hold: the visit's context records them found and keeps its cookie.
+      // Only the oldest launch whose writes are all found goes; the launch
+      // holding the unsettled registration (signed evidence) and the two
+      // newer ones stay.
+      const visit = pinned.relaunch(pinned.launchId);
+      expect((await visit.context("/")).status).toBe(200);
+      expect(visit.cookies.has(faceJournalCookieName(visit.launchId))).toBe(
+        true,
+      );
+      expect(visit.cookies.has(names[1])).toBe(false);
+      for (const name of [names[0], names[2], names[3]]) {
+        expect(visit.cookies.has(name)).toBe(true);
+      }
+      expect(await select(visit)).toMatchObject({ status: 200 });
+      // Read-only throughout: one face dispatch per write, none by the
+      // wallet, and no status read was needed.
+      for (const operationId of sent) {
+        expect(faceWrites(brand, operationId)).toBe(1);
+        expect(statusReads(brand, operationId)).toEqual([]);
+      }
+      // The dropped launch's write is still the runtime's own record: the
+      // visit's recovery listing still names it.
+      const listed = await visit.recovery();
+      expect(
+        (listed.body.items as Json[]).map((item) => item.operation_id),
+      ).toEqual(expect.arrayContaining(sent));
+    },
+  );
+
+  it.each(
+    BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
+  )(
+    "%s: a visit's ordinary recovery listing also hands back the writes other launches hold, recorded found in its own cookie only, so the budget never pins; another launch's ticket, or one for another case, records nothing",
+    async (_label, brand) => {
+      const runtime = runtimeOf(brand);
+      const { holder, contextId } = await r20Holder(brand);
+      const launches: Browser[] = [holder];
+      const sent = [
+        (await heldWrite(holder, contextId, 51, { dispatch: true }))
+          .operationId,
+      ];
+      for (const n of [52, 53, 54]) {
+        const launch = launches.at(-1)!.relaunch(launchOf(brand, `visit${n}`));
+        const selected = await launch.select(brand.unit.id);
+        sent.push(
+          (await heldWrite(launch, selected, n, { dispatch: true }))
+            .operationId,
+        );
+        launches.push(launch);
+      }
+      const names = launches.map((launch) =>
+        faceJournalCookieName(launch.launchId),
+      );
+      const latest = launches[3];
+      const others = [names[0], names[1], names[2]].map((name) =>
+        latest.cookies.get(name),
+      );
+      // The latest visit's listing: its own write and the three the other
+      // launches hold, one ticket each.
+      const listed = await latest.recovery();
+      expect(listed).toMatchObject({ status: 200, body: { supported: true } });
+      expect(listed.body.discovered).toHaveLength(4);
+      // Handed back by another launch: sealed for the listing launch, so
+      // nothing is recorded.
+      expect(
+        await launches[2].recoveryDiscovered({
+          discovered: listed.body.discovered,
+        }),
+      ).toMatchObject({ status: 400, body: { code: "invalid_request" } });
+      // Handed back by the listing launch: its own write marked, the three
+      // others recorded found in its own cookie; their cookies are never
+      // rewritten.
+      expect(
+        await latest.recoveryDiscovered({
+          discovered: listed.body.discovered,
+        }),
+      ).toMatchObject({ status: 200, body: { marked: 4 } });
+      expect(
+        [names[0], names[1], names[2]].map((name) => latest.cookies.get(name)),
+      ).toEqual(others);
+      // A fifth visit now gets its cookie without any listing (FIXTURE: the
+      // runtime's scan is incomplete, so the context discovers nothing
+      // itself): the oldest launch holding only found writes makes room.
+      runtime.incompleteScan = true;
+      const fifth = latest.relaunch(launchOf(brand, "visit55"));
+      expect((await fifth.context("/")).status).toBe(200);
+      expect(fifth.cookies.has(faceJournalCookieName(fifth.launchId))).toBe(
+        true,
+      );
+      expect(fifth.cookies.has(names[1])).toBe(false);
+      for (const name of [names[0], names[2], names[3]]) {
+        expect(fifth.cookies.has(name)).toBe(true);
+      }
+      runtime.incompleteScan = false;
+      for (const operationId of sent) {
+        expect(faceWrites(brand, operationId)).toBe(1);
+      }
+    },
+  );
+
   it.each(
     BRANDS.map((brand) => [brand.label, brand]) as Array<[string, Brand]>,
   )(

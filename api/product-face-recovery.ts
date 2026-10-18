@@ -2,7 +2,12 @@ import "server-only";
 
 import type { NextRequest } from "next/server";
 import { walletIssuerOrigin } from "@/api/face-assertion";
-import type { FaceJournal } from "@/api/face-journal";
+import {
+  foundKey,
+  MAX_FOUND,
+  readOtherHeldRuntimeWrites,
+  type FaceJournal,
+} from "@/api/face-journal";
 import {
   accountedReadOnly,
   acknowledgeRecovery,
@@ -38,7 +43,10 @@ import {
   type RuntimeOperation,
   sameHolder,
 } from "@/app/_domain/product-face";
-import { applyJournalTransition } from "@/app/_domain/product-face-journal";
+import {
+  applyJournalTransition,
+  type FaceJournalEntry,
+} from "@/app/_domain/product-face-journal";
 import { journeyOfJournalEntry } from "@/app/_domain/wallet-host";
 
 // PROPOSED contract r20 (docs/proposals/runtime-write-status-r20.md), not
@@ -103,9 +111,10 @@ export interface RecoveryListing {
   items: RecoveredItem[];
   /**
    * Sealed discovery tickets (applyDiscovery), one per held runtime write
-   * of this launch that a complete, validated scan named exactly. The
-   * listing writes nothing itself: the host hands them straight back and
-   * the mark is applied against the journal as it is then.
+   * of this launch, or of another launch of this wallet, face and
+   * programme (`elsewhere`), that a complete, validated scan named exactly.
+   * The listing writes nothing itself: the host hands them straight back
+   * and the mark is applied against the journal as it is then.
    */
   discovered: string[];
   /** One entry per runtime asked: what was checked and, if not, why. */
@@ -703,6 +712,98 @@ function belongsTo(runtime: ScopedRuntime, item: RecoveryItem) {
     : !linked;
 }
 
+/** How many runtimes listed each operation id (a scan never repeats one). */
+function listedCounts(listed: { item: RecoveryItem }[]) {
+  const seen = new Map<string, number>();
+  for (const { item } of listed) {
+    seen.set(item.operationId, (seen.get(item.operationId) ?? 0) + 1);
+  }
+  return seen;
+}
+
+/**
+ * Durable discovery, actually observed (contract §2): a complete scan
+ * (every page validated and echo-bound, the runtime declaring every store
+ * read to its end) of this actor's records, from the runtime that serves
+ * the operation, naming exactly one held runtime write (same id, operation,
+ * object and case, listed by one runtime only): one of this launch's
+ * (`own`), or one another launch of this wallet, face and programme still
+ * holds (a page left, a reload, a sign-in since; readOtherHeldRuntimeWrites).
+ * Only that other launch could mark its own write, and it is gone, so its
+ * cookie would otherwise pin the launch budget (launch_capacity) for its
+ * whole lifetime. Nothing else is discovered: a scan the wallet found
+ * violated, or one the runtime calls incomplete, discovers nothing even for
+ * the items it did name. Pure: reads the scans, the journal and the request.
+ */
+function discoveredHeldWrites(
+  context: FaceRequestContext,
+  request: NextRequest,
+  journal: FaceJournal,
+  scans: { runtime: ScopedRuntime; scan: Scan }[],
+) {
+  const listed = scans.flatMap(({ runtime, scan }) =>
+    scan.status === "listed"
+      ? scan.items.map((item) => ({ runtime, item }))
+      : [],
+  );
+  const seen = listedCounts(listed);
+  const trusted = new Set(
+    scans
+      .filter(({ scan }) => scan.status === "listed" && scan.complete)
+      .map(({ runtime }) => runtime),
+  );
+  const elsewhere = readOtherHeldRuntimeWrites(request, context.scope);
+  return listed.flatMap(({ runtime, item }) => {
+    if (
+      !trusted.has(runtime) ||
+      item.kind !== "runtime" ||
+      !belongsTo(runtime, item) ||
+      seen.get(item.operationId) !== 1
+    ) {
+      return [];
+    }
+    const own = heldRuntimeWriteNamed(context, journal, item);
+    if (!own && !elsewhere.some((entry) => namesItem(entry, item))) return [];
+    return [{ runtime, item, own }];
+  });
+}
+
+/**
+ * A new launch the budget would otherwise open read-only (launchCapacity):
+ * the durable discoveries (FaceJournal.found) of the held runtime writes
+ * other launches of this wallet, face and programme hold, from one
+ * complete, validated scan of each scoped runtime, so that this launch can
+ * keep its own cookie when every launch it would drop is then discoverable.
+ * Without such a held write elsewhere nothing is read. Read-only: nothing is
+ * resolved, acknowledged, re-sent or written to any runtime.
+ */
+export async function discoverPinnedLaunches(
+  context: FaceRequestContext,
+  request: NextRequest,
+): Promise<string[]> {
+  if (readOtherHeldRuntimeWrites(request, context.scope).length === 0) {
+    return [];
+  }
+  const journal = context.journal;
+  const scans = await Promise.all(
+    scopedRuntimes(context).map(async (runtime) => ({
+      runtime,
+      scan: await scanRuntime(context, request, journal, runtime),
+    })),
+  );
+  const keys = discoveredHeldWrites(context, request, journal, scans)
+    .filter(({ own }) => !own)
+    .map(({ item }) =>
+      foundKey(
+        context.owner.walletId,
+        context.binding.slug,
+        context.binding.programmeId,
+        item,
+      ),
+    );
+  return [...new Set([...(journal.found ?? []), ...keys])].slice(-MAX_FOUND);
+}
+
 /**
  * GET /api/faces/[slug]/recovery: this wallet's unresolved and unacknowledged
  * operations from the face's runtime and its linked runtime, each resolved
@@ -750,54 +851,27 @@ export async function listRecovery(
   );
   // An id listed by two runtimes (a scan itself never repeats one) is
   // conflicting: nothing is resolved or acknowledged for it.
-  const seen = new Map<string, number>();
-  for (const { item } of listed) {
-    seen.set(item.operationId, (seen.get(item.operationId) ?? 0) + 1);
-  }
-  // Durable discovery, actually observed (contract §2): a complete scan
-  // (every page validated and echo-bound, the runtime declaring every store
-  // read to its end) of this actor's records, from the runtime that serves
-  // the operation, naming exactly one of this launch's held runtime writes
-  // (same id, operation, object and case, listed by one runtime only). For
-  // each, a sealed discovery ticket; applyDiscovery marks the entry against
-  // the journal as it is when the host hands the ticket back (this long
-  // read never writes the journal it read at its start). Nothing else marks
-  // anything: a scan the wallet found violated, or one the runtime calls
-  // incomplete, yields no ticket even for the items it did name.
-  const trusted = new Set(
-    scans
-      .filter(({ scan }) => scan.status === "listed" && scan.complete)
-      .map(({ runtime }) => runtime),
+  const seen = listedCounts(listed);
+  const discovered = discoveredHeldWrites(context, request, journal, scans).map(
+    ({ runtime, item, own }) =>
+      sealForPurpose(discoveryPurpose(context), {
+        v: 1,
+        op: item.operationId,
+        operation: item.operation,
+        object_id: item.objectId,
+        case_id: item.caseId,
+        ...(own ? {} : { elsewhere: true as const }),
+        runtime: {
+          application_id: runtime.applicationId,
+          origin: runtime.origin,
+        },
+        artifact: {
+          version: context.binding.version,
+          artifact_hash: context.binding.artifactHash,
+        },
+        exp: Date.now() + DISCOVERY_TTL_MS,
+      } satisfies DiscoveryTicket),
   );
-  const discovered: string[] = [];
-  for (const { runtime, item } of listed) {
-    if (
-      trusted.has(runtime) &&
-      item.kind === "runtime" &&
-      belongsTo(runtime, item) &&
-      seen.get(item.operationId) === 1 &&
-      heldRuntimeWriteNamed(context, journal, item)
-    ) {
-      discovered.push(
-        sealForPurpose(discoveryPurpose(context), {
-          v: 1,
-          op: item.operationId,
-          operation: item.operation,
-          object_id: item.objectId,
-          case_id: item.caseId,
-          runtime: {
-            application_id: runtime.applicationId,
-            origin: runtime.origin,
-          },
-          artifact: {
-            version: context.binding.version,
-            artifact_hash: context.binding.artifactHash,
-          },
-          exp: Date.now() + DISCOVERY_TTL_MS,
-        } satisfies DiscoveryTicket),
-      );
-    }
-  }
   let withheld = 0;
   const misrouted = new Set<string>();
   const eligible = listed
@@ -928,14 +1002,24 @@ function heldRuntimeWriteNamed(
 ) {
   return journal.entries.some(
     (entry) =>
-      entry.operationId === item.operationId &&
       entry.slug === context.binding.slug &&
       entry.kind === "runtime" &&
       entry.phase === "assertion_issued" &&
       entry.discoverable !== true &&
-      entry.operation === item.operation &&
-      entry.objectId === item.objectId &&
-      (entry.caseId ?? null) === item.caseId,
+      namesItem(entry, item),
+  );
+}
+
+/** The listed item's exact identity: operation id, operation, unit and case. */
+function namesItem(
+  entry: FaceJournalEntry,
+  item: Pick<RecoveryItem, "operationId" | "operation" | "objectId" | "caseId">,
+) {
+  return (
+    entry.operationId === item.operationId &&
+    entry.operation === item.operation &&
+    entry.objectId === item.objectId &&
+    (entry.caseId ?? null) === item.caseId
   );
 }
 
@@ -951,6 +1035,8 @@ interface DiscoveryTicket {
   operation: string;
   object_id: string;
   case_id: string | null;
+  /** Another launch's held write (readOtherHeldRuntimeWrites), not this one's. */
+  elsewhere?: true;
   runtime: { application_id: string; origin: string };
   artifact: { version: string; artifact_hash: string };
   exp: number;
@@ -987,6 +1073,7 @@ function parseDiscoveryTicket(
     typeof ticket.operation !== "string" ||
     !isObjectId(ticket.object_id) ||
     (ticket.case_id !== null && !isCaseId(ticket.case_id)) ||
+    (ticket.elsewhere !== undefined && ticket.elsewhere !== true) ||
     !record(runtime) ||
     typeof runtime.application_id !== "string" ||
     typeof runtime.origin !== "string" ||
@@ -1009,7 +1096,11 @@ function parseDiscoveryTicket(
  * scan ran is never overwritten). Each ticket is checked again: sealed for
  * this session, wallet, face, programme and launch; its runtime still bound
  * and its artifact still served; and the journal entry's exact identity
- * (the `discover` transition refuses any other). Nothing is sent anywhere.
+ * (the `discover` transition refuses any other). An `elsewhere` ticket is
+ * recorded found in this launch's journal (FaceJournal.found) only while
+ * another launch of this wallet, face and programme still holds exactly
+ * that write; that launch's cookie is never rewritten. Nothing is sent
+ * anywhere.
  */
 export function applyDiscovery(
   context: FaceRequestContext,
@@ -1043,6 +1134,30 @@ export function applyDiscovery(
       ticket.artifact.artifact_hash !== context.binding.artifactHash
     ) {
       return fail("invalid_request", 400);
+    }
+    if (ticket.elsewhere) {
+      const identity = {
+        operationId: ticket.op,
+        operation: ticket.operation,
+        objectId: ticket.object_id,
+        caseId: ticket.case_id,
+      };
+      const held = readOtherHeldRuntimeWrites(
+        context.request,
+        context.scope,
+        now,
+      ).some((entry) => namesItem(entry, identity));
+      const key = foundKey(
+        context.owner.walletId,
+        context.binding.slug,
+        context.binding.programmeId,
+        identity,
+      );
+      const found = journal.found ?? [];
+      if (!held || found.includes(key)) continue;
+      journal = { ...journal, found: [...found, key].slice(-MAX_FOUND) };
+      marked += 1;
+      continue;
     }
     const own = journal.entries.find(
       (entry) =>

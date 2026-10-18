@@ -5,8 +5,9 @@ import {
   faceHandoverKindOfTask,
   readFaceHandover,
 } from "@/api/face-handover";
-import { withSelection } from "@/api/face-journal";
+import { launchCapacity, withSelection } from "@/api/face-journal";
 import { verifyFaceArtifact } from "@/api/face-artifact";
+import { discoverPinnedLaunches } from "@/api/product-face-recovery";
 import { toProductFaceApplication } from "@/api/product-face-registry";
 import { hostJourneyEnabled } from "@/api/wallet-host";
 import {
@@ -35,6 +36,24 @@ export async function GET(request: NextRequest, { params }: Params) {
       artifact.reason === "artifact_mismatch" ? 409 : 503,
     );
   }
+  // A new launch the budget would open read-only because other launches of
+  // this wallet hold runtime writes whose only correlation is their cookie:
+  // one read-only listing of the runtimes first. When it durably discovers
+  // them (contract r20 §2), this launch records them found and keeps its
+  // own cookie, and only a launch whose writes are then all discoverable
+  // makes room (api/face-journal.ts). Otherwise it stays read-only exactly
+  // as before. Nothing is resolved, re-sent or acknowledged here.
+  let journal = context.journal;
+  let capacity = context.capacity;
+  if (capacity === "read_only") {
+    const found = await discoverPinnedLaunches(context, request).catch(
+      () => [],
+    );
+    if (found.length > 0) {
+      journal = { ...journal, found };
+      capacity = launchCapacity(request, context.scope, Date.now(), found);
+    }
+  }
   // contract r14: on the register task the context read takes a pending
   // face handover for this programme exactly once (the cookie is cleared in
   // this response); the host hands it to the face in its initialize context.
@@ -52,7 +71,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   // session for a launch that can, within its own lifetime.
   const taskKind =
     handoverKind &&
-    context.capacity === "full" &&
+    capacity === "full" &&
     hostJourneyEnabled(handoverKind === "accept" ? "transfer" : "registration")
       ? handoverKind
       : undefined;
@@ -74,7 +93,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         : {}),
     },
     {
-      journal: withSelection(context.journal, { slug, cleared: true }),
+      journal: withSelection(journal, { slug, cleared: true }),
     },
   );
   applyFaceHandoverRead(response, handover);

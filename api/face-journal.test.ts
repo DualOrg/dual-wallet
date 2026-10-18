@@ -23,6 +23,7 @@ jest.mock("@/api/face-artifact", () => {
 import {
   FACE_JOURNAL_COOKIE_PREFIX,
   faceJournalCookieName,
+  foundKey,
   launchCapacity,
   launchWouldDropUnresolved,
   MAX_FACE_LAUNCHES,
@@ -667,6 +668,106 @@ describe("unresolved evidence is never dropped by the launch budget", () => {
         9_999,
       ),
     ).toBe("full");
+  });
+
+  it("counts another launch's held runtime write as discoverable only when a launch of the SAME wallet recorded exactly its identity found; then only that launch makes room", () => {
+    const jar: Record<string, string> = {};
+    const kinds: FaceJournalEntry[][] = [
+      [runtimeWrite],
+      [sentStep],
+      [entry],
+      [{ ...runtimeWrite, operationId: "runtime-op-0009" }],
+    ];
+    const names = kinds.map((entries, index) => {
+      const cookie = sealedFor(
+        index % 2 ? laterSession : earlierSession,
+        launch(index),
+        entries,
+        1_000 + index,
+      );
+      jar[cookie.name] = cookie.value;
+      return cookie.name;
+    });
+    const request = () => requestWith(jar);
+    expect(launchCapacity(request(), freshScope(), 9_999)).toBe("read_only");
+    const key = foundKey(
+      "wallet-1",
+      "morrow-home",
+      "morrow-home-arc",
+      runtimeWrite,
+    );
+    // Another case, operation or wallet names another write: nothing counts.
+    for (const other of [
+      foundKey("wallet-1", "morrow-home", "morrow-home-arc", {
+        ...runtimeWrite,
+        caseId: "case-other-0001",
+      }),
+      foundKey("wallet-1", "morrow-home", "morrow-home-arc", {
+        ...runtimeWrite,
+        operation: "case.evidence.submit",
+      }),
+      foundKey("wallet-2", "morrow-home", "morrow-home-arc", runtimeWrite),
+    ]) {
+      expect(launchCapacity(request(), freshScope(), 9_999, [other])).toBe(
+        "read_only",
+      );
+    }
+    // Recorded found by another wallet's launch: not this wallet's record.
+    const foreign = NextResponse.json({});
+    writeFaceJournal(
+      foreign,
+      emptyRequest(),
+      {
+        ...scope("launch-foreignforeignforeignforeign"),
+        owner: { sidHash: "sid-9", walletId: "wallet-2" },
+      },
+      { entries: [], selections: [], mints: [], found: [key] },
+      5_000,
+    );
+    const foreignCookie = foreign.cookies.get(
+      faceJournalCookieName("launch-foreignforeignforeignforeign"),
+    )!;
+    expect(
+      launchCapacity(
+        requestWith({ ...jar, [foreignCookie.name]: foreignCookie.value }),
+        freshScope(),
+        9_999,
+      ),
+    ).toBe("read_only");
+    // Exactly that write: the launch holding it is now discoverable.
+    expect(launchCapacity(request(), freshScope(), 9_999, [key])).toBe("full");
+    const response = NextResponse.json({});
+    expect(
+      writeFaceJournal(
+        response,
+        request(),
+        freshScope(),
+        { entries: [], selections: [], mints: [], found: [key] },
+        9_999,
+      ),
+    ).toEqual({ persisted: true });
+    // Only the launch holding the found write goes; the found key is sealed
+    // in the new launch's own cookie, and no other cookie is rewritten.
+    expect(
+      response.cookies
+        .getAll()
+        .filter((cookie) => cookie.value === "")
+        .map((cookie) => cookie.name),
+    ).toEqual([names[0]]);
+    const written = response.cookies.get(faceJournalCookieName(fresh))!;
+    expect(
+      response.cookies
+        .getAll()
+        .filter((cookie) => cookie.value !== "")
+        .map((cookie) => cookie.name),
+    ).toEqual([written.name]);
+    expect(
+      readFaceJournal(
+        requestWith({ [written.name]: written.value }),
+        freshScope(),
+        9_999,
+      ),
+    ).toEqual({ entries: [], selections: [], mints: [], found: [key] });
   });
 
   it("drops the oldest launch holding only a discoverable runtime write before anything of this wallet's is refused: the exact runtime confirmed it holds that record", () => {

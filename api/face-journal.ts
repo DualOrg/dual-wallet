@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import type { NextRequest, NextResponse } from "next/server";
 import { sealForPurpose, unsealForPurpose } from "@/api/server-session";
 import {
@@ -35,6 +36,14 @@ const LAUNCH_TTL_SECONDS = 24 * 60 * 60;
  */
 export const MAX_OUTSTANDING_ASSERTIONS = 10;
 
+/**
+ * Durable discoveries one launch keeps of OTHER launches' held runtime
+ * writes (FaceJournal.found); beyond this the oldest is forgotten, which
+ * only makes that other launch's write count as held again.
+ */
+export const MAX_FOUND = 8;
+const FOUND_KEY = /^[A-Za-z0-9_-]{43}$/;
+
 /** Journal cookies are per launch: `<prefix><launch id>`. */
 export const FACE_JOURNAL_COOKIE_PREFIX = isProduction
   ? "__Host-dual_face_launch_"
@@ -65,6 +74,16 @@ export interface FaceJournal {
   selections: FaceSelection[];
   /** Expiry times (ms) of assertions minted for this launch. */
   mints: number[];
+  /**
+   * Held runtime writes of OTHER launches of this wallet, face and
+   * programme that a complete, validated recovery listing from the runtime
+   * serving them named exactly (contract r20 §2), as foundKey values: their
+   * records are in that runtime's durable, actor-scoped discovery, so the
+   * launch budget may treat those launches as discoverable (never as
+   * holding a write's only correlation). Never an outcome: nothing is
+   * resolved, settled, re-sent or acknowledged by it. Absent when none.
+   */
+  found?: string[];
 }
 
 export interface FaceJournalOwner {
@@ -91,6 +110,7 @@ interface SealedJournal {
   entries: SealedEntry[];
   selection: Omit<FaceSelection, "slug"> | null;
   mints: number[];
+  found?: string[];
   at: number;
 }
 
@@ -124,6 +144,49 @@ function parseSelection(
 }
 
 const sealPurpose = (launchId: string) => `${PURPOSE}:${launchId}`;
+
+/** The identity of one runtime write, as a held journal entry names it. */
+export interface RuntimeWriteIdentity {
+  operationId: string;
+  operation: string;
+  objectId: string;
+  caseId?: string | null;
+}
+
+/**
+ * One held runtime write's discovery key: its exact identity (operation id,
+ * operation, unit and case) for one wallet, face and programme. Sealed in
+ * the discovering launch's own cookie; no operation content.
+ */
+export function foundKey(
+  walletId: string,
+  slug: string,
+  programmeId: string,
+  write: RuntimeWriteIdentity,
+) {
+  return createHash("sha256")
+    .update(
+      [
+        "dual-face-found-v1",
+        walletId,
+        slug,
+        programmeId,
+        write.operationId,
+        write.operation,
+        write.objectId,
+        write.caseId ?? "",
+      ].join("\n"),
+    )
+    .digest("base64url");
+}
+
+function parseFound(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const keys = value.filter(
+    (key): key is string => typeof key === "string" && FOUND_KEY.test(key),
+  );
+  return [...new Set(keys)].slice(-MAX_FOUND);
+}
 
 function unsealLaunch(
   launchId: string,
@@ -194,6 +257,7 @@ export function readFaceJournal(
     return emptyFaceJournal();
   }
   const selection = parseSelection(sealed.selection, scope.slug);
+  const found = parseFound(sealed.found);
   return {
     entries: sealedEntries(sealed, scope.slug, scope.programmeId, now),
     selections: selection ? [selection] : [],
@@ -203,6 +267,7 @@ export function readFaceJournal(
             typeof expiry === "number" && expiry > now,
         )
       : [],
+    ...(found.length > 0 ? { found } : {}),
   };
 }
 
@@ -248,6 +313,22 @@ export function readFaceTransferHistory(
   );
 }
 
+/**
+ * The held runtime writes (an assertion issued, the runtime's record not
+ * yet seen: heldRuntimeWrite) in this browser's OTHER launch journals of
+ * this same wallet, face and programme, under the same seal and wallet
+ * checks as readFaceHistory. Read only to name them to a recovery listing
+ * of this launch (FaceJournal.found); never rebound, re-sealed, rewritten,
+ * resolved or sent.
+ */
+export function readOtherHeldRuntimeWrites(
+  request: NextRequest,
+  scope: FaceJournalScope,
+  now = Date.now(),
+): FaceJournalEntry[] {
+  return historyEntries(request, scope, now).filter(heldRuntimeWrite);
+}
+
 function historyEntries(
   request: NextRequest,
   scope: FaceJournalScope,
@@ -278,9 +359,16 @@ function historyEntries(
  * issued, whose outcome the wallet never learns. The launch cookie holding
  * it is the wallet's only record of it.
  */
-function unresolvedEvidence(entry: FaceJournalEntry) {
-  return signedEvidence(entry) || heldRuntimeWrite(entry);
+function unresolvedEvidence(entry: FaceJournalEntry, found: Found = none) {
+  return signedEvidence(entry) || (heldRuntimeWrite(entry) && !found(entry));
 }
+
+/**
+ * Whether a launch of this wallet recorded a durable discovery of this held
+ * runtime write (FaceJournal.found): it then counts as discoverable.
+ */
+type Found = (entry: FaceJournalEntry) => boolean;
+const none: Found = () => false;
 
 /**
  * (a) and (b): the wallet's only record that a holder-signed Dual action may
@@ -310,15 +398,19 @@ function heldRuntimeWrite(entry: FaceJournalEntry) {
 
 /**
  * A runtime write the exact runtime confirmed it holds durably
- * (`discoverable`, contract r20): recoverable from the runtime's own record
- * for this actor, so its cookie is expendable. Kept ahead of finished and
- * empty launches, dropped before nothing else.
+ * (`discoverable`, contract r20, marked in its own launch or recorded found
+ * by another launch of the same wallet): recoverable from the runtime's own
+ * record for this actor, so its cookie is expendable. Kept ahead of
+ * finished and empty launches, dropped before nothing else.
  */
-function discoverableRuntimeWrite(entry: FaceJournalEntry) {
+function discoverableRuntimeWrite(
+  entry: FaceJournalEntry,
+  found: Found = none,
+) {
   return (
     entry.kind === "runtime" &&
     entry.phase === "assertion_issued" &&
-    entry.discoverable === true
+    (entry.discoverable === true || found(entry))
   );
 }
 
@@ -342,9 +434,14 @@ function ownEntries(sealed: Partial<SealedJournal>, now: number) {
  * such an operation is read back from (readFaceHistory,
  * readFaceTransferHistory).
  */
-function holdsUnresolvedHistory(sealed: Partial<SealedJournal>, now: number) {
+function holdsUnresolvedHistory(
+  sealed: Partial<SealedJournal>,
+  now: number,
+  found: Found = none,
+) {
   return ownEntries(sealed, now).some(
-    (entry) => recoverableRegistration(entry) || unresolvedEvidence(entry),
+    (entry) =>
+      recoverableRegistration(entry) || unresolvedEvidence(entry, found),
   );
 }
 
@@ -358,10 +455,18 @@ function holdsUnresolvedHistory(sealed: Partial<SealedJournal>, now: number) {
  * persists a new, usually empty, launch; recency alone would let those evict
  * the evidence a result page or a progress read is still reading.
  */
-function retentionRank(sealed: Partial<SealedJournal>, now: number) {
+function retentionRank(
+  sealed: Partial<SealedJournal>,
+  now: number,
+  found: Found = none,
+) {
   const entries = ownEntries(sealed, now);
-  if (entries.some(unresolvedEvidence)) return SIGNED_RANK;
-  if (entries.some(discoverableRuntimeWrite)) return RUNTIME_WRITE_RANK;
+  if (entries.some((entry) => unresolvedEvidence(entry, found))) {
+    return SIGNED_RANK;
+  }
+  if (entries.some((entry) => discoverableRuntimeWrite(entry, found))) {
+    return RUNTIME_WRITE_RANK;
+  }
   return entries.some(
     (entry) => entry.phase !== "settled" && entry.phase !== "cancelled",
   )
@@ -392,19 +497,25 @@ function otherLaunches(
   request: NextRequest,
   scope: FaceJournalScope,
   now: number,
+  found: readonly string[] = [],
 ): LaunchRetention[] {
+  const discovered = foundMarkers(request, scope, found);
   return launchCookies(request)
     .filter(([launchId]) => launchId !== scope.launchId)
     .map(([launchId, value], order) => {
       const opened = openLaunch(launchId, value);
+      const wallet = opened?.wallet;
+      const isFound: Found = (entry) =>
+        typeof wallet === "string" &&
+        discovered.has(foundKey(wallet, entry.slug, entry.programmeId, entry));
       const kept =
         opened?.wallet === scope.owner.walletId &&
         (opened.sid === scope.owner.sidHash ||
-          holdsUnresolvedHistory(opened, now));
+          holdsUnresolvedHistory(opened, now, isFound));
       return {
         launchId,
         at: kept && typeof opened.at === "number" ? opened.at : -1,
-        rank: kept ? retentionRank(opened, now) : -1,
+        rank: kept ? retentionRank(opened, now, isFound) : -1,
         order,
       };
     })
@@ -414,6 +525,25 @@ function otherLaunches(
         right.at - left.at ||
         right.order - left.order,
     );
+}
+
+/**
+ * Every durable discovery this wallet's launches recorded (their own sealed
+ * FaceJournal.found, this launch's included), plus `extra`: the journal
+ * this launch is about to write.
+ */
+function foundMarkers(
+  request: NextRequest,
+  scope: FaceJournalScope,
+  extra: readonly string[],
+) {
+  const found = new Set(parseFound(extra));
+  for (const [launchId, value] of launchCookies(request)) {
+    const opened = openLaunch(launchId, value);
+    if (opened?.wallet !== scope.owner.walletId) continue;
+    for (const key of parseFound(opened.found)) found.add(key);
+  }
+  return found;
 }
 
 /** Whether the budget would drop this launch (not counting unresolved ones). */
@@ -431,14 +561,19 @@ const holdsUnresolved = (other: LaunchRetention) =>
  * room without dropping a launch holding never-dropped evidence; otherwise
  * it runs read-only: it opens and reads, nothing of it is persisted, and
  * every request that would have to journal is refused launch_capacity.
+ * `found`: the durable discoveries the journal about to be written records
+ * (FaceJournal.found), counted with those already sealed.
  */
 export function launchCapacity(
   request: NextRequest,
   scope: FaceJournalScope,
   now = Date.now(),
+  found: readonly string[] = [],
 ): "full" | "read_only" {
   if (request.cookies.has(faceJournalCookieName(scope.launchId))) return "full";
-  return launchWouldDropUnresolved(request, scope, now) ? "read_only" : "full";
+  return launchWouldDropUnresolved(request, scope, now, found)
+    ? "read_only"
+    : "full";
 }
 
 /**
@@ -448,14 +583,17 @@ export function launchCapacity(
  * drop decision for this request. The face routes refuse such a request
  * (launch_capacity) before any work: nothing is read, minted, journaled or
  * sent. An existing launch's own cookie is not among the others, so normally
- * only a new launch is refused. Pure: it reads the request only.
+ * only a new launch is refused. A held runtime write that a launch of this
+ * wallet recorded found (FaceJournal.found) counts as discoverable. Pure: it
+ * reads the request (and `found`) only.
  */
 export function launchWouldDropUnresolved(
   request: NextRequest,
   scope: FaceJournalScope,
   now = Date.now(),
+  found: readonly string[] = [],
 ) {
-  return otherLaunches(request, scope, now).some(
+  return otherLaunches(request, scope, now, found).some(
     (other, index) => overBudget(other, index) && holdsUnresolved(other),
   );
 }
@@ -492,8 +630,12 @@ export function writeFaceJournal(
   now = Date.now(),
 ): { persisted: boolean } {
   // A read-only launch (launchCapacity): nothing of it is persisted and no
-  // other launch is touched, so no never-dropped evidence can be lost.
-  if (launchCapacity(request, scope, now) === "read_only") {
+  // other launch is touched, so no never-dropped evidence can be lost. The
+  // durable discoveries this journal records count (FaceJournal.found): a
+  // new launch whose listing found the held writes pinning the budget gets
+  // its cookie, and only such a now-discoverable launch makes room.
+  const found = parseFound(journal.found);
+  if (launchCapacity(request, scope, now, found) === "read_only") {
     return { persisted: false };
   }
   const selection = journal.selections.find((item) => item.slug === scope.slug);
@@ -519,6 +661,7 @@ export function writeFaceJournal(
         }
       : null,
     mints: journal.mints,
+    ...(found.length > 0 ? { found } : {}),
     at: now,
   };
   response.cookies.set(
@@ -534,7 +677,7 @@ export function writeFaceJournal(
   // need that before any work (launchWouldDropUnresolved, launch_capacity),
   // so skipping it here is defence in depth and not reached in practice.
   // Unreadable and other wallets' cookies are still dropped.
-  otherLaunches(request, scope, now).forEach((other, index) => {
+  otherLaunches(request, scope, now, found).forEach((other, index) => {
     if (overBudget(other, index) && !holdsUnresolved(other)) {
       response.cookies.set(
         `${FACE_JOURNAL_COOKIE_PREFIX}${other.launchId}`,
