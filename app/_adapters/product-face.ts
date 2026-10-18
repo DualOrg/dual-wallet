@@ -72,6 +72,14 @@ export function toProgrammeUnitFacts(
   };
 }
 
+/** The action's own record says it touched exactly this object. */
+export function touchesObject(log: ActionLog, objectId: string) {
+  return (
+    Array.isArray(log.affectedObjects) &&
+    log.affectedObjects.some((affected) => affected?.id === objectId)
+  );
+}
+
 export function toProductHistoryEntry(log: ActionLog): ProductHistoryEntry {
   return {
     actionId: log.id,

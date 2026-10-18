@@ -5,6 +5,7 @@ import {
   toProductAttribute,
   toProductHistoryEntry,
   toProgrammeProduct,
+  touchesObject,
 } from "@/app/_adapters/product-face";
 import {
   isRegistrationStatus,
@@ -696,17 +697,46 @@ export function readProgrammeProductAttributes(
   });
 }
 
+/** One product's history: at most this many entries, from at most this many pages. */
+const HISTORY_ENTRIES = 25;
+const HISTORY_PAGES = 8;
+
+/**
+ * The exact product's own history, newest first: only actions whose own
+ * affected objects name this object. The list's object_id filter narrows the
+ * read but is never trusted alone (a live list answered with the account's
+ * other actions), so every entry is checked. Pages are read until 25 entries
+ * are found, the list ends, or HISTORY_PAGES pages were checked; what was
+ * found by then is exactly this object's newest actions. If none was found
+ * and the list had not ended, the history is not known, so it is refused as
+ * unavailable, never shown as empty.
+ */
 export function readProgrammeProductHistory(
   objectId: string,
 ): Promise<ProductHistoryEntry[]> {
   return sdkCall(async () => {
-    const result = await getEbusApi().listActionLogs({
-      objectId,
-      limit: 25,
-      order: "desc",
-      sortBy: "when_created",
-    });
-    return result.actionLogs.map(toProductHistoryEntry);
+    const entries: ProductHistoryEntry[] = [];
+    const seen = new Set<string>();
+    let next: string | undefined;
+    for (let page = 0; page < HISTORY_PAGES; page += 1) {
+      const result = await getEbusApi().listActionLogs({
+        objectId,
+        limit: 25,
+        order: "desc",
+        sortBy: "when_created",
+        next,
+      });
+      for (const log of result.actionLogs) {
+        if (seen.has(log.id) || !touchesObject(log, objectId)) continue;
+        seen.add(log.id);
+        entries.push(toProductHistoryEntry(log));
+        if (entries.length === HISTORY_ENTRIES) return entries;
+      }
+      next = result.next || undefined;
+      if (!next) return entries;
+    }
+    if (!entries.length) throw new ProductFaceError("temporarily_unavailable");
+    return entries;
   });
 }
 
