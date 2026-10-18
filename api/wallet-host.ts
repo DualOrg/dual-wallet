@@ -291,6 +291,22 @@ export function isEntranceHost(rawHost: string) {
 const COMMIT = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
 
 /**
+ * The engine commit this deployment runs: the one its build recorded from the
+ * source it built (WALLET_ENGINE_BUILD_COMMIT, inlined at build by
+ * next.config.ts from api/engine-build-commit.ts), else the platform's runtime
+ * VERCEL_GIT_COMMIT_SHA, else null. Never a value set on the deployment.
+ */
+function engineCommit(): string | null {
+  for (const value of [
+    process.env.WALLET_ENGINE_BUILD_COMMIT,
+    process.env.VERCEL_GIT_COMMIT_SHA,
+  ]) {
+    if (value && COMMIT.test(value)) return value;
+  }
+  return null;
+}
+
+/**
  * GET /api/host/configuration: what this deployment serves, for Studio and
  * Root to compare with the approved configuration and engine release. Public
  * and secret-free: identifiers, hashes and booleans only.
@@ -298,7 +314,6 @@ const COMMIT = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
 export function hostReadback() {
   const host = walletHost();
   const configuration = host.status === "active" ? host.configuration : null;
-  const commit = process.env.VERCEL_GIT_COMMIT_SHA;
   return {
     schema: HOST_CONFIGURATION_SCHEMA,
     brandId: configuration?.brand.id ?? null,
@@ -307,10 +322,7 @@ export function hostReadback() {
     configurationSha256:
       host.status === "absent" ? null : host.configurationSha256,
     configVersion: configuration?.release.configVersion ?? null,
-    engine: {
-      version: packageJson.version,
-      commit: commit && COMMIT.test(commit) ? commit : null,
-    },
+    engine: { version: packageJson.version, commit: engineCommit() },
     journeys: configuration ? { ...configuration.journeys } : null,
     faces: configuration ? [...configuration.faces] : null,
     status: host.status,

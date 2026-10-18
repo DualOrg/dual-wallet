@@ -372,6 +372,7 @@ describe("journeys, pages and faces", () => {
 
 describe("GET /api/host/configuration", () => {
   const COMMIT = "0123456789abcdef0123456789abcdef01234567";
+  const BUILT = "3d23daf2c04c6e9ace6ab00f4fc3f5d7aab94a6f";
   const readback = async () => {
     const response = readbackGET();
     expect(response.headers.get("cache-control")).toBe("no-store");
@@ -417,6 +418,43 @@ describe("GET /api/host/configuration", () => {
       faces: ["tidewell-care"],
       status: "active",
     });
+  });
+
+  it("reads back the commit its build recorded when the platform supplies none at runtime", async () => {
+    // A CLI or prebuilt deployment of a project not linked to the repository.
+    applyHostEnvironment(
+      hostEnvironment(tidewellDocument(), {
+        WALLET_ENGINE_BUILD_COMMIT: BUILT,
+      }),
+    );
+    expect((await readback()).engine).toEqual({
+      version: packageJson.version,
+      commit: BUILT,
+    });
+  });
+
+  it("prefers the built commit to the runtime platform value, and falls back to it", async () => {
+    applyHostEnvironment(
+      hostEnvironment(tidewellDocument(), {
+        WALLET_ENGINE_BUILD_COMMIT: BUILT,
+        VERCEL_GIT_COMMIT_SHA: COMMIT,
+      }),
+    );
+    expect((await readback()).engine.commit).toBe(BUILT);
+    applyHostEnvironment(
+      hostEnvironment(tidewellDocument(), {
+        WALLET_ENGINE_BUILD_COMMIT: "",
+        VERCEL_GIT_COMMIT_SHA: COMMIT,
+      }),
+    );
+    expect((await readback()).engine.commit).toBe(COMMIT);
+    applyHostEnvironment(
+      hostEnvironment(tidewellDocument(), {
+        WALLET_ENGINE_BUILD_COMMIT: "3d23daf",
+        VERCEL_GIT_COMMIT_SHA: "not-a-commit",
+      }),
+    );
+    expect((await readback()).engine.commit).toBeNull();
   });
 
   it("reads back an invalid configuration by status and hash only", async () => {

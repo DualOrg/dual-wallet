@@ -258,6 +258,7 @@ export interface HostEnvironment {
   WALLET_HOST_BUILD_CONFIGURATION_SHA256?: string;
   WALLET_HOST_BUILD_FACE_APPLICATIONS_SHA256?: string;
   VERCEL_GIT_COMMIT_SHA?: string;
+  WALLET_ENGINE_BUILD_COMMIT?: string;
 }
 
 const HOST_KEYS: (keyof HostEnvironment)[] = [
@@ -268,6 +269,7 @@ const HOST_KEYS: (keyof HostEnvironment)[] = [
   "WALLET_HOST_BUILD_CONFIGURATION_SHA256",
   "WALLET_HOST_BUILD_FACE_APPLICATIONS_SHA256",
   "VERCEL_GIT_COMMIT_SHA",
+  "WALLET_ENGINE_BUILD_COMMIT",
 ];
 
 /** The environment of one brand host deployment (the only per-brand input). */

@@ -21,7 +21,7 @@ Without a host configuration the deployment is the generic wallet, unchanged.
 | `PRODUCT_FACE_APPLICATIONS`                                             | value, build input | Studio (face publication)     | The face registry; it must hold every face the configuration names. It also feeds the CSP `frame-src`, unchanged. |
 | `API_URL`                                                               | value              | Root                          | As for the generic wallet.                                                                                        |
 | `SESSION_SECRET`, `FACE_ASSERTION_SIGNING_KEY`, `FACE_ASSERTION_KEY_ID` | **secrets**        | Root (per host, never Studio) | Own values per host. Stable across redeploys of that host.                                                        |
-| `VERCEL_GIT_COMMIT_SHA`                                                 | platform           | Vercel                        | Read back as `engine.commit`.                                                                                     |
+| `VERCEL_GIT_COMMIT_SHA`                                                 | platform           | Vercel                        | Read back as `engine.commit` only when the build recorded none (see below).                                       |
 | `DEFAULT_ORGANIZATION_ID`, `VIEWER_BASE_DOMAIN`                         | ignored            | -                             | A configured host resolves exactly its entrance organisation; neither applies.                                    |
 
 Leave both host variables unset (or empty) for the generic wallet. Setting
@@ -291,7 +291,10 @@ address and in every state:
   "origin": "https://wallet.morrow.example",
   "configurationSha256": "<the pin of the configuration served>",
   "configVersion": "1.0.0",
-  "engine": { "version": "0.1.0", "commit": "<VERCEL_GIT_COMMIT_SHA or null>" },
+  "engine": {
+    "version": "0.1.0",
+    "commit": "<the built engine commit or null>"
+  },
   "journeys": {
     "registration": true,
     "myProducts": true,
@@ -303,6 +306,15 @@ address and in every state:
   "status": "active"
 }
 ```
+
+`engine.commit` is the commit the build recorded from the source it built:
+the HEAD of a clean git checkout of exactly the built directory (a local or
+prebuilt build, `vercel build` then `vercel deploy --prebuilt`), else the
+platform's build-time `VERCEL_GIT_COMMIT_SHA` (a Git-integration build, which
+has no checkout). A dirty checkout records nothing. With no recorded commit it
+is the runtime `VERCEL_GIT_COMMIT_SHA`, which a CLI or prebuilt deployment of
+a project not linked to the repository does not get, else `null`. Nothing set on a deployment supplies
+it. `.vercel` is ignored, so the CLI's own folder never makes a checkout dirty.
 
 `invalid` carries only `schema`, `engine`, `status` and the
 `configurationSha256` of the configuration actually present (null when none);

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
+import { engineBuildCommit } from "./api/engine-build-commit";
 import { productFaceFrameOrigins } from "./api/product-face-binding";
 
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -28,11 +29,18 @@ const hostBuildFaceApplicationsSha256 = hostConfiguration
   ? sha256(process.env.PRODUCT_FACE_APPLICATIONS ?? "")
   : "";
 
+// The engine commit this build is made from, read back as engine.commit
+// (api/engine-build-commit.ts): recorded here because a CLI or prebuilt
+// deployment of a project not linked to the repository has no runtime
+// VERCEL_GIT_COMMIT_SHA. "" when the source is not a clean, exact checkout.
+const engineCommit = engineBuildCommit();
+
 const nextConfig: NextConfig = {
   output: "standalone",
   env: {
     WALLET_HOST_BUILD_CONFIGURATION_SHA256: hostBuildSha256,
     WALLET_HOST_BUILD_FACE_APPLICATIONS_SHA256: hostBuildFaceApplicationsSha256,
+    WALLET_ENGINE_BUILD_COMMIT: engineCommit,
   },
   poweredByHeader: false,
   images: {
