@@ -28,8 +28,9 @@ The wallet cannot check the ID before sign-in, because `GET /organizations/{orga
 ## Route ownership
 
 - Public user routes: `/login`, `/register`, `/verify`, `/otp`, `/forgot-password`, `/reset-password`, each carrying `/<organization-id>` in front once an organization is known
-- Authenticated user routes: `/inventory`, `/inventory/[objectId]`, `/activity`, `/settings`
+- Authenticated user routes: `/inventory`, `/inventory/[objectId]`, `/activity`, `/settings`, `/products`, `/products/[slug]/[[...task]]`
 - BFF auth boundary: `/api/session/**`
+- Product application BFF: `/api/faces/[slug]/**` (context with artifact verification, unit facts, selection, operation journal, status, assertions, settle proposal)
 - Allow-listed SDK transport: `/api/backend/**`
 - Public display boundary: `/api/public/objects/[objectId]/display/[variant]`
 

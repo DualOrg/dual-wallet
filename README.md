@@ -63,13 +63,27 @@ host mapping such as `wallet.customer.com` or a tenant-label mapping such as
 `customer` in `api/tenant.ts` as organizations are introduced. Exact hosts win
 over labels, and all unknown hosts and labels fall back to `*`.
 
+### Branded wallet hosts
+
+A deployment with `WALLET_HOST_CONFIGURATION` (and its pin
+`WALLET_HOST_CONFIGURATION_SHA256`) is a branded host: it resolves exactly its
+configured organisation on exactly its configured origin, renders the brand's
+validated identity, and serves only its enabled journeys. None of the mappings
+above apply to it. See [branded wallet hosts](./docs/branded-wallet-hosts.md).
+
 ## Local development
 
 ```bash
 cp .env.example .env.local
 npm ci
-npm run dev
+SESSION_SECRET="$(openssl rand -base64 32)" npm run dev
 ```
+
+`SESSION_SECRET` is required in every environment: there is no fallback key,
+and without a valid one sign-in and every session route answer
+`503 session_unavailable`. Set it in `.env.local` to keep local sign-ins across
+restarts, or pass an ephemeral one as above. The unit and e2e suites generate
+their own ephemeral key per run.
 
 Open [http://demo.localhost:3000](http://demo.localhost:3000) or [http://localhost:3000](http://localhost:3000). Both currently resolve to the wildcard organization.
 
@@ -91,6 +105,11 @@ Development also allows `http://localhost:4100` and `http://127.0.0.1:4100`. The
 - Forgot/reset password
 - Kernel smart-account inventory, object details and versioned action logs
 - External face `card` views in inventory and `detail` views on object pages
+- Programme product applications at `/products` and
+  `/products/<slug>/<task>`: register a product, use its care, history and
+  service tasks, and settle a pending registration, with wallet-owned
+  confirmations and canonical readback; a face-enabled handover link opens the
+  register task through sign-in at `/products/<slug>/handover`
 - Profile/language updates and account deletion
 
 Operator and admin surfaces are intentionally outside this app shell and can be added as a separate role-gated area later.
@@ -107,6 +126,15 @@ receives signatures, cookies, JWTs, or an arbitrary API proxy. The builder
 guide, DPP child, and protocol live in the sibling `external-faces` project.
 wallet-specific rendering, capability grants, file ownership, verification,
 and release impact are documented in
+[External-face integration](./docs/external-face-integration.md).
+
+Programme product applications (`dual-product-face-v1`, shared contract in
+`contracts/dual-product-face-v1.json`) are bound by the server-only
+`PRODUCT_FACE_APPLICATIONS` registry and pinned to a content-addressed,
+host-verified artifact. The wallet issues one-time Ed25519 assertions
+(`FACE_ASSERTION_SIGNING_KEY`, `FACE_ASSERTION_KEY_ID`; fail closed when
+absent) per runtime operation and keeps an operation journal in a sealed
+host-only cookie. See the product application section of
 [External-face integration](./docs/external-face-integration.md).
 
 Bridge internals are modular: `app/_lib/external-face-bridge/core/` owns the
@@ -150,7 +178,12 @@ The command records the source commit in `api/web-sdk/.source-commit`. It marks 
 npm run check
 npm run build
 npm run test:e2e
+npm run test:e2e:product-face
 ```
+
+`test:e2e:product-face` runs the actual wallet against a local fake `api-v3`
+and the pinned emitted Studio artifact with a labelled fake runtime on a second
+origin (`http://localhost:4101`); signing keys are generated per run.
 
 The Playwright suite contains deterministic mocked `api-v3` scenarios for email,
 EOA and passkey authentication, verification/recovery, tenant protection,
@@ -195,13 +228,14 @@ The session is a sealed cookie rather than process-local state, so instances no
 longer have to be pinned to one. `MAX_INSTANCES` still defaults to 1; raise it
 when you have picked a ceiling.
 
-**Set `SESSION_SECRET` for any real deployment.** Unset, sessions are sealed
-with a key derived from a constant in this repository — which is public, so it
-is not a secret and gives no tamper-evidence at all. Generate 32 bytes of base64
-with `openssl rand -base64 32`, store it in Secret Manager, and pass the secret
-name as `SESSION_SECRET_NAME`; the deploy target mounts it rather than putting
-it on the command line. Keep it stable across deploys, because changing it signs
-every wallet out.
+**`SESSION_SECRET` is required.** Without a valid key (32 bytes of base64) the
+wallet fails closed: nothing is sealed, existing cookies do not open, and sign-in
+and every session route answer `503 session_unavailable`. There is no derived or
+default key. Generate one with `openssl rand -base64 32`, store it in Secret
+Manager, and pass the secret name as `SESSION_SECRET_NAME`; the deploy target
+mounts it rather than putting it on the command line and refuses to deploy
+without it. Keep it stable across deploys, because changing it signs every
+wallet out.
 
 Wildcard tenant DNS and TLS routing remains an infrastructure concern and is not
 changed by these targets.

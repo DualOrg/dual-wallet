@@ -1,0 +1,682 @@
+{
+  "schemaVersion": "tig-product-face-conformance-v1",
+  "provenance": {
+    "generator": "scripts/qa/product-face-conformance-fixtures.mjs",
+    "studioCommit": "7a0aa19b7854bedf1cb8bea96a22b6eed2d1a24c",
+    "contractRevision": 16,
+    "providers": "LOCAL FAKE PROVIDERS (the Studio test world): fictional brand, products and wallets"
+  },
+  "canonicalRegistration": {
+    "stateField": "state",
+    "lifecycleTargetField": "lifecycle.target_state",
+    "settledStates": [
+      "Registered",
+      "Authenticity verified",
+      "In service",
+      "Transferred"
+    ],
+    "unconfirmedStates": ["Transfer pending"],
+    "endedStates": ["Recalled", "Stolen", "Retired"]
+  },
+  "release": {
+    "releaseId": "rel_9ece1173d7b42f16fcdd94a8955e71e8",
+    "applicationId": "studio.morrow-home",
+    "version": "1.0.0",
+    "artifactHash": "sha256:52dbc6673244810559f86e2900c9ce4976d4ab43d722cc90af0dbabb07312ffa"
+  },
+  "templates": {
+    "settle": {
+      "action": "update",
+      "inputPath": "data.custom",
+      "leaves": {
+        "action_hash": {
+          "runtimeIssued": "sha256_hex"
+        },
+        "action_type": {
+          "literal": "append_proof_event"
+        },
+        "app": {
+          "literal": "governed-workflow-studio"
+        },
+        "app_namespace": {
+          "literal": "7e80da49765959e8fc1f559a"
+        },
+        "browser_side_dual_writes": {
+          "literal": false
+        },
+        "client_action_id": {
+          "runtimeIssued": "token"
+        },
+        "dual_labs_org_id": {
+          "literal": "6a1a927534603174374c8ecf"
+        },
+        "dual_object_id": {
+          "unchanged": true
+        },
+        "idempotency_key": {
+          "runtimeIssued": "token"
+        },
+        "lifecycle.action_id": {
+          "runtimeIssued": "token"
+        },
+        "lifecycle.current_state": {
+          "enum": ["Authenticity verified"]
+        },
+        "lifecycle.target_state": {
+          "enum": ["Authenticity verified"]
+        },
+        "live_write_boundary": {
+          "literal": "server_side_operator_gated_generated_app_dual_action"
+        },
+        "operation_id": {
+          "runtimeIssued": "token"
+        },
+        "passport_face_projection": {
+          "literal": true
+        },
+        "pattern": {
+          "literal": null
+        },
+        "product_title": {
+          "unchanged": true
+        },
+        "proof_event.event_hash": {
+          "runtimeIssued": "sha256_prefixed"
+        },
+        "proof_event.event_type": {
+          "literal": "product-passport_verify_authenticity"
+        },
+        "proof_event.private_evidence_referenced_only": {
+          "literal": true
+        },
+        "proof_event.public_fields": {
+          "runtimeIssued": "public_fields"
+        },
+        "proof_model_hash": {
+          "runtimeIssued": "sha256_hex"
+        },
+        "public_writes": {
+          "literal": false
+        },
+        "raw_payload_stored": {
+          "literal": false
+        },
+        "receipt.at": {
+          "runtimeIssued": "iso_time"
+        },
+        "receipt.hash": {
+          "runtimeIssued": "sha256_prefixed"
+        },
+        "receipt.id": {
+          "runtimeIssued": "token"
+        },
+        "receipt.label": {
+          "literal": "Product Passport · Verify authenticity"
+        },
+        "receipt.status": {
+          "enum": ["Authenticity verified"]
+        },
+        "recordId": {
+          "unchanged": true
+        },
+        "schema": {
+          "literal": "tig-dual-live-action-v1"
+        },
+        "serialNumber": {
+          "unchanged": true
+        },
+        "service_version": {
+          "literal": "dual-governed-workflow-studio-live-actions-v1"
+        },
+        "source_commit": {
+          "literal": null
+        },
+        "state": {
+          "enum": ["Authenticity verified"]
+        },
+        "template_id": {
+          "literal": "6abc3f71167e78a8c1419a01"
+        },
+        "title": {
+          "unchanged": true
+        },
+        "updated_at": {
+          "runtimeIssued": "iso_time"
+        },
+        "write_note": {
+          "literal": "Generated app proof event appended through server-controlled DUAL action."
+        }
+      },
+      "fromStates": ["Transfer pending"],
+      "targetStates": ["Authenticity verified"],
+      "preserveUnlisted": true
+    },
+    "transferRequest": {
+      "action": "update",
+      "inputPath": "data.custom",
+      "leaves": {
+        "action_hash": {
+          "runtimeIssued": "sha256_hex"
+        },
+        "action_type": {
+          "literal": "append_proof_event"
+        },
+        "app": {
+          "literal": "governed-workflow-studio"
+        },
+        "app_namespace": {
+          "literal": "7e80da49765959e8fc1f559a"
+        },
+        "browser_side_dual_writes": {
+          "literal": false
+        },
+        "client_action_id": {
+          "runtimeIssued": "token"
+        },
+        "dual_labs_org_id": {
+          "literal": "6a1a927534603174374c8ecf"
+        },
+        "dual_object_id": {
+          "unchanged": true
+        },
+        "idempotency_key": {
+          "runtimeIssued": "token"
+        },
+        "lifecycle.action_id": {
+          "runtimeIssued": "token"
+        },
+        "lifecycle.current_state": {
+          "enum": ["Transfer pending"]
+        },
+        "lifecycle.target_state": {
+          "enum": ["Transfer pending"]
+        },
+        "live_write_boundary": {
+          "literal": "server_side_operator_gated_generated_app_dual_action"
+        },
+        "operation_id": {
+          "runtimeIssued": "token"
+        },
+        "passport_face_projection": {
+          "literal": true
+        },
+        "pattern": {
+          "literal": null
+        },
+        "product_title": {
+          "unchanged": true
+        },
+        "proof_event.event_hash": {
+          "runtimeIssued": "sha256_prefixed"
+        },
+        "proof_event.event_type": {
+          "literal": "product-passport_request_transfer"
+        },
+        "proof_event.private_evidence_referenced_only": {
+          "literal": true
+        },
+        "proof_event.public_fields": {
+          "runtimeIssued": "public_fields"
+        },
+        "proof_model_hash": {
+          "runtimeIssued": "sha256_hex"
+        },
+        "public_writes": {
+          "literal": false
+        },
+        "raw_payload_stored": {
+          "literal": false
+        },
+        "receipt.at": {
+          "runtimeIssued": "iso_time"
+        },
+        "receipt.hash": {
+          "runtimeIssued": "sha256_prefixed"
+        },
+        "receipt.id": {
+          "runtimeIssued": "token"
+        },
+        "receipt.label": {
+          "literal": "Product Passport · Request ownership transfer"
+        },
+        "receipt.status": {
+          "enum": ["Transfer pending"]
+        },
+        "recordId": {
+          "unchanged": true
+        },
+        "schema": {
+          "literal": "tig-dual-live-action-v1"
+        },
+        "serialNumber": {
+          "unchanged": true
+        },
+        "service_version": {
+          "literal": "dual-governed-workflow-studio-live-actions-v1"
+        },
+        "source_commit": {
+          "literal": null
+        },
+        "state": {
+          "enum": ["Transfer pending"]
+        },
+        "template_id": {
+          "literal": "6abc3f71167e78a8c1419a01"
+        },
+        "title": {
+          "unchanged": true
+        },
+        "updated_at": {
+          "runtimeIssued": "iso_time"
+        },
+        "write_note": {
+          "literal": "Generated app proof event appended through server-controlled DUAL action."
+        }
+      },
+      "fromStates": ["Authenticity verified", "In service", "Transferred"],
+      "targetStates": ["Transfer pending"],
+      "preserveUnlisted": true
+    }
+  },
+  "settle": {
+    "holder": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "now": 1791977246912,
+    "fresh": {
+      "owner": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "custom": {
+        "app": "governed-workflow-studio",
+        "app_namespace": "7e80da49765959e8fc1f559a",
+        "runtime_instance_ref_hash": "sha256:d1de51b45cabbccee890aab5edaf1f16585cf931429836cbba0753bdb7ee7b91",
+        "schema": "tig-dual-live-action-v1",
+        "activation_type": "generated_app_dual_asset_mint",
+        "recipient_wallet_address": null,
+        "recordId": "itm-5897baa46d44",
+        "title": "Arc grinder",
+        "serialNumber": "ARC-0601",
+        "state": "Transfer pending",
+        "passport_face_projection": true,
+        "product_title": "Product Passport DUAL-native operating record",
+        "product_type": "product_passport",
+        "pattern": null,
+        "dual_asset": {
+          "schema_version": "tig-supercharged-purpose-object-v1",
+          "title": "Arc grinder",
+          "asset_label": "itm-5897baa46d44",
+          "product_type": "product_passport",
+          "pattern": null,
+          "representation": "Product Passport verified lifecycle",
+          "rights": [],
+          "proof_events": [],
+          "lifecycle_states": [
+            "Registered",
+            "Authenticity verified",
+            "In service",
+            "Transfer pending",
+            "Transferred",
+            "Recalled",
+            "Stolen",
+            "Retired"
+          ],
+          "proof_model": null,
+          "public_fields_only": true,
+          "raw_payload_stored": false
+        },
+        "proof_model_hash": "9a6bfdc752828f505723bba7eaf658ea8d4fd8ee5a7f329382cc65d934975e7b",
+        "activation_hash": "f2742aefd25de4b72c0a117a889a1a52a7f44c82a3ac3e8987b7a7d1f23957eb",
+        "client_action_id": "product-passport_request_transfer_request_transfer-8f9e9ba85d2c573f52d12e04",
+        "operation_id": "op_f5c39d0a9aaed56bc5ed203d37652cc3a9ef18c2",
+        "idempotency_key": "tig:dual-operation:f5c39d0a9aaed56bc5ed203d37652cc3a9ef18c2c3c05654e3e189f5b5448e9a",
+        "forge_receipt_hash": null,
+        "builder_pack_schema": "tig-generated-pack-v2",
+        "dual_labs_org_id": "6a1a927534603174374c8ecf",
+        "public_writes": false,
+        "browser_side_dual_writes": false,
+        "raw_payload_stored": false,
+        "live_write_boundary": "server_side_operator_gated_generated_app_dual_action",
+        "service_version": "dual-governed-workflow-studio-live-actions-v1",
+        "source_commit": null,
+        "updated_at": "2026-10-14T11:27:26.838Z",
+        "write_note": "Generated app proof event appended through server-controlled DUAL action.",
+        "action_type": "append_proof_event",
+        "dual_object_id": "6ab000000000000000000001",
+        "template_id": "6abc3f71167e78a8c1419a01",
+        "lifecycle": {
+          "current_state": "Transfer pending",
+          "target_state": "Transfer pending",
+          "action_id": "product-passport_request_transfer_request_transfer-8f9e9ba85d2c573f52d12e04"
+        },
+        "proof_event": {
+          "event_type": "product-passport_request_transfer",
+          "event_hash": "sha256:514696fb128e1a99aa16e407e9e3d2d098c6944f606f34607b5f620457ffdc1e",
+          "public_fields": [
+            "purpose:product-passport",
+            "recordId:itm-5897baa46d44",
+            "state:Transfer pending",
+            "event:request_transfer",
+            "receipt:ptr-d6811192d63b0ed13a733ab8",
+            "actorRole:owner",
+            "relationship:owner:request_transfer",
+            "nextRoles:brand_operator,owner",
+            "action:request_transfer",
+            "state:Transfer pending",
+            "receipt:ptr-d6811192d63b0ed13a733ab8",
+            "recipientReferenceHash:sha256:2ab5dacbc2bf4ea42cec8e5ebabbda85a2393a080f0963e10df5eaa00ce5a39f"
+          ],
+          "private_evidence_referenced_only": true
+        },
+        "receipt": {
+          "id": "ptr-d6811192d63b0ed13a733ab8",
+          "label": "Product Passport · Request ownership transfer",
+          "status": "Transfer pending",
+          "hash": "sha256:514696fb128e1a99aa16e407e9e3d2d098c6944f606f34607b5f620457ffdc1e",
+          "at": "2026-10-14T11:27:26.832Z"
+        },
+        "action_hash": "b55d4256e9efc7a6c9104392217e7409a86a29fa7974c80e179e3fce352f0b97"
+      }
+    },
+    "proposal": {
+      "status": "settle_proposed",
+      "proposal_id": "psp-0a0ba24978a8e7a801e74c08",
+      "operation_id": "reg-conformance-0001",
+      "object_id": "6ab000000000000000000001",
+      "action": "update",
+      "input": {
+        "data": {
+          "custom": {
+            "app": "governed-workflow-studio",
+            "app_namespace": "7e80da49765959e8fc1f559a",
+            "runtime_instance_ref_hash": "sha256:d1de51b45cabbccee890aab5edaf1f16585cf931429836cbba0753bdb7ee7b91",
+            "schema": "tig-dual-live-action-v1",
+            "activation_type": "generated_app_dual_asset_mint",
+            "recipient_wallet_address": null,
+            "recordId": "itm-5897baa46d44",
+            "title": "Arc grinder",
+            "serialNumber": "ARC-0601",
+            "state": "Authenticity verified",
+            "passport_face_projection": true,
+            "product_title": "Product Passport DUAL-native operating record",
+            "product_type": "product_passport",
+            "pattern": null,
+            "dual_asset": {
+              "schema_version": "tig-supercharged-purpose-object-v1",
+              "title": "Arc grinder",
+              "asset_label": "itm-5897baa46d44",
+              "product_type": "product_passport",
+              "pattern": null,
+              "representation": "Product Passport verified lifecycle",
+              "rights": [],
+              "proof_events": [],
+              "lifecycle_states": [
+                "Registered",
+                "Authenticity verified",
+                "In service",
+                "Transfer pending",
+                "Transferred",
+                "Recalled",
+                "Stolen",
+                "Retired"
+              ],
+              "proof_model": null,
+              "public_fields_only": true,
+              "raw_payload_stored": false
+            },
+            "proof_model_hash": "ce717eafe08cf650d548a48e53742ec6aa2d1df0da83fbeb2055c8766310e486",
+            "activation_hash": "f2742aefd25de4b72c0a117a889a1a52a7f44c82a3ac3e8987b7a7d1f23957eb",
+            "client_action_id": "product-passport_verify_authenticity_verify_authenticity-aa05c83d6a89ae3a7c8ab7ce",
+            "operation_id": "op_7f2ae80b2a6cbd516a524325a90daad36e8152d1",
+            "idempotency_key": "tig:dual-operation:7f2ae80b2a6cbd516a524325a90daad36e8152d14519ac86eb64cc76e6299602",
+            "forge_receipt_hash": null,
+            "builder_pack_schema": "tig-generated-pack-v2",
+            "dual_labs_org_id": "6a1a927534603174374c8ecf",
+            "public_writes": false,
+            "browser_side_dual_writes": false,
+            "raw_payload_stored": false,
+            "live_write_boundary": "server_side_operator_gated_generated_app_dual_action",
+            "service_version": "dual-governed-workflow-studio-live-actions-v1",
+            "source_commit": null,
+            "updated_at": "2026-10-14T11:27:26.934Z",
+            "write_note": "Generated app proof event appended through server-controlled DUAL action.",
+            "action_type": "append_proof_event",
+            "dual_object_id": "6ab000000000000000000001",
+            "template_id": "6abc3f71167e78a8c1419a01",
+            "lifecycle": {
+              "current_state": "Authenticity verified",
+              "target_state": "Authenticity verified",
+              "action_id": "product-passport_verify_authenticity_verify_authenticity-aa05c83d6a89ae3a7c8ab7ce"
+            },
+            "proof_event": {
+              "event_type": "product-passport_verify_authenticity",
+              "event_hash": "sha256:0d48b4017b34654376aa6b1109f30bf6f67e64af13d6d8f9631b39d826afda2b",
+              "public_fields": [
+                "purpose:product-passport",
+                "recordId:itm-5897baa46d44",
+                "state:Authenticity verified",
+                "event:verify_authenticity",
+                "receipt:ptr-d9ca50bd8aabb49ee4a10e71",
+                "actorRole:brand_operator",
+                "relationship:brand_operator:verify_authenticity",
+                "nextRoles:service_centre,brand_operator,owner",
+                "action:verify_authenticity",
+                "state:Authenticity verified",
+                "receipt:ptr-d9ca50bd8aabb49ee4a10e71"
+              ],
+              "private_evidence_referenced_only": true
+            },
+            "receipt": {
+              "id": "ptr-d9ca50bd8aabb49ee4a10e71",
+              "label": "Product Passport · Verify authenticity",
+              "status": "Authenticity verified",
+              "hash": "sha256:0d48b4017b34654376aa6b1109f30bf6f67e64af13d6d8f9631b39d826afda2b",
+              "at": "2026-10-14T11:27:26.931Z"
+            },
+            "action_hash": "4d0308ab26425c39fe49d602a01d0f786ab72c19794649bb72dfd42c6b350d5a"
+          }
+        }
+      },
+      "proposal_hash": "sha256:b6f00e1f66205eea5393e30aad60eb41a0b15cb282e4df68d032089b042fd22f",
+      "expires_at": "2026-10-14T11:42:26.903Z"
+    }
+  },
+  "transferRequest": {
+    "holder": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "recipient": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "now": 1791977246975,
+    "fresh": {
+      "owner": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "custom": {
+        "app": "governed-workflow-studio",
+        "app_namespace": "7e80da49765959e8fc1f559a",
+        "runtime_instance_ref_hash": "sha256:d1de51b45cabbccee890aab5edaf1f16585cf931429836cbba0753bdb7ee7b91",
+        "schema": "tig-dual-live-action-v1",
+        "activation_type": "generated_app_dual_asset_mint",
+        "recipient_wallet_address": null,
+        "recordId": "itm-5897baa46d44",
+        "title": "Arc grinder",
+        "serialNumber": "ARC-0601",
+        "state": "Authenticity verified",
+        "passport_face_projection": true,
+        "product_title": "Product Passport DUAL-native operating record",
+        "product_type": "product_passport",
+        "pattern": null,
+        "dual_asset": {
+          "schema_version": "tig-supercharged-purpose-object-v1",
+          "title": "Arc grinder",
+          "asset_label": "itm-5897baa46d44",
+          "product_type": "product_passport",
+          "pattern": null,
+          "representation": "Product Passport verified lifecycle",
+          "rights": [],
+          "proof_events": [],
+          "lifecycle_states": [
+            "Registered",
+            "Authenticity verified",
+            "In service",
+            "Transfer pending",
+            "Transferred",
+            "Recalled",
+            "Stolen",
+            "Retired"
+          ],
+          "proof_model": null,
+          "public_fields_only": true,
+          "raw_payload_stored": false
+        },
+        "proof_model_hash": "ce717eafe08cf650d548a48e53742ec6aa2d1df0da83fbeb2055c8766310e486",
+        "activation_hash": "f2742aefd25de4b72c0a117a889a1a52a7f44c82a3ac3e8987b7a7d1f23957eb",
+        "client_action_id": "product-passport_verify_authenticity_verify_authenticity-aa05c83d6a89ae3a7c8ab7ce",
+        "operation_id": "op_7f2ae80b2a6cbd516a524325a90daad36e8152d1",
+        "idempotency_key": "tig:dual-operation:7f2ae80b2a6cbd516a524325a90daad36e8152d14519ac86eb64cc76e6299602",
+        "forge_receipt_hash": null,
+        "builder_pack_schema": "tig-generated-pack-v2",
+        "dual_labs_org_id": "6a1a927534603174374c8ecf",
+        "public_writes": false,
+        "browser_side_dual_writes": false,
+        "raw_payload_stored": false,
+        "live_write_boundary": "server_side_operator_gated_generated_app_dual_action",
+        "service_version": "dual-governed-workflow-studio-live-actions-v1",
+        "source_commit": null,
+        "updated_at": "2026-10-14T11:27:26.934Z",
+        "write_note": "Generated app proof event appended through server-controlled DUAL action.",
+        "action_type": "append_proof_event",
+        "dual_object_id": "6ab000000000000000000001",
+        "template_id": "6abc3f71167e78a8c1419a01",
+        "lifecycle": {
+          "current_state": "Authenticity verified",
+          "target_state": "Authenticity verified",
+          "action_id": "product-passport_verify_authenticity_verify_authenticity-aa05c83d6a89ae3a7c8ab7ce"
+        },
+        "proof_event": {
+          "event_type": "product-passport_verify_authenticity",
+          "event_hash": "sha256:0d48b4017b34654376aa6b1109f30bf6f67e64af13d6d8f9631b39d826afda2b",
+          "public_fields": [
+            "purpose:product-passport",
+            "recordId:itm-5897baa46d44",
+            "state:Authenticity verified",
+            "event:verify_authenticity",
+            "receipt:ptr-d9ca50bd8aabb49ee4a10e71",
+            "actorRole:brand_operator",
+            "relationship:brand_operator:verify_authenticity",
+            "nextRoles:service_centre,brand_operator,owner",
+            "action:verify_authenticity",
+            "state:Authenticity verified",
+            "receipt:ptr-d9ca50bd8aabb49ee4a10e71"
+          ],
+          "private_evidence_referenced_only": true
+        },
+        "receipt": {
+          "id": "ptr-d9ca50bd8aabb49ee4a10e71",
+          "label": "Product Passport · Verify authenticity",
+          "status": "Authenticity verified",
+          "hash": "sha256:0d48b4017b34654376aa6b1109f30bf6f67e64af13d6d8f9631b39d826afda2b",
+          "at": "2026-10-14T11:27:26.931Z"
+        },
+        "action_hash": "4d0308ab26425c39fe49d602a01d0f786ab72c19794649bb72dfd42c6b350d5a"
+      }
+    },
+    "proposal": {
+      "status": "transfer_step_proposed",
+      "step": "request",
+      "proposal_id": "ptp-68cc996cf92b8ed1b2abcbce",
+      "offer_id": "pto-c4789c4e5d901c24298036cb",
+      "object_id": "6ab000000000000000000001",
+      "action": "update",
+      "input": {
+        "data": {
+          "custom": {
+            "app": "governed-workflow-studio",
+            "app_namespace": "7e80da49765959e8fc1f559a",
+            "runtime_instance_ref_hash": "sha256:d1de51b45cabbccee890aab5edaf1f16585cf931429836cbba0753bdb7ee7b91",
+            "schema": "tig-dual-live-action-v1",
+            "activation_type": "generated_app_dual_asset_mint",
+            "recipient_wallet_address": null,
+            "recordId": "itm-5897baa46d44",
+            "title": "Arc grinder",
+            "serialNumber": "ARC-0601",
+            "state": "Transfer pending",
+            "passport_face_projection": true,
+            "product_title": "Product Passport DUAL-native operating record",
+            "product_type": "product_passport",
+            "pattern": null,
+            "dual_asset": {
+              "schema_version": "tig-supercharged-purpose-object-v1",
+              "title": "Arc grinder",
+              "asset_label": "itm-5897baa46d44",
+              "product_type": "product_passport",
+              "pattern": null,
+              "representation": "Product Passport verified lifecycle",
+              "rights": [],
+              "proof_events": [],
+              "lifecycle_states": [
+                "Registered",
+                "Authenticity verified",
+                "In service",
+                "Transfer pending",
+                "Transferred",
+                "Recalled",
+                "Stolen",
+                "Retired"
+              ],
+              "proof_model": null,
+              "public_fields_only": true,
+              "raw_payload_stored": false
+            },
+            "proof_model_hash": "336de484f08743c2c5109ece099b0790fe8f5aa6e0fa3dae96ca1488ab2c15cc",
+            "activation_hash": "f2742aefd25de4b72c0a117a889a1a52a7f44c82a3ac3e8987b7a7d1f23957eb",
+            "client_action_id": "product-passport_request_transfer_request_transfer-0a52b8fb9f803a49932b9d39",
+            "operation_id": "op_99c839b1946a49a1b534a4ae3830336f1732ba95",
+            "idempotency_key": "tig:dual-operation:99c839b1946a49a1b534a4ae3830336f1732ba9592eca678211f2a39c0028155",
+            "forge_receipt_hash": null,
+            "builder_pack_schema": "tig-generated-pack-v2",
+            "dual_labs_org_id": "6a1a927534603174374c8ecf",
+            "public_writes": false,
+            "browser_side_dual_writes": false,
+            "raw_payload_stored": false,
+            "live_write_boundary": "server_side_operator_gated_generated_app_dual_action",
+            "service_version": "dual-governed-workflow-studio-live-actions-v1",
+            "source_commit": null,
+            "updated_at": "2026-10-14T11:27:27.014Z",
+            "write_note": "Generated app proof event appended through server-controlled DUAL action.",
+            "action_type": "append_proof_event",
+            "dual_object_id": "6ab000000000000000000001",
+            "template_id": "6abc3f71167e78a8c1419a01",
+            "lifecycle": {
+              "current_state": "Transfer pending",
+              "target_state": "Transfer pending",
+              "action_id": "product-passport_request_transfer_request_transfer-0a52b8fb9f803a49932b9d39"
+            },
+            "proof_event": {
+              "event_type": "product-passport_request_transfer",
+              "event_hash": "sha256:dc1d48df7f8270b7f11575dbf0bbc06499afab31c0822f4fc7572afe372ba9e0",
+              "public_fields": [
+                "purpose:product-passport",
+                "recordId:itm-5897baa46d44",
+                "state:Transfer pending",
+                "event:request_transfer",
+                "receipt:ptr-a41ec97fbd6d6d94548b9a2b",
+                "actorRole:owner",
+                "relationship:owner:request_transfer",
+                "nextRoles:brand_operator,owner",
+                "action:request_transfer",
+                "state:Transfer pending",
+                "receipt:ptr-a41ec97fbd6d6d94548b9a2b",
+                "recipientReferenceHash:sha256:68348462dd5b080d196f20d2775ac5478f4643ecc6d6cb395a12c131160df1fe"
+              ],
+              "private_evidence_referenced_only": true
+            },
+            "receipt": {
+              "id": "ptr-a41ec97fbd6d6d94548b9a2b",
+              "label": "Product Passport · Request ownership transfer",
+              "status": "Transfer pending",
+              "hash": "sha256:dc1d48df7f8270b7f11575dbf0bbc06499afab31c0822f4fc7572afe372ba9e0",
+              "at": "2026-10-14T11:27:27.005Z"
+            },
+            "action_hash": "a0c4fb808f573a9043ff38eef7cae51985b061dac00b9e18745ac82f06223c8d"
+          }
+        }
+      },
+      "proposal_hash": "sha256:8a27253d38b9ce3e5349b9d0565ee7cb0ced747862872532b13cdcdbecf0d14c",
+      "expires_at": "2026-10-14T11:42:27.005Z",
+      "recipient": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+    }
+  }
+}

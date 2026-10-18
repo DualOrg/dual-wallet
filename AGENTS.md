@@ -57,6 +57,13 @@ remains. Keep the guides synchronized with architectural changes.
   - `/verify`: wallet/account verification using the delivered code.
   - `/forgot-password`: request a password reset.
   - `/reset-password`: consume the reset token and set a new password.
+  - `/products/[slug]/handover`: the face handover entry (contract r14). It
+    strips a face handover ticket from its fragment, hands it to the BFF only
+    for a registry slug whose binding enables handover, and continues to
+    `/products/[slug]/register` (through sign-in when signed out). It is never
+    a sign-in return path. A G8 transfer acceptance (`#accept=<ticket>`,
+    contract r16) takes the same entry and continues to
+    `/products/[slug]/accept`.
 - The anonymous public object view lives in the sibling `../viewer`
   repository. This app serves no public object route; it keeps only the
   display proxy that its own authenticated faces load through.
@@ -70,8 +77,17 @@ remains. Keep the guides synchronized with architectural changes.
   - `/settings`: current wallet profile and account settings, authentication
     information that the API actually exposes, logout, and carefully confirmed
     destructive actions when implemented.
+  - `/products`: the programmes in the server-only product-application
+    registry, with no selected or owned object.
+  - `/products/[slug]/[[...task]]`: a programme's reviewed product application
+    full-size in a cross-origin iframe, with stable task links. Follow the
+    product application section of `docs/external-face-integration.md` and
+    `contracts/dual-product-face-v1.json`.
 - `/` redirects to `/inventory` for an authenticated session and `/login`
   otherwise. Authentication pages redirect authenticated users to inventory.
+  A branded host (`docs/branded-wallet-hosts.md`) renders its configured home
+  at `/` instead, lands signed-in visitors there, and serves only its enabled
+  journeys' pages.
 - The wallet is an end-user surface. Do not copy console administration,
   organization management, operational dashboards, or role-management screens
   from `console-app`.
@@ -87,6 +103,8 @@ remains. Keep the guides synchronized with architectural changes.
   - Inventory feature: `app/(authorized)/inventory/`
   - Activity feature: `app/(authorized)/activity/`
   - Settings feature: `app/(authorized)/settings/`
+  - Product application host: `app/(authorized)/products/`
+  - Product-face BFF routes: `app/api/faces/[slug]/`
   - Stable generated-DTO adapters: `app/_adapters/`
   - Domain models, errors, and view states: `app/_domain/`
   - Wallet use cases and transport orchestration: `app/_services/`
@@ -441,6 +459,19 @@ documents it links. Keep that guide synchronized with the code and tests.
   - `VIEWER_BASE_DOMAIN`: parent wallet domain. The left-most tenant subdomain
     is resolved by the server-owned map in `api/tenant.ts` to the organization
     ObjectID injected by the BFF into account operations.
+  - `PRODUCT_FACE_APPLICATIONS`: the product-application registry (JSON
+    array). Not secret, but never `NEXT_PUBLIC_*`; it is also a build input
+    for the exact CSP `frame-src` origins.
+  - `FACE_ASSERTION_SIGNING_KEY` and `FACE_ASSERTION_KEY_ID`: the Ed25519
+    signer for one-time product-face assertions. Secret; absent or invalid
+    fails closed with 503.
+  - `WALLET_HOST_CONFIGURATION` and `WALLET_HOST_CONFIGURATION_SHA256`: a
+    branded host's canonical configuration and its pin
+    (`docs/branded-wallet-hosts.md`). Not secret and also a build input.
+    Unset is the generic wallet, unchanged; present but invalid fails closed
+    (503 on every page and BFF route). A configured host resolves exactly its
+    entrance organisation and origin, never `DEFAULT_ORGANIZATION_ID` or the
+    host map.
 - Public build-time values only when browser code genuinely needs them:
   - `NEXT_PUBLIC_APP_URL`
   - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`

@@ -1,3 +1,4 @@
+import type { ProductFaceApplication } from "@/app/_domain/product-face";
 import { isRecord } from "@/app/_lib/external-face-bridge/core/protocol";
 
 export interface ExternalFaceApplicationDescriptor {
@@ -119,5 +120,59 @@ export function externalFaceApplicationMatches(
     isRecord(application) &&
     application.id === descriptor.id &&
     compatibleApplicationVersion(application.version, descriptor.majorVersion)
+  );
+}
+
+const PRODUCT_READY_KEYS = [
+  "id",
+  "version",
+  "publisher",
+  "programme",
+  "artifact",
+  "contract",
+] as const;
+
+export function productFaceFrameUrl(application: ProductFaceApplication) {
+  return `${application.origin}${application.path}`;
+}
+
+/** The frame URL must be the exact bound origin under the pinned path. */
+export function productFaceFrameMatches(
+  application: ProductFaceApplication,
+  frameUrl: string,
+) {
+  try {
+    const url = new URL(frameUrl);
+    return (
+      url.origin === application.origin &&
+      !url.username &&
+      !url.password &&
+      !url.hash &&
+      url.pathname.startsWith(application.path)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Strict ready identity for a product application: exactly these keys, each
+ * equal to the server-resolved binding — the version exactly, not its major.
+ */
+export function productFaceApplicationMatches(
+  application: ProductFaceApplication,
+  ready: unknown,
+) {
+  if (!isRecord(ready)) return false;
+  const keys = Object.keys(ready);
+  return (
+    keys.length === PRODUCT_READY_KEYS.length &&
+    PRODUCT_READY_KEYS.every((key) => keys.includes(key)) &&
+    ready.id === application.id &&
+    ready.version === application.version &&
+    ready.publisher === application.publisher &&
+    ready.programme === application.programme.id &&
+    ready.artifact === application.artifact &&
+    ready.contract === application.contract
   );
 }

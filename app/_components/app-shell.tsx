@@ -9,6 +9,7 @@ import {
   LogOut,
   Menu,
   Moon,
+  PackageCheck,
   Settings,
   Sun,
   X,
@@ -16,22 +17,27 @@ import {
 import { useTranslations } from "next-intl";
 import { Brand } from "@/app/_components/design-system/brand";
 import { UserProfileMenu } from "@/app/_components/user-profile-menu";
+import { safeReturnPath } from "@/app/_domain/navigation";
+import { useHostPresentation } from "@/app/_providers/host-provider";
 import { useSession } from "@/app/_providers/session-provider";
 import { useTheme } from "@/app/_providers/theme-provider";
 import { cn } from "@/app/_utils/cn";
 
 const links = [
   { href: "/inventory", key: "inventory", icon: Boxes },
+  { href: "/products", key: "products", icon: PackageCheck },
   { href: "/activity", key: "activity", icon: Activity },
   { href: "/settings", key: "settings", icon: Settings },
 ] as const;
 
-function Nav({ close }: { close?: () => void }) {
+type NavLink = (typeof links)[number];
+
+function Nav({ close, entries }: { close?: () => void; entries: NavLink[] }) {
   const pathname = usePathname();
   const t = useTranslations("nav");
   return (
     <>
-      {links.map(({ href, key, icon: Icon }) => {
+      {entries.map(({ href, key, icon: Icon }) => {
         const active = pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link
@@ -54,13 +60,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { wallet, isLoading, isAuthenticated, logout } = useSession();
   const { theme, toggleTheme } = useTheme();
+  // A branded host renders one validated palette, so it offers no theme
+  // switch.
+  const host = useHostPresentation();
+  // A branded host shows exactly its configured entries, in its order.
+  const entries: NavLink[] = host
+    ? host.navigation.flatMap((key) => links.filter((link) => link.key === key))
+    : [...links];
   const menuTrigger = useRef<HTMLButtonElement>(null);
+  const signingOut = useRef(false);
   const router = useRouter();
+  const pathname = usePathname();
   const t = useTranslations("nav");
   const common = useTranslations("common");
+  // A programme's product face uses the whole content area.
+  const fullSize = /^\/products\/[^/]+/.test(pathname);
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) router.replace("/login");
+    if (isLoading || isAuthenticated) return;
+    // An expired session returns here after sign-in; an explicit sign-out
+    // replaces this with a plain /login below.
+    const next = signingOut.current
+      ? undefined
+      : safeReturnPath(`${window.location.pathname}${window.location.search}`);
+    router.replace(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
   }, [isAuthenticated, isLoading, router]);
 
   useEffect(() => {
@@ -75,12 +98,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [mobileOpen]);
 
   const signOut = async () => {
+    signingOut.current = true;
     await logout();
     router.replace("/login");
     router.refresh();
   };
 
-  const themeButton = (
+  const themeButton = host ? null : (
     <button className="nav-link" type="button" onClick={toggleTheme}>
       {theme === "dark" ? (
         <Sun size={19} aria-hidden />
@@ -103,9 +127,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {common("skipToContent")}
       </a>
       <aside className="sidebar">
-        <Brand />
+        <Brand host={host} />
         <nav className="sidebar-nav" aria-label={t("mainNavigation")}>
-          <Nav />
+          <Nav entries={entries} />
         </nav>
         <div className="sidebar-footer">
           {themeButton}
@@ -115,7 +139,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
       <div className="main">
         <header className="mobile-topbar">
-          <Brand />
+          <Brand host={host} />
           <button
             ref={menuTrigger}
             className="icon-button"
@@ -138,12 +162,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className="mobile-nav"
             aria-label={t("mainNavigation")}
           >
-            <Nav close={() => setMobileOpen(false)} />
+            <Nav entries={entries} close={() => setMobileOpen(false)} />
             {themeButton}
             {signOutButton}
           </nav>
         ) : null}
-        <main className="content" id="main-content" tabIndex={-1}>
+        <main
+          className={cn("content", fullSize && "content-full")}
+          id="main-content"
+          tabIndex={-1}
+        >
           {children}
         </main>
       </div>

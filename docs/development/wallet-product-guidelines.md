@@ -22,7 +22,21 @@ activity, settings, sharing, or external-face behavior.
 ## Route and audience boundaries
 
 - Authenticated routes are `/inventory`, `/inventory/[objectId]`, `/activity`,
-  and `/settings`.
+  `/settings`, `/products` and `/products/[slug]/[[...task]]`.
+- `/products` lists the programmes in the server-only product-application
+  registry; a programme entry has no selected or owned object. A programme's
+  reviewed product application runs full-size at `/products/<slug><task>`,
+  and the task path is the bookmarkable, Back/Forward-able state.
+- `/products/<slug>/handover` (contract r14) is the one product route that
+  works signed-out. It strips a face handover ticket from its fragment, hands
+  it to the BFF only for a programme whose binding enables handover, and
+  leaves for `/products/<slug>/register`. It is never a sign-in return path.
+  A G8 transfer acceptance (`#accept=<ticket>`, contract r16) uses the same
+  entry, a kind in the same sealed cookie, and leaves for
+  `/products/<slug>/accept`, where the context read hands it to the face as
+  `acceptance: {ticket}`.
+- A signed-out visit to a protected route returns there after sign-in only
+  through a validated same-origin relative `next` path to a protected route.
 - Public object viewing is owned by the sibling `../viewer` application. This
   app has no anonymous object route and must not regain one.
 - Authentication and recovery routes remain public and redirect an already
@@ -68,6 +82,13 @@ activity, settings, sharing, or external-face behavior.
   and authentication ceremony as a wallet-originated action.
 - Bridge payloads are explicit allowlisted projections. Never spread a domain or
   transport object into a message envelope.
+- A product application (`dual-product-face-v1`) is bound by the server-only
+  registry, never by face, object data or URL. The wallet verifies its pinned
+  artifact before rendering a frame, owns every confirmation with host-read
+  facts, journals an operation outside the iframe before issuing authority,
+  and treats registration as complete only from its own canonical readback.
+  Owner equality alone, or a pending transfer, is never "registered".
+  Registration never uses `claim_ownership`.
 
 ## Product state requirements
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
+import { hostLanding } from "@/api/wallet-host";
 import { buttonClass } from "@/app/_components/design-system/button";
 
 export default async function NotFound() {
@@ -11,9 +12,15 @@ export default async function NotFound() {
         <h1>{t("notFoundTitle")}</h1>
         <p>{t("notFoundDescription")}</p>
         <div className="load-more">
-          <Link href="/inventory" className={buttonClass("secondary")}>
-            {common("goToInventory")}
-          </Link>
+          {hostLanding() === "/" ? (
+            <Link href="/" className={buttonClass("secondary")}>
+              {common("goToHome")}
+            </Link>
+          ) : (
+            <Link href="/inventory" className={buttonClass("secondary")}>
+              {common("goToInventory")}
+            </Link>
+          )}
         </div>
       </div>
     </div>

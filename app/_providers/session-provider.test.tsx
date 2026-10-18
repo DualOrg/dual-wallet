@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ViewerWallet } from "@/app/_domain/wallet";
 import type { SessionPayload } from "@/app/_services/session.client";
@@ -49,7 +49,18 @@ function renderSession(
   );
 }
 
-beforeEach(() => loadSession.mockReset());
+const clearFaceHandover = jest.fn(async () => undefined);
+const forgetFaceHandoverTickets = jest.fn();
+jest.mock("@/app/_services/product-face.client", () => ({
+  clearFaceHandover: () => clearFaceHandover(),
+  forgetFaceHandoverTickets: () => forgetFaceHandoverTickets(),
+}));
+
+beforeEach(() => {
+  loadSession.mockReset();
+  clearFaceHandover.mockClear();
+  forgetFaceHandoverTickets.mockClear();
+});
 
 test("replacing an authenticated wallet removes the previous account's cache", async () => {
   const client = new QueryClient({
@@ -66,6 +77,8 @@ test("replacing an authenticated wallet removes the previous account's cache", a
   await waitFor(() => expect(loadSession).toHaveBeenCalledTimes(1));
   expect(client.getQueryData(inventoryKey)).toBeUndefined();
   expect(client.getQueryData(activityKey)).toBeUndefined();
+  // contract r14: a pending face handover never passes to another account.
+  expect(clearFaceHandover).toHaveBeenCalled();
 });
 
 test("refreshing the same wallet preserves its account cache", async () => {
@@ -82,4 +95,87 @@ test("refreshing the same wallet preserves its account cache", async () => {
   expect(client.getQueryData(inventoryKey)).toEqual({
     objects: ["account-a-object"],
   });
+  expect(clearFaceHandover).not.toHaveBeenCalled();
+});
+
+function ListenForEnd({
+  onEnd,
+  onReady,
+}: {
+  onEnd: (reason: string) => void;
+  onReady?: (value: ReturnType<typeof useSession>) => void;
+}) {
+  const current = useSession();
+  useEffect(() => current.onSessionEnd(onEnd), [current, onEnd]);
+  useEffect(() => {
+    onReady?.(current);
+  }, [current, onReady]);
+  return null;
+}
+
+test("an account change tells authenticated faces before its cache goes", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  client.setQueryData(sessionQueryKey, session("wallet-a"));
+  loadSession.mockResolvedValue(session("wallet-b"));
+  const onEnd = jest.fn();
+  render(
+    <QueryClientProvider client={client}>
+      <SessionProvider>
+        <ListenForEnd onEnd={onEnd} />
+        <ReplaceSession walletId="wallet-b" />
+      </SessionProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(onEnd).toHaveBeenCalledWith("account_changed"));
+  // contract r14: launch-local handover tickets are forgotten too.
+  expect(forgetFaceHandoverTickets).toHaveBeenCalled();
+});
+
+test("logout tells authenticated faces first, then revokes the session", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  client.setQueryData(sessionQueryKey, session("wallet-a"));
+  const order: string[] = [];
+  const { logoutSession } = jest.requireMock("@/app/_services/session.client");
+  logoutSession.mockImplementation(async () => {
+    order.push("revoke");
+    return { ok: true };
+  });
+  let value: ReturnType<typeof useSession> | undefined;
+  const onEnd = (reason: string) => order.push(`end:${reason}`);
+  render(
+    <QueryClientProvider client={client}>
+      <SessionProvider>
+        <ListenForEnd onEnd={onEnd} onReady={(next) => (value = next)} />
+      </SessionProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(value).toBeDefined());
+  await value!.logout();
+  expect(order).toEqual(["end:logout", "revoke"]);
+  expect(forgetFaceHandoverTickets).toHaveBeenCalled();
+});
+
+test("an expired session tells authenticated faces it ended", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  client.setQueryData(sessionQueryKey, session("wallet-a"));
+  const onEnd = jest.fn();
+  render(
+    <QueryClientProvider client={client}>
+      <SessionProvider>
+        <ListenForEnd onEnd={onEnd} />
+      </SessionProvider>
+    </QueryClientProvider>,
+  );
+  expect(onEnd).not.toHaveBeenCalled();
+  // A terminal 401 makes the session query resolve to null.
+  act(() => client.setQueryData(sessionQueryKey, null));
+  await waitFor(() => expect(onEnd).toHaveBeenCalledWith("expired"));
+  expect(forgetFaceHandoverTickets).toHaveBeenCalled();
+  expect(onEnd).toHaveBeenCalledTimes(1);
 });

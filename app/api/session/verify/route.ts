@@ -10,6 +10,7 @@ import {
 } from "@/api/request";
 import { currentWallet, writeSession } from "@/api/server-session";
 import { tenantFromRequest } from "@/api/tenant";
+import { walletHost } from "@/api/wallet-host";
 import { getWalletsApi } from "@/api/web-sdk-client";
 import { toViewerWallet } from "@/app/_adapters/wallet";
 
@@ -40,11 +41,27 @@ export async function POST(request: NextRequest) {
   }
 
   const linkEmail = body && optionalString(body, "email", 320);
-  // The link's organization wins over the host's: one wallet hostname serves
-  // several organizations, so the host cannot say which account this is.
-  const organizationId =
-    (body && optionalString(body, "organization_id", 24)) ??
-    tenant.organizationId;
+  const linkOrganization = body && optionalString(body, "organization_id", 24);
+  // A branded host serves exactly its entrance organisation: a mail link of
+  // any other organisation is not this host's to complete (the request proxy
+  // already keeps such a link out of the remembered organisation).
+  if (
+    walletHost().status === "active" &&
+    linkOrganization &&
+    linkOrganization !== tenant.organizationId
+  ) {
+    return NextResponse.json(
+      {
+        code: "host_misdirected",
+        message: "This verification link belongs to another wallet.",
+      },
+      { status: 421 },
+    );
+  }
+  // On the generic wallet the link's organization wins over the host's: one
+  // wallet hostname serves several organizations, so the host cannot say
+  // which account this is.
+  const organizationId = linkOrganization ?? tenant.organizationId;
 
   if (linkEmail) {
     try {

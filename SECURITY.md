@@ -29,7 +29,8 @@ Findings that matter most here:
 
 ## Known weakness by configuration
 
-`SESSION_SECRET` is optional. Left unset, the session cookie is sealed with a
-key derived from a constant in this repository, which is public, so the cookie
-carries no tamper-evidence. Any deployment that matters must set it. See the
-deployment section of the [README](./README.md).
+`SESSION_SECRET` is required. Without a valid key the wallet fails closed:
+nothing is sealed, no sealed cookie opens, and sign-in and every session route
+answer `503 session_unavailable`. There is no derived or default key; local
+runs and tests use an explicit ephemeral key. See the deployment section of the
+[README](./README.md).

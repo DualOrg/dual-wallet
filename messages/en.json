@@ -20,7 +20,8 @@
     "openMenu": "Open navigation",
     "closeMenu": "Close navigation",
     "loadingPage": "Loading page",
-    "goToInventory": "Go to inventory"
+    "goToInventory": "Go to inventory",
+    "goToHome": "Go to home"
   },
   "errors": {
     "authentication": "Your session has expired. Sign in again to continue.",
@@ -41,7 +42,8 @@
     "logout": "Sign out",
     "account": "Your account",
     "mainNavigation": "Main navigation",
-    "skipToContent": "Skip to main content"
+    "skipToContent": "Skip to main content",
+    "products": "Products"
   },
   "profileMenu": {
     "account": "Your account",
@@ -427,5 +429,229 @@
     "deleteConfirm": "Type DELETE to confirm",
     "deleteAction": "Permanently delete account",
     "deleteConfirmValue": "DELETE"
+  },
+  "products": {
+    "eyebrow": "Programmes",
+    "title": "Products",
+    "description": "Open a product programme to register and use the products you own.",
+    "emptyTitle": "No product programmes",
+    "emptyDescription": "This wallet has no product programmes available yet.",
+    "publisher": "Published by {publisher}",
+    "open": "Open {programme}",
+    "handover": {
+      "title": "Product registration",
+      "working": "Opening your product registration…",
+      "unavailable": "This registration link can't be opened in this wallet.",
+      "invalid": "This registration link is incomplete. Open it again from the message you received.",
+      "failed": "We couldn't open your registration right now. Open the link again in a moment.",
+      "home": "Go to your wallet",
+      "acceptWorking": "Opening the product transfer…",
+      "acceptUnavailable": "This transfer link can't be opened in this wallet.",
+      "acceptInvalid": "This transfer link is incomplete. Ask the sender to share it again.",
+      "acceptFailed": "We couldn't open this transfer right now. Open the link again in a moment."
+    },
+    "back": "Back to products",
+    "backShort": "Back",
+    "about": "About {programme}",
+    "identityLabel": "Product application",
+    "reviewed": "Reviewed application",
+    "frameTitle": "{programme} product application",
+    "loading": "Opening the product application…",
+    "errors": {
+      "artifact_mismatch": "This product application could not be verified, so it was not opened.",
+      "artifact_unavailable": "This product application is unavailable right now. Try again shortly.",
+      "unknown_application": "This product programme is not available in this wallet.",
+      "session_expired": "Your session has expired. Sign in again to continue.",
+      "generic": "This product application could not be opened. Try again shortly."
+    },
+    "ended": {
+      "logout": "You signed out, so the product application was closed.",
+      "expired": "Your session ended, so the product application was closed.",
+      "account_changed": "You switched account, so the product application was closed.",
+      "reopen": "Open again"
+    },
+    "confirm": {
+      "requestedBy": "Requested by {publisher} for {programme}",
+      "yourWallet": "Your wallet",
+      "product": "Product",
+      "cancel": "Cancel",
+      "noPayment": "No payment is taken.",
+      "registration": {
+        "title": "Register this product to your wallet?",
+        "description": "The product moves to your wallet through the publisher's registration. Nothing is charged.",
+        "confirm": "Register product"
+      },
+      "runtime": {
+        "title": "Confirm this request",
+        "description": "The application asks to do this for your product.",
+        "confirm": "Confirm",
+        "case": "Case",
+        "operation": "Request",
+        "operations": {
+          "case_open": "Open a service case",
+          "case_evidence_submit": "Add evidence to a case",
+          "case_information_provide": "Send requested information",
+          "case_quote_approve": "Approve a service quote",
+          "case_quote_decline": "Decline a service quote",
+          "transfer_offer": "Create a one-time transfer link for this product",
+          "transfer_cancel": "Cancel this product's transfer"
+        }
+      },
+      "quote": {
+        "provider": "Provider (from the publisher)",
+        "amount": "Amount",
+        "version": "Quote version"
+      },
+      "settle": {
+        "title": "Confirm your product registration",
+        "description": "Your wallet signs this change to your product to complete its registration.",
+        "confirm": "Sign and confirm",
+        "changes": "Changes to your product",
+        "field": "Field",
+        "from": "Now",
+        "to": "After",
+        "empty": "Not set",
+        "technical": "Technical record values that also change ({count})",
+        "technicalCaption": "Technical record values issued for this confirmation"
+      },
+      "fields": {
+        "name": "Name",
+        "recordId": "Record",
+        "title": "Title",
+        "serialNumber": "Serial number",
+        "model": "Model",
+        "manufacturer": "Manufacturer",
+        "state": "Status"
+      },
+      "transfer": {
+        "recipient": "To wallet",
+        "check": "Check this is the wallet of the person you shared the link with. If it is not, cancel: the link reached someone else.",
+        "request": {
+          "title": "Start transferring this product?",
+          "description": "Your wallet signs the transfer request for this product. Ownership moves to the wallet below in the next step.",
+          "confirm": "Sign transfer request"
+        },
+        "transfer": {
+          "title": "Move ownership of this product?",
+          "description": "Your wallet signs the transfer. Ownership of this product moves to the wallet below and it leaves your wallet.",
+          "confirm": "Sign and move ownership"
+        }
+      },
+      "transferAccept": {
+        "title": "Accept this product into your wallet?",
+        "description": "The sender's wallet still has to confirm the transfer. You will not see the previous owner's private details or service requests.",
+        "confirm": "Accept"
+      }
+    },
+    "notices": {
+      "dismiss": "Dismiss",
+      "settle_proposal_unavailable": {
+        "issuer_preauthorisation_absent": "{publisher} has not authorised a confirmation for this product yet, so there is nothing to confirm on your wallet. Their team needs to send it; nothing was changed.",
+        "issuer_preauthorisation_expired": "{publisher}'s authorisation for this confirmation has expired. Their team needs to send a new one; nothing was changed.",
+        "issuer_auto_proposal_used": "{publisher}'s one automatic confirmation for this product has already been used. Their team needs to send a new one; nothing was changed.",
+        "issuer_settle_policy_absent": "{publisher} has not published an authorisation to confirm this product automatically, so there is nothing to confirm on your wallet. Their team needs to send the confirmation; nothing was changed.",
+        "face_settle_proposal_stale": "{publisher}'s confirmation was prepared for an earlier version of this product's record. Their team needs to send a new one; nothing was changed.",
+        "face_settle_proposal_release_changed": "{publisher}'s confirmation was prepared for an earlier version of their app. Their team needs to send a new one; nothing was changed."
+      },
+      "relaunch": "Restart the application",
+      "launch_full": {
+        "journal_full": "The {publisher} application has reached its request limit, so nothing was sent for this request. Restart the application to continue. A transfer step your wallet already sent is checked again when it restarts and is never sent twice.",
+        "launch_capacity": "This browser is already keeping track of as many unfinished requests from the {publisher} application as it can, so nothing was sent for this request. You can still view the application here, but not send requests from this window. Finish an unfinished request in a window of the application that is already open, or try again later."
+      },
+      "transfer_step": {
+        "transferred": "Your transfer is complete: the product now belongs to the recipient's wallet. Its private details and service requests are no longer shown to you.",
+        "outcome_unknown": "Your wallet already sent a transfer step for a product you offered. It is still being confirmed and will not be sent again. Check back later."
+      },
+      "recovery": {
+        "registration": {
+          "registered": "Your registration of this product is complete."
+        },
+        "settle": {
+          "registered": "{publisher}'s confirmation of this product is complete."
+        },
+        "transfer": {
+          "transfer_request_committed": "Your transfer request was recorded. The handover itself has not been done yet.",
+          "transferred": "Your transfer is complete: the product now belongs to the recipient's wallet. Its private details and service requests are no longer shown to you."
+        },
+        "runtime": {
+          "write_applied": "A service request you sent earlier was received.",
+          "transfer_offered": "Your offer to pass on a product, made earlier, was recorded. The product is still yours until the handover is done.",
+          "transfer_cancelled": "Your cancellation of an offer to pass on a product, made earlier, was recorded. The product stays yours."
+        },
+        "current": {
+          "transfer_offered": {
+            "registered": "Your offer to pass on a product, made earlier, was recorded. The product is registered to you now.",
+            "elsewhere": "Your offer to pass on a product, made earlier, was recorded. The product is no longer in your wallet."
+          },
+          "transfer_cancelled": {
+            "elsewhere": "Your cancellation of an offer to pass on a product, made earlier, was recorded. The product is no longer in your wallet."
+          },
+          "transfer_request_committed": {
+            "registered": "Your transfer request, made earlier, was recorded. The product is registered to you now.",
+            "elsewhere": "Your transfer request, made earlier, was recorded. The product is no longer in your wallet."
+          },
+          "transferred": {
+            "registered": "Your transfer, made earlier, is complete. The product has since come back to your wallet and is registered to you.",
+            "held": "Your transfer, made earlier, is complete. The product has since come back to your wallet."
+          }
+        },
+        "any": {
+          "write_refused": "A request you sent earlier was not accepted. Nothing was changed.",
+          "outcome_unknown": "A request you sent earlier is still being confirmed. It will not be sent again.",
+          "not_checked": "One earlier request could not be checked this time."
+        }
+      },
+      "recoveryIncomplete": "Not every earlier request could be checked this time. Nothing was sent again.",
+      "recoveryMore": "There are more earlier requests to check.",
+      "recoveryWithheld": "Some earlier requests belong to a feature this wallet does not offer, so they are not shown here.",
+      "recoveryContinue": "Continue checking",
+      "recoveryCheckAgain": "Check again",
+      "recoveryCheck": {
+        "product": {
+          "checked": "Your product records with {publisher} were checked.",
+          "incomplete": "Not all of your product records with {publisher} could be checked this time.",
+          "unavailable": "Your product records with {publisher} could not be checked this time.",
+          "unsupported": "Your product records with {publisher} cannot be checked by this wallet yet."
+        },
+        "service": {
+          "checked": "Your service records with {publisher} were checked.",
+          "incomplete": "Not all of your service records with {publisher} could be checked this time.",
+          "unavailable": "Your service records with {publisher} could not be checked this time.",
+          "unsupported": "Your service records with {publisher} cannot be checked by this wallet yet."
+        }
+      },
+      "recoveryReason": {
+        "runtime_incomplete": "The application reported that it could not read all of its records.",
+        "echo_mismatch": "The application answered for a different account, application or version than this wallet asked about.",
+        "time_invalid": "The application dated its records in a way this wallet could not verify.",
+        "snapshot_changed": "The application's list of records changed while it was being read.",
+        "cursor_cycle": "The application's list of records repeated itself.",
+        "out_of_order": "The application's list of records was not in the order this wallet expects.",
+        "pages_exceeded": "There were more records than this wallet checks at once.",
+        "read_failed": "A page of records could not be read.",
+        "item_unreadable": "Some of its records are in a form this wallet cannot read.",
+        "unreachable": "The application did not answer.",
+        "invalid": "The application answered in a way this wallet could not read.",
+        "unsigned": "This wallet could not sign the request."
+      },
+      "recoveryUnreadable": "{count, plural, one {# earlier request} other {# earlier requests}} could not be read by this wallet and {count, plural, one {was} other {were}} not checked. Nothing was sent again."
+    }
+  },
+  "host": {
+    "homeNavigation": "Wallet",
+    "signIn": "Sign in",
+    "createAccount": "Create an account",
+    "journeysLabel": "What you can do here",
+    "journeys": {
+      "registration": "Register a product",
+      "myProducts": "See my products",
+      "serviceProgress": "Follow a service",
+      "quoteDecisions": "Review a quote",
+      "transfer": "Pass on a product"
+    },
+    "setupTitle": "This wallet is being set up",
+    "setupDescription": "It is not open yet. Nothing was signed in or changed. Please try again later.",
+    "misdirectedTitle": "This wallet is not available at this address",
+    "misdirectedDescription": "Open it from the address you were given. Nothing was signed in or changed."
   }
 }

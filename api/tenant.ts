@@ -3,6 +3,7 @@ import "server-only";
 import type { NextRequest } from "next/server";
 
 import { ORGANIZATION_COOKIE_NAME } from "@/api/settings";
+import { isEntranceHost, walletHost } from "@/api/wallet-host";
 
 export interface TenantContext {
   organizationId: string;
@@ -119,10 +120,29 @@ export function chosenOrganizationId(value?: string) {
   return value && ORGANIZATION_ID.test(value) ? value.toLowerCase() : undefined;
 }
 
+/**
+ * A branded host resolves exactly one tenant: its configured organisation,
+ * on exactly its entrance host. No wildcard, no DEFAULT_ORGANIZATION_ID, no
+ * entry-link organisation and no other host mapping applies; any other host
+ * resolves none. An invalid configuration resolves none at all.
+ */
+function brandedTenant(rawHost: string): TenantContext | undefined {
+  const configured = walletHost();
+  if (configured.status !== "active" || !isEntranceHost(rawHost)) return;
+  const host = normalizeHost(rawHost);
+  if (!host || !isValidHost(host)) return undefined;
+  return {
+    organizationId: configured.configuration.entrance.organizationId,
+    subdomain: "*",
+    host,
+  };
+}
+
 export function tenantFromRequest(request: NextRequest) {
   const forwardedHost = request.headers.get("x-forwarded-host");
   const host =
     forwardedHost || request.headers.get("host") || request.nextUrl.host;
+  if (walletHost().status !== "absent") return brandedTenant(host);
   // The host still has to be a valid one, and it stays the host the session is
   // bound to. Only the organization comes from the link.
   const chosen = chosenOrganizationId(

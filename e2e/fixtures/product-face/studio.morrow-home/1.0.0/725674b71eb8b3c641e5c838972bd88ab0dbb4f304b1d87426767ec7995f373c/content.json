@@ -1,0 +1,111 @@
+{
+  "brandId": "morrow-home",
+  "copy": {
+    "contactLine": "Morrow Home care team (fictional) · replies within two working days",
+    "evidenceHelp": "Paste the full link from your Morrow Home handover email. It works once.",
+    "productsIntro": "Everything registered to your wallet in the Arc Care programme.",
+    "productsTitle": "Your Morrow Home products",
+    "programmeIntro": "Register your Arc grinder to keep its care guides, service history and warranty together, here in your wallet.",
+    "programmeTitle": "Arc Care",
+    "registerIntro": "Use the handover link Morrow Home sent you after purchase. We check it, show you the grinder it covers, and you confirm in your wallet.",
+    "registerTitle": "Register your grinder",
+    "serviceIntro": "Something not right with your grinder? Start a service request here and follow it to the end.",
+    "serviceTitle": "Service and repairs",
+    "supportBody": "Most grinding problems are solved by a clean and a recalibration; the troubleshooting steps on your product page walk you through both.",
+    "supportTitle": "Help from Morrow Home"
+  },
+  "imagery": {
+    "hero": {
+      "alt": "An Arc burr grinder beside a bag of coffee beans",
+      "src": "assets/hero.svg"
+    },
+    "mark": {
+      "alt": "Morrow Home",
+      "src": "assets/mark.svg"
+    }
+  },
+  "models": [
+    {
+      "care": [
+        {
+          "body": "Unplug the grinder, remove the hopper and brush the upper burr with the supplied brush. Never use water on the burrs.",
+          "title": "Weekly brush"
+        },
+        {
+          "body": "Run a cleaning tablet dose through the burrs, then grind 20 g of beans and discard them.",
+          "title": "Monthly deep clean"
+        }
+      ],
+      "image": {
+        "alt": "The Arc grinder, front view",
+        "src": "assets/arc-grinder.svg"
+      },
+      "key": "arc-grinder",
+      "manuals": [
+        {
+          "language": "en",
+          "sections": [
+            {
+              "body": "Unplug before cleaning. Keep fingers out of the hopper while the grinder is plugged in.",
+              "heading": "Safety"
+            },
+            {
+              "body": "1 to 8 espresso, 9 to 16 filter, 17 to 30 pour-over and French press.",
+              "heading": "Grind settings"
+            },
+            {
+              "body": "Two years against manufacturing faults when the grinder is registered to you.",
+              "heading": "Warranty"
+            }
+          ],
+          "title": "Arc grinder user guide",
+          "version": "1.2"
+        }
+      ],
+      "matchTitles": [
+        "Arc grinder",
+        "Morrow Arc grinder"
+      ],
+      "modelNumber": "ARC-G1",
+      "name": "Arc grinder",
+      "setup": [
+        {
+          "steps": [
+            "Remove the hopper and the catch cup from the packaging.",
+            "Place the grinder on a dry, level surface away from the sink.",
+            "Seat the hopper and turn it clockwise until it clicks."
+          ],
+          "title": "Unbox and place"
+        },
+        {
+          "steps": [
+            "Set the dial to 18 for pour-over.",
+            "Run 20 g of beans through and discard the grounds.",
+            "Adjust one step at a time until the taste is right."
+          ],
+          "title": "First grind"
+        }
+      ],
+      "troubleshooting": [
+        {
+          "steps": [
+            "Brush the burrs clean.",
+            "Recalibrate: turn the dial to 0 until the burrs touch, then back to 18."
+          ],
+          "symptom": "Grounds are uneven"
+        },
+        {
+          "escalate": true,
+          "steps": [
+            "Unplug and wait ten minutes for the thermal cut-out to reset.",
+            "Check the hopper for a jammed bean."
+          ],
+          "symptom": "Motor stops mid-grind"
+        }
+      ]
+    }
+  ],
+  "programmeId": "morrow-home-arc-care",
+  "schema": "tig-product-face-content-v1",
+  "version": "2026.10.1"
+}

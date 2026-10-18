@@ -1,5 +1,10 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { bindFaceExecution } from "@/api/face-execution-binding";
+import {
+  transferBodyRefusal,
+  withholdsNativeTransfer,
+} from "@/api/host-native-transfer";
 import { validateProxyPath } from "@/api/proxy-policy";
 import { validRequestOrigin } from "@/api/request";
 import {
@@ -10,6 +15,7 @@ import {
   writeSession,
 } from "@/api/server-session";
 import { MAX_BFF_BODY_BYTES } from "@/api/settings";
+import { walletHost } from "@/api/wallet-host";
 
 async function proxy(
   request: NextRequest,
@@ -52,9 +58,22 @@ async function proxy(
         { status: 413 },
       );
     }
+    // A branded host without the transfer journey decides here too, on
+    // exactly the bytes forwarded below, whether or not the request proxy
+    // ran for this spelling of the path.
+    if (withholdsNativeTransfer(walletHost())) {
+      const refused = transferBodyRefusal(body);
+      if (refused) return refused;
+    }
   }
 
   try {
+    // A face's holder-signed step is forwarded only while the CURRENT session
+    // still owns the launch, operation and reservation that began it;
+    // otherwise it is refused here, before any upstream request. Requests
+    // without face execution headers (the generic executor) are unaffected.
+    const face = await bindFaceExecution(request, path, body);
+    if (face.bound && "refused" in face) return face.refused;
     const {
       response: upstream,
       state,
@@ -69,6 +88,7 @@ async function proxy(
         cache: "no-store",
         redirect: "manual",
       },
+      face.bound ? face.context.state : undefined,
     );
     const response = new NextResponse(upstream.body, {
       status: upstream.status,

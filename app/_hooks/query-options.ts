@@ -11,6 +11,7 @@ import {
   listActivityPage,
   listInventoryPage,
 } from "@/app/_services/inventory.client";
+import { loadProductFaceContext } from "@/app/_services/product-face.client";
 import { loadSession } from "@/app/_services/session.client";
 
 // ponytail: one fixed interval, no server-driven expiry hint. Shorten this if
@@ -63,5 +64,28 @@ export function activityQueryOptions(
       ? ({ signal }) =>
           listActivityPage({ search, status, walletId, cursor, signal })
       : skipToken,
+  });
+}
+
+export function productFaceContextQueryOptions(
+  slug: string,
+  launchId: string,
+  enabled: boolean,
+  /** The task the launch opened on; the register task may take a handover. */
+  task = "/",
+) {
+  // The task is the launch's opening task only: the context is read once per
+  // launch, never again when the face moves to another task.
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
+  return queryOptions({
+    queryKey: queryKeys.productFaces.context(slug, launchId),
+    queryFn: enabled
+      ? () => loadProductFaceContext({ slug, launchId }, task)
+      : skipToken,
+    // A context load resets the launch's server-side selection, so it is
+    // read once per launch (frame) and never refetched underneath a live face.
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: 0,
+    retry: false,
   });
 }

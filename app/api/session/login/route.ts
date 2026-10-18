@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { establishSession } from "@/api/server-session";
+import { establishWalletSession } from "@/api/session-establish";
 import { tenantFromRequest } from "@/api/tenant";
 import {
   apiErrorResponse,
@@ -55,7 +55,16 @@ export async function POST(request: NextRequest) {
       wallet: toViewerWallet(login.wallet),
     });
     response.headers.set("Cache-Control", "private, no-store");
-    if (!establishSession(response, login, tenant, "email", remember)) {
+    if (
+      !establishWalletSession(
+        request,
+        response,
+        login,
+        tenant,
+        "email",
+        remember,
+      )
+    ) {
       return NextResponse.json(
         { message: "This account belongs to another organization." },
         { status: 403 },

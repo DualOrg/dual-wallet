@@ -56,5 +56,7 @@ export default defineConfig([
     "coverage/**",
     "playwright-report/**",
     "test-results/**",
+    // Pinned emitted Studio artifacts; byte-exact, never edited here.
+    "e2e/fixtures/**",
   ]),
 ]);

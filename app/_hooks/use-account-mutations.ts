@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
+import { safeReturnPath } from "@/app/_domain/navigation";
+import { useHostPresentation } from "@/app/_providers/host-provider";
 import { useSession } from "@/app/_providers/session-provider";
 import {
   requestPasswordReset,
@@ -13,13 +15,23 @@ import {
 export function useVerifyAccount() {
   const session = useSession();
   const router = useRouter();
+  const landing = useHostPresentation() ? "/" : "/inventory";
   return useMutation({
     mutationFn: verifyAccount,
     onSuccess: async () => {
       // A link may be followed with no session at all, so where to go next
       // depends on whether there is one to go with.
       const wallet = await session.refresh();
-      router.replace(wallet ? "/inventory" : "/login");
+      const next = safeReturnPath(
+        new URLSearchParams(window.location.search).get("next"),
+      );
+      router.replace(
+        wallet
+          ? (next ?? landing)
+          : next
+            ? `/login?next=${encodeURIComponent(next)}`
+            : "/login",
+      );
       router.refresh();
     },
   });
