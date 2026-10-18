@@ -571,7 +571,7 @@
         },
         "transfer": {
           "transfer_request_committed": "Your transfer request was recorded. The handover itself has not been done yet.",
-          "transferred": "Your transfer is complete: the product now belongs to the recipient's wallet."
+          "transferred": "Your transfer is complete: the product now belongs to the recipient's wallet. Its private details and service requests are no longer shown to you."
         },
         "runtime": {
           "write_applied": "A service request you sent earlier was received.",

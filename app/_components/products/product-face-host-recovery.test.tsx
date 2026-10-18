@@ -233,7 +233,7 @@ describe("the recovery notice (proposed contract r20)", () => {
       "Your registration of this product is complete.",
       "morrow-home's confirmation of this product is complete.",
       "Your transfer request was recorded. The handover itself has not been done yet.",
-      "Your transfer is complete: the product now belongs to the recipient's wallet.",
+      "Your transfer is complete: the product now belongs to the recipient's wallet. Its private details and service requests are no longer shown to you.",
       "A service request you sent earlier was received.",
       "A request you sent earlier was not accepted. Nothing was changed.",
       "A request you sent earlier is still being confirmed. It will not be sent again.",
@@ -269,7 +269,7 @@ describe("the recovery notice (proposed contract r20)", () => {
     await screen.findByTitle("Morrow Home Arc product application");
     expect(
       screen.getByText(
-        "Your transfer is complete: the product now belongs to the recipient's wallet.",
+        "Your transfer is complete: the product now belongs to the recipient's wallet. Its private details and service requests are no longer shown to you.",
       ),
     ).toBeTruthy();
     expect(
