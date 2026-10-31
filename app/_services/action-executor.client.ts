@@ -35,15 +35,18 @@ export async function executeInventoryAction(
       });
     }
 
+    // Execute the prepared action: the challenge covers the salts and object nonce the service filled in.
     const prepared = await api.prepareAction({
       prepareExecuteRequest: { action },
     });
+    // A service before the salted attribute payload returns no action; send ours then.
+    const preparedAction = prepared.action ?? action;
 
     if (authenticationMethod === "passkey") {
       const assertion = await signActionWithPasskey(prepared.challenge);
       return await api.executeAction({
         executeRequest: {
-          action,
+          action: preparedAction,
           nonce: prepared.nonce,
           auth: {
             type: AuthBundleTypeEnum.Webauthn,
@@ -67,7 +70,7 @@ export async function executeInventoryAction(
       throw new Error("The wallet did not return a signature.");
     return await api.executeAction({
       executeRequest: {
-        action,
+        action: preparedAction,
         nonce: prepared.nonce,
         auth: {
           type: AuthBundleTypeEnum.PersonalSign,

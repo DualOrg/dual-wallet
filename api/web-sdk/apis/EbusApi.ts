@@ -3,7 +3,7 @@
 /* eslint-disable */
 /**
  * Dual API
- * Dual turns the things your product issues — tickets, warranties, memberships, loyalty cards — into **smart objects**: items that belong to a named owner, look the way you design them, and carry a complete, provable record of everything that has ever happened to them.  Nothing about an object changes quietly. Every change is signed by whoever made it, priced, and written into a history that is later recorded on a public blockchain. That lets you issue a ticket, let its owner transfer it, and still prove months later exactly where it came from.  Most integrations follow the same path:  1. Create a **wallet** to sign with and an **organization** to own the work    and pay for it. 2. Design a **template** — what one of your items is — and a **face**, which    is how it looks. 3. **Mint** items from that template, then transfer, update or redeem them. 4. Read where things stand whenever you like, and let **webhooks** tell you    the moment something happens.  ## Base URL  ``` https://api.dual.network ```  Every path in this reference hangs off that address, and everything is HTTPS.  ## Signing in  There are two ways to identify yourself, and some things need neither.  | What you send | Header | When to use it | | --- | --- | --- | | An access token | `Authorization: Bearer <access_token>` | Anything done on behalf of a signed-in person | | An API key | `x-api-key: <key>` | Backend-to-backend calls with no interactive sign-in | | Nothing | — | Public information, and signing up or in |  Each endpoint below shows which of these it accepts. An endpoint with none shown is open to everyone.  ### Access tokens  Signing in — with a password, a passkey or a crypto wallet — gives you an `access_token` and a `refresh_token`.  The access token is short-lived, about fifteen minutes, and goes on every request. When it runs out, send the refresh token to `POST /auth/refresh-token` and you will get a fresh pair back, without asking the person to sign in again.  Each refresh retires the token you sent and gives you a new one, so always keep the newest pair and discard the old. If an already-used refresh token turns up again, we treat it as stolen and end that session everywhere — so never keep an old one around \"just in case\".  ### API keys  Create a key with `POST /api-keys`. You see the secret once, in that response, and never again — store it at that moment, because a lost key can only be replaced. A key belongs to the organization that made it, does only what its creator was allowed to do, lasts up to a year, and cannot be used to sign anyone in.  ### Permissions  Everything that is not public needs a permission, such as `objects.read` or `webhooks.create`. A signed-in person has the permissions their role gives them; an API key has the ones it was created with. Ask for something you do not have permission for and you get a `401` — the same answer as an expired token — so check the message before assuming the token is the problem.  ## Working in one organization at a time  Authenticated management data — objects, templates, faces, files, webhooks and keys — is scoped to one organization, and you only see organizations your credential may access. Guessing another organization\'s identifier does not cross that boundary: the resource simply reads as missing. Public endpoints are the deliberate exception; they expose only published views and network-wide figures described on those endpoints.  Which organization you are working in is decided by the token or key you send. To move to another one, call `POST /organizations/switch`; it hands back a new access token for that organization, and the refresh token you already hold carries on working.  ## Pagination  Lists come back a page at a time, under a named array, with a `next` marker whenever there is more to fetch.  ```http GET /objects?limit=25 ```  ```json {   \"objects\": [ { \"id\": \"665f1c2d4b1a2c3d4e5f6a7b\" } ],   \"next\": \"7b226964...\" } ```  Send that value back as `?next=` for the following page, keeping every other parameter the same — `sortBy` and `order` are part of what the marker means. No `next` in the response means you have reached the end.  | Parameter | Default | Notes | | --- | --- | --- | | `limit` | 25 | Between 1 and 25 | | `order` | `desc` | Newest first, or `asc` for oldest first | | `sortBy` | `id` | Resource field to sort by; use a field documented by the endpoint | | `next` | — | Treat it as a token: pass it back, never build one |  ## Filtering  Every list has filters of its own, and they all share the same way of asking for a date range:  ```http GET /objects?when_created[$gte]=2026-01-01T00:00:00Z&when_created[$lt]=2026-02-01T00:00:00Z ```  `$gt` and `$gte` set the start of the window, `$lt` and `$lte` set the end; the `e` versions include the moment itself. The `/stats` endpoints use simple `from` and `to` instead. `to` is exclusive there, so back-to-back ranges never count the same record twice.  ## Identifiers, times and amounts  - Resource identifiers are normally 24-character hexadecimal strings. - Times are UTC, written like `2026-01-01T12:00:00Z`. - DUAL balances, fees and other precise amounts are sent as strings rather   than numbers, so nothing is rounded away in transit. A field ending in   `_wei` is in wei, the smallest unit of DUAL. - Blockchain addresses start with `0x`.  ## Errors  Every failure returns the same JSON body, whatever the status:  ```json {   \"code\": 3,   \"message\": \"limit must be 25 or less\",   \"details\": {} } ```  `code` is meant for your code and never changes meaning; `message` is meant for a person reading a log and may be reworded at any time. Make decisions on the status and on `code`.  | Status | What happened | | --- | --- | | `400` | Something in the request is wrong. Fix it before trying again | | `401` | Not signed in, signed in with something expired, or not allowed to do this | | `403` | Signed in, but this particular thing is not yours to touch | | `404` | The resource does not exist or is not visible to you | | `409` | The thing is not in a state where this makes sense right now | | `422` | The request is well formed but breaks a rule | | `429` | Too many requests. Slow down | | `500` | Something went wrong on our side | | `503` | We could not take the request safely. Try again shortly |  ### Error codes  | `code` | Meaning | Usually seen with | | --- | --- | --- | | 3 | Something in the request is wrong | 400, 422 | | 5 | Not found | 404 | | 7 | Not allowed | 403 | | 8 | Too many requests | 429 | | 10 | Another request got there first — try again | 409 | | 12 | Not available | 501 | | 13 | Something went wrong on our side | 500 | | 14 | A required service is temporarily unavailable | 503 | | 16 | Not signed in | 401 |  ## How often you can call  Each token or key gets roughly 5 requests a second, and can burst to 30 for a moment. Callers with no token are counted by network address instead. Go over and you get a `429`; wait a little longer each time before retrying, with a bit of randomness so that everyone does not come back at once.  ## Finding one request again  Every response carries an `x-request-id`. Send your own on the way in and we will keep it; otherwise we make one for you. Quote it when you contact support and we can find the exact call in seconds.  ## Why an action cannot be replayed  Actions are signed by the wallet behind them, not merely sent by someone holding a token. Each signature is tied to that wallet\'s next action number, which you read from `GET /ebus/nonce`, so a copy of an old request is worthless the moment the number moves on. **Actions & fees** walks through the whole sequence.  ## Stability  We add things without warning: a new endpoint, a new optional parameter, a new field in a response. Build your side to ignore anything it does not recognise and those additions will never disturb you.  We do not take things away without warning. Anything being retired is marked `deprecated` here first, keeps working while it carries that mark, and is announced before it goes. 
+ * Dual turns the things your product issues — tickets, warranties, memberships, loyalty cards — into **smart objects**: items that belong to a named owner, look the way you design them, and carry a complete, provable record of everything that has ever happened to them.  Nothing about an object changes quietly. Every change is signed by whoever made it, priced, and written into a history that is later recorded on a public blockchain. That lets you issue a ticket, let its owner transfer it, and still prove months later exactly where it came from.  Most integrations follow the same path:  1. Create a **wallet** to sign with and an **organization** to own the work    and pay for it. 2. Design a **template** — what one of your items is — and a **face**, which    is how it looks. 3. **Mint** items from that template, then transfer, update or redeem them. 4. Read where things stand whenever you like, and let **webhooks** tell you    the moment something happens.  ## Base URL  ``` https://api.dual.network ```  Every path in this reference hangs off that address, and everything is HTTPS.  ## Request limits  The public gateway accepts request bodies up to 1 MiB by default. Authentication routes under `/auth/` and `/request-access` accept up to 64 KiB. `POST /assets` accepts up to 11 MiB including multipart framing; the storage service\'s file limit still applies (10 MiB by default). Larger bodies receive HTTP 413 (error code 3). Account rate limits use the same JSON field decoding and email normalization as wallet lookup, including consumer Gmail dot and plus aliases. Invalid or incomplete JSON is rejected with HTTP 400 before forwarding.  Authority lookups have a 5-second budget. Upstreams have 30 seconds to send response headers; a proxied request has a 60-second total budget, extended to 120 seconds for asset uploads. Expired request budgets return HTTP 504 with error code 4 when response headers have not already been sent; an interrupted streaming response cannot change its status. Retry only when safe for the operation.  ## Signing in  There are two ways to identify yourself, and some things need neither.  | What you send | Header | When to use it | | --- | --- | --- | | An access token | `Authorization: Bearer <access_token>` | Anything done on behalf of a signed-in person | | An API key | `x-api-key: <key>` | Backend-to-backend calls with no interactive sign-in | | Nothing | — | Public information, and signing up or in |  Each endpoint below shows which of these it accepts. An endpoint with none shown is open to everyone.  ### Access tokens  Signing in — with a password, a passkey or a crypto wallet — gives you an `access_token` and a `refresh_token`.  The access token is short-lived, about fifteen minutes, and goes on every request. When it runs out, send the refresh token to `POST /auth/refresh-token` and you will get a fresh pair back, without asking the person to sign in again.  Each refresh retires the token you sent and gives you a new one, so always keep the newest pair and discard the old. If an already-used refresh token turns up again, we treat it as stolen and end that session everywhere — so never keep an old one around \"just in case\".  ### API keys  Create a key with `POST /api-keys`. You see the secret once, in that response, and never again — store it at that moment, because a lost key can only be replaced. A key belongs to the organization that made it, does only what its creator was allowed to do, lasts up to a year, and cannot be used to sign anyone in.  ### Permissions  Everything that is not public needs a permission, such as `objects.read` or `webhooks.create`. A signed-in person has the permissions their role gives them; an API key has the ones it was created with. Ask for something you do not have permission for and you get a `401` — the same answer as an expired token — so check the message before assuming the token is the problem.  ## Working in one organization at a time  Authenticated management data — objects, templates, faces, files, webhooks and keys — is scoped to one organization, and you only see organizations your credential may access. Guessing another organization\'s identifier does not cross that boundary: the resource simply reads as missing. Public endpoints are the deliberate exception; they expose only published views and network-wide figures described on those endpoints.  Which organization you are working in is decided by the token or key you send. To move to another one, call `POST /organizations/switch`; it hands back a new access token for that organization, and the refresh token you already hold carries on working.  ## Pagination  Lists come back a page at a time, under a named array, with a `next` marker whenever there is more to fetch.  ```http GET /objects?limit=25 ```  ```json {   \"objects\": [ { \"id\": \"665f1c2d4b1a2c3d4e5f6a7b\" } ],   \"next\": \"7b226964...\" } ```  Send that value back as `?next=` for the following page, keeping every other parameter the same — `sortBy` and `order` are part of what the marker means. No `next` in the response means you have reached the end.  | Parameter | Default | Notes | | --- | --- | --- | | `limit` | 25 | Between 1 and 25 | | `order` | `desc` | Newest first, or `asc` for oldest first | | `sortBy` | `id` | Resource field to sort by; use a field documented by the endpoint | | `next` | — | Treat it as a token: pass it back, never build one |  ## Filtering  Every list has filters of its own, and they all share the same way of asking for a date range:  ```http GET /objects?when_created[$gte]=2026-01-01T00:00:00Z&when_created[$lt]=2026-02-01T00:00:00Z ```  `$gt` and `$gte` set the start of the window, `$lt` and `$lte` set the end; the `e` versions include the moment itself. The `/stats` endpoints use simple `from` and `to` instead. `to` is exclusive there, so back-to-back ranges never count the same record twice.  ## Identifiers, times and amounts  - Resource identifiers are normally 24-character hexadecimal strings. - Times are UTC, written like `2026-01-01T12:00:00Z`. - DUAL balances, fees and other precise amounts are sent as strings rather   than numbers, so nothing is rounded away in transit. A field ending in   `_wei` is in wei, the smallest unit of DUAL. - Blockchain addresses start with `0x`.  ## Errors  Every failure returns the same JSON body, whatever the status:  ```json {   \"code\": 3,   \"message\": \"limit must be 25 or less\",   \"details\": {} } ```  `code` is meant for your code and never changes meaning; `message` is meant for a person reading a log and may be reworded at any time. Make decisions on the status and on `code`.  | Status | What happened | | --- | --- | | `400` | Something in the request is wrong. Fix it before trying again | | `401` | Not signed in, signed in with something expired, or not allowed to do this | | `403` | Signed in, but this particular thing is not yours to touch | | `404` | The resource does not exist or is not visible to you | | `413` | The request body exceeds the route limit | | `409` | The thing is not in a state where this makes sense right now | | `422` | The request is well formed but breaks a rule | | `429` | Too many requests. Slow down | | `500` | Something went wrong on our side | | `503` | We could not take the request safely. Try again shortly | | `504` | The authority or upstream request exceeded its time budget |  ### Error codes  | `code` | Meaning | Usually seen with | | --- | --- | --- | | 3 | Something in the request is wrong | 400, 413, 422 | | 4 | A request deadline was exceeded | 504 | | 5 | Not found | 404 | | 7 | Not allowed | 403 | | 8 | Too many requests | 429 | | 10 | Another request got there first — try again | 409 | | 12 | Not available | 501 | | 13 | Something went wrong on our side | 500 | | 14 | A required service is temporarily unavailable | 503 | | 16 | Not signed in | 401 |  ## How often you can call  Each token or key gets roughly 5 requests a second, and can burst to 30 for a moment. Callers with no token are counted by network address instead. Go over and you get a `429`; wait a little longer each time before retrying, with a bit of randomness so that everyone does not come back at once.  ## Finding one request again  Every response carries an `x-request-id`. Send your own on the way in and we will keep it; otherwise we make one for you. Quote it when you contact support and we can find the exact call in seconds.  ## Why an action cannot be replayed  Actions are signed by the wallet behind them, not merely sent by someone holding a token. Each signature is tied to that wallet\'s next action number, which you read from `GET /ebus/nonce`, so a copy of an old request is worthless the moment the number moves on. **Actions & fees** walks through the whole sequence.  ## Stability  We add things without warning: a new endpoint, a new optional parameter, a new field in a response. Build your side to ignore anything it does not recognise and those additions will never disturb you.  We do not take things away without warning. Anything being retired is marked `deprecated` here first, keeps working while it carries that mark, and is announced before it goes. 
  *
  * The version of the OpenAPI document: 1.0.0
  * 
@@ -70,10 +70,29 @@ import {
     PrepareExecuteRequestToJSON,
 } from '../models/PrepareExecuteRequest';
 import {
+    type SandboxFaucetClaim,
+    SandboxFaucetClaimFromJSON,
+    SandboxFaucetClaimToJSON,
+} from '../models/SandboxFaucetClaim';
+import {
+    type SandboxFaucetStatus,
+    SandboxFaucetStatusFromJSON,
+    SandboxFaucetStatusToJSON,
+} from '../models/SandboxFaucetStatus';
+import {
     type StatsOut,
     StatsOutFromJSON,
     StatsOutToJSON,
 } from '../models/StatsOut';
+
+export interface ClaimSandboxFaucetRequest {
+    /**
+     * Identifier of the organization. Each endpoint states whether it must be the
+     * caller's active organization or may be used without authentication.
+     * 
+     */
+    organizationId: string;
+}
 
 export interface ExecuteActionRequest {
     /**
@@ -346,6 +365,15 @@ export interface GetPublicFeeStatsRequest {
     groupBy?: GetPublicFeeStatsGroupByEnum;
 }
 
+export interface GetSandboxFaucetStatusRequest {
+    /**
+     * Identifier of the organization. Each endpoint states whether it must be the
+     * caller's active organization or may be used without authentication.
+     * 
+     */
+    organizationId: string;
+}
+
 export interface ListActionLogsRequest {
     /**
      * Return only the resource with this identifier. Equivalent to fetching it by
@@ -395,10 +423,6 @@ export interface ListActionLogsRequest {
      * 
      */
     sortBy?: string;
-    /**
-     * Return only this action.
-     */
-    actionId?: string;
     /**
      * Return only the action with this hash.
      */
@@ -485,10 +509,6 @@ export interface ListActionLogsPublicRequest {
      */
     sortBy?: string;
     /**
-     * Return only this action.
-     */
-    actionId?: string;
-    /**
      * Return only the action with this hash.
      */
     hash?: string;
@@ -542,6 +562,65 @@ export interface PrepareActionRequest {
  * 
  */
 export class EbusApi extends runtime.BaseAPI {
+
+    /**
+     * Creates request options for claimSandboxFaucet without sending the request
+     */
+    async claimSandboxFaucetRequestOpts(requestParameters: ClaimSandboxFaucetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['organizationId'] == null) {
+            throw new runtime.RequiredError(
+                'organizationId',
+                'Required parameter "organizationId" was null or undefined when calling claimSandboxFaucet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearer-auth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/organizations/{organizationId}/faucet`;
+        urlPath = urlPath.replace('{organizationId}', encodeURIComponent(String(requestParameters['organizationId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Credits 10,000 sandbox DUAL to the organization\'s sandbox action-fee balance. Requires `organizations.update` permission and the authenticated organization\'s scope. No request body, recipient wallet or amount is accepted. The sandbox deployment\'s fixed platform enables this endpoint; production returns 404.  The cooldown is shared by all organization members and API keys: one successful claim per rolling seven days, including exactly at `next_claim_at`. Credit, cooldown and balance history commit atomically. Concurrent or repeated requests cannot grant a second credit during that window. A retry after a committed claim returns 429; reload the status and balance if the previous response was lost.  Sandbox DUAL pays the existing action fees. It has no monetary value and cannot be withdrawn, transferred on chain or used against production balances. This is a ledger credit; it does not create an on-chain deposit or mint a wallet token. 
+     * Claim 10,000 sandbox DUAL
+     */
+    async claimSandboxFaucetRaw(requestParameters: ClaimSandboxFaucetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SandboxFaucetClaim>> {
+        const requestOptions = await this.claimSandboxFaucetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SandboxFaucetClaimFromJSON(jsonValue));
+    }
+
+    /**
+     * Credits 10,000 sandbox DUAL to the organization\'s sandbox action-fee balance. Requires `organizations.update` permission and the authenticated organization\'s scope. No request body, recipient wallet or amount is accepted. The sandbox deployment\'s fixed platform enables this endpoint; production returns 404.  The cooldown is shared by all organization members and API keys: one successful claim per rolling seven days, including exactly at `next_claim_at`. Credit, cooldown and balance history commit atomically. Concurrent or repeated requests cannot grant a second credit during that window. A retry after a committed claim returns 429; reload the status and balance if the previous response was lost.  Sandbox DUAL pays the existing action fees. It has no monetary value and cannot be withdrawn, transferred on chain or used against production balances. This is a ledger credit; it does not create an on-chain deposit or mint a wallet token. 
+     * Claim 10,000 sandbox DUAL
+     */
+    async claimSandboxFaucet(requestParameters: ClaimSandboxFaucetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SandboxFaucetClaim> {
+        const response = await this.claimSandboxFaucetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
 
     /**
      * Creates request options for executeAction without sending the request
@@ -707,11 +786,11 @@ export class EbusApi extends runtime.BaseAPI {
         const queryParameters: any = {};
 
         if (requestParameters['from'] != null) {
-            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+            queryParameters['from'] = runtime.serializeDateTime(requestParameters['from'] as any);
         }
 
         if (requestParameters['to'] != null) {
-            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+            queryParameters['to'] = runtime.serializeDateTime(requestParameters['to'] as any);
         }
 
         if (requestParameters['include'] != null) {
@@ -816,7 +895,7 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * How much DUAL the organization has left to spend on actions.  Every action costs something, and it comes out of this balance. Top it up by sending DUAL on chain; payments appear in `GET /payments/deposits` and are added here once credited.  Watch this figure and warn people before it runs out — an action fails when there is not enough left to pay for it.  Requires the `organizations.read` permission. 
+     * How much DUAL the organization has left to spend on actions.  Every action costs something, and it comes out of this balance. Top it up by sending DUAL on chain; payments appear in `GET /payments/deposits` and are added here once credited.  Watch this figure and warn people before it runs out — an action fails when there is not enough left to pay for it.  In sandbox, top up with `POST /organizations/{organizationId}/faucet`; sandbox credits are isolated from production. Amounts are returned in base units (18 decimals).  Requires the `organizations.read` permission. 
      * Get an organization\'s balance
      */
     async getOrganizationBalanceRaw(requestParameters: GetOrganizationBalanceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BalanceOut>> {
@@ -827,7 +906,7 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * How much DUAL the organization has left to spend on actions.  Every action costs something, and it comes out of this balance. Top it up by sending DUAL on chain; payments appear in `GET /payments/deposits` and are added here once credited.  Watch this figure and warn people before it runs out — an action fails when there is not enough left to pay for it.  Requires the `organizations.read` permission. 
+     * How much DUAL the organization has left to spend on actions.  Every action costs something, and it comes out of this balance. Top it up by sending DUAL on chain; payments appear in `GET /payments/deposits` and are added here once credited.  Watch this figure and warn people before it runs out — an action fails when there is not enough left to pay for it.  In sandbox, top up with `POST /organizations/{organizationId}/faucet`; sandbox credits are isolated from production. Amounts are returned in base units (18 decimals).  Requires the `organizations.read` permission. 
      * Get an organization\'s balance
      */
     async getOrganizationBalance(requestParameters: GetOrganizationBalanceRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BalanceOut> {
@@ -857,19 +936,19 @@ export class EbusApi extends runtime.BaseAPI {
         }
 
         if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
+            queryParameters['when_created[$gt]'] = runtime.serializeDateTime(requestParameters['whenCreated$gt'] as any);
         }
 
         if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
+            queryParameters['when_created[$lt]'] = runtime.serializeDateTime(requestParameters['whenCreated$lt'] as any);
         }
 
         if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
+            queryParameters['when_created[$gte]'] = runtime.serializeDateTime(requestParameters['whenCreated$gte'] as any);
         }
 
         if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
+            queryParameters['when_created[$lte]'] = runtime.serializeDateTime(requestParameters['whenCreated$lte'] as any);
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -932,11 +1011,11 @@ export class EbusApi extends runtime.BaseAPI {
         const queryParameters: any = {};
 
         if (requestParameters['from'] != null) {
-            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+            queryParameters['from'] = runtime.serializeDateTime(requestParameters['from'] as any);
         }
 
         if (requestParameters['to'] != null) {
-            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+            queryParameters['to'] = runtime.serializeDateTime(requestParameters['to'] as any);
         }
 
         if (requestParameters['include'] != null) {
@@ -1008,11 +1087,11 @@ export class EbusApi extends runtime.BaseAPI {
         const queryParameters: any = {};
 
         if (requestParameters['from'] != null) {
-            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+            queryParameters['from'] = runtime.serializeDateTime(requestParameters['from'] as any);
         }
 
         if (requestParameters['to'] != null) {
-            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+            queryParameters['to'] = runtime.serializeDateTime(requestParameters['to'] as any);
         }
 
         if (requestParameters['include'] != null) {
@@ -1071,11 +1150,11 @@ export class EbusApi extends runtime.BaseAPI {
         const queryParameters: any = {};
 
         if (requestParameters['from'] != null) {
-            queryParameters['from'] = (requestParameters['from'] as any).toISOString();
+            queryParameters['from'] = runtime.serializeDateTime(requestParameters['from'] as any);
         }
 
         if (requestParameters['to'] != null) {
-            queryParameters['to'] = (requestParameters['to'] as any).toISOString();
+            queryParameters['to'] = runtime.serializeDateTime(requestParameters['to'] as any);
         }
 
         if (requestParameters['include'] != null) {
@@ -1128,6 +1207,65 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
+     * Creates request options for getSandboxFaucetStatus without sending the request
+     */
+    async getSandboxFaucetStatusRequestOpts(requestParameters: GetSandboxFaucetStatusRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['organizationId'] == null) {
+            throw new runtime.RequiredError(
+                'organizationId',
+                'Required parameter "organizationId" was null or undefined when calling getSandboxFaucetStatus().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
+        }
+
+        if (this.configuration && this.configuration.accessToken) {
+            const token = this.configuration.accessToken;
+            const tokenString = await token("bearer-auth", []);
+
+            if (tokenString) {
+                headerParameters["Authorization"] = `Bearer ${tokenString}`;
+            }
+        }
+
+        let urlPath = `/organizations/{organizationId}/faucet`;
+        urlPath = urlPath.replace('{organizationId}', encodeURIComponent(String(requestParameters['organizationId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Returns the fixed grant and the organization\'s weekly eligibility on the sandbox gateway. The faucet is unavailable in production (404), including when a client supplies a sandbox header. Requires `organizations.read` permission and the authenticated organization\'s scope. Organization IDs are shared across platforms. 
+     * Get sandbox faucet eligibility
+     */
+    async getSandboxFaucetStatusRaw(requestParameters: GetSandboxFaucetStatusRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SandboxFaucetStatus>> {
+        const requestOptions = await this.getSandboxFaucetStatusRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SandboxFaucetStatusFromJSON(jsonValue));
+    }
+
+    /**
+     * Returns the fixed grant and the organization\'s weekly eligibility on the sandbox gateway. The faucet is unavailable in production (404), including when a client supplies a sandbox header. Requires `organizations.read` permission and the authenticated organization\'s scope. Organization IDs are shared across platforms. 
+     * Get sandbox faucet eligibility
+     */
+    async getSandboxFaucetStatus(requestParameters: GetSandboxFaucetStatusRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SandboxFaucetStatus> {
+        const response = await this.getSandboxFaucetStatusRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for listActionLogs without sending the request
      */
     async listActionLogsRequestOpts(requestParameters: ListActionLogsRequest): Promise<runtime.RequestOpts> {
@@ -1161,10 +1299,6 @@ export class EbusApi extends runtime.BaseAPI {
             queryParameters['sortBy'] = requestParameters['sortBy'];
         }
 
-        if (requestParameters['actionId'] != null) {
-            queryParameters['action_id'] = requestParameters['actionId'];
-        }
-
         if (requestParameters['hash'] != null) {
             queryParameters['hash'] = requestParameters['hash'];
         }
@@ -1190,19 +1324,19 @@ export class EbusApi extends runtime.BaseAPI {
         }
 
         if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
+            queryParameters['when_created[$gt]'] = runtime.serializeDateTime(requestParameters['whenCreated$gt'] as any);
         }
 
         if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
+            queryParameters['when_created[$lt]'] = runtime.serializeDateTime(requestParameters['whenCreated$lt'] as any);
         }
 
         if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
+            queryParameters['when_created[$gte]'] = runtime.serializeDateTime(requestParameters['whenCreated$gte'] as any);
         }
 
         if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
+            queryParameters['when_created[$lte]'] = runtime.serializeDateTime(requestParameters['whenCreated$lte'] as any);
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -1280,10 +1414,6 @@ export class EbusApi extends runtime.BaseAPI {
             queryParameters['sortBy'] = requestParameters['sortBy'];
         }
 
-        if (requestParameters['actionId'] != null) {
-            queryParameters['action_id'] = requestParameters['actionId'];
-        }
-
         if (requestParameters['hash'] != null) {
             queryParameters['hash'] = requestParameters['hash'];
         }
@@ -1309,19 +1439,19 @@ export class EbusApi extends runtime.BaseAPI {
         }
 
         if (requestParameters['whenCreated$gt'] != null) {
-            queryParameters['when_created[$gt]'] = (requestParameters['whenCreated$gt'] as any).toISOString();
+            queryParameters['when_created[$gt]'] = runtime.serializeDateTime(requestParameters['whenCreated$gt'] as any);
         }
 
         if (requestParameters['whenCreated$lt'] != null) {
-            queryParameters['when_created[$lt]'] = (requestParameters['whenCreated$lt'] as any).toISOString();
+            queryParameters['when_created[$lt]'] = runtime.serializeDateTime(requestParameters['whenCreated$lt'] as any);
         }
 
         if (requestParameters['whenCreated$gte'] != null) {
-            queryParameters['when_created[$gte]'] = (requestParameters['whenCreated$gte'] as any).toISOString();
+            queryParameters['when_created[$gte]'] = runtime.serializeDateTime(requestParameters['whenCreated$gte'] as any);
         }
 
         if (requestParameters['whenCreated$lte'] != null) {
-            queryParameters['when_created[$lte]'] = (requestParameters['whenCreated$lte'] as any).toISOString();
+            queryParameters['when_created[$lte]'] = runtime.serializeDateTime(requestParameters['whenCreated$lte'] as any);
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -1374,6 +1504,10 @@ export class EbusApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["x-api-key"] = await this.configuration.apiKey("x-api-key"); // api-key-auth authentication
+        }
+
         if (this.configuration && this.configuration.accessToken) {
             const token = this.configuration.accessToken;
             const tokenString = await token("bearer-auth", []);
@@ -1395,7 +1529,7 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Describe the action you want to take, and get back exactly what needs to be signed — along with the wallet\'s current action number.  Signing the wrong bytes is the most common way an integration goes wrong, so this endpoint removes the guesswork: whatever it hands you is what the server will check against when you send the action.  ```js const { nonce, challenge } = await prepare({ action: { mint: { template_id, num: 1 } } }); const assertion = await navigator.credentials.get({   publicKey: { challenge: base64urlToBytes(challenge) }, }); await execute({ action, nonce, auth: { type: \'webauthn\', /_* … *_/ } }); ```  Preparing changes nothing and costs nothing. It does not reserve the action number and does not hold anything open, so a prepared action you never send simply evaporates. If the wallet does something else in between, prepare again.  Requires the `ebus.actions.create` permission. 
+     * Describe the action you want to take, and get back exactly what needs to be signed — along with the wallet\'s current action number.  Signing the wrong bytes is the most common way an integration goes wrong, so this endpoint removes the guesswork: whatever it hands you is what the server will check against when you send the action.  ```js const { nonce, challenge, action } = await prepare({ action: { mint: { template_id, num: 1 } } }); const assertion = await navigator.credentials.get({   publicKey: { challenge: base64urlToBytes(challenge) }, }); await execute({ action, nonce, auth: { type: \'webauthn\', /_* … *_/ } }); ```  Preparing changes nothing and costs nothing. It does not reserve the action number and does not hold anything open, so a prepared action you never send simply evaporates. If the wallet does something else in between, prepare again.  Send the returned `action`: for `set_attributes` and `delete_attributes` it can carry salts and an `expected_object_nonce` that the service filled in, and the challenge covers them.  With an API key, the action number is for the key\'s wallet. Send the action and that number to `POST /ebus/execute` without `auth`; the server signs for the key\'s wallet. A backend needs no wallet address to read the number.  Requires the `ebus.actions.create` permission. 
      * Prepare an action for signing
      */
     async prepareActionRaw(requestParameters: PrepareActionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PrepareExecuteOut>> {
@@ -1406,7 +1540,7 @@ export class EbusApi extends runtime.BaseAPI {
     }
 
     /**
-     * Describe the action you want to take, and get back exactly what needs to be signed — along with the wallet\'s current action number.  Signing the wrong bytes is the most common way an integration goes wrong, so this endpoint removes the guesswork: whatever it hands you is what the server will check against when you send the action.  ```js const { nonce, challenge } = await prepare({ action: { mint: { template_id, num: 1 } } }); const assertion = await navigator.credentials.get({   publicKey: { challenge: base64urlToBytes(challenge) }, }); await execute({ action, nonce, auth: { type: \'webauthn\', /_* … *_/ } }); ```  Preparing changes nothing and costs nothing. It does not reserve the action number and does not hold anything open, so a prepared action you never send simply evaporates. If the wallet does something else in between, prepare again.  Requires the `ebus.actions.create` permission. 
+     * Describe the action you want to take, and get back exactly what needs to be signed — along with the wallet\'s current action number.  Signing the wrong bytes is the most common way an integration goes wrong, so this endpoint removes the guesswork: whatever it hands you is what the server will check against when you send the action.  ```js const { nonce, challenge, action } = await prepare({ action: { mint: { template_id, num: 1 } } }); const assertion = await navigator.credentials.get({   publicKey: { challenge: base64urlToBytes(challenge) }, }); await execute({ action, nonce, auth: { type: \'webauthn\', /_* … *_/ } }); ```  Preparing changes nothing and costs nothing. It does not reserve the action number and does not hold anything open, so a prepared action you never send simply evaporates. If the wallet does something else in between, prepare again.  Send the returned `action`: for `set_attributes` and `delete_attributes` it can carry salts and an `expected_object_nonce` that the service filled in, and the challenge covers them.  With an API key, the action number is for the key\'s wallet. Send the action and that number to `POST /ebus/execute` without `auth`; the server signs for the key\'s wallet. A backend needs no wallet address to read the number.  Requires the `ebus.actions.create` permission. 
      * Prepare an action for signing
      */
     async prepareAction(requestParameters: PrepareActionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PrepareExecuteOut> {
