@@ -141,4 +141,30 @@ describe("executeInventoryAction", () => {
       },
     });
   });
+
+  it("executes the request action when prepare returns none", async () => {
+    const executeAction = jest
+      .fn()
+      .mockResolvedValue({ actionId: "action-1", steps: [] });
+    const prepareAction = jest
+      .fn()
+      .mockResolvedValue({ nonce: 9, challenge: "AQIDBA" });
+    mockedApi.mockReturnValue({
+      executeAction,
+      prepareAction,
+    } as unknown as ReturnType<typeof getEbusApi>);
+    mockedPasskey.mockResolvedValue({
+      credentialId: "credential-1",
+      authenticatorData: "auth-data",
+      clientDataJson: "client-data",
+      signatureR: "0x01",
+      signatureS: "0x02",
+    });
+
+    await executeInventoryAction(action, "passkey");
+
+    expect(executeAction).toHaveBeenCalledWith({
+      executeRequest: expect.objectContaining({ action, nonce: 9 }),
+    });
+  });
 });
