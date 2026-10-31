@@ -6,14 +6,26 @@ import {
   type ExternalFaceAttributeResult,
 } from "@/app/_lib/external-face-bridge";
 import type { InventoryActionName } from "@/app/_services/inventory-actions";
+import type { ObjectAttribute } from "@/api/web-sdk/models/ObjectAttribute";
 
 export async function readExternalFaceAttributes(
   objectId: string,
 ): Promise<ExternalFaceAttributeResult> {
   try {
-    const result = await getObjectsApi().listObjectAttributes({ objectId });
+    // The service pages attributes at 25; read every page in the default key order.
+    const api = getObjectsApi();
+    const attributes: ObjectAttribute[] = [];
+    const seenTokens = new Set<string>();
+    let next: string | undefined;
+    do {
+      const page = await api.listObjectAttributes({ objectId, next });
+      attributes.push(...page.attributes);
+      next = page.next || undefined;
+      if (next && seenTokens.has(next)) break;
+      if (next) seenTokens.add(next);
+    } while (next);
     return {
-      attributes: result.attributes.map((attribute) => ({
+      attributes: attributes.map((attribute) => ({
         id: attribute.id,
         key: attribute.key,
         value: attribute.value,
