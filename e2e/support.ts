@@ -115,7 +115,8 @@ const bridgeAttributes = [
     category: "service",
     content_type: "text",
     public: true,
-    value_hash: "attribute-value-hash",
+    leaf: "0x5b1fd0f2a6e4c1a1d7f0e0d6b3a8c9e2f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9",
+    salt: "0x000102030405060708090a0b0c0d0e0f",
     action_id: "attribute-action-id",
     object_nonce: 2,
     when_created: "2026-02-01T00:00:00.000Z",
@@ -211,7 +212,11 @@ export async function mockBackend(page: Page) {
           });
     }
     if (request.method() === "POST" && path === "/api/backend/ebus/prepare") {
-      return json(route, { nonce: 2, challenge: "AQIDBA" });
+      return json(route, {
+        nonce: 2,
+        challenge: "AQIDBA",
+        action: request.postDataJSON().action,
+      });
     }
     if (request.method() === "POST" && path === "/api/backend/ebus/execute") {
       return json(route, { action_id: "action-e2e-2", steps: [] });

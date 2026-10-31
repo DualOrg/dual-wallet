@@ -24,6 +24,20 @@ const mockedBase64urlToBytes = jest.mocked(base64urlToBytes);
 
 describe("executeInventoryAction", () => {
   const action = { pickup: { id: "object-1" } };
+  // What prepare fills in (salts, the object nonce) is part of the challenge.
+  const preparedAction = {
+    setAttributes: {
+      id: "object-1",
+      expectedObjectNonce: 3,
+      attributes: [
+        {
+          key: "tier",
+          value: "vip",
+          salt: "0x000102030405060708090a0b0c0d0e0f",
+        },
+      ],
+    },
+  };
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -49,9 +63,11 @@ describe("executeInventoryAction", () => {
     const executeAction = jest
       .fn()
       .mockResolvedValue({ actionId: "action-1", steps: [] });
-    const prepareAction = jest
-      .fn()
-      .mockResolvedValue({ nonce: 7, challenge: "AQIDBA" });
+    const prepareAction = jest.fn().mockResolvedValue({
+      nonce: 7,
+      challenge: "AQIDBA",
+      action: preparedAction,
+    });
     mockedApi.mockReturnValue({
       executeAction,
       prepareAction,
@@ -72,7 +88,7 @@ describe("executeInventoryAction", () => {
     expect(mockedPasskey).toHaveBeenCalledWith("AQIDBA");
     expect(executeAction).toHaveBeenCalledWith({
       executeRequest: {
-        action,
+        action: preparedAction,
         nonce: 7,
         auth: {
           type: "webauthn",
@@ -91,9 +107,11 @@ describe("executeInventoryAction", () => {
     const executeAction = jest
       .fn()
       .mockResolvedValue({ actionId: "action-1", steps: [] });
-    const prepareAction = jest
-      .fn()
-      .mockResolvedValue({ nonce: 8, challenge: "AQIDBA" });
+    const prepareAction = jest.fn().mockResolvedValue({
+      nonce: 8,
+      challenge: "AQIDBA",
+      action: preparedAction,
+    });
     const request = jest.fn().mockResolvedValue("0xsignature");
     mockedApi.mockReturnValue({
       executeAction,
@@ -113,7 +131,7 @@ describe("executeInventoryAction", () => {
     });
     expect(executeAction).toHaveBeenCalledWith({
       executeRequest: {
-        action,
+        action: preparedAction,
         nonce: 8,
         auth: {
           type: "personal_sign",
