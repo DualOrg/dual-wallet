@@ -194,6 +194,13 @@ line when required, for example:
 make wallet-prod API_URL=https://api.example.com VIEWER_BASE_DOMAIN=viewer.example.com NEXT_PUBLIC_APP_URL=https://viewer.example.com NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS=https://faces.example.com NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_APPLICATIONS=dual.dpp@1=https://faces.example.com/dpp/v1/
 ```
 
+`cloudbuild.yaml` is the same build for the Cloud Build trigger `prod-wallet`
+(`vlabsio/infra`, `terraform/07-cloudbuild`). It publishes
+`europe-west6-docker.pkg.dev/<project>/smt/dual-wallet:<build>` and, with
+`_DEPLOY=true`, points the existing `dual-wallet` service at it. It changes only
+the image: runtime values such as `API_URL`, `SANDBOX_API_URL` and
+`SESSION_SECRET` stay as set on the service.
+
 The session is a sealed cookie rather than process-local state, so instances no
 longer have to be pinned to one. `MAX_INSTANCES` still defaults to 1; raise it
 when you have picked a ceiling.
