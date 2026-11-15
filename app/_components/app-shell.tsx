@@ -50,7 +50,13 @@ function Nav({ close }: { close?: () => void }) {
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  platformSelector,
+}: {
+  children: React.ReactNode;
+  platformSelector?: React.ReactNode;
+}) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { wallet, isLoading, isAuthenticated, logout } = useSession();
   const { theme, toggleTheme } = useTheme();
@@ -103,7 +109,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {common("skipToContent")}
       </a>
       <aside className="sidebar">
-        <Brand />
+        <div className="sidebar-brand">
+          <Brand />
+          {platformSelector}
+        </div>
         <nav className="sidebar-nav" aria-label={t("mainNavigation")}>
           <Nav />
         </nav>
@@ -115,7 +124,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
       <div className="main">
         <header className="mobile-topbar">
-          <Brand />
+          <div className="topbar-brand">
+            <Brand />
+            {platformSelector}
+          </div>
           <button
             ref={menuTrigger}
             className="icon-button"

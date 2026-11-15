@@ -516,6 +516,107 @@ button {
   gap: 7px;
   margin-top: 42px;
 }
+.sidebar-brand {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+}
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.platform-selector {
+  position: relative;
+}
+.platform-chip {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 0 11px;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+button.platform-chip {
+  cursor: pointer;
+}
+.platform-chip:focus-visible {
+  outline: 3px solid var(--brand-strong);
+  outline-offset: 2px;
+}
+.platform-production {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 35%, var(--surface));
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+}
+.platform-sandbox {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 35%, var(--surface));
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+}
+.platform-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+}
+.platform-dot-production {
+  background: var(--success);
+}
+.platform-dot-sandbox {
+  background: var(--warning);
+}
+.platform-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 230px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-raised);
+  padding: 6px;
+  box-shadow: var(--shadow);
+}
+.topbar-brand .platform-menu {
+  right: 0;
+  left: auto;
+}
+.platform-menu ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.platform-menu a {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 10px;
+  border-radius: 10px;
+  color: var(--ink);
+  padding: 0 10px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.platform-menu a:hover,
+.platform-menu a[aria-current] {
+  background: var(--surface-subtle);
+}
+.platform-menu a svg {
+  margin-left: auto;
+  color: var(--content-accent);
+}
+.platform-menu p {
+  margin: 6px 0 0;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  padding: 9px 10px 4px;
+  font-size: 0.7rem;
+}
 .nav-link {
   display: flex;
   width: 100%;

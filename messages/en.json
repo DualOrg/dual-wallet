@@ -54,6 +54,12 @@
     "controller": "Controller",
     "manage": "Manage profile"
   },
+  "platform": {
+    "label": "Platform: {platform}",
+    "production": "Production",
+    "sandbox": "Sandbox",
+    "hint": "You stay signed in. Objects and actions differ per platform."
+  },
   "auth": {
     "eyebrow": "Your digital objects world",
     "headline": "Everything you own, in one trusted place.",
