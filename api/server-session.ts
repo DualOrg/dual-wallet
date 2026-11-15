@@ -10,6 +10,7 @@ import type { NextRequest } from "next/server";
 import type { NextResponse } from "next/server";
 import type { LoginOut } from "@/api/web-sdk/models/LoginOut";
 import type { RefreshTokenOut } from "@/api/web-sdk/models/RefreshTokenOut";
+import { apiBaseUrl, type Platform } from "@/api/platform";
 import { SESSION_COOKIE_NAME } from "@/api/settings";
 import type { TenantContext } from "@/api/tenant";
 import { tenantFromRequest } from "@/api/tenant";
@@ -331,9 +332,15 @@ export async function currentWallet(
   }
 }
 
-export function upstreamUrl(path: string, search = "") {
-  const base = process.env.API_URL || "https://api.dual.network";
-  const url = new URL(path.replace(/^\/+/, ""), `${base.replace(/\/+$/, "")}/`);
+export function upstreamUrl(
+  path: string,
+  search = "",
+  platform: Platform = "production",
+) {
+  const url = new URL(
+    path.replace(/^\/+/, ""),
+    `${apiBaseUrl(path, platform)}/`,
+  );
   url.search = search;
   return url;
 }

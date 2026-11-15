@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { requestPlatform } from "@/api/platform";
 import { validateProxyPath } from "@/api/proxy-policy";
 import { validRequestOrigin } from "@/api/request";
 import {
@@ -61,7 +62,11 @@ async function proxy(
       expired,
     } = await authenticatedUpstreamFetch(
       request,
-      upstreamUrl(path.join("/"), request.nextUrl.search),
+      upstreamUrl(
+        path.join("/"),
+        request.nextUrl.search,
+        requestPlatform(request),
+      ),
       {
         method: request.method,
         headers,

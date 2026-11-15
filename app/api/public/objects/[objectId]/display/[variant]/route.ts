@@ -1,3 +1,5 @@
+import type { NextRequest } from "next/server";
+import { requestPlatform } from "@/api/platform";
 import {
   MAX_PUBLIC_DISPLAY_BYTES,
   publicDisplayUpstreamPath,
@@ -7,7 +9,7 @@ import { upstreamUrl } from "@/api/server-session";
 const ALLOWED_MEDIA_TYPES = new Set(["text/html", "image/svg+xml"]);
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   context: {
     params: Promise<{ objectId: string; variant: string }>;
   },
@@ -21,7 +23,7 @@ export async function GET(
   if (etag) headers.set("If-None-Match", etag);
 
   try {
-    const upstream = await fetch(upstreamUrl(path), {
+    const upstream = await fetch(upstreamUrl(path, "", requestPlatform(request)), {
       method: "GET",
       headers,
       cache: "no-store",

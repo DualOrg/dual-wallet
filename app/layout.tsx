@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getTranslations } from "next-intl/server";
+import { resolvePlatform } from "@/api/platform";
+import { PLATFORM_COOKIE_NAME } from "@/api/settings";
 import "@/app/globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -31,6 +34,10 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const messages = await getMessages();
+  const t = await getTranslations("common");
+  const platform = resolvePlatform(
+    (await cookies()).get(PLATFORM_COOKIE_NAME)?.value,
+  );
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -43,6 +50,9 @@ export default async function RootLayout({
         />
       </head>
       <body>
+        {platform === "sandbox" ? (
+          <p className="platform-banner">{t("sandboxBanner")}</p>
+        ) : null}
         <NextIntlClientProvider messages={messages}>
           {children}
         </NextIntlClientProvider>

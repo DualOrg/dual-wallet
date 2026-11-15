@@ -438,6 +438,10 @@ documents it links. Keep that guide synchronized with the code and tests.
   credentials.
 - Server-only:
   - `API_URL`: upstream `api-v3` origin.
+  - `SANDBOX_API_URL`: optional sandbox gateway origin. An entry link with
+    `?platform=sandbox` sends `objects/*`, `ebus/*` and object displays there;
+    the session, `auth/*`, `wallets/me` and branding stay on `API_URL`. Unset,
+    sandbox links fall back to production.
   - `VIEWER_BASE_DOMAIN`: parent wallet domain. The left-most tenant subdomain
     is resolved by the server-owned map in `api/tenant.ts` to the organization
     ObjectID injected by the BFF into account operations.

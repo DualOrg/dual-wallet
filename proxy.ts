@@ -1,6 +1,11 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { ORGANIZATION_COOKIE_NAME, SESSION_COOKIE_NAME } from "@/api/settings";
+import { PLATFORM_PARAM, resolvePlatform } from "@/api/platform";
+import {
+  ORGANIZATION_COOKIE_NAME,
+  PLATFORM_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+} from "@/api/settings";
 import { chosenOrganizationId } from "@/api/tenant";
 
 const PROTECTED = ["/inventory", "/activity", "/settings"];
@@ -61,6 +66,9 @@ export function proxy(request: NextRequest) {
   const organizationId = chosen ?? current;
   const entry = organizationId ? `/${organizationId}` : "";
 
+  // Read before a redirect below clears the query.
+  const platform = url.searchParams.get(PLATFORM_PARAM);
+
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE_NAME)?.value);
   const protectedRoute = PROTECTED.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
@@ -94,6 +102,17 @@ export function proxy(request: NextRequest) {
       secure: process.env.NODE_ENV === "production",
       // The verification mail opens this link from another site, and a strict
       // cookie would not travel with that first navigation.
+      sameSite: "lax",
+      path: "/",
+      maxAge: THIRTY_DAYS_SECONDS,
+    });
+  }
+  // An explicit platform, production included, replaces the stored one, so an
+  // old sandbox choice never outlives a production entry link.
+  if (platform === "production" || platform === "sandbox") {
+    response.cookies.set(PLATFORM_COOKIE_NAME, resolvePlatform(platform), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
       maxAge: THIRTY_DAYS_SECONDS,

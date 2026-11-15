@@ -137,3 +137,46 @@ test("a reset link keeps its token in a browser that is already signed in", () =
     visit(`/${ORGANIZATION}/reset-password`, signedIn).headers.get("location"),
   ).toBe("http://localhost/inventory");
 });
+
+describe("platform entry links", () => {
+  const PLATFORM_COOKIE = "smarttoken_viewer_platform";
+
+  afterEach(() => {
+    delete process.env.SANDBOX_API_URL;
+  });
+
+  test("a sandbox link stores sandbox when the sandbox gateway exists", () => {
+    process.env.SANDBOX_API_URL = "https://api-sandbox.example.test";
+    const response = visit(`/${ORGANIZATION}/login?platform=sandbox`);
+
+    expect(response.cookies.get(PLATFORM_COOKIE)?.value).toBe("sandbox");
+  });
+
+  test("a sandbox link stores production when no sandbox gateway exists", () => {
+    const response = visit(`/${ORGANIZATION}/login?platform=sandbox`);
+
+    expect(response.cookies.get(PLATFORM_COOKIE)?.value).toBe("production");
+  });
+
+  test("a signed-in visitor switches platform on the way to inventory", () => {
+    process.env.SANDBOX_API_URL = "https://api-sandbox.example.test";
+    const response = visit(
+      `/${ORGANIZATION}/login?platform=production`,
+      `smarttoken_viewer=sealed; ${PLATFORM_COOKIE}=sandbox`,
+    );
+
+    expect(response.headers.get("location")).toBe("http://localhost/inventory");
+    expect(response.cookies.get(PLATFORM_COOKIE)?.value).toBe("production");
+  });
+
+  test("a link without a valid platform keeps the stored one", () => {
+    expect(
+      visit(`/${ORGANIZATION}/login`).cookies.get(PLATFORM_COOKIE),
+    ).toBeUndefined();
+    expect(
+      visit(`/${ORGANIZATION}/login?platform=staging`).cookies.get(
+        PLATFORM_COOKIE,
+      ),
+    ).toBeUndefined();
+  });
+});

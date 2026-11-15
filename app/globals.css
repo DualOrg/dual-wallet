@@ -985,6 +985,15 @@ button {
   color: var(--success);
   background: color-mix(in srgb, var(--success) 10%, var(--surface));
 }
+.platform-banner {
+  margin: 0;
+  padding: 6px 16px;
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+}
 .status-pending {
   color: var(--warning);
   background: color-mix(in srgb, var(--warning) 10%, var(--surface));

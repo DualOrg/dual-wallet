@@ -121,6 +121,8 @@ Browser code never receives API access or refresh tokens. Auth routes establish 
 
 A second cookie holds the organization an entry link chose. It carries no credential, and the session cookie stays the only thing that grants access.
 
+A third cookie holds the platform an entry link chose with `?platform=production` or `?platform=sandbox`. Wallet accounts are shared, so one session works on both. On sandbox the backend and display proxies send `objects/*`, `ebus/*` and `public/objects/*` to `SANDBOX_API_URL`; login, refresh, `wallets/me` and branding stay on `API_URL`. Every page then shows a sandbox banner. Without `SANDBOX_API_URL`, a sandbox link selects production.
+
 There is no server-side session store. The tokens are sealed into the cookie
 itself with AES-256-GCM, so a replaced container or a request that lands on a
 second instance keeps the wallet signed in, and instances need no pinning.
@@ -172,7 +174,8 @@ make wallet-dev PROJECT_ID=my-dev-project
 make wallet-prod PROJECT_ID=my-prod-project SESSION_SECRET_NAME=wallet-session-secret
 ```
 
-The defaults are `API_URL=https://api.dual.network`,
+The defaults are `API_URL=https://api.dual.network`, an empty
+`SANDBOX_API_URL` (sandbox off),
 `VIEWER_BASE_DOMAIN=wallet.dual.network`,
 `NEXT_PUBLIC_APP_URL=https://wallet.dual.network`, and
 `NEXT_PUBLIC_EXTERNAL_FACE_BRIDGE_ORIGINS=https://faces.dual.network`.

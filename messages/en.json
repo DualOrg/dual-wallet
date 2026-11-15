@@ -20,7 +20,8 @@
     "openMenu": "Open navigation",
     "closeMenu": "Close navigation",
     "loadingPage": "Loading page",
-    "goToInventory": "Go to inventory"
+    "goToInventory": "Go to inventory",
+    "sandboxBanner": "Sandbox: a test environment. Objects and actions here have no real value."
   },
   "errors": {
     "authentication": "Your session has expired. Sign in again to continue.",
