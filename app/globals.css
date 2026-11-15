@@ -544,6 +544,32 @@ button {
 button.platform-chip {
   cursor: pointer;
 }
+.platform-name {
+  display: grid;
+  flex: 1;
+  text-align: left;
+  line-height: 1.25;
+}
+.platform-name small {
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.topbar-brand .platform-name small {
+  display: none;
+}
+.sidebar .platform-selector,
+.sidebar .platform-chip,
+.sidebar .platform-menu {
+  width: 100%;
+  justify-self: stretch;
+}
+.sidebar .platform-chip {
+  min-height: 52px;
+  gap: 10px;
+  border-radius: 13px;
+  padding: 0 13px;
+  font-size: 0.86rem;
+}
 .platform-chip:focus-visible {
   outline: 3px solid var(--brand-strong);
   outline-offset: 2px;

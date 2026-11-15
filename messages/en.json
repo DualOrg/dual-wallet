@@ -55,6 +55,7 @@
     "manage": "Manage profile"
   },
   "platform": {
+    "title": "Platform",
     "label": "Platform: {platform}",
     "production": "Production",
     "sandbox": "Sandbox",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { Platform } from "@/api/platform";
 
@@ -45,7 +45,10 @@ export function PlatformSelector({
   const current = (
     <>
       <span className={`platform-dot platform-dot-${platform}`} aria-hidden />
-      {t(platform)}
+      <span className="platform-name">
+        <small>{t("title")}</small>
+        {t(platform)}
+      </span>
     </>
   );
 
@@ -72,7 +75,7 @@ export function PlatformSelector({
         onClick={() => setOpen((value) => !value)}
       >
         {current}
-        <ChevronDown size={14} aria-hidden />
+        <ChevronsUpDown size={16} aria-hidden />
       </button>
 
       {open ? (
