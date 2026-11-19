@@ -1,6 +1,7 @@
 # Build and publish by default. Set _DEPLOY=true in the release trigger.
-# The deploy step changes only the image: API_URL, SANDBOX_API_URL,
-# SESSION_SECRET and the other runtime values stay as set on the service.
+# The deploy step changes only the image. API_URL, SANDBOX_API_URL and the
+# other runtime values stay in vlabsio/infra
+# helmfile/values-mainnet/frontends/dual-wallet.yaml.
 steps:
   - id: build
     name: gcr.io/cloud-builders/docker
@@ -17,7 +18,7 @@ steps:
     name: gcr.io/cloud-builders/docker
     args: [push, '${_REGISTRY}/$PROJECT_ID/smt/dual-wallet:$BUILD_ID']
   - id: deploy
-    name: gcr.io/google.com/cloudsdktool/cloud-sdk:stable
+    name: gcr.io/cloud-builders/kubectl
     entrypoint: bash
     args:
       - -ceu
@@ -30,12 +31,18 @@ steps:
         digest=$$(gcloud artifacts docker images describe "$${IMAGE}" --project "$PROJECT_ID" \
           --format='value(image_summary.digest)')
         [[ "$$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo 'Invalid image digest' >&2; exit 1; }
-        gcloud run services update dual-wallet --project "$PROJECT_ID" --region "$${REGION}" \
-          --image "$${IMAGE%:*}@$$digest" --quiet
+        # The GKE Deployment frontends/dual-wallet (vlabsio/infra
+        # helmfile/charts/frontend) serves wallet.dual.network.
+        gcloud container clusters get-credentials dual-mainnet-prod-eu --project "$PROJECT_ID" \
+          --region "$${REGION}" --dns-endpoint
+        kubectl --namespace frontends set image deployment/dual-wallet \
+          dual-wallet="$${IMAGE%:*}@$$digest"
+        kubectl --namespace frontends rollout status deployment/dual-wallet --timeout=300s
     env:
       - DEPLOY=${_DEPLOY}
       - REGION=${_REGION}
       - IMAGE=${_REGISTRY}/$PROJECT_ID/smt/dual-wallet:$BUILD_ID
+      - KUBECONFIG=/workspace/.kube/config
 substitutions:
   _REGISTRY: europe-west6-docker.pkg.dev
   _REGION: europe-west6
